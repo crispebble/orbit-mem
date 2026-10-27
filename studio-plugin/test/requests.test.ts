@@ -31,11 +31,18 @@ describe('decideArgs', () => {
 
 describe('approvalToDecideArgs', () => {
   const p = (kind: string): OniProposal => ({id: 'p1', kind, title: 't', memoryIds: [], payload: {}, status: 'pending', createdAt: 1});
+  const a = (over = {}) => ({title: 't', text: 'x', edited: false, titleEdited: false, textEdited: false, ...over});
   it('고치지 않았으면 그대로 승인한다', () => {
-    assert.deepEqual(approvalToDecideArgs(p('apply_file'), {text: 'x', edited: false}), {id: 'p1', decision: 'approve'});
+    assert.deepEqual(approvalToDecideArgs(p('apply_file'), a()), {id: 'p1', decision: 'approve'});
   });
-  it('고쳤으면 본문으로 보낸다', () => {
-    assert.deepEqual(approvalToDecideArgs(p('apply_file'), {text: '새 내용', edited: true}), {id: 'p1', decision: 'approve', body: '새 내용'});
+  it('고친 내용만 본문으로 보낸다', () => {
+    assert.deepEqual(approvalToDecideArgs(p('apply_file'), a({text: '새 내용', edited: true, textEdited: true})), {id: 'p1', decision: 'approve', body: '새 내용'});
+  });
+  it('고친 제목만 제목으로 보낸다', () => {
+    assert.deepEqual(approvalToDecideArgs(p('confirm'), a({title: '새 제목', edited: true, titleEdited: true})), {id: 'p1', decision: 'approve', title: '새 제목'});
+  });
+  it('제목과 내용을 둘 다 고치면 둘 다 보낸다', () => {
+    assert.deepEqual(approvalToDecideArgs(p('confirm'), a({title: 'T', text: 'B', edited: true, titleEdited: true, textEdited: true})), {id: 'p1', decision: 'approve', title: 'T', body: 'B'});
   });
 });
 

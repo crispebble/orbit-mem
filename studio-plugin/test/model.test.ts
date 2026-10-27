@@ -88,10 +88,11 @@ describe('제안 변환', () => {
     assert.equal(toProposalRow(pending({status: 'rejected'}), now).pending, false);
   });
 
-  it('확정 제안은 설명과 근거(기억 출처)를 준다', () => {
+  it('확정 제안은 고칠 수 있는 내용(body)과 근거(기억 출처)를 준다', () => {
     const p = toProposal(pending(), [memory], now);
     assert.equal(p.kind, 'confirm');
-    assert.equal(p.explanation, '두 번 나왔습니다');
+    assert.equal(p.body, '두 번 나왔습니다');
+    assert.equal(p.explanation, undefined);
     assert.equal(p.diff, undefined);
     assert.equal(p.evidence?.[0].text, '경로를 적어 주세요');
   });
@@ -103,7 +104,7 @@ describe('제안 변환', () => {
 
   it('파일 반영은 새 내용을 추가 줄 diff로 보이고 고칠 본문이 된다', () => {
     const p = toProposal(pending({kind: 'apply_file', payload: {path: '/x/SKILL.md', content: 'a\nb', baseHash: 'h'}}), [], now);
-    assert.equal(p.kind, 'harness');
+    assert.equal(p.kind, 'apply_file');
     assert.equal(p.diff?.path, '/x/SKILL.md');
     assert.deepEqual(p.diff?.lines.map(l => [l.no, l.kind, l.text]), [[1, 'add', 'a'], [2, 'add', 'b']]);
     assert.equal(p.diff?.text, 'a\nb');
@@ -112,10 +113,18 @@ describe('제안 변환', () => {
   it('합치기는 합친 본문을, 방향은 제안 본문을 고칠 수 있게 한다', () => {
     const m = toProposal(pending({kind: 'merge', payload: {mergedTitle: '합침', mergedBody: '합친 글'}}), [], now);
     assert.equal(m.diff?.text, '합친 글');
-    assert.equal(m.kind, 'cleanup');
+    assert.equal(m.kind, 'merge');
     const d = toProposal(pending({kind: 'direction', body: '이 방향으로'}), [], now);
     assert.equal(d.diff?.text, '이 방향으로');
     assert.equal(d.explanation, undefined);
+    assert.equal(d.kind, 'direction');
+  });
+
+  it('Orbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
+    for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction']) {
+      assert.equal(toProposal(pending({kind}), [], now).kind, kind);
+    }
+    assert.equal(toProposal(pending({kind: 'stale', body: ''}), [], now).body, undefined);
   });
 });
 

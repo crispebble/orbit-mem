@@ -52,6 +52,12 @@ export function MemoryPane({ctx, tab}: TabProps) {
 
   useEffect(() => { void load(); }, [load]);
 
+  // 고치기를 벗어나거나 탭이 닫히면 저장 안 한 표시를 지운다.
+  useEffect(() => {
+    if (mode !== 'edit') return;
+    return () => ctx.tabs.setModified('memory', tab.id, false);
+  }, [mode, ctx, tab.id]);
+
   // 고치기에 들어갈 때 대체 후보로 쓸 기억 목록을 읽는다
   useEffect(() => {
     if (mode !== 'edit' || !store) return;
@@ -119,6 +125,7 @@ export function MemoryPane({ctx, tab}: TabProps) {
           candidates={candidates}
           scopes={[record.scope ?? '전역']}
           onSave={save}
+          onDirtyChange={dirty => ctx.tabs.setModified('memory', tab.id, dirty)}
           onCancel={() => { setMode('view'); setConflict(false); }}
         />
       </div>

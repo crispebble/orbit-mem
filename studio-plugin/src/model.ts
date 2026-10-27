@@ -209,7 +209,10 @@ export function toProposalRow(p: OniProposal, now: Date = new Date()): ProposalR
   return {id: p.id, title: p.title, kind: p.kind, kindLabel: proposalKindLabel(p.kind), date: formatDate(p.createdAt, now), status: p.status, pending: p.status === 'pending'};
 }
 
-const forma = (kind: string): ProposalKind => (kind === 'confirm' ? 'confirm' : kind === 'apply_file' ? 'harness' : 'cleanup');
+const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction'];
+
+/** oni가 모르는 종류를 주면 Forma가 모르는 종류를 받지 않게 확정으로 본다. */
+const asProposalKind = (kind: string): ProposalKind => ((PROPOSAL_KINDS as readonly string[]).includes(kind) ? (kind as ProposalKind) : 'confirm');
 
 function addLines(text: string) {
   return text.split('\n').map((t, i) => ({no: i + 1, kind: 'add' as const, text: t}));
@@ -237,7 +240,7 @@ function evidenceOf(memories: readonly OniMemory[], now: Date): ProposalEvidence
 export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], now: Date = new Date()): Proposal {
   const payload = p.payload ?? {};
   const date = formatDate(p.createdAt, now);
-  const out: Proposal = {id: p.id, kind: forma(p.kind), title: p.title, source: p.retroId ? `${date} 회고에서` : date};
+  const out: Proposal = {id: p.id, kind: asProposalKind(p.kind), title: p.title, source: p.retroId ? `${date} 회고에서` : date};
   const evidence = evidenceOf(related, now);
   if (evidence.length) out.evidence = evidence;
   if (p.kind === 'apply_file') {
@@ -251,7 +254,7 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
   } else if (p.kind === 'direction') {
     out.diff = {path: `새 결정 기억 · ${p.title}`, lines: addLines(p.body ?? ''), text: p.body ?? ''};
   } else if (p.body) {
-    out.explanation = p.body;
+    out.body = p.body; // diff 없는 제안은 내용 칸으로 보이고 고쳐서 승인할 수 있다
   }
   return out;
 }

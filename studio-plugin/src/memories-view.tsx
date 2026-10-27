@@ -48,6 +48,8 @@ export function MemoriesView({ctx}: ViewProps) {
     <div className="orbit-side">
       <MemoryList
         memories={memories}
+        filterMode="server"
+        emptyText={query.trim() ? '조건에 맞는 기억이 없습니다.' : '아직 기억이 없습니다.'}
         selectedId={selected}
         onSelect={id => {
           setSelected(id);

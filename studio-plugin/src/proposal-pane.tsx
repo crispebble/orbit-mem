@@ -1,7 +1,7 @@
 // 제안 상세: proposal 탭과 받은 일 상세가 함께 쓴다.
 import {useEffect, useMemo, useState} from 'react';
 import type {PluginContext} from '@onidot-labs/studio-plugin';
-import {Button, EmptyState, Input, Label} from '@onidot-labs/studio-plugin/ui';
+import {Button, EmptyState, Label} from '@onidot-labs/studio-plugin/ui';
 import {ProposalDetail} from '@onidot-labs/studio-plugin/ai';
 import {errorMessage} from './oni.ts';
 import {formatDate, proposalStatusLabels, toProposal, type OniMemory} from './model.ts';
@@ -11,7 +11,6 @@ import {useOrbit} from './runtime.ts';
 export function ProposalPane({ctx, proposalId}: {ctx: PluginContext; proposalId: string}) {
   const {store, state} = useOrbit();
   const [related, setRelated] = useState<OniMemory[]>([]);
-  const [note, setNote] = useState('');
   const proposal = state.proposals.find(p => p.id === proposalId);
   const memoryKey = proposal?.memoryIds?.join(',') ?? '';
 
@@ -49,17 +48,15 @@ export function ProposalPane({ctx, proposalId}: {ctx: PluginContext; proposalId:
           {proposal.note ? <span>사유: {proposal.note}</span> : null}
         </div>
       )}
-      {pending && (
-        <Input label="거절 사유(선택)" hint="거절할 때 함께 기록합니다." value={note} onChange={e => setNote(e.target.value)} />
-      )}
       <ProposalDetail
         proposal={view}
         onApprove={pending ? async (_id, change) => {
           try { await store.decide(approvalToDecideArgs(proposal, change)); } catch (e) { fail('승인', e); }
         } : undefined}
-        onDeny={pending ? async () => {
-          try { await store.decide(decideArgs(proposal.id, 'reject', {note})); } catch (e) { fail('거절', e); }
+        onDeny={pending ? async (_id, denial) => {
+          try { await store.decide(decideArgs(proposal.id, 'reject', {note: denial.note})); } catch (e) { fail('거절', e); }
         } : undefined}
+        denyReason="optional"
         availability={state.status === 'error' ? 'offline' : 'ready'}
         error={state.error}
       />
