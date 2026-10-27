@@ -203,43 +203,13 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 			in.Kind, in.Scope, key).Scan(&existingID)
 	}
 	if existingID != "" {
-		m, err := getTx(tx, existingID)
-		if err != nil {
-			return Memory{}, err
-		}
-		if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
-			return Memory{}, err
-		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
-			return Memory{}, err
-		}
-		next := m.State
-		switch {
-		case in.Source.Kind == SourceQuote:
-			next = StateConfirmed
-		case m.State == StateCandidate:
-			var days int
-			if err := tx.QueryRow(`SELECT COUNT(*) FROM sightings WHERE memory_id=?`, m.ID).Scan(&days); err != nil {
-				return Memory{}, err
-			}
-			if days >= 2 {
-				next = StateConfirmed
-			}
-		}
-		action := "seen"
-		if next != m.State {
-			m.State = next
-			action = "confirm"
-		}
-		m.Version++
-		m.UpdatedAt = now
-		if err := writeTx(tx, m, action, "다시 나옴: "+day, now); err != nil {
+		if err := sightTx(tx, existingID, in.Source, day, now); err != nil {
 			return Memory{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return Memory{}, err
 		}
-		return s.Get(m.ID)
+		return s.Get(existingID)
 	}
 
 	state := in.State
@@ -275,6 +245,64 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 		return Memory{}, err
 	}
 	return s.Get(m.ID)
+}
+
+// sightTx records that memory id came up again on day with src. A quote of
+// the user confirms it; a candidate seen on two different days is confirmed.
+func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
+	m, err := getTx(tx, id)
+	if err != nil {
+		return err
+	}
+	if err := addSourceTx(tx, m.ID, src, now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+		return err
+	}
+	next := m.State
+	switch {
+	case src.Kind == SourceQuote:
+		next = StateConfirmed
+	case m.State == StateCandidate:
+		var days int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sightings WHERE memory_id=?`, m.ID).Scan(&days); err != nil {
+			return err
+		}
+		if days >= 2 {
+			next = StateConfirmed
+		}
+	}
+	action := "seen"
+	if next != m.State {
+		m.State = next
+		action = "confirm"
+	}
+	m.Version++
+	m.UpdatedAt = now
+	return writeTx(tx, m, action, "다시 나옴: "+day, now)
+}
+
+// Seen records that memory id came up again on day (YYYY-MM-DD) with src.
+func (s *Store) Seen(id string, src Source, day string) (Memory, error) {
+	if !contains(SourceKinds, src.Kind) {
+		return Memory{}, ErrInvalid
+	}
+	if day == "" {
+		day = Day(s.Now())
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Memory{}, err
+	}
+	defer tx.Rollback()
+	if err := sightTx(tx, id, src, day, s.nowMs()); err != nil {
+		return Memory{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, err
+	}
+	return s.Get(id)
 }
 
 // AddSource attaches another source to an existing memory without a new version.

@@ -185,3 +185,16 @@ func TestBackup_사본을_만들고_오래된_것은_지운다(t *testing.T) {
 		t.Fatalf("backup rows = %d", n)
 	}
 }
+
+func TestSeen_다른_날_다시_나오면_확정되고_출처가_붙는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m, _ := s.Save(SaveInput{Kind: KindLesson, Title: "교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Day: "2026-10-25"})
+	same, err := s.Seen(m.ID, Source{Kind: SourceSession, Ref: "codex:x"}, "2026-10-25")
+	if err != nil || same.State != StateCandidate {
+		t.Fatalf("same day: %+v %v", same, err)
+	}
+	got, err := s.Seen(m.ID, Source{Kind: SourceSession, Ref: "claude:y"}, "2026-10-26")
+	if err != nil || got.State != StateConfirmed || len(got.Sources) != 3 {
+		t.Fatalf("next day: %+v %v", got, err)
+	}
+}
