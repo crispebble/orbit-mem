@@ -1,6 +1,6 @@
 # Orbit
 
-PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·Codex)에 이 PC의 기억을 붙이고, 대화 기록으로 회고해 배운 것을 제안하고, 플러그인을 Claude·Codex 두 형식으로 빌드한다. 서버와 상주 프로세스는 없다. 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
+PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·Codex)에 이 PC의 기억과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 붙이고, 대화 기록으로 회고해 배운 것을 제안하고, 플러그인을 Claude·Codex 두 형식으로 빌드한다. 서버와 상주 프로세스는 없다. 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
 
 기준 설계: Wiki 「설계 · Orbit 1차 — 기억·회고·하네스」.
 
@@ -8,7 +8,7 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 
 | 명령 | 하는 일 |
 | --- | --- |
-| `oni install` | `oni`를 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고, Orbit 플러그인을 이 PC의 경로로 빌드해 두 호스트의 로컬 마켓에 등록하고, 회고 예약(launchd·작업 스케줄러)을 건다 |
+| `oni install` | `oni`를 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고, Orbit 플러그인을 이 PC의 경로로 빌드해 두 호스트의 로컬 마켓에 등록하고(Codex 역할 파일은 `~/.codex/agents/orbit-*.toml`로 복사), 회고 예약(launchd·작업 스케줄러)을 건다. `--plugin-source <원본>`을 주면 내장 원본 대신 그 디렉터리로 빌드한다 |
 | `oni doctor` | 기억 수, 대기 제안, 호스트 등록, 예약, 최근 회고·백업 |
 | `oni mcp` | 호스트가 띄우는 MCP 서버. 도구 6개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide` |
 | `oni hook session-start\|prompt` | 세션 시작에 확정 규칙 전문·최근 결정 제목·회고 한 줄, 요청마다 강하게 맞는 기억 최대 3건 |
@@ -46,5 +46,9 @@ go build -o dist/oni ./cmd/oni
 | `internal/retro` | 하루·주간 회고, 밀린 회고 따라잡기, 흡수, 제출 반영 |
 | `internal/migrate` | 옛 Knowledge 이전 |
 | `internal/pluginbuild` | 두 호스트 플러그인 빌드 |
-| `internal/orbitplugin` | Orbit 플러그인 원본(MCP·훅·스킬 두 개) |
+| `internal/orbitplugin/source` | Orbit 플러그인 원본: MCP·훅, 스킬 15개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`) |
 | `internal/install` | 바이너리·플러그인 등록·Codex 역할 복사·OS 예약 |
+
+## 플러그인 원본 고치기
+
+스킬·역할은 `internal/orbitplugin/source`가 정본이다. 고친 뒤 `go build`로 바이너리를 다시 만들거나, 이 PC에서는 `oni install --plugin-source internal/orbitplugin/source`로 내장 원본 대신 이 디렉터리를 쓰게 한다. 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다. 플러그인 버전은 `internal/version`의 oni 버전과 같다.

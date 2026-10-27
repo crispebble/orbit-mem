@@ -309,7 +309,7 @@ func cmdInstall(a *app, args []string) error {
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), "oni를 둘 디렉터리")
 	retroHost := fs.String("retro-host", "", "회고를 돌릴 호스트(claude|codex)")
 	retroModel := fs.String("retro-model", "", "회고 모델(비우면 호스트 기본)")
-	harness := fs.String("harness", "", "빌드한 하네스 마켓 디렉터리(로컬 클론)")
+	pluginSource := fs.String("plugin-source", "", "Orbit 플러그인 원본 디렉터리(비우면 바이너리 내장 원본, 한 번 주면 기억함)")
 	var targets multiFlag
 	fs.Var(&targets, "apply-target", "회고가 반영 제안을 낼 수 있는 파일·디렉터리(여러 번)")
 	noSchedule := fs.Bool("no-schedule", false, "회고 예약을 등록하지 않음")
@@ -326,11 +326,11 @@ func cmdInstall(a *app, args []string) error {
 		"설정·기억 DB: " + p.Home,
 		"Orbit 플러그인 빌드: " + p.Marketplace(),
 	}
+	if *pluginSource != "" {
+		steps = append(steps, "플러그인 원본: "+*pluginSource)
+	}
 	if !*noHosts {
-		steps = append(steps, "호스트 등록(orbit@orbit): "+hostList(h))
-		if *harness != "" {
-			steps = append(steps, "하네스 등록: "+*harness)
-		}
+		steps = append(steps, "호스트 등록(orbit@orbit, Codex 역할 복사): "+hostList(h))
 	}
 	if !*noSchedule {
 		steps = append(steps, fmt.Sprintf("회고 예약: 매일 %02d시와 로그인 때", config.Default().RetroHour))
@@ -361,6 +361,16 @@ func cmdInstall(a *app, args []string) error {
 		cfg.RetroModel = *retroModel
 	}
 	cfg.ClaudePath, cfg.CodexPath = h.Claude, h.Codex
+	if *pluginSource != "" {
+		abs, _ := filepath.Abs(*pluginSource)
+		if _, err := os.Stat(filepath.Join(abs, "plugin.json")); err != nil {
+			return fmt.Errorf("플러그인 원본이 아닙니다(plugin.json 없음): %s", abs)
+		}
+		cfg.PluginSource = abs
+		if !contains(cfg.ApplyTargets, abs) {
+			cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
+		}
+	}
 	for _, t := range targets {
 		abs, _ := filepath.Abs(t)
 		if !contains(cfg.ApplyTargets, abs) {
@@ -375,27 +385,25 @@ func cmdInstall(a *app, args []string) error {
 		return err
 	}
 	s.Close()
-	src, err := os.MkdirTemp("", "orbit-plugin-src")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(src)
-	if err := orbitplugin.Write(src); err != nil {
-		return err
+	src := cfg.PluginSource
+	if src == "" {
+		tmp, err := os.MkdirTemp("", "orbit-plugin-src")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		if err := orbitplugin.Write(tmp); err != nil {
+			return err
+		}
+		src = tmp
 	}
 	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: p.Marketplace(), Vars: orbitplugin.Vars(dst)}); err != nil {
 		return err
 	}
-	fmt.Fprintln(a.stdout, "Orbit 플러그인을 만들었습니다: "+p.Marketplace())
+	fmt.Fprintf(a.stdout, "Orbit 플러그인을 만들었습니다: %s (원본 %s)\n", p.Marketplace(), map[bool]string{true: "내장", false: src}[cfg.PluginSource == ""])
 	if !*noHosts {
 		if err := a.installMarketplace(h, p.Marketplace()); err != nil {
 			return err
-		}
-		if *harness != "" {
-			dir, _ := filepath.Abs(*harness)
-			if err := a.installMarketplace(h, dir); err != nil {
-				return err
-			}
 		}
 	}
 	if !*noSchedule {

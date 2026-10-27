@@ -13,7 +13,7 @@ description: Orbit 회고가 올린 제안을 사용자와 함께 검토할 때 
    - stale: 낡은 기억을 정리할지
    - merge: 겹치는 기억을 하나로 합칠지
    - reclassify: 옛 ISSUE·NOTE 기억의 종류를 바꿀지
-   - apply_file: 확정 규칙을 하네스 스킬이나 지침 파일에 반영할지(diff)
+   - apply_file: 확정 규칙을 Orbit 스킬 원본이나 지침 파일에 반영할지(diff)
    - direction: 다음 방향 제안을 결정으로 남길지
 3. 사용자의 답을 받은 뒤에만 `proposal_decide`를 부른다. 승인·거절·고쳐서 승인(title·body) 중 사용자가 말한 대로 한다. 답이 모호하면 다시 묻는다.
 4. 파일 반영을 승인하면 파일만 바뀐다. 커밋은 사용자가 한다. 바뀐 파일 경로를 알린다.

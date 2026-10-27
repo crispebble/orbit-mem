@@ -27,7 +27,8 @@ type Config struct {
 	Hosts           []string `json:"hosts"`                  // 연결한 호스트(claude, codex)
 	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
-	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(하네스 원본, 내 지침 파일)
+	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
+	PluginSource    string   `json:"pluginSource,omitempty"` // Orbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
 }
 
 // Default is the starting configuration.

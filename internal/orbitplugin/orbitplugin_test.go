@@ -18,6 +18,11 @@ func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {
 	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/oni")}); err != nil {
 		t.Fatal(err)
 	}
+	for _, f := range []string{"agents/worker.md", "agents/kotlin-spring-dev.md", "codex/agents/orbit-gate.toml", "skills/tdd/SKILL.md", "skills/git-commit/SKILL.md", "skills/memory/SKILL.md"} {
+		if _, err := os.Stat(filepath.Join(out, "plugins", "orbit", f)); err != nil {
+			t.Errorf("missing %s", f)
+		}
+	}
 	b, _ := os.ReadFile(filepath.Join(out, "plugins", "orbit", "hooks", "codex.json"))
 	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-start --host codex") {
 		t.Fatalf("codex hooks: %s", b)

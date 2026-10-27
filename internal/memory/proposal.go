@@ -19,7 +19,7 @@ const (
 	ProposalStale      = "stale"      // 낡은 기억 정리
 	ProposalMerge      = "merge"      // 합치기
 	ProposalReclassify = "reclassify" // 종류 재분류(옛 ISSUE·NOTE)
-	ProposalApplyFile  = "apply_file" // 확정 규칙을 하네스 스킬이나 지침 파일에 반영(diff)
+	ProposalApplyFile  = "apply_file" // 확정 규칙을 플러그인 스킬 원본이나 지침 파일에 반영(diff)
 	ProposalDirection  = "direction"  // 방향 제안(주간 회고)
 )
 

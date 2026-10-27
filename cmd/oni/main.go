@@ -30,7 +30,7 @@ var errUsage = errors.New("사용법이 맞지 않습니다")
 func commands() []command {
 	return []command{
 		{"version", "oni version", cmdVersion},
-		{"install", "oni install [--bin-dir D] [--retro-host claude|codex] [--retro-model M] [--harness DIR] [--apply-target PATH]... [--no-schedule] [--no-hosts] [--dry-run]", cmdInstall},
+		{"install", "oni install [--bin-dir D] [--retro-host claude|codex] [--retro-model M] [--plugin-source DIR] [--apply-target PATH]... [--no-schedule] [--no-hosts] [--dry-run]", cmdInstall},
 		{"uninstall", "oni uninstall   # 플러그인 등록·예약을 지운다. 기억 DB는 남긴다", cmdUninstall},
 		{"doctor", "oni doctor [--json]", cmdDoctor},
 		{"mcp", "oni mcp [--retro ID]   # 호스트가 띄우는 MCP 서버(stdio)", cmdMCP},
