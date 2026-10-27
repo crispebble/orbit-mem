@@ -1,0 +1,32 @@
+/* 레이아웃만 다룬다. 색·글꼴은 Forma가 정한다. */
+.orbit-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--forma-space-3);
+  min-width: 0;
+  padding: var(--forma-space-3);
+  overflow-x: hidden;
+}
+.orbit-side-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.orbit-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--forma-space-4);
+  min-width: 0;
+  max-width: 820px;
+  padding: var(--forma-space-4);
+}
+.orbit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--forma-space-2);
+}
+.orbit-alert {
+  margin: 0;
+  font-size: var(--forma-font-small);
+}
