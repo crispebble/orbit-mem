@@ -250,11 +250,21 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
   } else if (p.kind === 'merge') {
     const text = payload.mergedBody ?? '';
     out.diff = {path: `합친 기억 · ${payload.mergedTitle ?? ''}`, lines: addLines(text), text};
+    // 고친 제목은 합칠 기억의 제목이 된다(oni merge: title이 mergedTitle을 바꾼다).
+    if (payload.mergedTitle) out.title = payload.mergedTitle;
     if (p.body) out.explanation = p.body;
   } else if (p.kind === 'direction') {
     out.diff = {path: `새 결정 기억 · ${p.title}`, lines: addLines(p.body ?? ''), text: p.body ?? ''};
-  } else if (p.body) {
-    out.body = p.body; // diff 없는 제안은 내용 칸으로 보이고 고쳐서 승인할 수 있다
+  } else {
+    if (p.body) out.explanation = p.body;
+    // 확정·재분류는 승인할 때 받은 제목·본문을 대상 기억(하나일 때)에 쓴다. 고칠 칸에는 그 기억의 제목·본문을 채운다.
+    // 낡음 정리는 본문을 쓰지 않고, 대상이 여럿이거나 아직 못 읽었으면 고쳐서 승인을 내지 않는다.
+    const ids = p.memoryIds ?? [];
+    const target = ids.length === 1 ? related.find(m => m.id === ids[0]) : undefined;
+    if ((p.kind === 'confirm' || p.kind === 'reclassify') && target) {
+      out.title = target.title;
+      out.body = target.body;
+    }
   }
   return out;
 }
