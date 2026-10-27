@@ -274,8 +274,17 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		return res, fmt.Errorf("%w: decision은 approve 또는 reject", ErrInvalid)
 	}
 	res.Proposal = p
+	decision := in.Decision
+	if decision == "approve" && (given(in.Title) || given(in.Body)) {
+		decision = "edit"
+	}
+	_ = s.RecordEvent(Event{Kind: EventProposalDecided}, map[string]any{"proposalId": p.ID, "proposalKind": p.Kind,
+		"decision": decision, "waitMs": p.DecidedAt - p.CreatedAt})
 	return res, nil
 }
+
+// given is a field the user actually filled in to edit before approving.
+func given(p *string) bool { return p != nil && strings.TrimSpace(*p) != "" }
 
 func (s *Store) finish(p *Proposal, status, note string) error {
 	p.Status, p.DecidedAt, p.Note = status, s.nowMs(), note

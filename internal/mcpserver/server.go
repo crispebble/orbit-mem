@@ -27,18 +27,52 @@ const instructions = `Orbit은 이 PC의 기억이다. 작업에 기대는 규�
 func New(s *memory.Store, o Options) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit", Version: o.Version}, &mcp.ServerOptions{Instructions: instructions})
 	h := handlers{s: s, o: o}
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다."}, h.find)
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 출처와 후보가 나온 날을 함께 준다."}, h.get)
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 같은 제목의 후보가 다른 날 다시 저장되면 확정된다."}, h.save)
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale(낡음)·supersede(supersededBy가 대체)·restore(후보로 되돌림)."}, h.update)
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향)을 대상 기억과 함께 보여 준다."}, h.proposals)
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다."}, h.decide)
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다."},
+		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
+			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope}
+		}))
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 출처와 후보가 나온 날을 함께 준다."},
+		track(h, "memory_get", h.get, func(in GetIn, out GetOut) map[string]any {
+			return map[string]any{"requested": len(in.IDs), "results": len(out.Items)}
+		}))
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 같은 제목의 후보가 다른 날 다시 저장되면 확정된다."},
+		track(h, "memory_save", h.save, func(in SaveIn, out MemoryOut) map[string]any {
+			return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID}
+		}))
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale(낡음)·supersede(supersededBy가 대체)·restore(후보로 되돌림)."},
+		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
+			return map[string]any{"action": in.Action, "memoryId": in.ID}
+		}))
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향)을 대상 기억과 함께 보여 준다."},
+		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
+			return map[string]any{"status": in.Status, "results": len(out.Items)}
+		}))
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다."},
+		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
+			return map[string]any{"decision": in.Decision, "proposalId": in.ID}
+		}))
 	return srv
 }
 
 type handlers struct {
 	s *memory.Store
 	o Options
+}
+
+// track records each call of a tool as a "tool.<name>" event (설계 「측정」).
+// The retrospective's own server does not use it: its calls are not use.
+func track[In, Out any](h handlers, name string, f mcp.ToolHandlerFor[In, Out], data func(In, Out) map[string]any) mcp.ToolHandlerFor[In, Out] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		res, out, err := f(ctx, req, in)
+		ok := err == nil && (res == nil || !res.IsError)
+		d := map[string]any{}
+		if ok {
+			d = data(in, out)
+		}
+		d["ok"] = ok
+		_ = h.s.RecordEvent(memory.Event{Kind: memory.EventToolPrefix + name, Scope: h.o.Project}, d)
+		return res, out, err
+	}
 }
 
 // FindIn is memory_find's input.

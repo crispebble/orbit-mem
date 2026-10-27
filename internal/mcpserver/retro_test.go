@@ -52,3 +52,28 @@ func TestRetroMode_재료읽기와_제출만_열린다(t *testing.T) {
 		t.Fatalf("submit: %s", text(res))
 	}
 }
+
+func TestRetroMode_도구_호출은_사건으로_남기지_않는다(t *testing.T) {
+	paths := config.Paths{Home: t.TempDir()}
+	s, err := memory.Open(paths.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	srv := NewRetro(s, paths, "r-x", "test")
+	ct, st := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	srv.Connect(ctx, st, nil)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "memory_find", Arguments: map[string]any{"query": "아무거나"}}); err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
+	if len(evs) != 0 {
+		t.Fatalf("retro calls must not count as use: %+v", evs)
+	}
+}

@@ -22,16 +22,40 @@ func inScope(m memory.Memory, scope string) bool {
 	return m.Scope == memory.ScopeGlobal || (scope != "" && m.Scope == scope)
 }
 
+// Injection is what a hook adds and which memories it named, for the metrics.
+type Injection struct {
+	Text      string
+	MemoryIDs []string // 전문이든 제목이든 문맥에 넣은 기억
+	Chars     int
+	TitleOnly int // 길이 때문에 제목만 넣은 규칙 수
+}
+
+func (in Injection) done(b *strings.Builder) Injection {
+	in.Text = strings.TrimSpace(b.String())
+	in.Chars = utf8.RuneCountInString(in.Text)
+	if in.MemoryIDs == nil {
+		in.MemoryIDs = []string{}
+	}
+	return in
+}
+
 // SessionStart is the session-start context: confirmed rules of the global
 // scope and this project in full, the titles of recent decisions, and one line
 // about retrospectives and waiting proposals.
 func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
+	return SessionStartInjection(s, cfg, scope).Text
+}
+
+// SessionStartInjection is SessionStart with the memories it named.
+func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Injection {
+	var inj Injection
+	var b strings.Builder
 	if cfg.Inject == config.InjectOff {
-		return ""
+		return inj.done(&b)
 	}
 	confirmed, err := s.List(memory.StateConfirmed)
 	if err != nil {
-		return ""
+		return inj.done(&b)
 	}
 	var rules, decisions []memory.Memory
 	for _, m := range confirmed {
@@ -45,7 +69,6 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 			decisions = append(decisions, m)
 		}
 	}
-	var b strings.Builder
 	if len(rules) > 0 {
 		b.WriteString("[Orbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n")
 		var titlesOnly []memory.Memory
@@ -59,6 +82,7 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 				continue
 			}
 			b.WriteString(entry)
+			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 		}
 		if len(titlesOnly) > 0 {
 			b.WriteString("- 길이 때문에 제목만: ")
@@ -67,12 +91,14 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 					b.WriteString(" · ")
 				}
 				fmt.Fprintf(&b, "%s(%s)", m.Title, m.ID)
+				inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 			}
 			b.WriteString("\n")
+			inj.TitleOnly = len(titlesOnly)
 		}
 	}
 	if cfg.Inject == config.InjectRules {
-		return strings.TrimSpace(b.String())
+		return inj.done(&b)
 	}
 	if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
 		b.WriteString("[최근 결정] ")
@@ -81,6 +107,7 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 				b.WriteString(" · ")
 			}
 			fmt.Fprintf(&b, "%s(%s)", decisions[i].Title, decisions[i].ID)
+			inj.MemoryIDs = append(inj.MemoryIDs, decisions[i].ID)
 		}
 		b.WriteString("\n")
 	}
@@ -90,7 +117,7 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 	if b.Len() > 0 {
 		b.WriteString("기억은 Orbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다.")
 	}
-	return strings.TrimSpace(b.String())
+	return inj.done(&b)
 }
 
 // retroLine says whether a recent retrospective left results and how many proposals wait.
@@ -115,12 +142,19 @@ func retroLine(s *memory.Store) string {
 // Prompt is the per-request context: at most three memories that match the
 // request strongly, by title and id. A weak match adds nothing.
 func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
+	return PromptInjection(s, cfg, scope, prompt).Text
+}
+
+// PromptInjection is Prompt with the memories it named.
+func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) Injection {
+	var inj Injection
+	var b strings.Builder
 	if cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "" {
-		return ""
+		return inj.done(&b)
 	}
 	active, err := s.List(memory.StateCandidate, memory.StateConfirmed)
 	if err != nil {
-		return ""
+		return inj.done(&b)
 	}
 	byID := map[string]memory.Memory{}
 	var docs []memory.Doc
@@ -134,9 +168,8 @@ func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 	}
 	hits := memory.StrongMatches(docs, prompt, 3)
 	if len(hits) == 0 {
-		return ""
+		return inj.done(&b)
 	}
-	var b strings.Builder
 	b.WriteString("[Orbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n")
 	for _, d := range hits {
 		m := byID[d.ID]
@@ -145,8 +178,9 @@ func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 			state = "후보"
 		}
 		fmt.Fprintf(&b, "- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
+		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 	}
-	return strings.TrimSpace(b.String())
+	return inj.done(&b)
 }
 
 func kindName(k string) string {

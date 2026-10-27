@@ -111,3 +111,43 @@ func TestHookOutput_호스트가_읽는_JSON(t *testing.T) {
 		t.Fatal("empty context must print nothing")
 	}
 }
+
+func TestSessionStartInjection_넣은_기억_id와_제목만_넣은_규칙_수(t *testing.T) {
+	s := store(t)
+	long := strings.Repeat("가", 2500)
+	var rules []memory.Memory
+	for i := 0; i < 4; i++ {
+		rules = append(rules, save(t, s, memory.KindRule, "긴 규칙 "+string(rune('A'+i)), long, memory.ScopeGlobal, true))
+	}
+	d := save(t, s, memory.KindDecision, "결정 하나", "", memory.ScopeGlobal, true)
+	other := save(t, s, memory.KindRule, "다른 앱 규칙", "", "project:github.com/me/other", true)
+
+	inj := SessionStartInjection(s, config.Default(), here)
+	if inj.Text != SessionStart(s, config.Default(), here) || inj.Chars == 0 {
+		t.Fatalf("text mismatch")
+	}
+	ids := strings.Join(inj.MemoryIDs, ",")
+	for _, m := range append(rules, d) {
+		if !strings.Contains(ids, m.ID) {
+			t.Errorf("missing %s in %s", m.ID, ids)
+		}
+	}
+	if strings.Contains(ids, other.ID) {
+		t.Errorf("other project id leaked")
+	}
+	if inj.TitleOnly < 1 {
+		t.Errorf("titleOnly = %d", inj.TitleOnly)
+	}
+}
+
+func TestPromptInjection_넣은_기억_id(t *testing.T) {
+	s := store(t)
+	a := save(t, s, memory.KindLesson, "codex exec를 백그라운드로 돌릴 때 stdin을 닫는다", "", memory.ScopeGlobal, false)
+	inj := PromptInjection(s, config.Default(), here, "codex exec를 백그라운드에서 돌렸더니 멈춰요")
+	if len(inj.MemoryIDs) != 1 || inj.MemoryIDs[0] != a.ID || inj.Chars == 0 {
+		t.Fatalf("inj = %+v", inj)
+	}
+	if inj := PromptInjection(s, config.Default(), here, "오늘 점심 뭐 먹지"); len(inj.MemoryIDs) != 0 || inj.Text != "" {
+		t.Fatalf("weak = %+v", inj)
+	}
+}
