@@ -1,0 +1,34 @@
+{
+  "id": "orbit",
+  "name": "Orbit",
+  "version": "0.1.0",
+  "studioApi": "^0.1.0",
+  "main": "dist/index.js",
+  "styles": ["dist/index.css"],
+  "description": "Orbit 기억과 제안을 Studio에서 보고 결정합니다.",
+  "apps": [
+    {
+      "id": "orbit",
+      "title": "Orbit",
+      "icon": "icon.svg",
+      "tabs": true,
+      "split": false,
+      "views": [
+        {"id": "proposals", "title": "제안"},
+        {"id": "memories", "title": "기억"}
+      ]
+    }
+  ],
+  "tabTypes": [
+    {"id": "proposal", "app": "orbit"},
+    {"id": "memory", "app": "orbit"}
+  ],
+  "commands": [
+    {"id": "orbit.find", "title": "기억 찾기"},
+    {"id": "orbit.proposals", "title": "제안 보기"}
+  ],
+  "inbox": true,
+  "connections": {
+    "mcp": [{"id": "oni", "command": "oni", "args": ["mcp"]}]
+  }
+}

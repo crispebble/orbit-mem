@@ -1,0 +1,24 @@
+{
+  "name": "orbit-studio-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Onidot Studio 플러그인: Orbit 앱(제안·기억)",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@onidot-labs/forma-ai": "0.9.0",
+    "@onidot-labs/forma-ui": "0.9.0",
+    "@onidot-labs/studio-plugin": "0.2.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.25.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "^5.9.0"
+  }
+}
