@@ -1,0 +1,96 @@
+package memory
+
+import "errors"
+
+// Kinds of memory (설계 「기억 모델」).
+const (
+	KindRule     = "rule"     // 규칙: 내가 원하는 방식
+	KindFact     = "fact"     // 사실
+	KindDecision = "decision" // 결정
+	KindLesson   = "lesson"   // 교훈
+	KindJournal  = "journal"  // 일지: 그날 한 일, 회고가 쓴다
+)
+
+// States of memory.
+const (
+	StateCandidate = "candidate" // 후보
+	StateConfirmed = "confirmed" // 확정
+	StateStale     = "stale"     // 낡음
+	StateHidden    = "hidden"    // 거절한 후보. 같은 제안이 다시 나오지 않게 남긴다
+)
+
+// Source kinds.
+const (
+	SourceQuote      = "quote"       // 내 말 인용
+	SourceFile       = "file"        // 파일
+	SourceCommand    = "command"     // 명령
+	SourceSession    = "session"     // 대화 기록
+	SourceHostMemory = "host_memory" // 호스트 기억
+	SourceLegacy     = "legacy"      // 옛 Knowledge
+)
+
+// ScopeGlobal is the scope of a memory that applies everywhere.
+const ScopeGlobal = "global"
+
+var (
+	Kinds       = []string{KindRule, KindFact, KindDecision, KindLesson, KindJournal}
+	States      = []string{StateCandidate, StateConfirmed, StateStale, StateHidden}
+	SourceKinds = []string{SourceQuote, SourceFile, SourceCommand, SourceSession, SourceHostMemory, SourceLegacy}
+)
+
+var (
+	ErrNotFound        = errors.New("기억이 없습니다")
+	ErrVersionConflict = errors.New("다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요")
+	ErrInvalid         = errors.New("입력이 올바르지 않습니다")
+)
+
+// Source is where a memory came from.
+type Source struct {
+	ID      string `json:"id,omitempty"`
+	Kind    string `json:"kind"`
+	Ref     string `json:"ref,omitempty"`
+	Excerpt string `json:"excerpt,omitempty"`
+	Hash    string `json:"hash,omitempty"`
+	At      int64  `json:"at,omitempty"`
+}
+
+// Memory is one remembered thing.
+type Memory struct {
+	ID           string   `json:"id"`
+	Kind         string   `json:"kind"`
+	Scope        string   `json:"scope"`
+	Project      string   `json:"project,omitempty"` // 사람이 읽는 프로젝트 이름(원격 주소나 경로)
+	State        string   `json:"state"`
+	Title        string   `json:"title"`
+	Body         string   `json:"body"`
+	Tags         []string `json:"tags"`
+	Version      int      `json:"version"`
+	CreatedAt    int64    `json:"createdAt"`
+	UpdatedAt    int64    `json:"updatedAt"`
+	SupersededBy string   `json:"supersededBy,omitempty"`
+	StaleReason  string   `json:"staleReason,omitempty"`
+	LegacyID     string   `json:"legacyId,omitempty"`
+	Days         []string `json:"days,omitempty"` // 후보가 나온 날
+	Sources      []Source `json:"sources,omitempty"`
+}
+
+// Doc returns the searchable view.
+func (m Memory) Doc() Doc { return Doc{ID: m.ID, Title: m.Title, Body: m.Body, Tags: m.Tags} }
+
+// Version is one entry of a memory's history.
+type Version struct {
+	Version int    `json:"version"`
+	Action  string `json:"action"`
+	Reason  string `json:"reason,omitempty"`
+	At      int64  `json:"at"`
+	Memory  Memory `json:"memory"`
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}

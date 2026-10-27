@@ -1,0 +1,407 @@
+package memory
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// Proposal kinds (설계 「제안과 승인」).
+const (
+	ProposalConfirm    = "confirm"    // 후보 확정
+	ProposalStale      = "stale"      // 낡은 기억 정리
+	ProposalMerge      = "merge"      // 합치기
+	ProposalReclassify = "reclassify" // 종류 재분류(옛 ISSUE·NOTE)
+	ProposalApplyFile  = "apply_file" // 확정 규칙을 하네스 스킬이나 지침 파일에 반영(diff)
+	ProposalDirection  = "direction"  // 방향 제안(주간 회고)
+)
+
+// Proposal statuses.
+const (
+	StatusPending  = "pending"
+	StatusApproved = "approved"
+	StatusRejected = "rejected"
+	StatusSettled  = "settled" // 다른 길로 이미 이뤄져 닫힘
+)
+
+var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection}
+
+var (
+	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
+	ErrFileChanged       = errors.New("제안을 만든 뒤 파일이 바뀌었습니다. 회고가 다시 제안하게 두거나 직접 고쳐 주세요")
+	ErrDecided           = errors.New("이미 결정한 제안입니다")
+)
+
+// Payload carries what a proposal needs beyond memory ids.
+type Payload struct {
+	Kind        string `json:"kind,omitempty"`        // reclassify: 새 종류, merge: 합친 기억 종류
+	MergedTitle string `json:"mergedTitle,omitempty"` // merge
+	MergedBody  string `json:"mergedBody,omitempty"`  // merge
+	Path        string `json:"path,omitempty"`        // apply_file: 절대경로
+	BaseHash    string `json:"baseHash,omitempty"`    // apply_file: 제안 때 파일 hash(없던 파일이면 "absent")
+	Content     string `json:"content,omitempty"`     // apply_file: 새 내용 전체
+	Scope       string `json:"scope,omitempty"`       // direction·merge로 만들 기억 범위
+}
+
+// Proposal is a suggestion waiting for the user.
+type Proposal struct {
+	ID        string   `json:"id"`
+	Kind      string   `json:"kind"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body,omitempty"`
+	MemoryIDs []string `json:"memoryIds,omitempty"`
+	Payload   Payload  `json:"payload"`
+	Status    string   `json:"status"`
+	CreatedAt int64    `json:"createdAt"`
+	DecidedAt int64    `json:"decidedAt,omitempty"`
+	RetroID   string   `json:"retroId,omitempty"`
+	Note      string   `json:"note,omitempty"`
+}
+
+// ProposalInput is a new proposal.
+type ProposalInput struct {
+	Kind      string
+	Title     string
+	Body      string
+	MemoryIDs []string
+	Payload   Payload
+	RetroID   string
+}
+
+// FileHash is the hash used to notice that a file changed under a proposal.
+func FileHash(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "absent"
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+func fingerprint(in ProposalInput) string {
+	ids := append([]string(nil), in.MemoryIDs...)
+	sort.Strings(ids)
+	parts := []string{in.Kind, strings.Join(ids, ",")}
+	switch in.Kind {
+	case ProposalApplyFile:
+		parts = append(parts, in.Payload.Path, in.Payload.Content)
+	case ProposalDirection:
+		parts = append(parts, TitleKey(in.Title))
+	case ProposalMerge:
+		parts = append(parts, TitleKey(in.Payload.MergedTitle))
+	case ProposalReclassify:
+		parts = append(parts, in.Payload.Kind)
+	}
+	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(h[:16])
+}
+
+// Propose stores a pending proposal. The same proposal is not stacked while
+// pending, and one the user rejected does not come back.
+func (s *Store) Propose(in ProposalInput) (Proposal, error) {
+	in.Title = strings.TrimSpace(in.Title)
+	if !contains(ProposalKinds, in.Kind) || in.Title == "" {
+		return Proposal{}, fmt.Errorf("%w: 제안 종류(%s)와 제목이 필요합니다", ErrInvalid, strings.Join(ProposalKinds, "|"))
+	}
+	for _, id := range in.MemoryIDs {
+		if _, err := getTx(s.db, id); err != nil {
+			return Proposal{}, err
+		}
+	}
+	switch in.Kind {
+	case ProposalConfirm, ProposalStale, ProposalReclassify:
+		if len(in.MemoryIDs) == 0 {
+			return Proposal{}, fmt.Errorf("%w: 대상 기억 id가 필요합니다", ErrInvalid)
+		}
+		if in.Kind == ProposalReclassify && !validKind(in.Payload.Kind) {
+			return Proposal{}, fmt.Errorf("%w: 새 종류가 필요합니다", ErrInvalid)
+		}
+	case ProposalMerge:
+		if len(in.MemoryIDs) < 2 || strings.TrimSpace(in.Payload.MergedTitle) == "" {
+			return Proposal{}, fmt.Errorf("%w: 합칠 기억 두 개 이상과 합친 제목이 필요합니다", ErrInvalid)
+		}
+		if in.Payload.Kind == "" {
+			first, _ := getTx(s.db, in.MemoryIDs[0])
+			in.Payload.Kind = first.Kind
+		}
+	case ProposalApplyFile:
+		if !filepath.IsAbs(in.Payload.Path) {
+			return Proposal{}, fmt.Errorf("%w: 반영할 파일은 절대경로여야 합니다", ErrInvalid)
+		}
+		old, _ := os.ReadFile(in.Payload.Path)
+		in.Payload.BaseHash = FileHash(in.Payload.Path)
+		diff := LineDiff(string(old), in.Payload.Content, 3)
+		if strings.TrimSpace(diff) == "" {
+			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n파일: " + in.Payload.Path + "\n```diff\n" + diff + "```")
+	}
+	fp := fingerprint(in)
+	var status string
+	err := s.db.QueryRow(`SELECT status FROM proposals WHERE fingerprint=? AND status IN ('pending','rejected') LIMIT 1`, fp).Scan(&status)
+	if err == nil {
+		return Proposal{}, fmt.Errorf("%w (%s)", ErrDuplicateProposal, status)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Proposal{}, err
+	}
+	p := Proposal{ID: NewID("p-"), Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload,
+		Status: StatusPending, CreatedAt: s.nowMs(), RetroID: in.RetroID}
+	ids, _ := json.Marshal(nonNil(p.MemoryIDs))
+	payload, _ := json.Marshal(p.Payload)
+	_, err = s.db.Exec(`INSERT INTO proposals(id,kind,title,body,memory_ids,payload,fingerprint,status,created_at,retro_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		p.ID, p.Kind, p.Title, p.Body, string(ids), string(payload), fp, p.Status, p.CreatedAt, p.RetroID)
+	return p, err
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+const proposalCols = `id,kind,title,body,memory_ids,payload,status,created_at,decided_at,retro_id,note`
+
+func scanProposal(row interface{ Scan(...any) error }) (Proposal, error) {
+	var p Proposal
+	var ids, payload string
+	if err := row.Scan(&p.ID, &p.Kind, &p.Title, &p.Body, &ids, &payload, &p.Status, &p.CreatedAt, &p.DecidedAt, &p.RetroID, &p.Note); err != nil {
+		return p, err
+	}
+	_ = json.Unmarshal([]byte(ids), &p.MemoryIDs)
+	_ = json.Unmarshal([]byte(payload), &p.Payload)
+	return p, nil
+}
+
+// GetProposal reads one proposal.
+func (s *Store) GetProposal(id string) (Proposal, error) {
+	p, err := scanProposal(s.db.QueryRow(`SELECT `+proposalCols+` FROM proposals WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, fmt.Errorf("제안이 없습니다: %s", id)
+	}
+	return p, err
+}
+
+// Proposals lists proposals with the given status (all when empty), oldest first.
+func (s *Store) Proposals(status string) ([]Proposal, error) {
+	q := `SELECT ` + proposalCols + ` FROM proposals`
+	var args []any
+	if status != "" {
+		q += ` WHERE status=?`
+		args = append(args, status)
+	}
+	rows, err := s.db.Query(q+` ORDER BY created_at, id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Proposal
+	for rows.Next() {
+		p, err := scanProposal(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PendingCount is the number of proposals waiting.
+func (s *Store) PendingCount() int {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM proposals WHERE status='pending'`).Scan(&n)
+	return n
+}
+
+// DecideInput is the user's answer to a proposal. Title/Body edit before approving.
+type DecideInput struct {
+	ID       string
+	Decision string // approve | reject
+	Title    *string
+	Body     *string
+	Note     string
+}
+
+// DecideResult says what changed.
+type DecideResult struct {
+	Proposal Proposal `json:"proposal"`
+	Changed  []string `json:"changed,omitempty"` // 바뀐 기억 id
+	Created  string   `json:"created,omitempty"` // 새로 만든 기억 id
+	File     string   `json:"file,omitempty"`    // 바꾼 파일
+}
+
+// Decide approves or rejects a proposal and applies it.
+func (s *Store) Decide(in DecideInput) (DecideResult, error) {
+	p, err := s.GetProposal(in.ID)
+	if err != nil {
+		return DecideResult{}, err
+	}
+	if p.Status != StatusPending {
+		return DecideResult{Proposal: p}, ErrDecided
+	}
+	res := DecideResult{}
+	switch in.Decision {
+	case "reject":
+		if p.Kind == ProposalConfirm {
+			for _, id := range p.MemoryIDs {
+				if m, err := getTx(s.db, id); err == nil && m.State == StateCandidate {
+					if _, err := s.SetState(id, StateHidden, "제안 거절: "+in.Note); err != nil {
+						return res, err
+					}
+					res.Changed = append(res.Changed, id)
+				}
+			}
+		}
+		if err := s.finish(&p, StatusRejected, in.Note); err != nil {
+			return res, err
+		}
+	case "approve":
+		if err := s.apply(p, in, &res); err != nil {
+			return res, err
+		}
+		if err := s.finish(&p, StatusApproved, in.Note); err != nil {
+			return res, err
+		}
+	default:
+		return res, fmt.Errorf("%w: decision은 approve 또는 reject", ErrInvalid)
+	}
+	res.Proposal = p
+	return res, nil
+}
+
+func (s *Store) finish(p *Proposal, status, note string) error {
+	p.Status, p.DecidedAt, p.Note = status, s.nowMs(), note
+	_, err := s.db.Exec(`UPDATE proposals SET status=?, decided_at=?, note=? WHERE id=?`, p.Status, p.DecidedAt, p.Note, p.ID)
+	return err
+}
+
+func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
+	switch p.Kind {
+	case ProposalConfirm:
+		for _, id := range p.MemoryIDs {
+			confirmed := StateConfirmed
+			u := UpdateInput{ID: id, State: &confirmed, Reason: "제안 승인 " + p.ID, Action: "confirm"}
+			if len(p.MemoryIDs) == 1 {
+				u.Title, u.Body = in.Title, in.Body
+			}
+			if _, err := s.Update(u); err != nil {
+				return err
+			}
+			res.Changed = append(res.Changed, id)
+		}
+	case ProposalStale:
+		for _, id := range p.MemoryIDs {
+			if _, err := s.SetState(id, StateStale, "제안 승인 "+p.ID+": "+p.Title); err != nil {
+				return err
+			}
+			res.Changed = append(res.Changed, id)
+		}
+	case ProposalReclassify:
+		for _, id := range p.MemoryIDs {
+			k := p.Payload.Kind
+			if _, err := s.Update(UpdateInput{ID: id, Kind: &k, Title: in.Title, Body: in.Body, Reason: "재분류 " + p.ID, Action: "reclassify"}); err != nil {
+				return err
+			}
+			res.Changed = append(res.Changed, id)
+		}
+	case ProposalMerge, ProposalDirection:
+		title, body, kind, scope := p.Payload.MergedTitle, p.Payload.MergedBody, p.Payload.Kind, p.Payload.Scope
+		if p.Kind == ProposalDirection {
+			title, body, kind = p.Title, p.Body, KindDecision
+		}
+		if in.Title != nil {
+			title = *in.Title
+		}
+		if in.Body != nil {
+			body = *in.Body
+		}
+		if scope == "" {
+			scope = ScopeGlobal
+			if len(p.MemoryIDs) > 0 {
+				if first, err := getTx(s.db, p.MemoryIDs[0]); err == nil {
+					scope = first.Scope
+				}
+			}
+		}
+		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Scope: scope, State: StateConfirmed,
+			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}})
+		if err != nil {
+			return err
+		}
+		if m.State != StateConfirmed {
+			if m, err = s.SetState(m.ID, StateConfirmed, "제안 승인 "+p.ID); err != nil {
+				return err
+			}
+		}
+		res.Created = m.ID
+		for _, id := range p.MemoryIDs {
+			if id == m.ID {
+				continue
+			}
+			if _, err := s.Supersede(id, m.ID, "합침 "+p.ID); err != nil {
+				return err
+			}
+			res.Changed = append(res.Changed, id)
+		}
+	case ProposalApplyFile:
+		if FileHash(p.Payload.Path) != p.Payload.BaseHash {
+			return ErrFileChanged
+		}
+		content := p.Payload.Content
+		if in.Body != nil {
+			content = *in.Body
+		}
+		mode := os.FileMode(0o644)
+		if st, err := os.Stat(p.Payload.Path); err == nil {
+			mode = st.Mode().Perm()
+		}
+		if err := os.MkdirAll(filepath.Dir(p.Payload.Path), 0o755); err != nil {
+			return err
+		}
+		tmp := p.Payload.Path + ".orbit-tmp"
+		if err := os.WriteFile(tmp, []byte(content), mode); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, p.Payload.Path); err != nil {
+			return err
+		}
+		res.File = p.Payload.Path
+	}
+	return nil
+}
+
+// CloseSettled closes confirm proposals whose memories are no longer candidates
+// (confirmed by repetition, edited by hand or gone stale) and returns how many.
+func (s *Store) CloseSettled() (int, error) {
+	pending, err := s.Proposals(StatusPending)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range pending {
+		if p.Kind != ProposalConfirm {
+			continue
+		}
+		settled := true
+		for _, id := range p.MemoryIDs {
+			if m, err := getTx(s.db, id); err == nil && m.State == StateCandidate {
+				settled = false
+			}
+		}
+		if settled {
+			if err := s.finish(&p, StatusSettled, "후보가 이미 정리됨"); err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+	return n, nil
+}

@@ -1,0 +1,5 @@
+/dist/
+/oni
+/oni.exe
+*.test
+.DS_Store
