@@ -303,7 +303,7 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 		tools[i] = "mcp__orbit-retro__" + t
 	}
 	args := []string{"-p", text, "--mcp-config", string(mcpConfig), "--strict-mcp-config", "--allowedTools", strings.Join(tools, ","),
-		"--no-session-persistence", "--output-format", "text"}
+		"--no-session-persistence", "--setting-sources", "project", "--output-format", "text"}
 	if r.Cfg.RetroModel != "" {
 		args = append(args, "--model", r.Cfg.RetroModel)
 	}

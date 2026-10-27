@@ -392,7 +392,7 @@ func (b *builder) generate() error {
 	if market == "" {
 		market = m.Name
 	}
-	b.put(".claude-plugin/marketplace.json", jsonBytes(map[string]any{"name": market, "owner": map[string]string{"name": "orbit"},
+	b.put(".claude-plugin/marketplace.json", jsonBytes(map[string]any{"name": market, "owner": map[string]string{"name": "orbit"}, "metadata": map[string]string{"description": m.Description},
 		"plugins": []any{map[string]any{"name": m.Name, "source": "./" + base, "version": m.Version, "description": m.Description}}}))
 	b.put(".agents/plugins/marketplace.json", jsonBytes(map[string]any{"name": market, "interface": map[string]string{"displayName": display},
 		"plugins": []any{map[string]any{"name": m.Name, "source": map[string]string{"source": "local", "path": "./" + base},

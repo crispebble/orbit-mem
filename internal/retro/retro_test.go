@@ -301,7 +301,7 @@ func TestHostCommand_Claude와_Codex(t *testing.T) {
 	e := setup(t, time.Now())
 	c := e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
 	joined := strings.Join(c.Args, " ")
-	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "mcp__orbit-retro__retro_submit", `"--retro"`, "ORBIT_HOME"} {
+	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "--setting-sources project", "mcp__orbit-retro__retro_submit", `"--retro"`, "ORBIT_HOME"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("claude args missing %q: %s", want, joined)
 		}
