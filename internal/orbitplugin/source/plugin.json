@@ -1,0 +1,14 @@
+{
+  "name": "orbit",
+  "version": "0.1.0",
+  "displayName": "Orbit",
+  "description": "이 PC의 기억을 세션에 붙이고 회고 제안을 다루는 Orbit 플러그인",
+  "skills": ["memory", "proposals"],
+  "mcpServers": {
+    "orbit": {"command": "{{oni}}", "args": ["mcp"]}
+  },
+  "hooks": {
+    "SessionStart": [{"matcher": "startup|resume|clear|compact|fork", "command": "{{onicmd}} hook session-start --host {{host}}", "timeout": 10}],
+    "UserPromptSubmit": [{"command": "{{onicmd}} hook prompt --host {{host}}", "timeout": 5}]
+  }
+}
