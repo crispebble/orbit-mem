@@ -13,6 +13,7 @@ import (
 
 	"github.com/onidot-labs/orbit/internal/config"
 	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/orbit/internal/metrics"
 	"github.com/onidot-labs/orbit/internal/transcript"
 )
 
@@ -46,7 +47,8 @@ type Material struct {
 	OldCands   []Brief              `json:"oldCandidates,omitempty"`
 	Existing   []Brief              `json:"existing,omitempty"`
 	Targets    []string             `json:"targets,omitempty"`
-	Note       string               `json:"note,omitempty"` // 재료를 줄였으면 그 사실
+	Stats      string               `json:"stats,omitempty"` // 주간: 그 주 지표
+	Note       string               `json:"note,omitempty"`  // 재료를 줄였으면 그 사실
 }
 
 func (m Material) empty() bool {
@@ -153,6 +155,9 @@ func (r *Runner) material(kind, period string) (Material, error) {
 				mat.Journals = append(mat.Journals, brief(m, true))
 			}
 		}
+		if rep, err := metrics.Compute(r.Store, period, dayOf(start.AddDate(0, 0, 6))); err == nil {
+			mat.Stats = metrics.Render(rep)
+		}
 		cutoff := r.now().AddDate(0, 0, -21).UnixMilli()
 		for _, m := range active {
 			if m.State == memory.StateCandidate && m.CreatedAt < cutoff && len(mat.OldCands) < 50 {
@@ -243,6 +248,9 @@ func render(mat Material, loc *time.Location) string {
 		for _, j := range mat.Journals {
 			fmt.Fprintf(&b, "### %s (%s)\n%s\n\n", j.Title, j.ID, j.Body)
 		}
+	}
+	if mat.Stats != "" {
+		b.WriteString("## 이번 주 지표\n\n" + mat.Stats + "\n")
 	}
 	if len(mat.Reclassify) > 0 {
 		b.WriteString("## 재분류가 필요한 옛 기억 (옛 ISSUE·NOTE)\n\n")
