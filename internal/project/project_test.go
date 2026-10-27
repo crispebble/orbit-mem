@@ -9,10 +9,10 @@ import (
 
 func TestNormalizeRemote_주소_모양이_달라도_같은_키(t *testing.T) {
 	cases := map[string]string{
-		"git@github.com:Onidot-Labs/orbit.git":        "github.com/onidot-labs/orbit",
-		"https://github.com/onidot-labs/orbit.git":    "github.com/onidot-labs/orbit",
+		"git@github.com:Onidot-Labs/orbit.git":          "github.com/onidot-labs/orbit",
+		"https://github.com/onidot-labs/orbit.git":      "github.com/onidot-labs/orbit",
 		"https://user:tok@github.com/onidot-labs/orbit": "github.com/onidot-labs/orbit",
-		"ssh://git@github.com/onidot-labs/orbit.git/": "github.com/onidot-labs/orbit",
+		"ssh://git@github.com/onidot-labs/orbit.git/":   "github.com/onidot-labs/orbit",
 	}
 	for in, want := range cases {
 		if got := NormalizeRemote(in); got != want {
