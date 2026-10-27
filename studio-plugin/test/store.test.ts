@@ -192,3 +192,17 @@ describe('store 기억 읽기·고치기', () => {
     });
   });
 });
+
+it('기본 타이머는 this 없이 불러도 동작한다(브라우저 setInterval Illegal invocation 회귀)', async () => {
+  const realSet = globalThis.setInterval, realClear = globalThis.clearInterval;
+  const calls: string[] = [];
+  // 브라우저처럼 this가 globalThis가 아니면 던지는 타이머로 바꿔 끼운다.
+  globalThis.setInterval = function (this: unknown, fn: () => void, ms?: number) { if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation'); calls.push('set'); return realSet(fn, ms); } as typeof setInterval;
+  globalThis.clearInterval = function (this: unknown, id?: ReturnType<typeof setInterval>) { if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation'); calls.push('clear'); realClear(id); } as typeof clearInterval;
+  try {
+    const store = createStore(fakeCtx({proposals: () => ok({items: []})}).ctx);
+    await store.start();
+    store.dispose();
+    assert.deepEqual(calls, ['set', 'clear']);
+  } finally { globalThis.setInterval = realSet; globalThis.clearInterval = realClear; }
+});

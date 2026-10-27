@@ -33,7 +33,13 @@ export interface DecideResult {
   file?: string;
 }
 
-export function createStore(ctx: PluginContext, timers: Timers = {setInterval, clearInterval}) {
+/** 브라우저의 setInterval은 window에 묶여 있어 객체 메서드로 부르면 Illegal invocation이 난다. 감싸서 넘긴다. */
+const browserTimers: Timers = {
+  setInterval: (fn, ms) => setInterval(fn, ms),
+  clearInterval: id => clearInterval(id),
+};
+
+export function createStore(ctx: PluginContext, timers: Timers = browserTimers) {
   let state: OrbitState = {status: 'idle', proposals: []};
   const listeners = new Set<() => void>();
   let inflight: Promise<void> | undefined;
