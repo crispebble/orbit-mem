@@ -198,7 +198,7 @@ func (s *Store) Proposals(status string) ([]Proposal, error) {
 		q += ` WHERE status=?`
 		args = append(args, status)
 	}
-	rows, err := s.db.Query(q+` ORDER BY created_at, id`, args...)
+	rows, err := s.db.Query(q+` ORDER BY created_at, rowid`, args...)
 	if err != nil {
 		return nil, err
 	}
