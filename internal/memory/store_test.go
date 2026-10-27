@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -196,5 +197,23 @@ func TestSeen_다른_날_다시_나오면_확정되고_출처가_붙는다(t *te
 	got, err := s.Seen(m.ID, Source{Kind: SourceSession, Ref: "claude:y"}, "2026-10-26")
 	if err != nil || got.State != StateConfirmed || len(got.Sources) != 3 {
 		t.Fatalf("next day: %+v %v", got, err)
+	}
+}
+
+func TestSnapshot_이름을_정한_사본은_순환에서_빠진다(t *testing.T) {
+	s, _ := newTestStore(t)
+	dir := t.TempDir()
+	p, err := s.Snapshot(dir, "before-migrate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(filepath.Base(p), "before-migrate-") {
+		t.Fatal(p)
+	}
+	for i := 0; i < 3; i++ {
+		s.Backup(dir, 1)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("snapshot rotated away: %v", err)
 	}
 }

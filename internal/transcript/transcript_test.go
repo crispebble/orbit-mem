@@ -109,3 +109,44 @@ func TestHostMemoryFiles_두_호스트의_기억_파일(t *testing.T) {
 		t.Fatalf("files = %v", files)
 	}
 }
+
+func TestCollect_서브에이전트와_프로그램_세션은_뺀다(t *testing.T) {
+	r := Roots{Claude: t.TempDir(), Codex: t.TempDir()}
+	w(t, filepath.Join(r.Claude, "projects", "-obs", "x.jsonl"), `{"type":"user","entrypoint":"sdk-ts","timestamp":"2026-10-26T03:00:00Z","sessionId":"x","message":{"role":"user","content":"관찰자"}}`+"\n")
+	w(t, filepath.Join(r.Codex, "sessions", "2026", "10", "26", "sub.jsonl"), `{"timestamp":"2026-10-26T04:00:00Z","type":"session_meta","payload":{"id":"c2","cwd":"/w","parent_thread_id":"p"}}`+"\n"+
+		`{"timestamp":"2026-10-26T04:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"하위 작업"}]}}`+"\n")
+	got, _ := Collect(r, "2026-10-26", seoul, nil)
+	if len(got) != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestFit_상한을_넘으면_AI_답부터_줄인다(t *testing.T) {
+	long := strings.Repeat("가", 1000)
+	var ss []Session
+	for i := 0; i < 50; i++ {
+		ss = append(ss, Session{Host: "claude", ID: "s", Turns: []Turn{{Role: "user", Text: "사용자 " + long}, {Role: "ai", Text: "AI " + long}}})
+	}
+	fitted, note := Fit(ss, 100<<10)
+	if Size(fitted) > 100<<10 {
+		t.Fatalf("size %d", Size(fitted))
+	}
+	if note == "" {
+		t.Fatal("must say it was reduced")
+	}
+	users := 0
+	for _, s := range fitted {
+		for _, turn := range s.Turns {
+			if turn.Role == "user" {
+				users++
+			}
+		}
+	}
+	if users < 50 {
+		t.Fatalf("user turns must be kept first: %d", users)
+	}
+	same, note := Fit(ss[:2], 1<<20)
+	if note != "" || Size(same) != Size(ss[:2]) {
+		t.Fatal("small material must stay")
+	}
+}

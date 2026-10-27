@@ -6,6 +6,7 @@ package transcript
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -147,6 +148,7 @@ type claudeLine struct {
 	Cwd         string `json:"cwd"`
 	SessionID   string `json:"sessionId"`
 	IsMeta      bool   `json:"isMeta"`
+	Entrypoint  string `json:"entrypoint"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     struct {
 		Content json.RawMessage `json:"content"`
@@ -168,9 +170,16 @@ func collectClaude(root string, start, end time.Time, exclude []string) []Sessio
 	var out []Session
 	for _, f := range files {
 		s := Session{Host: "claude", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+		program := false
 		_ = eachLine(f, func(line []byte) {
 			var l claudeLine
-			if json.Unmarshal(line, &l) != nil || (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.IsSidechain {
+			if json.Unmarshal(line, &l) != nil {
+				return
+			}
+			if l.Entrypoint == "sdk-ts" { // 플러그인·프로그램이 띄운 세션
+				program = true
+			}
+			if (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.IsSidechain {
 				return
 			}
 			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
@@ -190,7 +199,7 @@ func collectClaude(root string, start, end time.Time, exclude []string) []Sessio
 			}
 			s.Turns = append(s.Turns, Turn{Role: role, Text: clip(text, n), At: at})
 		})
-		if len(s.Turns) > 0 && !excluded(s.Cwd, exclude) {
+		if len(s.Turns) > 0 && !program && !excluded(s.Cwd, exclude) {
 			out = append(out, s)
 		}
 	}
@@ -240,12 +249,14 @@ type codexLine struct {
 	Timestamp string `json:"timestamp"`
 	Type      string `json:"type"`
 	Payload   struct {
-		Type    string `json:"type"`
-		ID      string `json:"id"`
-		Cwd     string `json:"cwd"`
-		Role    string `json:"role"`
-		Phase   string `json:"phase"`
-		Content []struct {
+		Type           string          `json:"type"`
+		ID             string          `json:"id"`
+		Cwd            string          `json:"cwd"`
+		ParentThreadID string          `json:"parent_thread_id"`
+		Source         json.RawMessage `json:"source"`
+		Role           string          `json:"role"`
+		Phase          string          `json:"phase"`
+		Content        []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
@@ -257,12 +268,18 @@ func collectCodex(root string, start, end time.Time, exclude []string) []Session
 	var out []Session
 	for _, f := range files {
 		s := Session{Host: "codex", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+		sub := false
 		_ = eachLine(f, func(line []byte) {
 			var l codexLine
-			if json.Unmarshal(line, &l) != nil {
+			if json.Unmarshal(line, &l) != nil || sub {
 				return
 			}
 			if l.Type == "session_meta" {
+				// 하위 에이전트·자동 검토 스레드는 사용자 대화가 아니다.
+				if l.Payload.ParentThreadID != "" || strings.Contains(string(l.Payload.Source), "subagent") {
+					sub = true
+					return
+				}
 				s.Cwd = l.Payload.Cwd
 				if l.Payload.ID != "" {
 					s.ID = l.Payload.ID
@@ -296,7 +313,7 @@ func collectCodex(root string, start, end time.Time, exclude []string) []Session
 				s.Turns = append(s.Turns, Turn{Role: "ai", Text: clip(text, maxAIRunes), At: at})
 			}
 		})
-		if len(s.Turns) > 0 && !excluded(s.Cwd, exclude) {
+		if len(s.Turns) > 0 && !sub && !excluded(s.Cwd, exclude) {
 			out = append(out, s)
 		}
 	}
@@ -336,4 +353,61 @@ func HostMemoryFiles(r Roots) []string {
 	}
 	sort.Strings(files)
 	return files
+}
+
+// Size is the approximate byte size of sessions as material.
+func Size(ss []Session) int {
+	n := 0
+	for _, s := range ss {
+		n += len(s.Host) + len(s.ID) + len(s.Cwd) + 16
+		for _, t := range s.Turns {
+			n += len(t.Text) + 24
+		}
+	}
+	return n
+}
+
+// Fit shrinks sessions to about budget bytes: first AI answers get shorter,
+// then AI answers go, then user turns get shorter, then later sessions are
+// dropped. It returns a note for the reader when anything was cut.
+func Fit(ss []Session, budget int) ([]Session, string) {
+	if Size(ss) <= budget {
+		return ss, ""
+	}
+	steps := []struct {
+		ai, user int
+		note     string
+	}{
+		{300, maxUserRunes, "AI 답을 앞부분만 남김"},
+		{0, maxUserRunes, "AI 답을 빼고 사용자 말만 남김"},
+		{0, 400, "사용자 말을 앞부분만 남김"},
+	}
+	var out []Session
+	for _, st := range steps {
+		out = make([]Session, 0, len(ss))
+		for _, s := range ss {
+			c := Session{Host: s.Host, ID: s.ID, Cwd: s.Cwd}
+			for _, t := range s.Turns {
+				switch {
+				case t.Role == "ai" && st.ai == 0:
+					continue
+				case t.Role == "ai":
+					t.Text = clip(t.Text, st.ai)
+				default:
+					t.Text = clip(t.Text, st.user)
+				}
+				c.Turns = append(c.Turns, t)
+			}
+			if len(c.Turns) > 0 {
+				out = append(out, c)
+			}
+		}
+		if Size(out) <= budget {
+			return out, "재료가 커서 " + st.note
+		}
+	}
+	for Size(out) > budget && len(out) > 1 {
+		out = out[:len(out)-1]
+	}
+	return out, fmt.Sprintf("재료가 커서 사용자 말을 줄이고 뒤 세션 %d개를 뺌", len(ss)-len(out))
 }

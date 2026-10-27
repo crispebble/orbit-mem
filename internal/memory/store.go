@@ -712,3 +712,16 @@ func (s *Store) Backup(dir string, keep int) (string, error) {
 	}
 	return dst, nil
 }
+
+// Snapshot writes a named copy (<name>-YYYYMMDDTHHMMSS.sqlite) into dir that
+// daily backup rotation never removes, e.g. before a migration.
+func (s *Store) Snapshot(dir, name string) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dir, name+"-"+s.Now().Local().Format("20060102T150405")+".sqlite")
+	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
+		return "", fmt.Errorf("사본 실패: %w", err)
+	}
+	return dst, os.Chmod(dst, 0o600)
+}

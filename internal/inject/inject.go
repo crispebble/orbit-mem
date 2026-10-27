@@ -47,8 +47,7 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 	if len(rules) > 0 {
 		b.WriteString("[Orbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n")
 		var titlesOnly []memory.Memory
-		for i := len(rules) - 1; i >= 0; i-- { // 오래된 규칙부터
-			m := rules[i]
+		for _, m := range rules { // 최근에 고친 규칙부터 전문으로
 			entry := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
 			if body := strings.TrimSpace(m.Body); body != "" {
 				entry += "  " + strings.ReplaceAll(body, "\n", "\n  ") + "\n"
