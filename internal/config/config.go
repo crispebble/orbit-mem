@@ -18,13 +18,16 @@ const (
 
 // Config is this PC's settings.
 type Config struct {
-	RetroHost       string   `json:"retroHost"`       // claude | codex
-	RetroModel      string   `json:"retroModel"`      // 비우면 호스트 기본값
-	RetroHour       int      `json:"retroHour"`       // 하루 회고 시각(0-23)
-	Inject          string   `json:"inject"`          // full | rules | off
-	RecentDecisions int      `json:"recentDecisions"` // 세션 시작에 넣을 최근 결정 제목 수
-	BackupKeep      int      `json:"backupKeep"`      // 남길 일일 백업 수
-	Hosts           []string `json:"hosts"`           // 연결한 호스트(claude, codex)
+	RetroHost       string   `json:"retroHost"`              // claude | codex
+	RetroModel      string   `json:"retroModel"`             // 비우면 호스트 기본값
+	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
+	Inject          string   `json:"inject"`                 // full | rules | off
+	RecentDecisions int      `json:"recentDecisions"`        // 세션 시작에 넣을 최근 결정 제목 수
+	BackupKeep      int      `json:"backupKeep"`             // 남길 일일 백업 수
+	Hosts           []string `json:"hosts"`                  // 연결한 호스트(claude, codex)
+	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
+	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
+	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(하네스 원본, 내 지침 파일)
 }
 
 // Default is the starting configuration.
