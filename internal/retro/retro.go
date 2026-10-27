@@ -286,7 +286,8 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 			"-c", `approval_policy="never"`,
 			"-c", "mcp_servers.orbit-retro.command=" + q(r.Oni),
 			"-c", `mcp_servers.orbit-retro.args=["mcp","--retro",` + q(id) + `]`,
-			"-c", "mcp_servers.orbit-retro.env={ORBIT_HOME=" + q(r.Paths.Home) + "}"}
+			"-c", "mcp_servers.orbit-retro.env={ORBIT_HOME=" + q(r.Paths.Home) + "}",
+			"-c", `mcp_servers.orbit-retro.default_tools_approval_mode="approve"`}
 		if r.Cfg.RetroModel != "" {
 			args = append(args, "-m", r.Cfg.RetroModel)
 		}

@@ -309,7 +309,7 @@ func TestHostCommand_Claude와_Codex(t *testing.T) {
 	e.r.Cfg.RetroHost, e.r.Cfg.RetroModel = "codex", "gpt-x"
 	c = e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
 	joined = strings.Join(c.Args, " ")
-	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run"} {
+	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run", `default_tools_approval_mode="approve"`} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("codex args missing %q: %s", want, joined)
 		}
