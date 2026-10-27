@@ -145,3 +145,45 @@ func TestProposals_보기와_결정(t *testing.T) {
 		t.Fatalf("memory = %+v", got)
 	}
 }
+
+func toolEvents(t *testing.T, s *memory.Store) map[string][]map[string]any {
+	t.Helper()
+	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31", KindPrefix: "tool."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]map[string]any{}
+	for _, e := range evs {
+		var d map[string]any
+		json.Unmarshal(e.Data, &d)
+		out[e.Kind] = append(out[e.Kind], d)
+	}
+	return out
+}
+
+func TestTools_호출을_사건으로_남긴다(t *testing.T) {
+	cs, s := connect(t)
+	call(t, cs, "memory_find", map[string]any{"query": "없는 말 token=sk-abcdefghijklmnopqrstuvwx"}, nil)
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "답은 존댓말", "source": map[string]any{"kind": "quote", "excerpt": "존댓말로 답해"}}, nil)
+	call(t, cs, "memory_find", map[string]any{"query": "존댓말"}, nil)
+	call(t, cs, "memory_get", map[string]any{"ids": []string{"m-없음"}}, nil)
+
+	ev := toolEvents(t, s)
+	finds := ev["tool.memory_find"]
+	if len(finds) != 2 {
+		t.Fatalf("finds = %+v", ev)
+	}
+	if finds[0]["results"].(float64) != 0 || finds[0]["ok"] != true || strings.Contains(finds[0]["query"].(string), "sk-abcdefghijklmnop") {
+		t.Errorf("empty find = %+v", finds[0])
+	}
+	if finds[1]["results"].(float64) != 1 {
+		t.Errorf("hit find = %+v", finds[1])
+	}
+	saves := ev["tool.memory_save"]
+	if len(saves) != 1 || saves[0]["sourceKind"] != "quote" || saves[0]["state"] != "confirmed" {
+		t.Errorf("saves = %+v", saves)
+	}
+	if gets := ev["tool.memory_get"]; len(gets) != 1 || gets[0]["ok"] != false {
+		t.Errorf("failed get must be recorded as not ok: %+v", gets)
+	}
+}

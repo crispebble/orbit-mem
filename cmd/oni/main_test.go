@@ -158,3 +158,63 @@ func TestHook_인자가_틀려도_호스트를_막지_않는다(t *testing.T) {
 		}
 	}
 }
+
+func TestHook_주입을_사건으로_남긴다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	run(t, `{"cwd":"/tmp","session_id":"sess-1","hook_event_name":"SessionStart"}`, "hook", "session-start", "--host", "codex")
+	run(t, `{"cwd":"/tmp","session_id":"sess-1","prompt":"점심 뭐 먹지"}`, "hook", "prompt", "--host", "codex")
+	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
+	if err != nil || len(evs) != 2 {
+		t.Fatalf("events = %+v %v", evs, err)
+	}
+	if evs[0].Kind != memory.EventInjectSessionStart || evs[0].Host != "codex" || evs[0].Session != "sess-1" || !strings.Contains(string(evs[0].Data), r.ID) {
+		t.Errorf("session start = %+v %s", evs[0], evs[0].Data)
+	}
+	if evs[1].Kind != memory.EventInjectPrompt || !strings.Contains(string(evs[1].Data), `"memoryIds":[]`) {
+		t.Errorf("prompt = %+v %s", evs[1], evs[1].Data)
+	}
+	if injected, known := s.InjectedIn("sess-1", r.ID); !injected || !known {
+		t.Errorf("injected=%v known=%v", injected, known)
+	}
+}
+
+func TestStats_기간_지표를_보여_준다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	s.RecordEvent(memory.Event{Kind: memory.EventCorrection}, map[string]any{"memoryId": "m-x", "injected": "no"})
+	out, errOut, code := run(t, "", "stats")
+	if code != 0 || !strings.Contains(out, "반복 교정 1건") {
+		t.Fatalf("stats: %s %s", out, errOut)
+	}
+	out, _, code = run(t, "", "stats", "--days", "3", "--json")
+	var v struct {
+		From, To    string
+		Corrections struct{ Repeated, NotInjected int }
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &v) != nil || v.Corrections.NotInjected != 1 {
+		t.Fatalf("json: %s", out)
+	}
+	if _, _, code := run(t, "", "stats", "--week", "2026-10-21"); code != 1 {
+		t.Fatalf("week must start on Monday, code %d", code)
+	}
+}
+
+func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
+	h := home(t)
+	s := seed(t)
+	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	run(t, `{"cwd":"/tmp","session_id":"s","prompt":""}`, "hook", "prompt", "--host", "claude") // 빈 요청
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"rules","recentDecisions":5,"backupKeep":14}`), 0o600)
+	run(t, `{"cwd":"/tmp","session_id":"s","prompt":"존댓말"}`, "hook", "prompt", "--host", "claude") // 요청마다 넣지 않는 수준
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"off","recentDecisions":5,"backupKeep":14}`), 0o600)
+	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "claude")
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14}`), 0o600)
+	t.Setenv("ORBIT_RETRO_ID", "r-1") // 회고 실행 안의 훅
+	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "codex")
+	evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
+	if len(evs) != 0 {
+		t.Fatalf("events = %+v", evs)
+	}
+}

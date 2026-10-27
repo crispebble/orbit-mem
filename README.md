@@ -18,12 +18,13 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `oni plugin build <원본>` | 공통 원본에서 Claude·Codex 플러그인과 마켓 파일을 만든다 |
 | `oni plugin install <마켓>` | 빌드한 마켓을 두 호스트에 등록하고 Codex 역할 파일을 복사한다 |
+| `oni stats [--days N \| --week 월요일] [--json]` | 지표: 반복 교정(넣었는데 어김·넣지 못함), 요청 적중, 빈 검색, 저장, 제안 결정, 회고 |
 | `oni config`, `oni backup`, `oni uninstall` | 설정, 즉시 백업, 등록·예약 해제(데이터는 남김) |
 
 ## 데이터
 
 - 위치: `ORBIT_HOME`, 없으면 Mac `~/Library/Application Support/orbit`, Windows `%AppData%\orbit`.
-- `memory.db`(SQLite), `config.json`, `backups/`(매일 사본, 기본 14개, 옮기기 전 사본은 따로), `plugin/`(빌드한 Orbit 플러그인 마켓), `retro/`(진행 중 회고 재료), `logs/`.
+- `memory.db`(SQLite, 기억·제안·회고·지표용 사건), `config.json`, `backups/`(매일 사본, 기본 14개, 옮기기 전 사본은 따로), `plugin/`(빌드한 Orbit 플러그인 마켓), `retro/`(진행 중 회고 재료), `logs/`.
 - PC끼리 공유하지 않는다.
 
 ## 개발
@@ -40,7 +41,8 @@ go build -o dist/oni ./cmd/oni
 | 패키지 | 내용 |
 | --- | --- |
 | `internal/memory` | 기억 DB, 한글 검색 점수(옛 Knowledge 규칙), 후보·확정·낡음·숨김, 출처, 버전 이력, 제안 |
-| `internal/inject` | 훅이 넣는 세션 시작·요청 문맥 |
+| `internal/inject` | 훅이 넣는 세션 시작·요청 문맥과 넣은 기억 id |
+| `internal/metrics` | 사건(`events` 표)·회고·제안으로 지표 계산. 새 지표는 사건 종류를 더한다 |
 | `internal/mcpserver` | MCP 도구 6개와 회고 전용 도구 |
 | `internal/transcript` | Claude·Codex 대화 기록에서 사용자 말과 AI 답만 추리기 |
 | `internal/retro` | 하루·주간 회고, 밀린 회고 따라잡기, 흡수, 제출 반영 |

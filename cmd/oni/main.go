@@ -42,6 +42,7 @@ func commands() []command {
 		{"plugin", "oni plugin build <원본> [--out D] [--check] [--var k=v]... | install <빌드한 마켓 디렉터리>", cmdPlugin},
 		{"config", "oni config [show | set <키> <값>]", cmdConfig},
 		{"backup", "oni backup   # 기억 DB 사본을 지금 만든다", cmdBackup},
+		{"stats", "oni stats [--days N | --week YYYY-MM-DD(월요일)] [--json]   # 교정·회상·제안·회고 지표", cmdStats},
 	}
 }
 

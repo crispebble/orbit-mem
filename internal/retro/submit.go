@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/onidot-labs/orbit/internal/config"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/project"
+	"github.com/onidot-labs/orbit/internal/transcript"
 )
 
 // JournalIn is the day's journal: what was done, what blocked, what continues.
@@ -45,19 +47,29 @@ type ProposalIn struct {
 	Content     string   `json:"content,omitempty" jsonschema:"apply_file의 새 파일 내용 전체"`
 }
 
+// CorrectionIn is a moment the user corrected or pointed out the AI's mistake.
+type CorrectionIn struct {
+	Quote      string `json:"quote" jsonschema:"사용자가 고친 말(재료에서 글자 그대로)"`
+	SessionRef string `json:"sessionRef,omitempty" jsonschema:"그 세션(호스트:세션 id, 재료의 세션 머리에 있는 값)"`
+	MemoryID   string `json:"memoryId,omitempty" jsonschema:"같은 내용의 기존 기억 id. 없으면 비운다"`
+	Note       string `json:"note,omitempty" jsonschema:"무엇을 고쳤는지 한 줄"`
+}
+
 // Submission is what the retrospective hands back once.
 type Submission struct {
-	Summary   string       `json:"summary" jsonschema:"회고 결과 한 줄"`
-	Journal   *JournalIn   `json:"journal,omitempty" jsonschema:"하루 회고는 필수"`
-	Memories  []MemoryIn   `json:"memories,omitempty"`
-	Flags     []string     `json:"flags,omitempty" jsonschema:"짚을 점: 잘못 가는 방향, 반복된 실수"`
-	Patterns  []string     `json:"patterns,omitempty" jsonschema:"주간: 반복 패턴"`
-	Proposals []ProposalIn `json:"proposals,omitempty"`
+	Summary     string         `json:"summary" jsonschema:"회고 결과 한 줄"`
+	Journal     *JournalIn     `json:"journal,omitempty" jsonschema:"하루 회고는 필수"`
+	Memories    []MemoryIn     `json:"memories,omitempty"`
+	Corrections []CorrectionIn `json:"corrections,omitempty" jsonschema:"하루 회고: 사용자가 AI를 고치거나 지적한 순간 모두"`
+	Flags       []string       `json:"flags,omitempty" jsonschema:"짚을 점: 잘못 가는 방향, 반복된 실수"`
+	Patterns    []string       `json:"patterns,omitempty" jsonschema:"주간: 반복 패턴"`
+	Proposals   []ProposalIn   `json:"proposals,omitempty"`
 }
 
 const (
-	maxSubmitMemories  = 40
-	maxSubmitProposals = 20
+	maxSubmitMemories    = 40
+	maxSubmitProposals   = 20
+	maxSubmitCorrections = 60
 )
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -111,8 +123,8 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindDaily && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
 		return "", errors.New("하루 회고는 journal(title, body)이 필요합니다")
 	}
-	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals {
-		return "", fmt.Errorf("기억은 %d건, 제안은 %d건까지 냅니다. 중요한 것만 골라 다시 제출해 주세요", maxSubmitMemories, maxSubmitProposals)
+	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals || len(sub.Corrections) > maxSubmitCorrections {
+		return "", fmt.Errorf("기억은 %d건, 제안은 %d건, 교정은 %d건까지 냅니다. 중요한 것만 골라 다시 제출해 주세요", maxSubmitMemories, maxSubmitProposals, maxSubmitCorrections)
 	}
 	// 한 번만 받는다: running을 submitting으로 먼저 차지한 호출만 진행한다.
 	claim, err := s.DB().Exec(`UPDATE retros SET status='submitting' WHERE id=? AND status=?`, id, StatusRunning)
@@ -242,6 +254,15 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		return "", err
 	}
 	finished = true
+	// 교정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
+	// 그 사이에 프로세스가 죽으면 그날 교정만 빠진다(감수한다).
+	if mat.Kind == KindDaily {
+		n, cnotes := recordCorrections(s, mat, id, sub.Corrections)
+		notes = append(notes, cnotes...)
+		report = append(report, fmt.Sprintf("교정 %d건", n))
+	} else if len(sub.Corrections) > 0 {
+		notes = append(notes, "교정은 하루 회고에서만 받습니다")
+	}
 	for _, h := range mat.HostMemory {
 		_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, at=excluded.at`, h.Path, h.Hash, s.Now().UnixMilli())
 	}
@@ -252,6 +273,87 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	}
 	_ = os.WriteFile(filepath.Join(p.RetroDir(), id, "report.txt"), []byte(out), 0o600)
 	return out, nil
+}
+
+// findQuote finds the user's words in the material: in the named session if
+// one is given (with or without the host), else in any session.
+func findQuote(mat Material, ref, quote string) (transcript.Session, time.Time, bool) {
+	host, id, ok := strings.Cut(ref, ":")
+	if !ok {
+		host, id = "", ref
+	}
+	for _, s := range mat.Sessions {
+		if id != "" && (s.ID != id || (host != "" && s.Host != host)) {
+			continue
+		}
+		for _, t := range s.Turns {
+			if t.Role == "user" && strings.Contains(squash(t.Text), quote) {
+				return s, t.At, true
+			}
+		}
+	}
+	return transcript.Session{}, time.Time{}, false
+}
+
+// recordCorrections keeps each correction as an event of the retrospective's
+// day, judged against the session's injections (설계 「측정」의 교정 판정).
+// Only the user's own words found in the material count, once per session.
+// A memory made at or after the correction does not make it a repeat.
+func recordCorrections(s *memory.Store, mat Material, retroID string, cs []CorrectionIn) (int, []string) {
+	var notes []string
+	n, missing, dup := 0, 0, 0
+	seen := map[string]bool{}
+	for _, c := range cs {
+		q := squash(c.Quote)
+		sess, at, ok := findQuote(mat, strings.TrimSpace(c.SessionRef), q)
+		if len([]rune(q)) < 2 || !ok {
+			missing++
+			continue
+		}
+		key := sess.Host + ":" + sess.ID + "\x00" + q
+		if seen[key] {
+			dup++
+			continue
+		}
+		seen[key] = true
+		injected := ""
+		memoryID := c.MemoryID
+		if memoryID != "" {
+			m, err := s.Get(memoryID)
+			switch {
+			case err != nil:
+				notes = append(notes, fmt.Sprintf("교정 %q: 기억 %s가 없어 새 교정으로 셉니다", memory.ClipRunes(q, 30), memoryID))
+				memoryID = ""
+			case m.CreatedAt >= at.UnixMilli():
+				memoryID = "" // 교정한 뒤에 생긴 기억: 그때는 없던 것이다
+			}
+		}
+		if memoryID != "" {
+			switch yes, known := s.InjectedIn(sess.ID, memoryID); {
+			case !known:
+				injected = "unknown"
+			case yes:
+				injected = "yes"
+			default:
+				injected = "no"
+			}
+		}
+		err := s.RecordEvent(memory.Event{Kind: memory.EventCorrection, Day: mat.Period, Host: sess.Host, Session: sess.ID}, map[string]any{
+			"quote": memory.ClipRunes(memory.MaskSecrets(q), 300), "note": memory.ClipRunes(memory.MaskSecrets(c.Note), 200),
+			"memoryId": memoryID, "injected": injected, "retroId": retroID})
+		if err != nil {
+			notes = append(notes, "교정 기록 실패: "+err.Error())
+			continue
+		}
+		n++
+	}
+	if missing > 0 {
+		notes = append(notes, fmt.Sprintf("교정 %d건은 인용이 재료에 없는 말(또는 다른 세션의 말)이라 뺐습니다", missing))
+	}
+	if dup > 0 {
+		notes = append(notes, fmt.Sprintf("교정 %d건은 같은 세션의 같은 말이라 중복으로 뺐습니다", dup))
+	}
+	return n, notes
 }
 
 func nonNil(s []string) []string {

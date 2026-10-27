@@ -2,6 +2,7 @@ package retro
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -405,5 +406,91 @@ func TestMaterial_비밀값은_가린다(t *testing.T) {
 	e.r.Run(context.Background(), KindDaily, "2026-10-26")
 	if strings.Contains(page, "abcdefghijklmnopqrstuvwxyz0123") || !strings.Contains(page, "[가림]") {
 		t.Fatalf("secret leaked: %s", page)
+	}
+}
+
+func TestDaily_교정을_반복과_새것으로_나눠_남긴다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	dir := filepath.Join(e.roots.Claude, "projects", "-w-app")
+	w(t, filepath.Join(dir, "sess-a.jsonl"), claudeTurn("2026-10-26", "10:00", "user", "또 반말했네. 존댓말로 하라고 했잖아")+
+		claudeTurn("2026-10-26", "10:05", "user", "표는 짧게 써"))
+	w(t, filepath.Join(dir, "sess-b.jsonl"), claudeTurn("2026-10-26", "11:00", "user", "커밋은 경로 명시하라고 몇 번 말해"))
+	w(t, filepath.Join(dir, "sess-c.jsonl"), claudeTurn("2026-10-26", "12:00", "user", "존댓말 써"))
+	w(t, filepath.Join(dir, "sess-d.jsonl"), claudeTurn("2026-10-26", "15:00", "user", "결과는 먼저 말해"))
+	e.s.Now = func() time.Time { return time.Date(2026, 10, 25, 9, 0, 0, 0, kst) }
+	rule, _ := e.s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "존댓말로"}})
+	lesson, _ := e.s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "커밋은 경로를 명시", Source: memory.Source{Kind: memory.SourceSession}})
+	// 교정 직후(15:01)에 저장한 기억: 그 교정은 새 교정이다
+	e.s.Now = func() time.Time { return time.Date(2026, 10, 26, 15, 1, 0, 0, kst) }
+	later, _ := e.s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "결과 먼저", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "결과는 먼저 말해"}})
+	e.s.Now = func() time.Time { return time.Date(2026, 10, 27, 4, 0, 0, 0, kst) }
+	e.s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "claude", Session: "sess-a"}, map[string]any{"memoryIds": []string{rule.ID}})
+	e.s.RecordEvent(memory.Event{Kind: memory.EventInjectPrompt, Host: "claude", Session: "sess-b"}, map[string]any{"memoryIds": []string{}})
+
+	var report string
+	e.ai = func(id string) error {
+		var err error
+		report, err = Submit(e.s, e.r.Paths, id, Submission{Summary: "교정", Journal: &JournalIn{Title: "교정", Body: "-"},
+			Corrections: []CorrectionIn{
+				{Quote: "존댓말로 하라고 했잖아", SessionRef: "claude:sess-a", MemoryID: rule.ID, Note: "반말"},
+				{Quote: "존댓말로  하라고 했잖아", SessionRef: "claude:sess-a", MemoryID: rule.ID}, // 같은 교정 두 번
+				{Quote: "경로 명시하라고", SessionRef: "claude:sess-b", MemoryID: lesson.ID},
+				{Quote: "존댓말 써", SessionRef: "sess-c", MemoryID: rule.ID}, // 호스트 없이 id만
+				{Quote: "표는 짧게", SessionRef: "claude:sess-a"},
+				{Quote: "결과는 먼저 말해", SessionRef: "claude:sess-d", MemoryID: later.ID},
+				{Quote: "표는 짧게", SessionRef: "claude:sess-a", MemoryID: "m-없음"},
+				{Quote: "사용자가 하지 않은 말", SessionRef: "claude:sess-a"},
+				{Quote: "경로 명시하라고", SessionRef: "claude:sess-a"}, // 다른 세션의 말
+			}})
+		return err
+	}
+	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	evs, _ := e.s.Events(memory.EventFilter{FromDay: "2026-10-26", ToDay: "2026-10-26", KindPrefix: memory.EventCorrection})
+	got := map[string]string{}
+	for _, ev := range evs {
+		var d struct{ Quote, MemoryID, Injected string }
+		json.Unmarshal(ev.Data, &d)
+		got[d.Quote] = d.MemoryID + "|" + d.Injected + "|" + ev.Host + ":" + ev.Session
+	}
+	want := map[string]string{
+		"존댓말로 하라고 했잖아": rule.ID + "|yes|claude:sess-a",
+		"경로 명시하라고":     lesson.ID + "|no|claude:sess-b",
+		"존댓말 써":        rule.ID + "|unknown|claude:sess-c",
+		"표는 짧게":        "||claude:sess-a",
+		"결과는 먼저 말해":    "||claude:sess-d",
+	}
+	if len(evs) != len(want) {
+		t.Errorf("corrections = %d, want %d: %v (%s)", len(evs), len(want), got, report)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
+		}
+	}
+	for _, s := range []string{"교정 5건", "중복", "재료에 없는"} {
+		if !strings.Contains(report, s) {
+			t.Errorf("report missing %q: %s", s, report)
+		}
+	}
+}
+
+func TestWeekly_재료에_그_주_지표가_들어간다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	j, _ := e.s.Save(memory.SaveInput{Kind: memory.KindJournal, Title: "2026-10-21 일지: x", State: memory.StateConfirmed, Source: memory.Source{Kind: memory.SourceSession}})
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at,journal_id) VALUES('r-d','daily','2026-10-21','done',1,2,?)`, j.ID)
+	e.s.RecordEvent(memory.Event{Kind: memory.EventCorrection, Day: "2026-10-21"}, map[string]any{"memoryId": "m-x", "injected": "yes"})
+	var all string
+	e.ai = func(id string) error {
+		all, _, _ = ReadPage(e.s, e.r.Paths, id, 1)
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "주간"})
+		return err
+	}
+	if _, err := e.r.Run(context.Background(), KindWeekly, "2026-10-19"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(all, "## 이번 주 지표") || !strings.Contains(all, "반복 교정 1건") {
+		t.Fatalf("material: %s", all)
 	}
 }

@@ -84,7 +84,7 @@ func Open(path string) (*Store, error) {
 	// One connection per process: SQLite takes one writer at a time anyway, and
 	// a single connection keeps the busy wait between processes, not inside one.
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec(schema + eventsSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}

@@ -13,6 +13,9 @@ const dailyPrompt = `너는 이 PC의 Orbit 하루 회고를 맡았다. 회고 i
      - 특정 프로젝트에만 맞는 것은 scope=project, project에 그 세션의 작업 디렉터리를 쓴다.
      - 호스트 기억 변경이 있으면 그 내용도 같은 기준으로 후보로 옮긴다.
      - 비밀값·토큰·비밀번호·개인 식별 정보는 남기지 않는다.
+   - 교정(corrections): 사용자가 AI를 고치거나 지적한 순간을 빠짐없이 모두 적는다. quote에 그 말을 글자 그대로,
+     sessionRef에 그 세션(세션 머리의 "호스트 · 경로 · 세션 id"에서 "호스트:세션 id"), note에 무엇을 고쳤는지 한 줄.
+     같은 내용의 기존 기억(규칙·결정·교훈)이 있으면 memoryId에 그 id를 쓴다. 없으면 비우고, 다시 쓸 만하면 memories에도 낸다.
    - 짚을 점(flags): 잘못 가는 방향, 반복된 실수. 없으면 비운다.
    - 제안(proposals): 낡은 기억 정리(stale), 겹치는 기억 합치기(merge), 옛 ISSUE·NOTE 재분류(reclassify, newKind),
      확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에).
@@ -26,6 +29,8 @@ const weeklyPrompt = `너는 이 PC의 Orbit 주간 회고를 맡았다. 회고 
    - 방향 제안(proposals kind=direction): 다음 주에 바꾸면 좋을 방향. 근거 일지를 body에 쓴다.
    - 반복 패턴(patterns): 여러 날 되풀이된 일이나 실수.
    - 낡은 기억 정리(stale)·합치기(merge): 3주 넘게 다시 나오지 않은 후보와 서로 겹치는 기억. memory_find·memory_get으로 확인한다.
+   - 이번 주 지표를 본다. 반복 교정(넣었는데 어김이면 그 기억 문구나 지침·하네스를, 넣지 못함이면 회상 조건을 고칠 거리),
+     빈 검색 질의, 대기가 오래된 제안이 있으면 그것을 근거로 고칠 제안(apply_file·merge·stale·direction)을 낸다.
    - journal에는 주간 요약을 짧게 쓴다.
 3. retro_submit을 한 번만 부른다(summary 필수). 오류가 나면 고쳐서 다시 부른다.
 제출이 끝나면 한 줄로 결과만 말하고 끝낸다.`
