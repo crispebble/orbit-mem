@@ -54,3 +54,7 @@ go build -o dist/oni ./cmd/oni
 ## 플러그인 원본 고치기
 
 스킬·역할은 `internal/orbitplugin/source`가 정본이다. 고친 뒤 `go build`로 바이너리를 다시 만들거나, 이 PC에서는 `oni install --plugin-source internal/orbitplugin/source`로 내장 원본 대신 이 디렉터리를 쓰게 한다. 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다. 플러그인 버전은 `internal/version`의 oni 버전과 같다.
+
+## 릴리스
+
+`scripts/release.sh`가 `dist/<버전>/`에 darwin arm64·amd64, windows amd64(빌드만) 자산과 `SHA256SUMS`를 만든다. `--publish`는 깨끗한 `origin/main` 끝에서 태그 `v<버전>`으로 GitHub Release를 올린다(노트는 `RELEASE_NOTES` 파일). 서명이 없으므로 내려받은 바이너리는 `xattr -d com.apple.quarantine oni`로 격리 속성을 풀고 `oni install`을 실행한다. 버전은 0.x를 쓴다.
