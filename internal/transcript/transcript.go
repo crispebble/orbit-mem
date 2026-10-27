@@ -1,0 +1,339 @@
+// Package transcript reads Claude Code and Codex conversation logs and keeps
+// only what a retrospective needs: the user's words and the AI's answers.
+// Tool calls, tool output, thinking and injected context are dropped.
+package transcript
+
+import (
+	"bufio"
+	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Roots are the hosts' data directories (~/.claude and ~/.codex).
+type Roots struct{ Claude, Codex string }
+
+// DefaultRoots uses CLAUDE_CONFIG_DIR and CODEX_HOME when set.
+func DefaultRoots() Roots {
+	home, _ := os.UserHomeDir()
+	r := Roots{Claude: filepath.Join(home, ".claude"), Codex: filepath.Join(home, ".codex")}
+	if v := os.Getenv("CLAUDE_CONFIG_DIR"); v != "" {
+		r.Claude = v
+	}
+	if v := os.Getenv("CODEX_HOME"); v != "" {
+		r.Codex = v
+	}
+	return r
+}
+
+// Turn is one message.
+type Turn struct {
+	Role string    `json:"role"` // user | ai
+	Text string    `json:"text"`
+	At   time.Time `json:"at"`
+}
+
+// Session is one conversation's turns on the requested day.
+type Session struct {
+	Host  string `json:"host"`
+	ID    string `json:"id"`
+	Cwd   string `json:"cwd,omitempty"`
+	Turns []Turn `json:"turns"`
+}
+
+// Doc is a text file used as material.
+type Doc struct {
+	Path string `json:"path"`
+	Text string `json:"text"`
+}
+
+const (
+	maxUserRunes = 2000
+	maxAIRunes   = 1500
+	maxLineBytes = 16 << 20
+)
+
+var reminderRE = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+func dayBounds(day string, loc *time.Location) (time.Time, time.Time, error) {
+	start, err := time.ParseInLocation("2006-01-02", day, loc)
+	if err != nil {
+		return start, start, err
+	}
+	return start, start.AddDate(0, 0, 1), nil
+}
+
+func excluded(cwd string, exclude []string) bool {
+	for _, e := range exclude {
+		if e != "" && (cwd == e || strings.HasPrefix(cwd, strings.TrimSuffix(e, "/")+"/")) {
+			return true
+		}
+	}
+	return false
+}
+
+func eachLine(path string, fn func([]byte)) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), maxLineBytes)
+	for sc.Scan() {
+		fn(sc.Bytes())
+	}
+	return nil
+}
+
+// Collect returns the sessions of both hosts that have turns on day (in loc),
+// skipping sessions whose working directory is under an excluded directory.
+func Collect(r Roots, day string, loc *time.Location, exclude []string) ([]Session, error) {
+	start, end, err := dayBounds(day, loc)
+	if err != nil {
+		return nil, err
+	}
+	var out []Session
+	if r.Claude != "" {
+		out = append(out, collectClaude(r.Claude, start, end, exclude)...)
+	}
+	if r.Codex != "" {
+		out = append(out, collectCodex(r.Codex, start, end, exclude)...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Turns[0].At.Before(out[j].Turns[0].At) })
+	return out, nil
+}
+
+// recentFiles lists files under root matching name filter modified at or after since.
+func recentFiles(root string, since time.Time, keep func(rel string) bool) []string {
+	var files []string
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, p)
+		if !keep(filepath.ToSlash(rel)) {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && !info.ModTime().Before(since) {
+			files = append(files, p)
+		}
+		return nil
+	})
+	sort.Strings(files)
+	return files
+}
+
+type claudeLine struct {
+	Type        string `json:"type"`
+	Timestamp   string `json:"timestamp"`
+	Cwd         string `json:"cwd"`
+	SessionID   string `json:"sessionId"`
+	IsMeta      bool   `json:"isMeta"`
+	IsSidechain bool   `json:"isSidechain"`
+	Message     struct {
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+}
+
+type block struct {
+	Type    string          `json:"type"`
+	Text    string          `json:"text"`
+	Content json.RawMessage `json:"content"`
+}
+
+func collectClaude(root string, start, end time.Time, exclude []string) []Session {
+	projects := filepath.Join(root, "projects")
+	// projects/<dir>/<session>.jsonl only: subagent logs live deeper.
+	files := recentFiles(projects, start, func(rel string) bool {
+		return strings.Count(rel, "/") == 1 && strings.HasSuffix(rel, ".jsonl")
+	})
+	var out []Session
+	for _, f := range files {
+		s := Session{Host: "claude", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+		_ = eachLine(f, func(line []byte) {
+			var l claudeLine
+			if json.Unmarshal(line, &l) != nil || (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.IsSidechain {
+				return
+			}
+			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+			if err != nil || at.Before(start) || !at.Before(end) {
+				return
+			}
+			if s.Cwd == "" && l.Cwd != "" {
+				s.Cwd = l.Cwd
+			}
+			text := claudeText(l)
+			if text == "" {
+				return
+			}
+			role, n := "user", maxUserRunes
+			if l.Type == "assistant" {
+				role, n = "ai", maxAIRunes
+			}
+			s.Turns = append(s.Turns, Turn{Role: role, Text: clip(text, n), At: at})
+		})
+		if len(s.Turns) > 0 && !excluded(s.Cwd, exclude) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func claudeText(l claudeLine) string {
+	var str string
+	if json.Unmarshal(l.Message.Content, &str) == nil {
+		return cleanUser(str)
+	}
+	var blocks []block
+	if json.Unmarshal(l.Message.Content, &blocks) != nil {
+		return ""
+	}
+	var parts []string
+	for _, b := range blocks {
+		switch b.Type {
+		case "text":
+			if l.Type == "assistant" {
+				parts = append(parts, b.Text)
+			} else if t := cleanUser(b.Text); t != "" {
+				parts = append(parts, t)
+			}
+		case "tool_result":
+			// 사용자가 질문 도구로 고른 답만 사용자 말로 남긴다.
+			var s string
+			if json.Unmarshal(b.Content, &s) == nil && strings.HasPrefix(s, "The user answered") {
+				parts = append(parts, s)
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func cleanUser(s string) string {
+	s = strings.TrimSpace(reminderRE.ReplaceAllString(s, ""))
+	for _, p := range []string{"<command-", "<local-command", "Caveat:", "[Request interrupted"} {
+		if strings.HasPrefix(s, p) {
+			return ""
+		}
+	}
+	return s
+}
+
+type codexLine struct {
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Payload   struct {
+		Type    string `json:"type"`
+		ID      string `json:"id"`
+		Cwd     string `json:"cwd"`
+		Role    string `json:"role"`
+		Phase   string `json:"phase"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"payload"`
+}
+
+func collectCodex(root string, start, end time.Time, exclude []string) []Session {
+	files := recentFiles(filepath.Join(root, "sessions"), start, func(rel string) bool { return strings.HasSuffix(rel, ".jsonl") })
+	var out []Session
+	for _, f := range files {
+		s := Session{Host: "codex", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+		_ = eachLine(f, func(line []byte) {
+			var l codexLine
+			if json.Unmarshal(line, &l) != nil {
+				return
+			}
+			if l.Type == "session_meta" {
+				s.Cwd = l.Payload.Cwd
+				if l.Payload.ID != "" {
+					s.ID = l.Payload.ID
+				}
+				return
+			}
+			if l.Type != "response_item" || l.Payload.Type != "message" {
+				return
+			}
+			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+			if err != nil || at.Before(start) || !at.Before(end) {
+				return
+			}
+			var parts []string
+			for _, c := range l.Payload.Content {
+				parts = append(parts, c.Text)
+			}
+			text := strings.TrimSpace(strings.Join(parts, "\n"))
+			switch l.Payload.Role {
+			case "user":
+				if strings.HasPrefix(text, "# AGENTS.md instructions") || (strings.HasPrefix(text, "<") && !strings.HasPrefix(text, "<send_user_message_question_reply>")) {
+					return
+				}
+				if text != "" {
+					s.Turns = append(s.Turns, Turn{Role: "user", Text: clip(text, maxUserRunes), At: at})
+				}
+			case "assistant":
+				if l.Payload.Phase == "commentary" || text == "" {
+					return
+				}
+				s.Turns = append(s.Turns, Turn{Role: "ai", Text: clip(text, maxAIRunes), At: at})
+			}
+		})
+		if len(s.Turns) > 0 && !excluded(s.Cwd, exclude) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// CodexSummaries returns Codex's own conversation summaries dated day
+// (file names start with the date).
+func CodexSummaries(r Roots, day string) []Doc {
+	if r.Codex == "" {
+		return nil
+	}
+	matches, _ := filepath.Glob(filepath.Join(r.Codex, "memories", "rollout_summaries", day+"T*.md"))
+	sort.Strings(matches)
+	var out []Doc
+	for _, m := range matches {
+		b, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		out = append(out, Doc{Path: m, Text: clip(string(b), 4000)})
+	}
+	return out
+}
+
+// HostMemoryFiles lists the hosts' own memory files: Claude's automatic memory
+// (projects/*/memory/*.md) and Codex's memories (memories/*.md).
+func HostMemoryFiles(r Roots) []string {
+	var files []string
+	if r.Claude != "" {
+		m, _ := filepath.Glob(filepath.Join(r.Claude, "projects", "*", "memory", "*.md"))
+		files = append(files, m...)
+	}
+	if r.Codex != "" {
+		m, _ := filepath.Glob(filepath.Join(r.Codex, "memories", "*.md"))
+		files = append(files, m...)
+	}
+	sort.Strings(files)
+	return files
+}

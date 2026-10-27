@@ -146,9 +146,9 @@ func TestBuild_검사모드는_어긋난_생성물과_남은_파일을_알린다
 func TestBuild_잘못된_원본은_거절한다(t *testing.T) {
 	cases := map[string]string{
 		"읽기전용 역할에 Write": strings.Replace(manifest, `["Read","Grep"]`, `["Read","Write"]`, 1),
-		"모르는 키":         strings.Replace(manifest, `"effort": "low"`, `"effort": "low", "colour": "x"`, 1),
-		"없는 스킬 참조":      strings.Replace(manifest, `"skills": ["tdd"]}`, `"skills": ["nope"]}`, 1),
-		"잘못된 모델":        strings.Replace(manifest, `"haiku"`, `"gpt"`, 1),
+		"모르는 키":          strings.Replace(manifest, `"effort": "low"`, `"effort": "low", "colour": "x"`, 1),
+		"없는 스킬 참조":       strings.Replace(manifest, `"skills": ["tdd"]}`, `"skills": ["nope"]}`, 1),
+		"잘못된 모델":         strings.Replace(manifest, `"haiku"`, `"gpt"`, 1),
 	}
 	for name, m := range cases {
 		src := fixture(t)
