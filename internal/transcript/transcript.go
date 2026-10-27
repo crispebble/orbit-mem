@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -79,8 +80,20 @@ func dayBounds(day string, loc *time.Location) (time.Time, time.Time, error) {
 }
 
 func excluded(cwd string, exclude []string) bool {
+	norm := func(p string) string {
+		p = filepath.ToSlash(filepath.Clean(p))
+		if runtime.GOOS == "windows" {
+			p = strings.ToLower(p)
+		}
+		return strings.TrimSuffix(p, "/")
+	}
+	c := norm(cwd)
 	for _, e := range exclude {
-		if e != "" && (cwd == e || strings.HasPrefix(cwd, strings.TrimSuffix(e, "/")+"/")) {
+		if e == "" {
+			continue
+		}
+		e = norm(e)
+		if c == e || strings.HasPrefix(c, e+"/") {
 			return true
 		}
 	}

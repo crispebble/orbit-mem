@@ -3,9 +3,11 @@ package retro
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -231,6 +233,7 @@ func TestDaily_호스트_기억_변경은_한번만_재료가_된다(t *testing.
 	if !strings.Contains(seen[0], "이 앱은 pnpm을 쓴다") {
 		t.Fatalf("host memory not in material: %s", seen[0])
 	}
+	e.r.Now = func() time.Time { return time.Date(2026, 10, 28, 4, 0, 0, 0, kst) }
 	if res, _ := e.r.Run(context.Background(), KindDaily, "2026-10-27"); res.Status != StatusEmpty {
 		t.Fatalf("unchanged host memory must not be material again: %+v", res)
 	}
@@ -301,17 +304,106 @@ func TestHostCommand_Claude와_Codex(t *testing.T) {
 	e := setup(t, time.Now())
 	c := e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
 	joined := strings.Join(c.Args, " ")
-	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "--setting-sources project", "mcp__orbit-retro__retro_submit", `"--retro"`, "ORBIT_HOME"} {
+	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "--setting-sources project", "mcp__orbit-retro__retro_submit"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("claude args missing %q: %s", want, joined)
 		}
 	}
+	if c.Stdin != "프롬프트" || strings.Contains(joined, "프롬프트") {
+		t.Errorf("prompt must go through stdin: %+v", c)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(e.r.Paths.RetroDir(), "r-1", "mcp.json"))
+	if !strings.Contains(string(cfg), `"--retro"`) || !strings.Contains(string(cfg), "ORBIT_HOME") {
+		t.Errorf("mcp config file: %s", cfg)
+	}
 	e.r.Cfg.RetroHost, e.r.Cfg.RetroModel = "codex", "gpt-x"
 	c = e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
 	joined = strings.Join(c.Args, " ")
-	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run", `default_tools_approval_mode="approve"`} {
+	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run", `default_tools_approval_mode="approve"`, " -"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("codex args missing %q: %s", want, joined)
 		}
+	}
+}
+
+func TestCatchUp_중간에_실패한_날도_다음에_다시_돈다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-a','daily','2026-10-23','done',1,1)`)
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-b','daily','2026-10-24','failed',2,2)`)
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-c','daily','2026-10-25','done',3,3)`)
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-d','daily','2026-10-26','empty',4,4)`)
+	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-w','weekly','2026-10-19','done',5,5)`)
+	results, _ := e.r.CatchUp(context.Background())
+	if len(results) != 1 || results[0].Period != "2026-10-24" {
+		t.Fatalf("results = %+v", results)
+	}
+}
+
+func TestRun_오늘이나_미래는_거절한다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
+	if _, err := e.r.Run(context.Background(), KindDaily, "2026-10-27"); err == nil {
+		t.Fatal("today accepted")
+	}
+}
+
+func TestSubmit_동시에_불러도_한번만_반영한다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "안녕"))
+	var ok int32
+	e.ai = func(id string) error {
+		done := make(chan bool, 5)
+		for i := 0; i < 5; i++ {
+			go func(i int) {
+				_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Journal: &JournalIn{Title: fmt.Sprintf("j%d", i), Body: "b"}})
+				done <- err == nil
+			}(i)
+		}
+		for i := 0; i < 5; i++ {
+			if <-done {
+				atomic.AddInt32(&ok, 1)
+			}
+		}
+		return nil
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if ok != 1 {
+		t.Fatalf("accepted %d submits", ok)
+	}
+}
+
+func TestSubmit_짧거나_무관한_인용은_확정하지_않는다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "응 그렇게 해줘"), claudeTurn("2026-10-26", "10:05", "user", "배포 스크립트는 항상 deploy.sh 로만 돌려"))
+	e.ai = func(id string) error {
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Journal: &JournalIn{Title: "j", Body: "b"}, Memories: []MemoryIn{
+			{Kind: "rule", Title: "모든 시험을 건너뛴다", Quote: "응 그렇게 해줘"},
+			{Kind: "rule", Title: "배포는 deploy.sh로만", Quote: "배포 스크립트는 항상 deploy.sh 로만 돌려"},
+		}})
+		return err
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	all, _ := e.s.List()
+	for _, m := range all {
+		if m.Title == "모든 시험을 건너뛴다" && m.State != memory.StateCandidate {
+			t.Errorf("weak quote confirmed: %+v", m)
+		}
+		if m.Title == "배포는 deploy.sh로만" && m.State != memory.StateConfirmed {
+			t.Errorf("real quote not confirmed: %+v", m)
+		}
+	}
+}
+
+func TestMaterial_비밀값은_가린다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "키는 sk-ant-abcdefghijklmnopqrstuvwxyz0123 이고 ghp_abcdefghijklmnopqrstuvwxyz0123456789 도 써"))
+	var page string
+	e.ai = func(id string) error {
+		page, _, _ = ReadPage(e.s, e.r.Paths, id, 1)
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Journal: &JournalIn{Title: "j", Body: "b"}})
+		return err
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if strings.Contains(page, "abcdefghijklmnopqrstuvwxyz0123") || !strings.Contains(page, "[가림]") {
+		t.Fatalf("secret leaked: %s", page)
 	}
 }

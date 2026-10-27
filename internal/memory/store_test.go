@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,5 +216,60 @@ func TestSnapshot_이름을_정한_사본은_순환에서_빠진다(t *testing.T
 	}
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("snapshot rotated away: %v", err)
+	}
+}
+
+func TestSave_두_연결이_동시에_써도_잠금_오류가_없다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "m.db")
+	a, _ := Open(path)
+	b, _ := Open(path)
+	defer a.Close()
+	defer b.Close()
+	errs := make(chan error, 200)
+	for i := 0; i < 100; i++ {
+		go func(i int) {
+			_, err := a.Save(SaveInput{Kind: KindFact, Title: fmt.Sprintf("a%d", i), Source: Source{Kind: SourceSession}})
+			errs <- err
+		}(i)
+		go func(i int) {
+			_, err := b.Save(SaveInput{Kind: KindFact, Title: fmt.Sprintf("b%d", i), Source: Source{Kind: SourceSession}})
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < 200; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent save: %v", err)
+		}
+	}
+}
+
+func TestSeen_인용은_숨김이나_낡음을_되살리지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m, _ := s.Save(SaveInput{Kind: KindFact, Title: "x", Source: Source{Kind: SourceSession}})
+	s.SetState(m.ID, StateHidden, "거절")
+	got, _ := s.Seen(m.ID, Source{Kind: SourceQuote, Excerpt: "x"}, "2026-10-28")
+	if got.State != StateHidden {
+		t.Fatalf("state = %s", got.State)
+	}
+}
+
+func TestOpen_경로에_특수문자가_있어도_연다(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "a#b?c%d", "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
+func TestMaskSecrets(t *testing.T) {
+	in := "토큰 sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUV 와 AKIAABCDEFGHIJKLMNOP, password=hunter22 그리고 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijk"
+	out := MaskSecrets(in)
+	for _, bad := range []string{"ABCDEFGHIJKLMNOPQRSTUV", "AKIAABCDEFGHIJKLMNOP", "hunter22", "eyJzdWIiOiIxIn0"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("leaked %q in %q", bad, out)
+		}
+	}
+	if MaskSecrets("평범한 문장 task-123 desk-lamp") != "평범한 문장 task-123 desk-lamp" {
+		t.Error("plain text changed")
 	}
 }

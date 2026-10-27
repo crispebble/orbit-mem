@@ -222,6 +222,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		}
 		kind, state, tags := mapRecord(r)
 		var sources []memory.Source
+		var absorbed [][2]string
 		changed := []string{}
 		for _, raw := range r.Sources {
 			var ref legacyRef
@@ -245,9 +246,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 					rep.FilesSame++
 					if hostDirs[filepath.Dir(ob.Locator.Path)] {
 						rep.Absorbed++
-						if !o.DryRun {
-							_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash`, ob.Locator.Path, hash, time.Now().UnixMilli())
-						}
+						absorbed = append(absorbed, [2]string{ob.Locator.Path, hash})
 					}
 				case "changed":
 					rep.FilesChanged++
@@ -276,15 +275,14 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		}
 		createdDay := memory.Day(time.UnixMilli(r.Created.At))
 		first := memory.Source{Kind: memory.SourceLegacy, Ref: "knowledge:" + r.ID, Excerpt: "옛 Knowledge " + r.Kind + "/" + r.Status, At: r.Created.At}
+		// 기억과 출처는 한 트랜잭션으로 남긴다(중간에 끊겨도 반쪽 기록이 없다).
 		m, err := s.Save(memory.SaveInput{Kind: kind, Title: r.Title, Body: r.Body, Tags: tags, Scope: memory.ScopeGlobal,
-			State: state, LegacyID: r.ID, Source: first, Day: createdDay, At: r.Created.At})
+			State: state, LegacyID: r.ID, Source: first, Extra: sources, Day: createdDay, At: r.Created.At})
 		if err != nil {
 			return rep, fmt.Errorf("%s(%s) 옮기기 실패: %w", r.ID, r.Title, err)
 		}
-		for _, src := range sources {
-			if err := s.AddSource(m.ID, src); err != nil {
-				return rep, err
-			}
+		for _, ab := range absorbed {
+			_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash`, ab[0], ab[1], time.Now().UnixMilli())
 		}
 		if state == memory.StateStale && r.RetireReason != "" {
 			reason := "옛 Knowledge에서 은퇴: " + r.RetireReason

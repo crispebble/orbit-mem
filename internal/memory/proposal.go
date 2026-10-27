@@ -352,25 +352,17 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			res.Changed = append(res.Changed, id)
 		}
 	case ProposalApplyFile:
+		if in.Body != nil || in.Title != nil {
+			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
+		}
 		if FileHash(p.Payload.Path) != p.Payload.BaseHash {
 			return ErrFileChanged
 		}
-		content := p.Payload.Content
-		if in.Body != nil {
-			content = *in.Body
-		}
-		mode := os.FileMode(0o644)
-		if st, err := os.Stat(p.Payload.Path); err == nil {
-			mode = st.Mode().Perm()
-		}
-		if err := os.MkdirAll(filepath.Dir(p.Payload.Path), 0o755); err != nil {
+		target, err := realTarget(p.Payload.Path)
+		if err != nil {
 			return err
 		}
-		tmp := p.Payload.Path + ".orbit-tmp"
-		if err := os.WriteFile(tmp, []byte(content), mode); err != nil {
-			return err
-		}
-		if err := os.Rename(tmp, p.Payload.Path); err != nil {
+		if err := writeFileAtomic(target, []byte(p.Payload.Content)); err != nil {
 			return err
 		}
 		res.File = p.Payload.Path
@@ -404,4 +396,53 @@ func (s *Store) CloseSettled() (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// realTarget follows symlinks so a dotfile link keeps pointing at its source
+// and the source gets the change.
+func realTarget(path string) (string, error) {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real, nil
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+	return filepath.Join(dir, filepath.Base(path)), nil
+}
+
+func writeFileAtomic(path string, content []byte) error {
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".orbit-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			os.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	ok = true
+	return nil
 }

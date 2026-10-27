@@ -178,3 +178,39 @@ func TestProposal_후보가_스스로_확정되면_제안은_자동으로_닫힌
 		t.Fatalf("pending = %+v", pending)
 	}
 }
+
+func TestProposal_파일_반영은_심볼릭_링크의_원본을_고친다(t *testing.T) {
+	s, _ := newTestStore(t)
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.md")
+	link := filepath.Join(dir, "link.md")
+	os.WriteFile(real, []byte("옛\n"), 0o644)
+	os.Symlink(real, link)
+	p, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "링크", Payload: Payload{Path: link, Content: "새\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Lstat(link); fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("symlink replaced by a file")
+	}
+	if b, _ := os.ReadFile(real); string(b) != "새\n" {
+		t.Fatalf("real = %q", b)
+	}
+	if m, _ := filepath.Glob(filepath.Join(dir, "*tmp*")); len(m) != 0 {
+		t.Fatalf("temp left: %v", m)
+	}
+}
+
+func TestProposal_파일_반영에는_본문_덮어쓰기를_받지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	path := filepath.Join(t.TempDir(), "a.md")
+	os.WriteFile(path, []byte("a\n"), 0o644)
+	p, _ := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "x", Payload: Payload{Path: path, Content: "b\n"}})
+	body := "메모"
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve", Body: &body}); err == nil {
+		t.Fatal("body override accepted for apply_file")
+	}
+}

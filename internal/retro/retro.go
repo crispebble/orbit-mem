@@ -41,15 +41,16 @@ var ErrBusy = errors.New("다른 회고가 이미 돌고 있습니다")
 const (
 	maxCatchUpDays = 7
 	runTimeout     = 30 * time.Minute
-	lockStale      = 3 * time.Hour
+	lockStale      = 6 * time.Hour // 최악 실행(일 7회+주간 1회, 각 30분)보다 길게
 )
 
 // Cmd is a host process to run.
 type Cmd struct {
-	Name string
-	Args []string
-	Dir  string
-	Env  []string
+	Name  string
+	Args  []string
+	Dir   string
+	Env   []string
+	Stdin string
 }
 
 // Runner runs retrospectives for this PC.
@@ -87,18 +88,24 @@ func (r *Runner) loc() *time.Location {
 	return time.Local
 }
 
-// lock takes the PC-wide retrospective lock.
+// lock takes the PC-wide retrospective lock. A lock left by a process that
+// is gone, or older than lockStale, is taken over. Unlock removes only our own lock.
 func (r *Runner) lock() (func(), error) {
 	if err := os.MkdirAll(r.Paths.RetroDir(), 0o700); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(r.Paths.RetroDir(), "lock")
+	mine := fmt.Sprintf("%d %d\n", os.Getpid(), time.Now().UnixNano())
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
-			fmt.Fprintf(f, "%d %d\n", os.Getpid(), time.Now().Unix())
+			f.WriteString(mine)
 			f.Close()
-			return func() { os.Remove(path) }, nil
+			return func() {
+				if b, err := os.ReadFile(path); err == nil && string(b) == mine {
+					os.Remove(path)
+				}
+			}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, err
@@ -106,10 +113,10 @@ func (r *Runner) lock() (func(), error) {
 		b, _ := os.ReadFile(path)
 		var pid, at int64
 		fmt.Sscanf(string(b), "%d %d", &pid, &at)
-		if time.Since(time.Unix(at, 0)) < lockStale {
+		if processAlive(int(pid)) && time.Since(time.Unix(0, at)) < lockStale {
 			return nil, ErrBusy
 		}
-		os.Remove(path) // 오래된 잠금(죽은 실행)
+		os.Remove(path) // 죽은 실행이 남긴 잠금
 	}
 	return nil, ErrBusy
 }
@@ -119,11 +126,32 @@ func (r *Runner) existing(kind, period string) (id, status string, started int64
 	return
 }
 
-// Run runs one retrospective unless it already finished.
+// RunOne runs one retrospective under the PC-wide lock.
+func (r *Runner) RunOne(ctx context.Context, kind, period string) (Result, error) {
+	unlock, err := r.lock()
+	if err != nil {
+		return Result{Kind: kind, Period: period}, err
+	}
+	defer unlock()
+	return r.Run(ctx, kind, period)
+}
+
+// Run runs one retrospective unless it already finished. Callers hold the lock.
 func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	res := Result{Kind: kind, Period: period}
 	if kind != KindDaily && kind != KindWeekly {
 		return res, fmt.Errorf("회고 종류는 daily 또는 weekly입니다")
+	}
+	start, err := time.ParseInLocation("2006-01-02", period, r.loc())
+	if err != nil {
+		return res, fmt.Errorf("날짜는 YYYY-MM-DD입니다: %s", period)
+	}
+	today := dayOf(r.now())
+	if kind == KindDaily && period >= today {
+		return res, fmt.Errorf("하루 회고는 어제까지만 돌립니다: %s", period)
+	}
+	if kind == KindWeekly && (start.Weekday() != time.Monday || dayOf(start.AddDate(0, 0, 7)) > today) {
+		return res, fmt.Errorf("주간 회고는 끝난 주의 월요일 날짜로 돌립니다: %s", period)
 	}
 	if _, st, _ := r.existing(kind, period); st == StatusDone || st == StatusEmpty {
 		res.Status = StatusSkipped
@@ -168,9 +196,13 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	out, execErr := exe(ctx, r.hostCommand(res.ID, runDir, prompt(mat)))
 	var status string
 	_ = r.Store.DB().QueryRow(`SELECT status FROM retros WHERE id=?`, res.ID).Scan(&status)
+	if status == "submitting" { // 제출 처리 중에 호스트가 끝났다
+		time.Sleep(2 * time.Second)
+		_ = r.Store.DB().QueryRow(`SELECT status FROM retros WHERE id=?`, res.ID).Scan(&status)
+	}
+	os.RemoveAll(dir) // 재료(대화 발췌)는 남기지 않는다. 다시 돌 때 새로 만든다
 	if status == StatusDone {
 		res.Status = StatusDone
-		os.RemoveAll(dir)
 		return res, nil
 	}
 	msg := "호스트가 결과를 제출하지 않았습니다"
@@ -202,21 +234,36 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	}
 	today := r.now()
 	yesterday := dayOf(today.AddDate(0, 0, -1))
-	start := yesterday
-	var last string
-	_ = r.Store.DB().QueryRow(`SELECT MAX(period) FROM retros WHERE kind='daily' AND status IN ('done','empty')`).Scan(&last)
-	if last != "" {
-		if t, err := time.ParseInLocation("2006-01-02", last, r.loc()); err == nil {
-			start = dayOf(t.AddDate(0, 0, 1))
+	floor := dayOf(today.AddDate(0, 0, -maxCatchUpDays))
+	finished := map[string]bool{}
+	var first string
+	rows, err := r.Store.DB().Query(`SELECT period FROM retros WHERE kind='daily' AND status IN ('done','empty') ORDER BY period`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p string
+		if rows.Scan(&p) == nil {
+			finished[p] = true
+			if first == "" {
+				first = p
+			}
 		}
 	}
-	floor := dayOf(today.AddDate(0, 0, -maxCatchUpDays))
-	if start < floor {
-		start = floor
+	rows.Close()
+	start := yesterday // 처음이면 어제만
+	if first != "" {
+		start = first
+		if start < floor {
+			start = floor
+		}
 	}
 	var results []Result
 	var errs []error
 	for d := start; d <= yesterday; d = nextDay(d, r.loc()) {
+		if finished[d] {
+			continue
+		}
 		res, err := r.Run(ctx, KindDaily, d)
 		results = append(results, res)
 		if err != nil {
@@ -274,6 +321,9 @@ func (r *Runner) proposeChangedFiles() {
 	}
 }
 
+// hostCommand builds the headless host run. The prompt goes through stdin
+// (multi-line arguments break through .cmd shims on Windows) and Claude's MCP
+// configuration through a file.
 func (r *Runner) hostCommand(id, dir, text string) Cmd {
 	env := []string{"ORBIT_HOME=" + r.Paths.Home, "ORBIT_RETRO_ID=" + id}
 	if r.Cfg.RetroHost == "codex" {
@@ -291,7 +341,7 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 		if r.Cfg.RetroModel != "" {
 			args = append(args, "-m", r.Cfg.RetroModel)
 		}
-		return Cmd{Name: name, Args: append(args, text), Dir: dir, Env: env}
+		return Cmd{Name: name, Args: append(args, "-"), Dir: dir, Env: env, Stdin: text}
 	}
 	name := r.Cfg.ClaudePath
 	if name == "" {
@@ -299,16 +349,19 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 	}
 	mcpConfig, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"orbit-retro": map[string]any{
 		"type": "stdio", "command": r.Oni, "args": []string{"mcp", "--retro", id}, "env": map[string]string{"ORBIT_HOME": r.Paths.Home}}}})
+	configPath := filepath.Join(r.Paths.RetroDir(), id, "mcp.json")
+	_ = os.MkdirAll(filepath.Dir(configPath), 0o700)
+	_ = os.WriteFile(configPath, mcpConfig, 0o600)
 	tools := []string{"retro_material", "retro_submit", "retro_read_file", "memory_find", "memory_get"}
 	for i, t := range tools {
 		tools[i] = "mcp__orbit-retro__" + t
 	}
-	args := []string{"-p", text, "--mcp-config", string(mcpConfig), "--strict-mcp-config", "--allowedTools", strings.Join(tools, ","),
+	args := []string{"-p", "--mcp-config", configPath, "--strict-mcp-config", "--allowedTools", strings.Join(tools, ","),
 		"--no-session-persistence", "--setting-sources", "project", "--output-format", "text"}
 	if r.Cfg.RetroModel != "" {
 		args = append(args, "--model", r.Cfg.RetroModel)
 	}
-	return Cmd{Name: name, Args: args, Dir: dir, Env: env}
+	return Cmd{Name: name, Args: args, Dir: dir, Env: env, Stdin: text}
 }
 
 // execHost runs a host process with stdin closed and returns the tail of its output.
@@ -316,6 +369,9 @@ func execHost(ctx context.Context, c Cmd) (string, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
 	cmd.Dir = c.Dir
 	cmd.Env = append(os.Environ(), c.Env...)
+	cmd.Stdin = strings.NewReader(c.Stdin)
+	cmd.WaitDelay = 15 * time.Second // 자식이 출력 파이프를 쥐고 있어도 끝낸다
+	setProcessGroup(cmd)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()

@@ -57,13 +57,12 @@ func (m Material) empty() bool {
 }
 
 const (
-	maxHostMemoBytes  = 8 << 10
-	maxHostMemoTotal  = 60 << 10
-	maxExisting       = 300
-	maxReclassify     = 20
-	pageBytes         = 24 << 10
-	maxSessionBytes   = 240 << 10 // 하루 대화 재료 상한(넘치면 AI 답부터 줄인다)
-	legacyReclassTags = "옛:ISSUE|옛:NOTE"
+	maxHostMemoBytes = 8 << 10
+	maxHostMemoTotal = 60 << 10
+	maxExisting      = 300
+	maxReclassify    = 20
+	pageBytes        = 24 << 10
+	maxSessionBytes  = 240 << 10 // 하루 대화 재료 상한(넘치면 AI 답부터 줄인다)
 )
 
 func brief(m memory.Memory, withBody bool) Brief {
@@ -98,7 +97,15 @@ func (r *Runner) material(kind, period string) (Material, error) {
 			return mat, err
 		}
 		mat.Sessions, mat.Note = transcript.Fit(mat.Sessions, maxSessionBytes)
+		for i := range mat.Sessions {
+			for j := range mat.Sessions[i].Turns {
+				mat.Sessions[i].Turns[j].Text = memory.MaskSecrets(mat.Sessions[i].Turns[j].Text)
+			}
+		}
 		mat.Summaries = transcript.CodexSummaries(r.Roots, period)
+		for i := range mat.Summaries {
+			mat.Summaries[i].Text = memory.MaskSecrets(mat.Summaries[i].Text)
+		}
 		total := 0
 		for _, f := range transcript.HostMemoryFiles(r.Roots) {
 			b, err := os.ReadFile(f)
@@ -111,7 +118,7 @@ func (r *Runner) material(kind, period string) (Material, error) {
 			if seen == h {
 				continue
 			}
-			text := clipBytes(string(b), maxHostMemoBytes)
+			text := clipBytes(memory.MaskSecrets(string(b)), maxHostMemoBytes)
 			if total+len(text) > maxHostMemoTotal {
 				break // 나머지는 다음 회고로
 			}
@@ -164,7 +171,7 @@ func (r *Runner) material(kind, period string) (Material, error) {
 
 func hasLegacyTag(m memory.Memory) bool {
 	for _, t := range m.Tags {
-		if strings.Contains(legacyReclassTags, t) && strings.HasPrefix(t, "옛:") {
+		if t == "옛:ISSUE" || t == "옛:NOTE" || t == "옛:QUESTION" {
 			return true
 		}
 	}
@@ -319,17 +326,38 @@ func ReadTarget(p config.Paths, id, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// 읽은 시점의 내용을 기억해 두었다가, 제출 때 그사이 바뀌었으면 제안을 빼낸다.
+	_ = os.WriteFile(filepath.Join(p.RetroDir(), id, "read-"+sha([]byte(path))[:16]), []byte(sha(b)), 0o600)
 	return clipBytes(string(b), 64<<10), nil
 }
 
+func readHash(p config.Paths, id, path string) string {
+	b, err := os.ReadFile(filepath.Join(p.RetroDir(), id, "read-"+sha([]byte(path))[:16]))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func resolve(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(dir, filepath.Base(path))
+	}
+	return filepath.Clean(path)
+}
+
+// allowedTarget says whether path (after following symlinks) is inside one of targets.
 func allowedTarget(targets []string, path string) bool {
 	if !filepath.IsAbs(path) {
 		return false
 	}
-	clean := filepath.Clean(path)
+	real := resolve(path)
 	for _, t := range targets {
-		t = filepath.Clean(t)
-		if clean == t || strings.HasPrefix(clean, t+string(filepath.Separator)) {
+		t = resolve(t)
+		if real == t || strings.HasPrefix(real, t+string(filepath.Separator)) {
 			return true
 		}
 	}

@@ -149,3 +149,12 @@ func TestMCP_stdio로_도구를_부른다(t *testing.T) {
 		t.Fatalf("find result: %s", b)
 	}
 }
+
+func TestHook_인자가_틀려도_호스트를_막지_않는다(t *testing.T) {
+	home(t)
+	for _, args := range [][]string{{"hook"}, {"hook", "bogus"}, {"hook", "prompt", "--extra", "x"}} {
+		if _, _, code := run(t, "", args...); code != 0 {
+			t.Errorf("%v exit %d", args, code)
+		}
+	}
+}

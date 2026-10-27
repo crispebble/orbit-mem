@@ -7,14 +7,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/onidot-labs/orbit/internal/config"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
-// maxRulesBytes bounds the rule text added at session start. Rules beyond it
-// are listed by title only.
-const maxRulesBytes = 16 << 10
+// maxRulesRunes bounds the rule text added at session start, in characters,
+// so the whole context stays under the hosts' hook context limit (about
+// 10,000 characters in Claude Code). Rules beyond it are listed by title only.
+const maxRulesRunes = 6000
 
 func inScope(m memory.Memory, scope string) bool {
 	return m.Scope == memory.ScopeGlobal || (scope != "" && m.Scope == scope)
@@ -52,7 +54,7 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 			if body := strings.TrimSpace(m.Body); body != "" {
 				entry += "  " + strings.ReplaceAll(body, "\n", "\n  ") + "\n"
 			}
-			if b.Len()+len(entry) > maxRulesBytes {
+			if utf8.RuneCountInString(b.String())+utf8.RuneCountInString(entry) > maxRulesRunes {
 				titlesOnly = append(titlesOnly, m)
 				continue
 			}

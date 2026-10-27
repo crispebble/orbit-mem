@@ -73,11 +73,17 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + filepath.ToSlash(path) + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
+	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
+	// _txlock=immediate: a writer waits for the busy timeout instead of failing at once
+	// when hooks, the MCP server and a retrospective write at the same time.
+	dsn := "file:" + escaped + "?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+	// One connection per process: SQLite takes one writer at a time anyway, and
+	// a single connection keeps the busy wait between processes, not inside one.
+	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
@@ -121,8 +127,9 @@ type SaveInput struct {
 	Source   Source
 	State    string // 비우면 출처로 정한다(인용이면 확정, 아니면 후보)
 	LegacyID string
-	Day      string // 후보가 나온 날. 비우면 오늘
-	At       int64  // 만든 시각. 비우면 지금
+	Day      string   // 후보가 나온 날. 비우면 오늘
+	At       int64    // 만든 시각. 비우면 지금
+	Extra    []Source // 같은 트랜잭션에 함께 붙일 출처
 }
 
 func validKind(k string) bool { return contains(Kinds, k) }
@@ -233,6 +240,14 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 	if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
 		return Memory{}, err
 	}
+	for _, src := range in.Extra {
+		if !contains(SourceKinds, src.Kind) {
+			return Memory{}, ErrInvalid
+		}
+		if err := addSourceTx(tx, m.ID, src, now); err != nil {
+			return Memory{}, err
+		}
+	}
 	if state == StateCandidate {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
 			return Memory{}, err
@@ -262,7 +277,7 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	}
 	next := m.State
 	switch {
-	case src.Kind == SourceQuote:
+	case src.Kind == SourceQuote && m.State == StateCandidate:
 		next = StateConfirmed
 	case m.State == StateCandidate:
 		var days int
@@ -311,7 +326,7 @@ func (s *Store) AddSource(id string, src Source) error {
 		return ErrInvalid
 	}
 	_, err := s.db.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-		NewID("s-"), id, src.Kind, src.Ref, src.Excerpt, src.Hash, s.atOr(src.At))
+		NewID("s-"), id, src.Kind, src.Ref, truncateBytes(MaskSecrets(src.Excerpt), 8<<10), src.Hash, s.atOr(src.At))
 	return err
 }
 
@@ -330,7 +345,7 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if at == 0 {
 		at = now
 	}
-	excerpt := src.Excerpt
+	excerpt := MaskSecrets(src.Excerpt)
 	if len(excerpt) > 8<<10 {
 		excerpt = truncateBytes(excerpt, 8<<10)
 	}

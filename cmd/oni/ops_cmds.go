@@ -66,14 +66,14 @@ func cmdRetro(a *app, args []string) error {
 		var results []retro.Result
 		switch {
 		case *day != "":
-			res, err := r.Run(ctx, retro.KindDaily, *day)
+			res, err := r.RunOne(ctx, retro.KindDaily, *day)
 			results = append(results, res)
 			if err != nil {
 				a.printResults(results)
 				return err
 			}
 		case *week != "":
-			res, err := r.Run(ctx, retro.KindWeekly, *week)
+			res, err := r.RunOne(ctx, retro.KindWeekly, *week)
 			results = append(results, res)
 			if err != nil {
 				a.printResults(results)
@@ -414,6 +414,7 @@ func cmdInstall(a *app, args []string) error {
 			return fmt.Errorf("회고 예약을 등록하지 못했습니다: %w", err)
 		}
 		fmt.Fprintf(a.stdout, "회고 예약을 등록했습니다(매일 %02d시, 로그인 때 밀린 회고): %s\n", cfg.RetroHour, where)
+		fmt.Fprintln(a.stdout, "등록하면 밀린 회고를 곧바로 한 번 돕니다(처음이면 어제 하루, 호스트 사용량을 씁니다). 결과: oni retro status")
 	}
 	if h.Codex != "" && !*noHosts {
 		fmt.Fprintln(a.stdout, "Codex는 플러그인 훅을 신뢰해야 돕니다. Codex에서 /hooks 로 Orbit 훅을 검토·신뢰해 주세요.")
@@ -436,11 +437,17 @@ func cmdUninstall(a *app, args []string) error {
 		return err
 	}
 	h := install.FindHosts()
+	failed := false
 	if err := h.UnregisterPlugin("orbit", "orbit"); err != nil {
+		failed = true
 		fmt.Fprintln(a.stderr, "플러그인 등록 해제 중 오류: "+err.Error())
 	}
 	if err := install.RemoveSchedule(install.RunCommand); err != nil {
+		failed = true
 		fmt.Fprintln(a.stderr, "예약 해제 중 오류: "+err.Error())
+	}
+	if failed {
+		return fmt.Errorf("일부를 지우지 못했습니다. 위 오류를 확인해 주세요. 기억 DB는 그대로입니다: %s", paths().Home)
 	}
 	fmt.Fprintf(a.stdout, "Orbit 플러그인과 회고 예약을 지웠습니다. 기억 DB와 백업은 남겼습니다: %s\n", paths().Home)
 	fmt.Fprintf(a.stdout, "oni 실행 파일은 직접 지워 주세요: %s\n", selfPath())

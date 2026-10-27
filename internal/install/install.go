@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf16"
 )
 
@@ -236,9 +237,26 @@ func LaunchdPlist(s Schedule) string {
 }
 
 // TaskXML is the Windows Task Scheduler definition (UTF-16LE with BOM, as
-// schtasks /XML expects): daily at Hour, at logon, and as soon as possible
-// after a missed start.
+// schtasks /XML expects): daily at Hour, at this user's logon, and as soon as
+// possible after a missed start. It runs through cmd.exe to set ORBIT_HOME and
+// keep a log.
 func TaskXML(s Schedule) []byte {
+	user := os.Getenv("USERNAME")
+	if d := os.Getenv("USERDOMAIN"); d != "" && user != "" {
+		user = d + `\` + user
+	}
+	userID := ""
+	if user != "" {
+		userID = "<UserId>" + xmlEscape(user) + "</UserId>"
+	}
+	inner := ""
+	if s.Home != "" {
+		inner = `set "ORBIT_HOME=` + s.Home + `" && `
+	}
+	inner += `"` + s.Oni + `" retro run`
+	if s.Logs != "" {
+		inner += ` >> "` + filepath.Join(s.Logs, "retro.log") + `" 2>&1`
+	}
 	x := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Description>Orbit 회고(하루·주간)</Description></RegistrationInfo>
@@ -247,23 +265,23 @@ func TaskXML(s Schedule) []byte {
       <StartBoundary>2026-01-01T%02d:00:00</StartBoundary>
       <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>
     </CalendarTrigger>
-    <LogonTrigger><Delay>PT5M</Delay></LogonTrigger>
+    <LogonTrigger>%s<Delay>PT5M</Delay></LogonTrigger>
   </Triggers>
   <Settings>
     <StartWhenAvailable>true</StartWhenAvailable>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>%s</Command>
-      <Arguments>retro run</Arguments>
+      <Command>cmd.exe</Command>
+      <Arguments>/d /c %s</Arguments>
     </Exec>
   </Actions>
 </Task>
-`, s.Hour, xmlEscape(s.Oni))
+`, s.Hour, userID, xmlEscape(inner))
 	u := utf16.Encode([]rune(x))
 	b := make([]byte, 2+2*len(u))
 	b[0], b[1] = 0xFF, 0xFE
@@ -295,10 +313,14 @@ func ApplySchedule(s Schedule, run func(string, ...string) (string, error)) (str
 		}
 		domain := fmt.Sprintf("gui/%d", os.Getuid())
 		_, _ = run("launchctl", "bootout", domain+"/"+LaunchdLabel)
-		if _, err := run("launchctl", "bootstrap", domain, path); err != nil {
-			return path, err
+		var err error
+		for attempt := 0; attempt < 5; attempt++ { // bootout은 비동기라 곧바로 bootstrap하면 실패할 수 있다
+			if _, err = run("launchctl", "bootstrap", domain, path); err == nil {
+				return path, nil
+			}
+			time.Sleep(time.Second)
 		}
-		return path, nil
+		return path, err
 	case "windows":
 		dir, err := os.MkdirTemp("", "orbit-task")
 		if err != nil {
@@ -332,11 +354,11 @@ func RemoveSchedule(run func(string, ...string) (string, error)) error {
 	return nil
 }
 
-// ScheduleInstalled reports whether the OS schedule exists.
+// ScheduleInstalled reports whether the OS schedule is registered (loaded).
 func ScheduleInstalled(run func(string, ...string) (string, error)) bool {
 	switch runtime.GOOS {
 	case "darwin":
-		_, err := os.Stat(LaunchAgentPath())
+		_, err := run("launchctl", "print", fmt.Sprintf("gui/%d/%s", os.Getuid(), LaunchdLabel))
 		return err == nil
 	case "windows":
 		_, err := run("schtasks", "/Query", "/TN", WindowsTask)
@@ -394,7 +416,19 @@ func CopyBinary(src, dst string) (bool, error) {
 		return false, err
 	}
 	if runtime.GOOS == "windows" {
-		_ = os.Rename(dst, dst+".old") // 실행 중인 exe는 지울 수 없어 이름만 바꾼다
+		old := dst + ".old"
+		_ = os.Remove(old) // 지난번에 남은 것(실행 중이면 실패해도 된다)
+		if _, err := os.Stat(dst); err == nil {
+			if err := os.Rename(dst, old); err != nil { // 실행 중인 exe는 지울 수 없어 이름만 바꾼다
+				os.Remove(tmp)
+				return false, fmt.Errorf("기존 oni를 바꿀 수 없습니다(실행 중인 세션을 닫고 다시 해 주세요): %w", err)
+			}
+			if err := os.Rename(tmp, dst); err != nil {
+				_ = os.Rename(old, dst)
+				return false, err
+			}
+			return true, nil
+		}
 	}
 	return true, os.Rename(tmp, dst)
 }

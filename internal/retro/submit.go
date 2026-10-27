@@ -62,9 +62,23 @@ const (
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-func quoteFound(mat Material, quote string) bool {
+// quoteFound accepts a quote as the user's own words only when it is long
+// enough to say something, appears in what the user typed that day, and
+// shares a word with the memory it backs.
+func quoteFound(mat Material, quote, title, body string) bool {
 	q := squash(quote)
-	if len([]rune(q)) < 4 {
+	if len([]rune(q)) < 10 {
+		return false
+	}
+	related := false
+	doc := memory.Doc{Title: title, Body: body}
+	for _, t := range memory.Terms(q, 32) {
+		if len([]rune(t)) >= 2 && memory.Relevance(doc, t).Score > 0 {
+			related = true
+			break
+		}
+	}
+	if !related {
 		return false
 	}
 	for _, s := range mat.Sessions {
@@ -100,6 +114,20 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals {
 		return "", fmt.Errorf("기억은 %d건, 제안은 %d건까지 냅니다. 중요한 것만 골라 다시 제출해 주세요", maxSubmitMemories, maxSubmitProposals)
 	}
+	// 한 번만 받는다: running을 submitting으로 먼저 차지한 호출만 진행한다.
+	claim, err := s.DB().Exec(`UPDATE retros SET status='submitting' WHERE id=? AND status=?`, id, StatusRunning)
+	if err != nil {
+		return "", err
+	}
+	if n, _ := claim.RowsAffected(); n != 1 {
+		return "", errors.New("이 회고는 이미 제출됐습니다. 결과는 한 번만 제출합니다")
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_, _ = s.DB().Exec(`UPDATE retros SET status=? WHERE id=? AND status='submitting'`, StatusRunning, id)
+		}
+	}()
 	day := mat.Period
 	if mat.Kind == KindWeekly {
 		day = memory.Day(s.Now())
@@ -129,8 +157,17 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			ref = "retro:" + id
 		}
 		src := memory.Source{Kind: memory.SourceSession, Ref: ref, Excerpt: in.Quote}
-		if in.Quote != "" && quoteFound(mat, in.Quote) {
+		if in.Quote != "" && quoteFound(mat, in.Quote, in.Title, in.Body) {
 			src.Kind = memory.SourceQuote
+		}
+		if in.SameAs != "" && mat.Kind == KindWeekly {
+			// 주간 재료는 그 주 일지라 같은 근거를 다시 센다: 출처만 붙인다.
+			if err := s.AddSource(in.SameAs, src); err != nil {
+				notes = append(notes, fmt.Sprintf("%s: %v", in.SameAs, err))
+				continue
+			}
+			seen++
+			continue
 		}
 		if in.SameAs != "" {
 			if _, err := s.Seen(in.SameAs, src, day); err != nil {
@@ -184,6 +221,10 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 				notes = append(notes, in.Title+": 반영 대상 목록 밖 파일이라 뺐습니다")
 				continue
 			}
+			if read := readHash(p, id, in.Path); read != "" && read != memory.FileHash(in.Path) {
+				notes = append(notes, in.Title+": 읽은 뒤 파일이 바뀌어 뺐습니다")
+				continue
+			}
 		}
 		if _, err := s.Propose(pi); err != nil {
 			if !errors.Is(err, memory.ErrDuplicateProposal) {
@@ -196,10 +237,11 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	flags := append(append([]string{}, sub.Flags...), sub.Patterns...)
 	fb, _ := json.Marshal(nonNil(flags))
-	if _, err := s.DB().Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status=?`,
-		StatusDone, s.Now().UnixMilli(), sub.Summary, string(fb), journalID, id, StatusRunning); err != nil {
+	if _, err := s.DB().Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status='submitting'`,
+		StatusDone, s.Now().UnixMilli(), sub.Summary, string(fb), journalID, id); err != nil {
 		return "", err
 	}
+	finished = true
 	for _, h := range mat.HostMemory {
 		_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, at=excluded.at`, h.Path, h.Hash, s.Now().UnixMilli())
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -68,18 +69,24 @@ type hookInput struct {
 	Event     string `json:"hook_event_name"`
 }
 
-// cmdHook never fails the host: any problem prints nothing and exits 0.
+// cmdHook never fails the host: any problem, wrong arguments included, prints
+// nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
 func cmdHook(a *app, args []string) error {
 	fs := a.flags("hook")
-	host := fs.String("host", "claude", "claude | codex")
+	fs.SetOutput(io.Discard)
+	fs.String("host", "claude", "claude | codex")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt") {
-		return errUsage
+		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 기억을 넣지 않았습니다 (oni hook session-start|prompt --host claude|codex)")
+		return nil
 	}
-	_ = host
 	done := make(chan string, 1)
 	go func() {
-		defer func() { recover() }()
+		defer func() {
+			if recover() != nil {
+				done <- ""
+			}
+		}()
 		var in hookInput
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
 		_ = json.Unmarshal(b, &in)
@@ -411,7 +418,11 @@ func cmdConfig(a *app, args []string) error {
 		cfg.ApplyTargets = nil
 		for _, p := range strings.Split(val, ",") {
 			if p = strings.TrimSpace(p); p != "" {
-				cfg.ApplyTargets = append(cfg.ApplyTargets, p)
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return err
+				}
+				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
 			}
 		}
 	default:
