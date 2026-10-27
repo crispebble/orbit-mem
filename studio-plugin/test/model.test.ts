@@ -88,13 +88,43 @@ describe('제안 변환', () => {
     assert.equal(toProposalRow(pending({status: 'rejected'}), now).pending, false);
   });
 
-  it('확정 제안은 고칠 수 있는 내용(body)과 근거(기억 출처)를 준다', () => {
+  // oni는 확정·재분류를 승인할 때 받은 제목·본문을 대상 기억(하나일 때)의 제목·본문으로 쓴다.
+  // 그래서 고칠 칸에는 제안 설명이 아니라 대상 기억의 제목·본문을 채우고, 제안 설명은 설명으로 보인다.
+  it('확정 제안은 대상 기억의 제목·본문을 고칠 내용으로, 제안 글을 설명으로 준다', () => {
     const p = toProposal(pending(), [memory], now);
     assert.equal(p.kind, 'confirm');
-    assert.equal(p.body, '두 번 나왔습니다');
-    assert.equal(p.explanation, undefined);
+    assert.equal(p.title, '경로를 명시한다');
+    assert.equal(p.body, '본문');
+    assert.equal(p.explanation, '두 번 나왔습니다');
     assert.equal(p.diff, undefined);
     assert.equal(p.evidence?.[0].text, '경로를 적어 주세요');
+  });
+
+  it('대상 기억을 아직 못 읽었거나 여럿이면 고쳐서 승인을 내지 않는다', () => {
+    const loading = toProposal(pending(), [], now);
+    assert.equal(loading.body, undefined);
+    assert.equal(loading.title, '확정할까요?');
+    assert.equal(loading.explanation, '두 번 나왔습니다');
+    const many = toProposal(pending({memoryIds: ['m1', 'm2']}), [memory, {...memory, id: 'm2'}], now);
+    assert.equal(many.body, undefined);
+    assert.equal(many.title, '확정할까요?');
+  });
+
+  it('재분류도 대상 기억의 본문을 고친다', () => {
+    const p = toProposal(pending({kind: 'reclassify', payload: {kind: 'fact'}}), [memory], now);
+    assert.equal(p.body, '본문');
+    assert.equal(p.title, '경로를 명시한다');
+  });
+
+  it('낡음 정리는 oni가 본문을 쓰지 않으니 고칠 내용 없이 설명만 준다', () => {
+    const p = toProposal(pending({kind: 'stale', body: '출처 파일이 바뀌었습니다'}), [memory], now);
+    assert.equal(p.body, undefined);
+    assert.equal(p.explanation, '출처 파일이 바뀌었습니다');
+  });
+
+  it('합치기는 고칠 제목으로 합칠 기억 제목을 준다', () => {
+    const p = toProposal(pending({kind: 'merge', title: '두 기억을 합칠까요', payload: {mergedTitle: '합친 제목', mergedBody: '합친 글'}}), [], now);
+    assert.equal(p.title, '합친 제목');
   });
 
   it('출처가 없는 기억은 제목을 근거로 보인다', () => {
@@ -124,7 +154,7 @@ describe('제안 변환', () => {
     for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
     }
-    assert.equal(toProposal(pending({kind: 'stale', body: ''}), [], now).body, undefined);
+    assert.equal(toProposal(pending({kind: 'stale', body: ''}), [memory], now).body, undefined);
   });
 });
 
