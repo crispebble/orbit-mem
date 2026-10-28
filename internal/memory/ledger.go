@@ -569,6 +569,9 @@ func (s *Store) observe(obs *Observation, ids []string) error {
 		return err
 	}
 	sessions := [2]map[string]bool{{}, {}}
+	// 한 세션에서 같은 기억을 교정하고 어김으로도 판정하면 나쁜 신호 한 번이다.
+	// 세션 끝 회고는 교정이 가리킨 기억을 어김으로 맞추므로, 따로 세면 변경 뒤만 부풀어 오른다.
+	bad := [2]map[string]bool{{}, {}}
 	for _, e := range evs {
 		var d struct {
 			MemoryIDs  []string `json:"memoryIds"`
@@ -588,6 +591,10 @@ func (s *Store) observe(obs *Observation, ids []string) error {
 		if at >= obs.Split {
 			side, win = 1, &obs.After
 		}
+		badKey := e.Session + "\x00" + d.MemoryID
+		if e.Session == "" {
+			badKey = fmt.Sprintf("event-%d", e.ID)
+		}
 		switch e.Kind {
 		case EventInjectSessionStart, EventInjectPrompt:
 			for _, id := range d.MemoryIDs {
@@ -602,7 +609,7 @@ func (s *Store) observe(obs *Observation, ids []string) error {
 			}
 		case EventCorrection:
 			if want[d.MemoryID] {
-				win.Bad++
+				bad[side][badKey] = true
 			}
 		case EventMemoryUsed:
 			if !want[d.MemoryID] {
@@ -610,12 +617,13 @@ func (s *Store) observe(obs *Observation, ids []string) error {
 			}
 			switch d.Verdict {
 			case UsageViolated:
-				win.Bad++
+				bad[side][badKey] = true
 			case UsageIrrelevant:
 				win.Irrelevant++
 			}
 		}
 	}
 	obs.Before.Sessions, obs.After.Sessions = len(sessions[0]), len(sessions[1])
+	obs.Before.Bad, obs.After.Bad = len(bad[0]), len(bad[1])
 	return nil
 }

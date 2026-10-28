@@ -576,3 +576,23 @@ func TestPruneSessionState_오래된_묶음과_처리한_대기열을_지운다(
 		t.Fatalf("session_ends = %d (waiting one must stay)", n)
 	}
 }
+
+func TestLedger_같은_세션의_교정과_어김은_나쁜_신호_한_번이다(t *testing.T) {
+	s, clk := newTestStore(t)
+	m := candidate(t, s, "대상")
+	start := clk.t
+	before := start.Add(-24 * time.Hour)
+	injectAt(t, s, "s-b", before, m.ID)
+	signal(t, s, EventCorrection, "s-b", m.ID, "", before.Add(time.Minute))
+	id := approveEdit(t, s, m.ID, "고침")
+	after := start.Add(24 * time.Hour)
+	injectAt(t, s, "s-a", after, m.ID)
+	signal(t, s, EventCorrection, "s-a", m.ID, "", after.Add(time.Minute))
+	signal(t, s, EventMemoryUsed, "s-a", m.ID, "violated", after.Add(2*time.Minute))
+	clk.t = start.Add(8 * 24 * time.Hour)
+	s.JudgeLedger(7)
+	e, _ := s.LedgerEntry(id)
+	if e.Observation.Before.Bad != 1 || e.Observation.After.Bad != 1 || e.Verdict != VerdictNoEffect {
+		t.Fatalf("entry = %+v", e)
+	}
+}
