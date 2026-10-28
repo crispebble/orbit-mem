@@ -81,12 +81,12 @@ func TestSessionStart_기억이_없으면_빈_문자열(t *testing.T) {
 	}
 }
 
-func TestPrompt_강하게_맞는_기억만_최대_3건의_제목과_id(t *testing.T) {
+func TestPrompt_강하게_맞는_기억의_제목과_id와_본문_앞부분(t *testing.T) {
 	s := store(t)
-	a := save(t, s, memory.KindLesson, "codex exec를 백그라운드로 돌릴 때 stdin을 닫는다", "긴 본문은 넣지 않는다", memory.ScopeGlobal, false)
+	a := save(t, s, memory.KindLesson, "codex exec를 백그라운드로 돌릴 때 stdin을 닫는다", "본문 앞부분"+strings.Repeat("가", 300)+"끝부분", memory.ScopeGlobal, false)
 	save(t, s, memory.KindLesson, "launchd 회고 예약", "", "project:github.com/me/other", true)
 	got := Prompt(s, config.Default(), here, "codex exec를 백그라운드에서 돌렸더니 멈춰요")
-	if !strings.Contains(got, a.ID) || !strings.Contains(got, a.Title) || strings.Contains(got, "긴 본문") {
+	if !strings.Contains(got, a.ID) || !strings.Contains(got, a.Title) || !strings.Contains(got, "본문 앞부분") || strings.Contains(got, "끝부분") {
 		t.Fatalf("got %q", got)
 	}
 	if got := Prompt(s, config.Default(), here, "오늘 점심 뭐 먹지"); got != "" {
@@ -149,5 +149,57 @@ func TestPromptInjection_넣은_기억_id(t *testing.T) {
 	}
 	if inj := PromptInjection(s, config.Default(), here, "오늘 점심 뭐 먹지"); len(inj.MemoryIDs) != 0 || inj.Text != "" {
 		t.Fatalf("weak = %+v", inj)
+	}
+}
+
+func TestSessionBundle_같은_세션은_처음_묶음을_그대로_쓴다(t *testing.T) {
+	s := store(t)
+	save(t, s, memory.KindRule, "첫 규칙", "본문", memory.ScopeGlobal, true)
+	first := SessionBundle(s, config.Default(), here, "claude", "s1")
+	save(t, s, memory.KindRule, "세션 중에 확정된 규칙", "본문", memory.ScopeGlobal, true)
+	again := SessionBundle(s, config.Default(), here, "claude", "s1")
+	if again.Text != first.Text || strings.Contains(again.Text, "세션 중에") || strings.Join(again.MemoryIDs, ",") != strings.Join(first.MemoryIDs, ",") {
+		t.Fatalf("bundle changed within the session:\n%s\n---\n%s", first.Text, again.Text)
+	}
+	if next := SessionBundle(s, config.Default(), here, "claude", "s2"); !strings.Contains(next.Text, "세션 중에 확정된 규칙") {
+		t.Fatalf("next session must see the new rule:\n%s", next.Text)
+	}
+	if none := SessionBundle(s, config.Default(), here, "claude", ""); !strings.Contains(none.Text, "세션 중에 확정된 규칙") {
+		t.Fatalf("no session id builds afresh")
+	}
+}
+
+func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶는다(t *testing.T) {
+	s := store(t)
+	g := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기", "전역 본문", memory.ScopeGlobal, false)
+	p := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 (이 앱)", "프로젝트 본문", here, false)
+	cfg := config.Default()
+	inj := PromptInjection(s, cfg, here, "launchd 예약 회고를 다시 걸어야 해")
+	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != p.ID || inj.MemoryIDs[1] != g.ID {
+		t.Fatalf("project first: %v (p=%s g=%s)\n%s", inj.MemoryIDs, p.ID, g.ID, inj.Text)
+	}
+	// 같은 점수·같은 범위면 사용 판정(따름 − 상관없음)이 높은 것이 먼저다.
+	s2 := store(t)
+	a := save(t, s2, memory.KindLesson, "codex exec 백그라운드 stdin 닫기", "가", memory.ScopeGlobal, false)
+	b := save(t, s2, memory.KindLesson, "codex exec 백그라운드 stdin 닫기 두번째", "나", memory.ScopeGlobal, false)
+	for i, v := range []string{memory.UsageIrrelevant, memory.UsageIrrelevant} {
+		s2.RecordEvent(memory.Event{Kind: memory.EventMemoryUsed, Session: "s" + string(rune('0'+i))}, map[string]any{"memoryId": b.ID, "verdict": v})
+	}
+	s2.RecordEvent(memory.Event{Kind: memory.EventMemoryUsed, Session: "s9"}, map[string]any{"memoryId": a.ID, "verdict": memory.UsageFollowed})
+	inj = PromptInjection(s2, cfg, here, "codex exec 백그라운드 stdin")
+	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != a.ID {
+		t.Fatalf("usage order: %v (a=%s)", inj.MemoryIDs, a.ID)
+	}
+	// 글자 수 상한: 넘으면 본문을 빼고, 제목도 안 들어가면 멈춘다.
+	s3 := store(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		m := save(t, s3, memory.KindFact, "회고 예약 launchd 설정 "+string(rune('A'+i)), strings.Repeat("본", 180), memory.ScopeGlobal, false)
+		ids = append(ids, m.ID)
+	}
+	cfg.RecallChars = 400
+	inj = PromptInjection(s3, cfg, here, "회고 예약 launchd 설정")
+	if inj.Chars > 400 || len(inj.MemoryIDs) == 0 || len(inj.MemoryIDs) == 8 {
+		t.Fatalf("budget: %d chars, %d memories\n%s", inj.Chars, len(inj.MemoryIDs), inj.Text)
 	}
 }
