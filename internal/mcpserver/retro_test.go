@@ -43,6 +43,13 @@ func TestRetroMode_재료읽기와_제출만_열린다(t *testing.T) {
 	if strings.Join(names, ",") != "memory_find,memory_get,retro_material,retro_read_file,retro_submit" {
 		t.Fatalf("tools = %v", names)
 	}
+	checkHints(t, cs, map[string]hints{
+		"memory_find":     {read: true},
+		"memory_get":      {read: true},
+		"retro_material":  {read: true},
+		"retro_read_file": {read: true},
+		"retro_submit":    {idempotent: true},
+	})
 	res := call(t, cs, "retro_material", map[string]any{"page": 1}, nil)
 	if res.IsError || !strings.Contains(text(res), "안녕") {
 		t.Fatalf("material: %s", text(res))
