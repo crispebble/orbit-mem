@@ -553,3 +553,26 @@ func TestProposal_고쳐서_승인할_때_빈_본문은_그대로_둔다(t *test
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestPruneSessionState_오래된_묶음과_처리한_대기열을_지운다(t *testing.T) {
+	s, clk := newTestStore(t)
+	s.SaveSessionBundle("claude", "old", "옛 묶음", nil)
+	s.DB().Exec(`INSERT INTO session_ends(host,session,ended_at,retro_id) VALUES('claude','old-done',?,'r-1'),('claude','old-wait',?,'')`,
+		clk.t.UnixMilli(), clk.t.UnixMilli())
+	clk.t = clk.t.AddDate(0, 0, 31)
+	s.SaveSessionBundle("claude", "new", "새 묶음", nil)
+	if err := s.PruneSessionState(30); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := s.SessionBundle("claude", "old"); ok {
+		t.Fatal("old bundle kept")
+	}
+	if _, _, ok := s.SessionBundle("claude", "new"); !ok {
+		t.Fatal("new bundle removed")
+	}
+	var n int
+	s.DB().QueryRow(`SELECT COUNT(*) FROM session_ends`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("session_ends = %d (waiting one must stay)", n)
+	}
+}

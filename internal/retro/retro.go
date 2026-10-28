@@ -42,6 +42,8 @@ const (
 	maxCatchUpDays = 7
 	runTimeout     = 30 * time.Minute
 	lockStale      = 6 * time.Hour // 최악 실행(일 7회+주간 1회, 각 30분)보다 길게
+	// 세션 고정 묶음·처리한 대기열을 남기는 날 수: Claude Code 대화 기록 기본 보관(cleanupPeriodDays 30일)
+	sessionStateDays = 30
 )
 
 // Cmd is a host process to run.
@@ -342,6 +344,9 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 		errs = append(errs, fmt.Errorf("주간 %s: %w", week, err))
 	}
 	if _, err := r.Store.CloseSettled(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := r.Store.PruneSessionState(sessionStateDays); err != nil {
 		errs = append(errs, err)
 	}
 	return results, errors.Join(errs...)
