@@ -322,6 +322,9 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		{"orbit:reviewer", "판정: 수정 요구\n\n### 지적", "needs_fix"},
 		{"orbit:gate", "판정 : 통과", "pass"},
 		{"orbit:gate", "이번 판정: 시험이 없어 보류합니다", ""},
+		{"orbit:gate", "판정：통과", "pass"}, // 전각 콜론
+		// 판정으로 읽히지 않는 앞 줄은 뒤의 판정 제목을 가리지 않는다
+		{"orbit:reviewer", "판정: 시험이 없어 보류합니다\n\n### 판정\n수정 요구", "needs_fix"},
 		// 옛 틀(이전 판 역할 파일이 남은 호스트)
 		{"orbit:gate", "### 전체 판정\n통과\n", "pass"},
 		{"orbit:gate", "### 전체 판정\n\n수정 필요 — 시험 로그가 없습니다", "needs_fix"},
@@ -430,6 +433,14 @@ func TestCodexSurface(t *testing.T) {
 		return b
 	}
 	desktopEnv := map[string]string{"CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop"}
+	trunc := filepath.Join(dir, "trunc.jsonl")
+	if err := os.WriteFile(trunc, []byte(`{"type":"session_meta","payload":{"id":"C1","source":"exec"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	long := filepath.Join(dir, "long.jsonl")
+	if err := os.WriteFile(long, []byte(`{"type":"session_meta","payload":{"id":"C1","source":"exec","x":"`+strings.Repeat("x", 1<<20)+`"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		name, transcript string
 		vars             map[string]string
@@ -441,6 +452,10 @@ func TestCodexSurface(t *testing.T) {
 		{"다른 세션의 기록", meta("other.jsonl", "C2", `"exec"`, "codex_exec"), desktopEnv, "desktop"},
 		{"기록 없음·데스크톱 변수", filepath.Join(dir, "none.jsonl"), desktopEnv, "desktop"},
 		{"기록 없음", "", nil, "unknown"},
+		{"모르는 originator", meta("vsc.jsonl", "C1", `"vscode"`, "codex_vscode"), nil, "unknown"},
+		{"서브에이전트 스레드", meta("sub.jsonl", "C1", `{"subagent":{"other":"guardian"}}`, "Codex Desktop"), nil, "desktop"},
+		{"줄바꿈 없이 잘린 기록", trunc, desktopEnv, "desktop"},
+		{"1MiB를 넘는 첫 줄", long, nil, "unknown"},
 	} {
 		p := Translate(start(c.transcript), env("codex", c.vars))
 		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != c.want {

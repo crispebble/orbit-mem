@@ -4,7 +4,6 @@
 package hook
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -202,7 +201,7 @@ func (t *translator) surface() string {
 		case v == "codex_cli_rs":
 			return "cli"
 		}
-		return "unknown"
+		return "unknown" // 모르는 originator는 짐작하지 않는다
 	}
 	// 각 세션이 자기 훅에 새로 넣는다(물려받지 않음). claude -p는 0
 	if t.env.Getenv("CLAUDE_CODE_SESSION_ATTENDED") == "0" {
@@ -221,17 +220,15 @@ func (t *translator) surface() string {
 
 // codexMeta reads source and originator from the session_meta line Codex
 // writes first in its transcript (before SessionStart). A line from another
-// session gives nothing.
+// session gives nothing. A resumed session appends to the same transcript and
+// keeps that one line (실측 codex-cli 0.164), so it keeps the surface it
+// started on even when resumed elsewhere.
 func codexMeta(path, session string) (source, originator string) {
 	if path == "" {
 		return "", ""
 	}
-	b, err := readHead(path, 1<<20)
+	line, err := readFirstLine(path, 1<<20)
 	if err != nil {
-		return "", ""
-	}
-	line, _, ok := bytes.Cut(b, []byte("\n"))
-	if !ok {
 		return "", ""
 	}
 	var rec struct {
@@ -717,7 +714,8 @@ func roleBase(role string) string {
 // 「전체 판정」, agents/reviewer.md 「판정」). Models do not always keep the
 // template: the verdict may follow the heading on the same line
 // ("## 판정: 수정 필요") or on the next non-empty line. The first heading wins;
-// "완료 기준별 판정" is a table, not the verdict.
+// "완료 기준별 판정" is a table, not the verdict. A heading that does not read
+// as a verdict (an unfilled template, a sentence) gives way to the next one.
 func parseVerdict(role, text string) *work.Verdict {
 	base := roleBase(role)
 	if (base != "gate" && base != "reviewer") || text == "" {
@@ -736,7 +734,9 @@ func parseVerdict(role, text string) *work.Verdict {
 				}
 			}
 		}
-		return verdictOf(role, rest)
+		if v := verdictOf(role, rest); v != nil {
+			return v
+		}
 	}
 	return nil
 }
@@ -757,7 +757,7 @@ func verdictHeading(l string) (string, bool) {
 		if !ok {
 			continue
 		}
-		if !marked && !strings.HasPrefix(strings.TrimSpace(rest), ":") {
+		if r := strings.TrimSpace(rest); !marked && !strings.HasPrefix(r, ":") && !strings.HasPrefix(r, "：") {
 			return "", false // 꾸밈 없는 줄은 판정 줄 모양만 받는다
 		}
 		return cleanVerdict(rest), true

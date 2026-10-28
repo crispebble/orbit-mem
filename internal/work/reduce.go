@@ -522,6 +522,11 @@ func (r *reducer) activeSteps(host, session string) ([]stepRef, error) {
 // activeStepsAt returns the steps that were in progress when this event's
 // hook fired. An async hook can arrive after a later sync hook moved the list
 // on, so evidence and runs follow the hook's time, not the arrival.
+//
+// Steps keep one start and one finish, not their history: a step reopened
+// later counts as in progress since its first start, and only the session
+// that touched a step last finds it. A finish and a hook in the same
+// millisecond leave the finished step out.
 func (r *reducer) activeStepsAt(host, session string) ([]stepRef, error) {
 	return r.querySteps(`s.started_at>0 AND s.started_at<=? AND (s.host_status='in_progress' OR s.finished_at>?)`, host, session, r.e.At, r.e.At)
 }
