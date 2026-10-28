@@ -218,3 +218,98 @@ func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
 		t.Fatalf("events = %+v", evs)
 	}
 }
+
+func TestHook_세션_끝은_대기열에_넣고_뒤_실행을_띄운다(t *testing.T) {
+	h := home(t)
+	s := seed(t)
+	var spawned [][]string
+	old := spawnDetached
+	spawnDetached = func(name string, args []string, log string) error { spawned = append(spawned, args); return nil }
+	t.Cleanup(func() { spawnDetached = old })
+
+	out, _, code := run(t, `{"cwd":"/w/app","session_id":"sess-9","transcript_path":"/x/sess-9.jsonl","hook_event_name":"SessionEnd","reason":"exit"}`, "hook", "session-end", "--host", "claude")
+	if code != 0 || out != "" {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	if len(spawned) != 1 || strings.Join(spawned[0], " ") != "retro sessions" {
+		t.Fatalf("spawned = %v", spawned)
+	}
+	var host, session, transcript string
+	if err := s.DB().QueryRow(`SELECT host, session, transcript FROM session_ends WHERE retro_id=''`).Scan(&host, &session, &transcript); err != nil ||
+		host != "claude" || session != "sess-9" || transcript != "/x/sess-9.jsonl" {
+		t.Fatalf("queue = %s %s %s %v", host, session, transcript, err)
+	}
+	// 넣지 않는 경우: Orbit 폴더 아래 세션, 회고 실행 안, 세션 끝 회고를 끈 PC.
+	run(t, `{"cwd":"`+filepath.Join(h, "retro", "run")+`","session_id":"sess-r"}`, "hook", "session-end", "--host", "claude")
+	t.Setenv("ORBIT_RETRO_ID", "r-1")
+	run(t, `{"cwd":"/w/app","session_id":"sess-in-retro"}`, "hook", "session-end", "--host", "claude")
+	t.Setenv("ORBIT_RETRO_ID", "")
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14,"sessionRetro":false,"recallChars":1000,"ledgerWindowDays":7}`), 0o600)
+	run(t, `{"cwd":"/w/app","session_id":"sess-off"}`, "hook", "session-end", "--host", "claude")
+	var n int
+	s.DB().QueryRow(`SELECT COUNT(*) FROM session_ends`).Scan(&n)
+	if n != 1 || len(spawned) != 1 {
+		t.Fatalf("queued %d, spawned %d", n, len(spawned))
+	}
+}
+
+func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
+	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
+	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"compact"}`, "hook", "session-start", "--host", "claude")
+	if first != again || strings.Contains(again, "새로 확정된 규칙") {
+		t.Fatalf("bundle changed:\n%s\n%s", first, again)
+	}
+	next, _, _ := run(t, `{"cwd":"/tmp","session_id":"s2","source":"startup"}`, "hook", "session-start", "--host", "claude")
+	if !strings.Contains(next, "새로 확정된 규칙") {
+		t.Fatalf("next session: %s", next)
+	}
+}
+
+func TestRetroSessions_대기열이_비면_조용히_끝난다(t *testing.T) {
+	home(t)
+	seed(t)
+	out, errOut, code := run(t, "", "retro", "sessions")
+	if code != 0 || !strings.Contains(out, "대기 세션 0") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	}
+}
+
+func TestLedger_승인한_변경을_보여_준다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "모호한 교훈", Source: memory.Source{Kind: "session"}})
+	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "문구 고치기", MemoryIDs: []string{m.ID}, Payload: memory.Payload{Title: "분명한 교훈"}})
+	res, err := s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := run(t, "", "ledger")
+	if code != 0 || !strings.Contains(out, res.LedgerID) || !strings.Contains(out, "관찰 중") || !strings.Contains(out, "문구 고치기") {
+		t.Fatalf("ledger: %s", out)
+	}
+	out, _, _ = run(t, "", "ledger", "--json")
+	var rows []struct{ ID, Verdict string }
+	if json.Unmarshal([]byte(out), &rows) != nil || len(rows) != 1 || rows[0].ID != res.LedgerID {
+		t.Fatalf("json: %s", out)
+	}
+}
+
+func TestConfig_2차_키를_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"sessionRetro", "false"}, {"sessionRetroModel", "sonnet"}, {"sessionRetroDailyMax", "12"}, {"recallChars", "1500"}, {"ledgerWindowDays", "14"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("%s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.SessionRetro || cfg.SessionRetroModel != "sonnet" || cfg.SessionRetroDailyMax != 12 || cfg.RecallChars != 1500 || cfg.LedgerWindowDays != 14 {
+		t.Fatalf("cfg = %+v %v", cfg, err)
+	}
+	if _, _, code := run(t, "", "config", "set", "recallChars", "50"); code != 1 {
+		t.Fatalf("out of range accepted: %d", code)
+	}
+}
