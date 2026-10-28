@@ -65,8 +65,49 @@ CREATE TABLE IF NOT EXISTS retros (
 CREATE INDEX IF NOT EXISTS retros_period ON retros(kind, period);
 CREATE TABLE IF NOT EXISTS absorbed (path TEXT PRIMARY KEY, hash TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-PRAGMA user_version=1;
+CREATE TABLE IF NOT EXISTS session_ends (
+  host TEXT NOT NULL, session TEXT NOT NULL, transcript TEXT NOT NULL DEFAULT '', cwd TEXT NOT NULL DEFAULT '',
+  ended_at INTEGER NOT NULL, retro_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(host, session));
+CREATE TABLE IF NOT EXISTS retro_coverage (
+  session_key TEXT NOT NULL, from_at INTEGER NOT NULL, to_at INTEGER NOT NULL, retro_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS retro_coverage_key ON retro_coverage(session_key);
+CREATE TABLE IF NOT EXISTS session_bundles (
+  host TEXT NOT NULL, session TEXT NOT NULL, text TEXT NOT NULL, memory_ids TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL,
+  PRIMARY KEY(host, session));
+CREATE TABLE IF NOT EXISTS judgments (
+  id TEXT PRIMARY KEY, at INTEGER NOT NULL, retro_id TEXT NOT NULL DEFAULT '', session TEXT NOT NULL DEFAULT '',
+  memory_id TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', excerpt TEXT NOT NULL DEFAULT '',
+  verdict TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', proposal_id TEXT NOT NULL DEFAULT '',
+  user_decision TEXT NOT NULL DEFAULT '', user_note TEXT NOT NULL DEFAULT '', decided_at INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS judgments_memory ON judgments(memory_id) WHERE memory_id <> '';
+CREATE TABLE IF NOT EXISTS ledger (
+  id TEXT PRIMARY KEY, at INTEGER NOT NULL, day TEXT NOT NULL, proposal_id TEXT NOT NULL, proposal_kind TEXT NOT NULL,
+  target_kind TEXT NOT NULL, targets TEXT NOT NULL DEFAULT '[]', observe TEXT NOT NULL DEFAULT '[]',
+  change TEXT NOT NULL DEFAULT '', basis TEXT NOT NULL DEFAULT '', before TEXT NOT NULL DEFAULT '{}',
+  verdict TEXT NOT NULL, evidence INTEGER NOT NULL DEFAULT 0, observation TEXT NOT NULL DEFAULT '{}', judged_at INTEGER NOT NULL DEFAULT 0,
+  lesson_id TEXT NOT NULL DEFAULT '', revert_of TEXT NOT NULL DEFAULT '', reverted_by TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS ledger_at ON ledger(at);
+PRAGMA user_version=2;
 `
+
+// addColumns adds the columns later versions put on tables an older Orbit made.
+func addColumns(db *sql.DB) error {
+	for _, c := range []struct{ table, column, def string }{
+		{"retros", "session", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS retros_session ON retros(session) WHERE session <> ''`)
+	return err
+}
 
 // Open opens (creating if needed) the memory database at path. The directory is private to the user.
 func Open(path string) (*Store, error) {
@@ -87,6 +128,10 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema + eventsSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+	}
+	if err := addColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("기억 DB를 새 판으로 올리지 못했습니다: %w", err)
 	}
 	_ = os.Chmod(path, 0o600)
 	return &Store{db: db, path: path, Now: time.Now}, nil
@@ -448,6 +493,7 @@ type UpdateInput struct {
 	Body            *string
 	Tags            *[]string
 	Scope           *string
+	Project         *string
 	State           *string
 	Reason          string
 	Action          string
@@ -491,6 +537,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 			return m, ErrInvalid
 		}
 		m.Scope = *in.Scope
+	}
+	if in.Project != nil {
+		m.Project = *in.Project
 	}
 	if in.State != nil {
 		if !contains(States, *in.State) {
