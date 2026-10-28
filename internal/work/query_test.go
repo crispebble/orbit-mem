@@ -497,3 +497,176 @@ func execGit(dir string, args ...string) (string, error) {
 	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
 	return string(out), err
 }
+
+// cwdPrefix는 글자가 아니라 경로로 비교한다: 한글 경로에서도 맞는다.
+func TestCwdPrefixNonASCII(t *testing.T) {
+	w := newTW(t)
+	for i, cwd := range []string{"/Users/크리스/proj/sub", "/Users/크리스/proj", "/Users/크리스/projx"} {
+		w.at += 1000
+		e := NewEvent(KindTaskCreate, "claude", fmt.Sprintf("S%d", i), w.at, TaskCreate{List: fmt.Sprintf("S%d", i), ID: "1", Subject: "단계"})
+		e.Cwd = cwd
+		if _, err := w.s.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := w.s.ListWorks(Filter{CwdPrefix: []string{"/Users/크리스/proj"}}, ReadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Items) != 2 {
+		t.Errorf("작업 %d개, 둘이어야 합니다", len(p.Items))
+	}
+}
+
+// 옛 판(1) DB는 열 때 그래프 표를 원장에서 새 모양으로 다시 만든다. DB 정체는 그대로다.
+func TestOpenUpgradesOldGraph(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "work.db")
+	w := newTW(t)
+	w.s.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.s = s
+	w.claude(KindTaskCreate, TaskCreate{List: "S1", ID: "1", Subject: "단계"})
+	w.claude(KindTaskUpdate, TaskUpdate{List: "S1", ID: "1", Status: str("in_progress")})
+	before := w.only()
+	id := s.ID()
+	for _, q := range []string{`ALTER TABLE waits DROP COLUMN resolved_at`, `PRAGMA user_version=1`} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	w.s = s
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('waits') WHERE name='resolved_at'`).Scan(&n)
+	if n != 1 || s.ID() != id {
+		t.Fatalf("resolved_at %d, 정체 %s → %s", n, id, s.ID())
+	}
+	if after := w.only(); after.ID != before.ID || after.Steps[0].Status != "in_progress" {
+		t.Errorf("다시 만든 그래프: %+v", after)
+	}
+}
+
+// 계속 실패하는 스풀 사건은 옆으로 두고 다음 사건으로 넘어간다. 그 하나 때문에 뒤의 기록이 모두 스풀에 멈추지 않게.
+func TestDrainSetsAsideFailingEvent(t *testing.T) {
+	dir := t.TempDir()
+	spool := filepath.Join(dir, "spool")
+	bad := NewEvent(KindTaskCreate, "claude", "S1", 1, nil)
+	bad.Data = []byte(`{"list":5}`) // 이 판이 읽지 못하는 모양
+	good := NewEvent(KindTaskCreate, "claude", "S1", 2, TaskCreate{List: "S1", ID: "1", Subject: "뒤 사건"})
+	for _, e := range []Event{bad, good} {
+		if err := SpoolEvent(spool, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Open(filepath.Join(dir, "work.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.Spool = spool
+	if n, err := s.Drain(); err != nil || n != 1 {
+		t.Fatalf("비우기 %d %v", n, err)
+	}
+	if bads, _ := filepath.Glob(filepath.Join(spool, "*.bad")); len(bads) != 1 {
+		t.Errorf("옆으로 둔 파일 %v", bads)
+	}
+	if left, _ := filepath.Glob(filepath.Join(spool, "*.json")); len(left) != 0 {
+		t.Errorf("남은 스풀 %v", left)
+	}
+}
+
+// 가져간 프로세스가 끝나 버린 스풀 파일은 다시 가져온다.
+func TestDrainRecoversOrphanClaim(t *testing.T) {
+	dir := t.TempDir()
+	spool := filepath.Join(dir, "spool")
+	if err := SpoolEvent(spool, NewEvent(KindTaskCreate, "claude", "S1", 1, TaskCreate{List: "S1", ID: "1", Subject: "고아"})); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Skip("끝난 프로세스 번호를 얻지 못했습니다: " + err.Error())
+	}
+	files, _ := filepath.Glob(filepath.Join(spool, "*.json"))
+	name := filepath.Base(files[0])
+	if err := os.Rename(files[0], filepath.Join(spool, fmt.Sprintf(".%s.%d.claim", name, cmd.Process.Pid))); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(filepath.Join(dir, "work.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.Spool = spool
+	if n, err := s.Drain(); err != nil || n != 1 {
+		t.Fatalf("비우기 %d %v", n, err)
+	}
+}
+
+// 훅의 남은 시간이 적으면 잠긴 DB를 기다리지 않고 바로 스풀에 남긴다(마감에 끊겨 사건을 잃지 않게).
+func TestRecordAllKeepsDeadline(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "work.db")
+	spool := filepath.Join(dir, "spool")
+	holder, err := Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	conn, _ := holder.db.Conn(context.Background())
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), `BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(context.Background(), `ROLLBACK`)
+	start := time.Now()
+	e := NewEvent(KindTaskCreate, "claude", "S1", 1, TaskCreate{List: "S1", ID: "1", Subject: "마감"})
+	RecordAll(db, spool, []Event{e}, start.Add(400*time.Millisecond))
+	if d := time.Since(start); d > 400*time.Millisecond {
+		t.Errorf("마감을 넘겼습니다: %v", d)
+	}
+	if files, _ := filepath.Glob(filepath.Join(spool, "*.json")); len(files) != 1 {
+		t.Errorf("스풀 파일 %d개", len(files))
+	}
+}
+
+// 다른 세션의 사건 커서는 받지 않는다.
+func TestSessionEventsRejectsOtherCursor(t *testing.T) {
+	w := newTW(t)
+	for i := 0; i < 3; i++ {
+		w.ev(KindTurnStart, "claude", "S1", Turn{Prompt: fmt.Sprintf("P%d", i)})
+		w.ev(KindTurnStart, "claude", "S2", Turn{Prompt: fmt.Sprintf("P%d", i)})
+	}
+	d, err := w.s.SessionEvents("S1", "", 1, ReadOptions{})
+	if err != nil || d.NextCursor == "" {
+		t.Fatalf("첫 쪽: %v %q", err, d.NextCursor)
+	}
+	if _, err := w.s.SessionEvents("S2", d.NextCursor, 1, ReadOptions{}); err != ErrBadCursor {
+		t.Errorf("다른 세션 커서: %v", err)
+	}
+}
+
+// 백업 경로에 #·?가 있어도 사본의 정체를 바꾼다.
+func TestBackupEscapesPath(t *testing.T) {
+	w := newTW(t)
+	w.claude(KindTaskCreate, TaskCreate{List: "S1", ID: "1", Subject: "단계"})
+	dst := filepath.Join(t.TempDir(), "백업 #1?", "work.db")
+	if err := w.s.Backup(dst); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Open(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.ID() == w.s.ID() {
+		t.Error("사본이 같은 정체를 가졌습니다")
+	}
+}

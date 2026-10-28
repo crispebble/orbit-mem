@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Page sizes and waits oni chose (계약 README 「oni가 정한 값」).
@@ -116,8 +117,9 @@ func cwdCond(col string, prefixes []string) (string, []any) {
 		if p == "/" {
 			sub = "/"
 		}
+		// SQLite substr은 글자 수로 센다
 		parts = append(parts, "("+col+"=? OR substr("+col+",1,?)=?)")
-		args = append(args, p, len(sub), sub)
+		args = append(args, p, utf8.RuneCountInString(sub), sub)
 	}
 	return " AND (" + strings.Join(parts, " OR ") + ")", args
 }
@@ -370,6 +372,9 @@ func (s *Store) SessionEvents(sessionID, cursor string, limit int, opt ReadOptio
 	}
 	var host string
 	if cur != nil {
+		if cur.ID != sessionID {
+			return SessionDetail{}, ErrBadCursor // 다른 세션의 커서
+		}
 		host = cur.Host
 	} else if err := s.db.QueryRow(`SELECT host FROM sessions WHERE id=? ORDER BY updated_seq DESC LIMIT 1`, sessionID).Scan(&host); errors.Is(err, sql.ErrNoRows) {
 		return SessionDetail{}, ErrNotFound

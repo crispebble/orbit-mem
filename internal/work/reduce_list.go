@@ -382,6 +382,11 @@ func (r *reducer) taskState() error {
 	}
 	works := map[string]bool{}
 	seen := map[string]bool{}
+	type preds struct {
+		step string
+		want map[string]bool
+	}
+	var reconcile []preds
 	for _, t := range p.Tasks {
 		if t.ID == "" {
 			continue
@@ -417,9 +422,15 @@ func (r *reducer) taskState() error {
 					return err
 				}
 			}
-			if err := r.dropNativeEdgesExcept(step, want); err != nil {
-				return err
-			}
+			reconcile = append(reconcile, preds{step, want})
+		}
+	}
+	// TaskGet의 blockedBy는 선행 전체이고, TaskList의 것은 끝나지 않은 선행만이다(탐침).
+	// 그래서 TaskList에서는 끝나거나 빠진 선행으로 가는 간선을 남긴다. 같은 목록에서 상태가
+	// 바뀐 선행도 있으므로 모든 항목의 상태를 고친 뒤에 맞춘다.
+	for _, x := range reconcile {
+		if err := r.dropNativeEdgesExcept(x.step, x.want, p.Full); err != nil {
+			return err
 		}
 	}
 	if p.Full {
@@ -459,15 +470,21 @@ func (r *reducer) taskState() error {
 	return nil
 }
 
-func (r *reducer) dropNativeEdgesExcept(step string, keep map[string]bool) error {
-	rows, err := r.tx.Query(`SELECT after_id FROM edges WHERE step_id=? AND source='native'`, step)
+// dropNativeEdgesExcept drops the native edges of step to predecessors not in keep.
+// With openOnly the list names only open predecessors, so edges to finished ones stay.
+func (r *reducer) dropNativeEdgesExcept(step string, keep map[string]bool, openOnly bool) error {
+	rows, err := r.tx.Query(`SELECT e.after_id, COALESCE(s.host_status,'') FROM edges e LEFT JOIN steps s ON s.id=e.after_id
+		WHERE e.step_id=? AND e.source='native'`, step)
 	if err != nil {
 		return err
 	}
 	var drop []string
 	for rows.Next() {
-		var a string
-		_ = rows.Scan(&a)
+		var a, st string
+		_ = rows.Scan(&a, &st)
+		if openOnly && (st == hostDone || st == hostCancelled) {
+			continue
+		}
 		if !keep[a] {
 			drop = append(drop, a)
 		}

@@ -24,14 +24,17 @@ func activeTask(w *tw, ids ...string) {
 // 끝 기준: 권한 요청 뒤 진행 단계가 blocked(waiting_user), 같은 도구의 사후 사건 뒤 in_progress.
 // 도착 순서를 섞어도 같은 결과(순열 시험).
 func TestWaitingUserPermutations(t *testing.T) {
+	// 사건은 훅이 불린 시각(at)을 지니고, 비동기 훅은 그 시각과 다른 순서로 도착할 수 있다.
 	type step struct {
+		at      int64
 		kind    string
 		payload any
 	}
-	open := step{KindWaitOpen, Wait{Key: "k1", Prompt: "P1", Tool: "Bash"}}
-	done := step{KindToolDone, ToolDone{Key: "k1", Tool: "Bash"}}
-	stop := step{KindTurnEnd, Turn{Prompt: "P1"}}
-	other := step{KindToolDone, ToolDone{Key: "k2", Tool: "Read"}}
+	open := step{1, KindWaitOpen, Wait{Key: "k1", Prompt: "P1", Tool: "Bash"}}
+	done := step{2, KindToolDone, ToolDone{Key: "k1", Tool: "Bash"}}
+	again := step{3, KindWaitOpen, Wait{Key: "k1", Prompt: "P1", Tool: "Bash"}}
+	stop := step{6, KindTurnEnd, Turn{Prompt: "P1"}}
+	other := step{0, KindToolDone, ToolDone{Key: "k2", Tool: "Read"}}
 	cases := []struct {
 		name    string
 		events  []step
@@ -45,14 +48,19 @@ func TestWaitingUserPermutations(t *testing.T) {
 		{"요청·턴 끝", []step{open, stop}, false},
 		{"턴 끝·요청", []step{stop, open}, false},
 		{"사후·턴 끝·요청", []step{done, stop, open}, false},
+		{"같은 명령을 다시 요청", []step{open, done, again}, true},
+		{"늦은 첫 요청 뒤 다시 요청", []step{done, open, again}, true},
+		{"다시 요청·늦은 사후", []step{open, again, done}, false},
+		{"사후 두 번 뒤 늦은 요청", []step{done, {5, KindToolDone, ToolDone{Key: "k1", Tool: "Bash"}}, {4, KindWaitOpen, Wait{Key: "k1", Prompt: "P1", Tool: "Bash"}}}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			w := newTW(t)
 			w.claude(KindTurnStart, Turn{Prompt: "P1"})
 			activeTask(w, "1")
+			base := w.at + 1000
 			for _, e := range c.events {
-				w.claude(e.kind, e.payload)
+				w.evAt(base+e.at*1000, e.kind, "claude", "S1", e.payload)
 			}
 			s := w.only().Steps[0]
 			if got := s.Status == "blocked" && s.Block.Reason == "waiting_user"; got != c.blocked {
@@ -310,6 +318,11 @@ func TestChildSession(t *testing.T) {
 	if a := st.Assignee; a == nil || a.Kind != "session" || a.Host != "codex" {
 		t.Errorf("담당: %+v", a)
 	}
+	// 부모 세션 자리는 자식의 작업 폴더를 받지 않는다
+	w.start("codex", "C8", SessionStart{Parent: &ParentRef{Host: "claude", Session: "P0", Step: "1"}})
+	if cwd := w.sessionDoc("claude", "P0").Cwd; cwd != "" {
+		t.Errorf("부모 세션 cwd %q", cwd)
+	}
 	w.ev(KindSessionEnd, "codex", "C9", SessionEnd{})
 	parent, _, _ = w.s.GetWork(parent.ID, false, ReadOptions{})
 	for _, r := range parent.Runs {
@@ -326,7 +339,7 @@ func TestEventsHoldNoBodies(t *testing.T) {
 	w := newTW(t)
 	activeTask(w, "1")
 	w.claude(KindRunStart, RunStart{Agent: "a1", Type: "orbit:gate"})
-	w.claude(KindRunStop, RunStop{Agent: "a1", Type: "orbit:gate", Transcript: "/t/agent-a1.jsonl", Verdict: &Verdict{Role: "orbit:gate", Result: "pass", Line: "판정 줄 원문 Q7"}})
+	w.claude(KindRunStop, RunStop{Agent: "a1", Type: "orbit:gate", Transcript: "/t/agent-a1.jsonl", Verdict: &Verdict{Role: "orbit:gate", Result: "pass"}})
 	d, _ := w.s.SessionEvents("S1", "", 0, ReadOptions{})
 	for _, e := range d.Events {
 		if strings.Contains(e.Summary, "원문 Q7") {

@@ -196,10 +196,10 @@ type RunStop struct {
 }
 
 // Verdict is a gate or reviewer decision read from the subagent's last answer.
+// Only the decision is kept, not the answer text.
 type Verdict struct {
 	Role   string `json:"role"`
 	Result string `json:"result"` // pass | needs_fix | needs_user
-	Line   string `json:"line,omitempty"`
 }
 
 // Command is a test or build command result.

@@ -221,7 +221,7 @@ func parseParent(v string) *work.ParentRef {
 func (t *translator) postTool(failed bool) {
 	in := t.in
 	switch {
-	case t.env.Host == "claude" && strings.HasPrefix(in.Tool, "Task") && in.Tool != "TaskStop" && in.Tool != "TaskOutput":
+	case t.env.Host == "claude" && strings.HasPrefix(in.Tool, "Task") && in.Tool != "Task" && in.Tool != "TaskStop" && in.Tool != "TaskOutput":
 		t.plan.Sync, t.plan.ListTool = true, true
 		if !failed {
 			t.claudeTask()
@@ -713,12 +713,12 @@ func verdictHeading(l string) (string, bool) {
 }
 
 func verdictOf(role, v string) *work.Verdict {
-	if v == "" || strings.Contains(v, "/") {
-		return nil // 채우지 않은 틀
-	}
 	for _, w := range []struct{ word, result string }{{"사용자 확인 필요", "needs_user"}, {"수정 필요", "needs_fix"}, {"수정 요구", "needs_fix"}, {"통과", "pass"}, {"승인", "pass"}} {
-		if strings.HasPrefix(v, w.word) {
-			return &work.Verdict{Role: role, Result: w.result, Line: work.Clean(v, 120)}
+		if rest, ok := strings.CutPrefix(v, w.word); ok {
+			if r := strings.TrimSpace(rest); strings.HasPrefix(r, "/") || strings.HasPrefix(r, "|") {
+				return nil // 채우지 않은 틀(통과 / 수정 필요 / …). 뒤 설명의 경로는 판정을 막지 않는다
+			}
+			return &work.Verdict{Role: role, Result: w.result}
 		}
 	}
 	return nil

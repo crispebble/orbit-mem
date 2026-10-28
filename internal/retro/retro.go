@@ -288,12 +288,12 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	if _, err := r.Store.Backup(r.Paths.Backups(), max(r.Cfg.BackupKeep, 1)); err != nil {
 		return nil, err
 	}
-	// 작업 기록 DB도 같은 날 함께 복사한다(설계 · Orbit 2차 「저장」)
-	if _, err := work.DailyBackup(r.Paths.WorkDB(), r.Paths.Backups(), max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
-		return nil, err
-	}
 	var results []Result
 	var errs []error
+	// 작업 기록 DB도 같은 날 함께 복사한다(설계 · Orbit 2차 「저장」). 실패해도 회고는 돈다
+	if _, err := work.DailyBackup(r.Paths.WorkDB(), r.Paths.Backups(), max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
+		errs = append(errs, fmt.Errorf("작업 기록 DB를 백업하지 못했습니다: %w", err))
+	}
 	// 세션 끝 회고를 먼저 끝내야 하루 회고가 그 결과를 모으고 남은 발화만 읽는다.
 	sres, err := r.drain(ctx)
 	results = append(results, sres...)

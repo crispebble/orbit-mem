@@ -494,3 +494,17 @@ func TestWeekly_재료에_그_주_지표가_들어간다(t *testing.T) {
 		t.Fatalf("material: %s", all)
 	}
 }
+
+func TestCatchUp_작업_기록_백업이_실패해도_회고는_돈다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 28, 9, 0, 0, 0, kst))
+	if err := os.WriteFile(e.r.Paths.WorkDB(), []byte("SQLite가 아닌 파일"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	results, err := e.r.CatchUp(context.Background())
+	if len(results) != 2 {
+		t.Fatalf("results = %+v", results)
+	}
+	if err == nil || !strings.Contains(err.Error(), "작업 기록") {
+		t.Fatalf("err = %v", err)
+	}
+}

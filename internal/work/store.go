@@ -30,7 +30,7 @@ type Store struct {
 	Spool string // 잠겨 있을 때 사건을 남기는 디렉터리. 비우면 쓰지 않는다
 }
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS sessions_updated ON sessions(updated_seq);
 CREATE TABLE IF NOT EXISTS ended_turns (host TEXT NOT NULL, session TEXT NOT NULL, prompt TEXT NOT NULL, PRIMARY KEY(host, session, prompt));
 CREATE TABLE IF NOT EXISTS waits (
   host TEXT NOT NULL, session TEXT NOT NULL, key TEXT NOT NULL, prompt TEXT NOT NULL DEFAULT '', tool TEXT NOT NULL DEFAULT '',
-  opened_at INTEGER NOT NULL DEFAULT 0, resolved INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(host, session, key));
+  opened_at INTEGER NOT NULL DEFAULT 0, resolved INTEGER NOT NULL DEFAULT 0, resolved_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(host, session, key));
 CREATE TABLE IF NOT EXISTS lists (host TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, open_work TEXT NOT NULL DEFAULT '', last_work TEXT NOT NULL DEFAULT '',
   PRIMARY KEY(host, kind, id));
 CREATE TABLE IF NOT EXISTS works (
@@ -122,6 +122,7 @@ func open(path string, busy time.Duration) (*Store, error) {
 }
 
 func (s *Store) migrate() error {
+	// 이미 이 판이면 읽기만 한다: 읽는 쪽(oni mcp --reader, 재개 문맥, doctor)이 쓰기 잠금을 다투지 않게.
 	var v int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		return fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
@@ -129,11 +130,27 @@ func (s *Store) migrate() error {
 	if v > schemaVersion {
 		return fmt.Errorf("작업 기록 DB가 이 oni보다 새 판(%d)입니다. oni를 올려 주세요", v)
 	}
+	if v == schemaVersion && s.db.QueryRow(`SELECT value FROM meta WHERE key='db_id'`).Scan(&s.dbID) == nil {
+		return nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
 	}
 	defer tx.Rollback()
+	// 다른 프로세스가 먼저 올렸을 수 있어 잠금을 잡은 뒤 다시 본다
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
+		return err
+	}
+	old := v > 0 && v < schemaVersion
+	if old {
+		// 그래프 표는 원장에서 다시 만든다: 옛 판의 표를 지우고 새 모양으로 만든 뒤 다시 적용한다
+		for _, t := range graphTables {
+			if _, err := tx.Exec(`DROP TABLE IF EXISTS ` + t); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := tx.Exec(schema); err != nil {
 		return fmt.Errorf("작업 기록 DB를 만들 수 없습니다: %w", err)
 	}
@@ -144,6 +161,11 @@ func (s *Store) migrate() error {
 		}
 	} else if err != nil {
 		return err
+	}
+	if old {
+		if err := rebuild(tx); err != nil {
+			return fmt.Errorf("작업 기록 DB를 새 판으로 올리지 못했습니다: %w", err)
+		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version=%d`, schemaVersion)); err != nil {
 		return err
@@ -238,6 +260,13 @@ func (s *Store) Rebuild() error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := rebuild(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func rebuild(tx *sql.Tx) error {
 	for _, t := range graphTables {
 		if _, err := tx.Exec(`DELETE FROM ` + t); err != nil {
 			return err
@@ -268,7 +297,7 @@ func (s *Store) Rebuild() error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // hashID makes a stable id from parts, so a rebuild gives the same ids.
@@ -291,7 +320,7 @@ func (s *Store) Backup(dst string) error {
 	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
 		return err
 	}
-	c, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dst))
+	c, err := sql.Open("sqlite", sqlitedb.FileURI(dst))
 	if err != nil {
 		return err
 	}

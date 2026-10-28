@@ -152,11 +152,12 @@ func cmdHook(a *app, args []string) error {
 		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 넘어갑니다 (oni hook session-start|prompt|session-end|work --host claude|codex)")
 		return nil
 	}
-	deadline := time.After(4 * time.Second)
+	start := time.Now()
+	deadline := time.After(hookDeadline)
+	until := start.Add(hookDeadline - hookExitMargin) // 이때까지 사건을 쓰거나 스풀에 남긴다
 	done := make(chan string, 1)
 	recorded := make(chan struct{})
 	go func() {
-		defer close(recorded)
 		defer func() {
 			if recover() != nil {
 				done <- ""
@@ -165,12 +166,15 @@ func cmdHook(a *app, args []string) error {
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
 		cfg, err := loadConfig()
 		if err != nil {
+			close(recorded)
 			fmt.Fprintln(a.stderr, "oni hook: 설정을 읽지 못해 넘어갑니다: "+err.Error())
 			done <- ""
 			return
 		}
-		opened, listTool := recordWork(*host, b, at, cfg, *skipLists)
 		if pos[0] == "work" {
+			// 제목 요청 문맥은 기록 결과(연 작업)에 달려 있어 차례로 한다
+			opened, listTool := recordWork(*host, b, at, until, cfg, *skipLists)
+			close(recorded)
 			var ctx []string
 			if listTool {
 				for _, id := range opened {
@@ -180,6 +184,12 @@ func cmdHook(a *app, args []string) error {
 			done <- inject.HookOutput("PostToolUse", strings.Join(ctx, "\n"))
 			return
 		}
+		// 기억 문맥은 작업 기록(git 호출·쓰기 대기)을 기다리지 않는다
+		go func() {
+			defer close(recorded)
+			defer func() { _ = recover() }()
+			recordWork(*host, b, at, until, cfg, *skipLists)
+		}()
 		var in hookInput
 		_ = json.Unmarshal(b, &in)
 		memoryHook(a, done, pos[0], *host, in, cfg)
@@ -189,9 +199,8 @@ func cmdHook(a *app, args []string) error {
 		if out != "" {
 			fmt.Fprintln(a.stdout, out)
 		}
-		select { // 기록은 같은 4초 안에서 최대 1초만 기다린다. 늦으면 사건 하나를 잃고 호스트는 막지 않는다
+		select { // 기록은 until 전에 쓰거나 스풀에 남기고 끝난다
 		case <-recorded:
-		case <-time.After(time.Second):
 		case <-deadline:
 		}
 	case <-deadline:
@@ -200,9 +209,16 @@ func cmdHook(a *app, args []string) error {
 	return nil
 }
 
+// hookDeadline is how long a hook may take before it gives up without output;
+// hookExitMargin is left after the work record so the process exits in time.
+const (
+	hookDeadline   = 4 * time.Second
+	hookExitMargin = 300 * time.Millisecond
+)
+
 // recordWork turns the hook input into work ledger events (설계 · Orbit 2차
 // 「훅」). It returns the works this call opened and whether it was a list tool.
-func recordWork(host string, raw []byte, at int64, cfg config.Config, skipLists bool) ([]string, bool) {
+func recordWork(host string, raw []byte, at int64, until time.Time, cfg config.Config, skipLists bool) ([]string, bool) {
 	if !cfg.WorkOn() || os.Getenv("ORBIT_RETRO_ID") != "" {
 		return nil, false
 	}
@@ -217,7 +233,7 @@ func recordWork(host string, raw []byte, at int64, cfg config.Config, skipLists 
 		return nil, plan.ListTool
 	}
 	var opened []string
-	for _, res := range work.RecordAll(paths().WorkDB(), paths().WorkSpool(), plan.Events) {
+	for _, res := range work.RecordAll(paths().WorkDB(), paths().WorkSpool(), plan.Events, until) {
 		opened = append(opened, res.Opened...)
 	}
 	return opened, plan.ListTool

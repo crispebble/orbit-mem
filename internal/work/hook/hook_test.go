@@ -256,6 +256,15 @@ func TestSubagents(t *testing.T) {
 	if strings.Contains(string(Translate(b, env("claude", nil)).Events[0].Data), "완료 기준별") {
 		t.Error("마지막 답 본문이 사건에 들어갔습니다")
 	}
+	// 옛 Claude Code의 서브에이전트 도구 이름 Task는 목록 도구가 아니다
+	_ = json.Unmarshal(probe(t, "PostToolUse.Agent.1"), &m)
+	m["tool_name"] = "Task"
+	b, _ = json.Marshal(m)
+	if p := Translate(b, env("claude", nil)); p.ListTool {
+		t.Error("Task(서브에이전트)를 목록 도구로 보았습니다")
+	} else if rt := payload[work.RunTool](t, p, work.KindRunTool); rt.Agent != "a3426b33c8357e69d" {
+		t.Errorf("Task 도구: %+v", rt)
+	}
 }
 
 // 판정 줄의 모양은 역할 정의가 정한다. 역할 반환 형식을 바꾸면 이 시험이 깨진다(설계 「증거와 검증 결과」).
@@ -290,6 +299,11 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		{"orbit:reviewer", "### 판정 — 승인", "pass"},
 		{"orbit:gate", "### 완료 기준별 판정\n| a | 충족 |\n\n### 전체 판정\n사용자 확인 필요", "needs_user"},
 		{"orbit:gate", "판정을 내리기 어렵습니다", ""},
+		// 판정 뒤 설명에 경로가 있어도 판정이다
+		{"orbit:reviewer", "### 판정\n수정 요구 (internal/work/x.go 경계)", "needs_fix"},
+		{"orbit:gate", "## 판정: 통과 — cmd/oni 시험 로그 확인", "pass"},
+		{"orbit:reviewer", "### 판정\n승인 / 수정 요구", ""}, // 채우지 않은 틀
+		{"orbit:gate", "### 전체 판정\n수정 필요|통과", ""},
 	}
 	for _, c := range cases {
 		v := parseVerdict(c.role, c.text)

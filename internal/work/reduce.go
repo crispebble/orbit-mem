@@ -151,11 +151,12 @@ func (r *reducer) derive(kind string, payload any) error {
 // ---- 세션 ----
 
 func (r *reducer) ensureSession(host, id string) error {
+	if host != r.e.Host || id != r.e.Session {
+		// 다른 세션(부모)은 자리만 만든다. 이 사건의 작업 폴더는 그 세션의 것이 아니다
+		return r.exec(`INSERT OR IGNORE INTO sessions(host,id,started_at,last_seen) VALUES(?,?,?,?)`, host, id, r.e.At, r.e.At)
+	}
 	if err := r.exec(`INSERT OR IGNORE INTO sessions(host,id,cwd,started_at,last_seen) VALUES(?,?,?,?,?)`, host, id, r.e.Cwd, r.e.At, r.e.At); err != nil {
 		return err
-	}
-	if host != r.e.Host || id != r.e.Session {
-		return nil
 	}
 	return r.exec(`UPDATE sessions SET last_seen=MAX(last_seen,?), cwd=CASE WHEN cwd='' THEN ? ELSE cwd END WHERE host=? AND id=?`, r.e.At, r.e.Cwd, host, id)
 }
@@ -431,12 +432,16 @@ func (r *reducer) waitOpen() error {
 	if ended > 0 || (p.Prompt != "" && r.turnEnded(p.Prompt)) {
 		return nil // 이미 끝난 턴·세션의 늦은 요청
 	}
-	res, err := r.tx.Exec(`INSERT OR IGNORE INTO waits(host,session,key,prompt,tool,opened_at) VALUES(?,?,?,?,?,?)`, r.e.Host, r.e.Session, p.Key, p.Prompt, p.Tool, r.e.At)
+	// 같은 도구·같은 입력의 해소 표시보다 뒤에 불린 요청은 새 요청이다(같은 명령을 다시 승인).
+	// 앞에 불렸는데 늦게 온 요청은 이미 해소된 것이라 열지 않는다.
+	res, err := r.tx.Exec(`INSERT INTO waits(host,session,key,prompt,tool,opened_at) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(host,session,key) DO UPDATE SET prompt=excluded.prompt, tool=excluded.tool, opened_at=excluded.opened_at, resolved=0, resolved_at=0
+		WHERE waits.resolved=1 AND waits.resolved_at < excluded.opened_at`, r.e.Host, r.e.Session, p.Key, p.Prompt, p.Tool, r.e.At)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return nil // 사후 사건이 먼저 왔다
+		return nil // 이미 열렸거나, 사후 사건이 먼저 왔다
 	}
 	r.touchMine()
 	return r.blockEvents("block.opened", "사용자 응답 대기: "+p.Tool)
@@ -459,17 +464,21 @@ func (r *reducer) toolDone() error {
 	err := r.tx.QueryRow(`SELECT resolved FROM waits WHERE host=? AND session=? AND key=?`, r.e.Host, r.e.Session, p.Key).Scan(&resolved)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 늦게 올 기다림을 열지 않도록 해소 표시만 남긴다. 세션이 끝나면 지운다
-		return r.exec(`INSERT INTO waits(host,session,key,tool,resolved) VALUES(?,?,?,?,1)`, r.e.Host, r.e.Session, p.Key, p.Tool)
+		return r.exec(`INSERT INTO waits(host,session,key,tool,resolved,resolved_at) VALUES(?,?,?,?,1,?)`, r.e.Host, r.e.Session, p.Key, p.Tool, r.e.At)
 	}
-	if err != nil || resolved == 1 {
+	if err != nil {
 		return err
+	}
+	if resolved == 1 {
+		// 다시 돈 같은 도구: 그 앞에 불린 늦은 요청도 열지 않도록 해소 시각을 미룬다
+		return r.exec(`UPDATE waits SET resolved_at=MAX(resolved_at,?) WHERE host=? AND session=? AND key=?`, r.e.At, r.e.Host, r.e.Session, p.Key)
 	}
 	return r.resolveWaits(`key=?`, p.Key)
 }
 
 func (r *reducer) resolveWaits(cond string, args ...any) error {
-	q := `UPDATE waits SET resolved=1 WHERE host=? AND session=? AND resolved=0 AND ` + cond
-	res, err := r.tx.Exec(q, append([]any{r.e.Host, r.e.Session}, args...)...)
+	q := `UPDATE waits SET resolved=1, resolved_at=? WHERE host=? AND session=? AND resolved=0 AND ` + cond
+	res, err := r.tx.Exec(q, append([]any{r.e.At, r.e.Host, r.e.Session}, args...)...)
 	if err != nil {
 		return err
 	}

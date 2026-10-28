@@ -25,8 +25,7 @@ func Open(path string, busy time.Duration, pragmas ...string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
-	dsn := fmt.Sprintf("file:%s?_txlock=immediate&_pragma=busy_timeout(%d)", escaped, busy.Milliseconds())
+	dsn := fmt.Sprintf("%s?_txlock=immediate&_pragma=busy_timeout(%d)", FileURI(path), busy.Milliseconds())
 	for _, p := range pragmas {
 		dsn += "&_pragma=" + p
 	}
@@ -43,6 +42,23 @@ func Open(path string, busy time.Duration, pragmas ...string) (*sql.DB, error) {
 	return db, nil
 }
 
+// FileURI is the driver's file: name for path, with the characters that would
+// start a query or fragment escaped.
+func FileURI(path string) string {
+	return "file:" + strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
+}
+
+// IsBusy says whether err is SQLite's lock wait (SQLITE_BUSY or SQLITE_LOCKED):
+// the same write can succeed later.
+func IsBusy(err error) bool {
+	var se *sqlite.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	c := se.Code() & 0xff
+	return c == sqlite3.SQLITE_BUSY || c == sqlite3.SQLITE_LOCKED
+}
+
 // wal switches to WAL. Turning a rollback-journal file (an old DB, or a new one
 // another process is creating) into WAL returns SQLITE_BUSY at once without the
 // busy handler, so the wait is done here.
@@ -50,8 +66,7 @@ func wal(db *sql.DB, busy time.Duration) error {
 	deadline := time.Now().Add(busy)
 	for {
 		_, err := db.Exec(`PRAGMA journal_mode=WAL`)
-		var se *sqlite.Error
-		if err == nil || !errors.As(err, &se) || se.Code()&0xff != sqlite3.SQLITE_BUSY || time.Now().After(deadline) {
+		if err == nil || !IsBusy(err) || time.Now().After(deadline) {
 			return err
 		}
 		time.Sleep(5 * time.Millisecond)

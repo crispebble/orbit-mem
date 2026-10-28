@@ -2,12 +2,17 @@ package work
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/onidot-labs/orbit/internal/sqlitedb"
 )
 
 // SpoolEvent leaves an event the hook could not write (database locked or
@@ -44,8 +49,14 @@ func (s *Store) Drain() (int, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".json") && !strings.HasPrefix(e.Name(), ".") {
-			names = append(names, e.Name())
+		n := e.Name()
+		if strings.HasSuffix(n, ".json") && !strings.HasPrefix(n, ".") {
+			names = append(names, n)
+		} else if orig, ok := orphanClaim(n); ok {
+			// 가져간 프로세스가 지우기 전에 끝났다: 되돌려 다시 처리한다
+			if os.Rename(filepath.Join(s.Spool, n), filepath.Join(s.Spool, orig)) == nil {
+				names = append(names, orig)
+			}
 		}
 	}
 	sort.Strings(names)
@@ -68,13 +79,48 @@ func (s *Store) Drain() (int, error) {
 		}
 		e.Seq = 0
 		if _, err := s.Append(e); err != nil {
-			_ = os.Rename(claimed, src) // 다음 번에 다시
-			return n, err
+			if sqlitedb.IsBusy(err) {
+				_ = os.Rename(claimed, src) // 다음 번에 다시
+				return n, err
+			}
+			// 다시 해도 같은 결과인 사건(이 판이 읽지 못하는 모양 등)은 옆으로 두고 다음으로 간다.
+			// 남겨 두면 뒤의 모든 기록이 스풀에 멈춘다.
+			_ = os.Rename(claimed, filepath.Join(s.Spool, name+".bad"))
+			continue
 		}
 		_ = os.Remove(claimed)
 		n++
 	}
 	return n, nil
+}
+
+// orphanClaim reads a claim file name (.<name>.<pid>.claim) and says whether the
+// process that took it has ended.
+func orphanClaim(n string) (string, bool) {
+	if !strings.HasPrefix(n, ".") || !strings.HasSuffix(n, ".claim") {
+		return "", false
+	}
+	rest := strings.TrimSuffix(strings.TrimPrefix(n, "."), ".claim")
+	i := strings.LastIndex(rest, ".")
+	if i < 0 {
+		return "", false
+	}
+	pid, err := strconv.Atoi(rest[i+1:])
+	if err != nil || pid == os.Getpid() || alive(pid) {
+		return "", false
+	}
+	return rest[:i], true
+}
+
+// alive says whether a process exists. Anything but "no such process" counts
+// as alive, so a claim is never taken from a running process.
+func alive(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = p.Signal(syscall.Signal(0))
+	return err == nil || !(errors.Is(err, os.ErrProcessDone) || errors.Is(err, syscall.ESRCH))
 }
 
 // Record appends the event, or spools it when the database cannot take it now.
@@ -107,10 +153,19 @@ func spoolOr(dir string, e Event, cause error) error {
 }
 
 // RecordAll appends events from one hook call with one connection. Events the
-// database cannot take now go to the spool in order.
-func RecordAll(path, spool string, evs []Event) []Result {
+// database cannot take now go to the spool in order. It waits for the lock at
+// most half the time left before until, so the hook ends with every event either
+// written or spooled; a hook cut off in the middle of a write would lose it.
+func RecordAll(path, spool string, evs []Event, until time.Time) []Result {
 	out := make([]Result, len(evs))
-	s, err := Open(path)
+	busy := min(BusyTimeout, time.Until(until)/2)
+	if busy < time.Millisecond {
+		for _, e := range evs {
+			_ = spoolOr(spool, e, errors.New("훅 시간이 모자랍니다"))
+		}
+		return out
+	}
+	s, err := open(path, busy)
 	if err != nil {
 		for _, e := range evs {
 			_ = spoolOr(spool, e, err)

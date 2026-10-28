@@ -37,6 +37,18 @@ func (w *tw) ev(kind, host, session string, payload any) Result {
 	return res
 }
 
+// evAt appends an event fired at a given time (it may arrive out of order).
+func (w *tw) evAt(at int64, kind, host, session string, payload any) Result {
+	w.t.Helper()
+	e := NewEvent(kind, host, session, at, payload)
+	e.Cwd = "/repo"
+	res, err := w.s.Append(e)
+	if err != nil {
+		w.t.Fatalf("%s: %v", kind, err)
+	}
+	return res
+}
+
 func (w *tw) claude(kind string, payload any) Result { return w.ev(kind, "claude", "S1", payload) }
 
 func (w *tw) start(host, session string, p SessionStart) {
@@ -338,4 +350,31 @@ func repeat(s string, n int) string {
 		out += s
 	}
 	return out
+}
+
+// TaskList의 blockedBy는 끝나지 않은 선행만 준다(탐침 PostToolUse.TaskList.1). 끝난 선행으로 가는 간선은 지우지 않는다.
+func TestTaskListKeepsDoneEdges(t *testing.T) {
+	w := newTW(t)
+	for _, id := range []string{"1", "2", "3", "4"} {
+		w.claude(KindTaskCreate, TaskCreate{List: "S1", ID: id, Subject: "단계 " + id})
+	}
+	w.claude(KindTaskUpdate, TaskUpdate{List: "S1", ID: "3", AddBlockedBy: []string{"1", "2", "4"}})
+	w.claude(KindTaskUpdate, TaskUpdate{List: "S1", ID: "1", Status: str("completed")})
+	w.claude(KindTaskUpdate, TaskUpdate{List: "S1", ID: "2", Status: str("completed")})
+	w.claude(KindTaskState, TaskState{List: "S1", Full: true, Tasks: []TaskItem{
+		{ID: "1", Subject: "단계 1", Status: "completed", BlockedBy: []string{}},
+		{ID: "2", Subject: "단계 2", Status: "completed", BlockedBy: []string{}},
+		{ID: "3", Subject: "단계 3", Status: "pending", BlockedBy: []string{}},
+		{ID: "4", Subject: "단계 4", Status: "pending", BlockedBy: []string{}},
+	}})
+	s := w.only().Steps[2]
+	// 끝난 1·2로 가는 간선은 남고, 열린 4로 가는 간선은 목록에서 빠졌으니 지운 것이다
+	if len(s.After) != 2 || s.Wave != 1 || s.Status != "ready" {
+		t.Errorf("단계 3: after %d, wave %d, %s", len(s.After), s.Wave, s.Status)
+	}
+	// TaskGet은 전체 선행을 준다
+	w.claude(KindTaskState, TaskState{List: "S1", Tasks: []TaskItem{{ID: "3", Subject: "단계 3", Status: "pending", BlockedBy: []string{"1"}}}})
+	if s := w.only().Steps[2]; len(s.After) != 1 {
+		t.Errorf("TaskGet 뒤 after %d", len(s.After))
+	}
 }
