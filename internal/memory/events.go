@@ -12,7 +12,18 @@ const (
 	EventToolPrefix         = "tool."
 	EventProposalDecided    = "proposal.decided"
 	EventCorrection         = "correction"
+	EventMemoryUsed         = "memory.used" // 세션 끝 회고가 넣은 기억마다 낸 사용 판정
+	EventRetroRun           = "retro.run"   // 회고 실행 하나의 비용·토큰
 )
+
+// Usage verdicts of a memory put into a session.
+const (
+	UsageFollowed   = "followed"   // 따름
+	UsageViolated   = "violated"   // 어김
+	UsageIrrelevant = "irrelevant" // 상관없음
+)
+
+var UsageVerdicts = []string{UsageFollowed, UsageViolated, UsageIrrelevant}
 
 const eventsSchema = `
 CREATE TABLE IF NOT EXISTS events (
@@ -124,4 +135,79 @@ func ClipRunes(s string, n int) string {
 		return string(r)
 	}
 	return string(r[:n]) + "…"
+}
+
+// Usage counts a memory's usage verdicts.
+type Usage struct {
+	Followed   int `json:"followed"`
+	Violated   int `json:"violated"`
+	Irrelevant int `json:"irrelevant"`
+}
+
+// UsageCounts counts the usage verdicts of each memory over days from..to (inclusive).
+func (s *Store) UsageCounts(from, to string) (map[string]Usage, error) {
+	evs, err := s.Events(EventFilter{FromDay: from, ToDay: to, KindPrefix: EventMemoryUsed})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]Usage{}
+	for _, e := range evs {
+		var d struct {
+			MemoryID string `json:"memoryId"`
+			Verdict  string `json:"verdict"`
+		}
+		if json.Unmarshal(e.Data, &d) != nil || d.MemoryID == "" {
+			continue
+		}
+		u := out[d.MemoryID]
+		switch d.Verdict {
+		case UsageFollowed:
+			u.Followed++
+		case UsageViolated:
+			u.Violated++
+		case UsageIrrelevant:
+			u.Irrelevant++
+		}
+		out[d.MemoryID] = u
+	}
+	return out, nil
+}
+
+// LastUse is when each memory was last put into a session, read, found or
+// judged, and when the oldest event on record happened (0 when none), so
+// "not used for N days" is only claimed when the record is that old.
+func (s *Store) LastUse() (map[string]int64, int64, error) {
+	last := map[string]int64{}
+	var earliest int64
+	_ = s.db.QueryRow(`SELECT COALESCE(MIN(at),0) FROM events`).Scan(&earliest)
+	rows, err := s.db.Query(`SELECT at, kind, data FROM events WHERE kind IN (?,?,?,?,?)`,
+		EventInjectSessionStart, EventInjectPrompt, EventToolPrefix+"memory_get", EventToolPrefix+"memory_find", EventMemoryUsed)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var at int64
+		var kind, data string
+		if rows.Scan(&at, &kind, &data) != nil {
+			continue
+		}
+		var d struct {
+			MemoryIDs  []string `json:"memoryIds"`
+			IDs        []string `json:"ids"`
+			MemoryID   string   `json:"memoryId"`
+			OccurredAt int64    `json:"occurredAt"`
+		}
+		_ = json.Unmarshal([]byte(data), &d)
+		if d.OccurredAt > 0 {
+			at = d.OccurredAt
+		}
+		ids := append(append(d.MemoryIDs, d.IDs...), d.MemoryID)
+		for _, id := range ids {
+			if id != "" && at > last[id] {
+				last[id] = at
+			}
+		}
+	}
+	return last, earliest, rows.Err()
 }

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/onidot-labs/orbit/internal/mcpserver"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/project"
+	"github.com/onidot-labs/orbit/internal/retro"
 	"github.com/onidot-labs/orbit/internal/version"
 )
 
@@ -63,10 +66,53 @@ func cmdMCP(a *app, args []string) error {
 }
 
 type hookInput struct {
-	Cwd       string `json:"cwd"`
-	Prompt    string `json:"prompt"`
-	SessionID string `json:"session_id"`
-	Event     string `json:"hook_event_name"`
+	Cwd            string `json:"cwd"`
+	Prompt         string `json:"prompt"`
+	SessionID      string `json:"session_id"`
+	Event          string `json:"hook_event_name"`
+	TranscriptPath string `json:"transcript_path"`
+}
+
+// spawnDetached starts a background oni that outlives the hook, its output
+// appended to log.
+var spawnDetached = func(name string, args []string, log string) error {
+	_ = os.MkdirAll(filepath.Dir(log), 0o700)
+	f, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	cmd := exec.Command(name, args...)
+	cmd.Stdout, cmd.Stderr = f, f
+	detach(cmd)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+// sessionEnd queues the ended session for its session-end retrospective and
+// starts the queue runner in the background; the host is not kept waiting.
+func (a *app) sessionEnd(in hookInput, host string, cfg config.Config) {
+	if os.Getenv("ORBIT_RETRO_ID") != "" || !cfg.SessionRetro {
+		return
+	}
+	s, err := openStore()
+	if err != nil {
+		return
+	}
+	defer s.Close()
+	queued, err := retro.Enqueue(s, paths(), retro.SessionEnd{Host: host, Session: in.SessionID, Transcript: in.TranscriptPath, Cwd: in.Cwd})
+	if err != nil {
+		fmt.Fprintln(a.stderr, "oni hook: 세션 끝 회고를 대기열에 넣지 못했습니다: "+err.Error())
+		return
+	}
+	if !queued {
+		return
+	}
+	if err := spawnDetached(selfPath(), []string{"retro", "sessions"}, filepath.Join(paths().Logs(), "session-retro.log")); err != nil {
+		fmt.Fprintln(a.stderr, "oni hook: 세션 끝 회고를 띄우지 못했습니다(다음 하루 회고가 읽습니다): "+err.Error())
+	}
 }
 
 // cmdHook never fails the host: any problem, wrong arguments included, prints
@@ -76,8 +122,8 @@ func cmdHook(a *app, args []string) error {
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt") {
-		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 기억을 넣지 않았습니다 (oni hook session-start|prompt --host claude|codex)")
+	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end") {
+		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 기억을 넣지 않았습니다 (oni hook session-start|prompt|session-end --host claude|codex)")
 		return nil
 	}
 	deadline := time.After(4 * time.Second)
@@ -103,6 +149,11 @@ func cmdHook(a *app, args []string) error {
 			done <- ""
 			return
 		}
+		if pos[0] == "session-end" {
+			a.sessionEnd(in, *host, cfg)
+			done <- ""
+			return
+		}
 		s, err := openStore()
 		if err != nil {
 			done <- ""
@@ -116,7 +167,7 @@ func cmdHook(a *app, args []string) error {
 		var inj inject.Injection
 		kind := memory.EventInjectSessionStart
 		if pos[0] == "session-start" {
-			inj = inject.SessionStartInjection(s, cfg, scope)
+			inj = inject.SessionBundle(s, cfg, scope, *host, in.SessionID)
 			done <- inject.HookOutput("SessionStart", inj.Text)
 		} else {
 			kind = memory.EventInjectPrompt
@@ -449,8 +500,22 @@ func cmdConfig(a *app, args []string) error {
 				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
 			}
 		}
+	case "sessionRetro":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return fmt.Errorf("sessionRetro는 true 또는 false입니다: %q", val)
+		}
+		cfg.SessionRetro = b
+	case "sessionRetroModel":
+		cfg.SessionRetroModel = val
+	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays":
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
+		}
+		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays}[key] = n
 	default:
-		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets)", key)
+		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays)", key)
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

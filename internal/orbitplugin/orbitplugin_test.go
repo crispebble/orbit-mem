@@ -24,8 +24,13 @@ func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(out, "plugins", "orbit", "hooks", "codex.json"))
-	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-start --host codex") {
+	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-start --host codex") || !strings.Contains(string(b), `"SessionEnd"`) ||
+		!strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-end --host codex") {
 		t.Fatalf("codex hooks: %s", b)
+	}
+	b, _ = os.ReadFile(filepath.Join(out, "plugins", "orbit", "hooks", "claude.json"))
+	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-end --host claude") {
+		t.Fatalf("claude hooks: %s", b)
 	}
 	b, _ = os.ReadFile(filepath.Join(out, "plugins", "orbit", ".mcp.json"))
 	if !strings.Contains(string(b), `"/Users/me/.local/bin/oni"`) {

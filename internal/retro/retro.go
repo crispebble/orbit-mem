@@ -42,6 +42,8 @@ const (
 	maxCatchUpDays = 7
 	runTimeout     = 30 * time.Minute
 	lockStale      = 6 * time.Hour // 최악 실행(일 7회+주간 1회, 각 30분)보다 길게
+	// 세션 고정 묶음·처리한 대기열을 남기는 날 수: Claude Code 대화 기록 기본 보관(cleanupPeriodDays 30일)
+	sessionStateDays = 30
 )
 
 // Cmd is a host process to run.
@@ -164,13 +166,20 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	return r.launch(ctx, mat, r.Cfg.RetroModel)
+}
+
+// launch runs the host on material and waits for its single submission.
+// Empty material finishes without calling the host.
+func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result, error) {
+	res := Result{Kind: mat.Kind, Period: mat.Period}
 	nowMs := r.now().UnixMilli()
 	res.ID = memory.NewID("r-")
 	mat.ID = res.ID
 	if mat.empty() {
 		res.Status = StatusEmpty
-		_, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary) VALUES(?,?,?,?,?,?,?,?)`,
-			res.ID, kind, period, StatusEmpty, "", nowMs, nowMs, "재료 없음")
+		_, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary,session) VALUES(?,?,?,?,?,?,?,?,?)`,
+			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, "재료 없음", mat.Session)
 		return res, err
 	}
 	dir := filepath.Join(r.Paths.RetroDir(), res.ID)
@@ -181,8 +190,8 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	if err := os.WriteFile(filepath.Join(dir, "material.json"), b, 0o600); err != nil {
 		return res, err
 	}
-	if _, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at) VALUES(?,?,?,?,?,?)`,
-		res.ID, kind, period, StatusRunning, r.Cfg.RetroHost, nowMs); err != nil {
+	if _, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,session) VALUES(?,?,?,?,?,?,?)`,
+		res.ID, mat.Kind, mat.Period, StatusRunning, r.Cfg.RetroHost, nowMs, mat.Session); err != nil {
 		return res, err
 	}
 	runDir := filepath.Join(r.Paths.RetroDir(), "run")
@@ -193,7 +202,7 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	if exe == nil {
 		exe = execHost
 	}
-	out, execErr := exe(ctx, r.hostCommand(res.ID, runDir, prompt(mat)))
+	out, execErr := exe(ctx, r.hostCommand(res.ID, runDir, prompt(mat), model))
 	var status string
 	_ = r.Store.DB().QueryRow(`SELECT status FROM retros WHERE id=?`, res.ID).Scan(&status)
 	if status == "submitting" { // 제출 처리 중에 호스트가 끝났다
@@ -201,6 +210,12 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 		_ = r.Store.DB().QueryRow(`SELECT status FROM retros WHERE id=?`, res.ID).Scan(&status)
 	}
 	os.RemoveAll(dir) // 재료(대화 발췌)는 남기지 않는다. 다시 돌 때 새로 만든다
+	host := parseHostOutput(out)
+	run := map[string]any{"retroId": res.ID, "retroKind": mat.Kind, "model": model, "ok": status == StatusDone, "costKnown": host.Known}
+	if host.Known {
+		run["costUsd"], run["inputTokens"], run["outputTokens"] = host.CostUSD, host.InputTokens, host.OutputTokens
+	}
+	_ = r.Store.RecordEvent(memory.Event{Kind: memory.EventRetroRun, Host: r.Cfg.RetroHost, Session: mat.Session}, run)
 	if status == StatusDone {
 		res.Status = StatusDone
 		return res, nil
@@ -209,7 +224,7 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	if execErr != nil {
 		msg += ": " + execErr.Error()
 	}
-	if tail := strings.TrimSpace(out); tail != "" {
+	if tail := strings.TrimSpace(host.Text); tail != "" {
 		if len(tail) > 2000 {
 			tail = tail[len(tail)-2000:]
 		}
@@ -218,6 +233,46 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	res.Status, res.Error = StatusFailed, msg
 	_, _ = r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=?`, StatusFailed, r.now().UnixMilli(), msg, res.ID)
 	return res, errors.New(msg)
+}
+
+// HostOutput is what a headless host printed: Claude's JSON result carries
+// the cost and tokens; anything else is kept as text.
+type HostOutput struct {
+	Known        bool
+	CostUSD      float64
+	InputTokens  int
+	OutputTokens int
+	Text         string
+}
+
+// parseHostOutput reads the last line of out that is a JSON object with a
+// cost (claude -p --output-format json prints one); without one the whole
+// output is the text.
+func parseHostOutput(out string) HostOutput {
+	h := HostOutput{Text: out}
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var v struct {
+			Result string   `json:"result"`
+			Cost   *float64 `json:"total_cost_usd"`
+			Usage  struct {
+				Input       int `json:"input_tokens"`
+				CacheRead   int `json:"cache_read_input_tokens"`
+				CacheCreate int `json:"cache_creation_input_tokens"`
+				Output      int `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal([]byte(line), &v) != nil || v.Cost == nil {
+			continue
+		}
+		return HostOutput{Known: true, CostUSD: *v.Cost, InputTokens: v.Usage.Input + v.Usage.CacheRead + v.Usage.CacheCreate,
+			OutputTokens: v.Usage.Output, Text: v.Result}
+	}
+	return h
 }
 
 // CatchUp backs up the memory database, then runs every missing daily
@@ -231,6 +286,14 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	defer unlock()
 	if _, err := r.Store.Backup(r.Paths.Backups(), max(r.Cfg.BackupKeep, 1)); err != nil {
 		return nil, err
+	}
+	var results []Result
+	var errs []error
+	// 세션 끝 회고를 먼저 끝내야 하루 회고가 그 결과를 모으고 남은 발화만 읽는다.
+	sres, err := r.drain(ctx)
+	results = append(results, sres...)
+	if err != nil {
+		errs = append(errs, err)
 	}
 	today := r.now()
 	yesterday := dayOf(today.AddDate(0, 0, -1))
@@ -258,8 +321,6 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 			start = floor
 		}
 	}
-	var results []Result
-	var errs []error
 	for d := start; d <= yesterday; d = nextDay(d, r.loc()) {
 		if finished[d] {
 			continue
@@ -270,6 +331,10 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 			errs = append(errs, fmt.Errorf("%s: %w", d, err))
 		}
 	}
+	// 주간 회고가 판정을 근거로 쓰도록 그 전에 관찰 기간이 끝난 변경을 판정한다.
+	if _, err := r.Store.JudgeLedger(max(r.Cfg.LedgerWindowDays, 1)); err != nil {
+		errs = append(errs, fmt.Errorf("효과 판정: %w", err))
+	}
 	week := lastWeekStart(today)
 	res, err := r.Run(ctx, KindWeekly, week)
 	if res.Status != StatusSkipped {
@@ -279,6 +344,9 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 		errs = append(errs, fmt.Errorf("주간 %s: %w", week, err))
 	}
 	if _, err := r.Store.CloseSettled(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := r.Store.PruneSessionState(sessionStateDays); err != nil {
 		errs = append(errs, err)
 	}
 	return results, errors.Join(errs...)
@@ -324,7 +392,7 @@ func (r *Runner) proposeChangedFiles() {
 // hostCommand builds the headless host run. The prompt goes through stdin
 // (multi-line arguments break through .cmd shims on Windows) and Claude's MCP
 // configuration through a file.
-func (r *Runner) hostCommand(id, dir, text string) Cmd {
+func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 	env := []string{"ORBIT_HOME=" + r.Paths.Home, "ORBIT_RETRO_ID=" + id}
 	if r.Cfg.RetroHost == "codex" {
 		name := r.Cfg.CodexPath
@@ -338,8 +406,8 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 			"-c", `mcp_servers.orbit-retro.args=["mcp","--retro",` + q(id) + `]`,
 			"-c", "mcp_servers.orbit-retro.env={ORBIT_HOME=" + q(r.Paths.Home) + "}",
 			"-c", `mcp_servers.orbit-retro.default_tools_approval_mode="approve"`}
-		if r.Cfg.RetroModel != "" {
-			args = append(args, "-m", r.Cfg.RetroModel)
+		if model != "" {
+			args = append(args, "-m", model)
 		}
 		return Cmd{Name: name, Args: append(args, "-"), Dir: dir, Env: env, Stdin: text}
 	}
@@ -357,9 +425,9 @@ func (r *Runner) hostCommand(id, dir, text string) Cmd {
 		tools[i] = "mcp__orbit-retro__" + t
 	}
 	args := []string{"-p", "--mcp-config", configPath, "--strict-mcp-config", "--allowedTools", strings.Join(tools, ","),
-		"--no-session-persistence", "--setting-sources", "project", "--output-format", "text"}
-	if r.Cfg.RetroModel != "" {
-		args = append(args, "--model", r.Cfg.RetroModel)
+		"--no-session-persistence", "--setting-sources", "project", "--output-format", "json"}
+	if model != "" {
+		args = append(args, "--model", model)
 	}
 	return Cmd{Name: name, Args: args, Dir: dir, Env: env, Stdin: text}
 }
@@ -391,16 +459,32 @@ type RetroStatus struct {
 	Error      string   `json:"error,omitempty"`
 	StartedAt  int64    `json:"startedAt"`
 	FinishedAt int64    `json:"finishedAt,omitempty"`
+	Session    string   `json:"session,omitempty"` // 세션 끝 회고의 세션(호스트:세션 id)
 }
 
-const statusCols = `id,kind,period,status,host,summary,flags,journal_id,error,started_at,finished_at`
+const statusCols = `id,kind,period,status,host,summary,flags,journal_id,error,started_at,finished_at,session`
 
 func scanStatus(row interface{ Scan(...any) error }) (RetroStatus, error) {
 	var st RetroStatus
 	var flags string
-	err := row.Scan(&st.ID, &st.Kind, &st.Period, &st.Status, &st.Host, &st.Summary, &flags, &st.JournalID, &st.Error, &st.StartedAt, &st.FinishedAt)
-	_ = json.Unmarshal([]byte(flags), &st.Flags)
+	err := row.Scan(&st.ID, &st.Kind, &st.Period, &st.Status, &st.Host, &st.Summary, &flags, &st.JournalID, &st.Error, &st.StartedAt, &st.FinishedAt, &st.Session)
+	st.Flags = parseFlags(flags)
 	return st, err
+}
+
+func parseFlags(s string) []string {
+	var out []string
+	_ = json.Unmarshal([]byte(s), &out)
+	return out
+}
+
+// memoryIDs reads the memoryIds of an injection event's data.
+func memoryIDs(data string) []string {
+	var d struct {
+		MemoryIDs []string `json:"memoryIds"`
+	}
+	_ = json.Unmarshal([]byte(data), &d)
+	return d.MemoryIDs
 }
 
 // Status reads the latest retrospective of kind and period.

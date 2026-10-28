@@ -176,7 +176,7 @@ func TestTools_호출을_사건으로_남긴다(t *testing.T) {
 	if finds[0]["results"].(float64) != 0 || finds[0]["ok"] != true || strings.Contains(finds[0]["query"].(string), "sk-abcdefghijklmnop") {
 		t.Errorf("empty find = %+v", finds[0])
 	}
-	if finds[1]["results"].(float64) != 1 {
+	if finds[1]["results"].(float64) != 1 || len(finds[1]["ids"].([]any)) != 1 {
 		t.Errorf("hit find = %+v", finds[1])
 	}
 	saves := ev["tool.memory_save"]
@@ -185,5 +185,10 @@ func TestTools_호출을_사건으로_남긴다(t *testing.T) {
 	}
 	if gets := ev["tool.memory_get"]; len(gets) != 1 || gets[0]["ok"] != false {
 		t.Errorf("failed get must be recorded as not ok: %+v", gets)
+	}
+	id := finds[1]["ids"].([]any)[0].(string)
+	call(t, cs, "memory_get", map[string]any{"ids": []string{id}}, nil)
+	if gets := toolEvents(t, s)["tool.memory_get"]; len(gets) != 2 || len(gets[1]["ids"].([]any)) != 1 || gets[1]["ids"].([]any)[0] != id {
+		t.Errorf("get must record the ids it returned: %+v", gets)
 	}
 }

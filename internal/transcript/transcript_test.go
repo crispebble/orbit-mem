@@ -150,3 +150,35 @@ func TestFit_상한을_넘으면_AI_답부터_줄인다(t *testing.T) {
 		t.Fatal("small material must stay")
 	}
 }
+
+func TestSessionFile_세션_하나를_날짜_구분_없이_읽는다(t *testing.T) {
+	r := roots(t)
+	s, ok := SessionFile("claude", filepath.Join(r.Claude, "projects", "-w-app", "s1.jsonl"), nil)
+	if !ok || s.ID != "s1" || s.Cwd != "/w/app" || len(s.Turns) != 4 || s.Turns[3].Text != "어제 말" {
+		t.Fatalf("claude = %+v %v", s, ok)
+	}
+	if _, ok := SessionFile("claude", filepath.Join(r.Claude, "projects", "-w-app", "s1.jsonl"), []string{"/w"}); ok {
+		t.Fatal("excluded cwd")
+	}
+	c, ok := SessionFile("codex", filepath.Join(r.Codex, "sessions", "2026", "10", "26", "rollout-x.jsonl"), nil)
+	if !ok || c.ID != "c1" || len(c.Turns) != 3 {
+		t.Fatalf("codex = %+v %v", c, ok)
+	}
+	if _, ok := SessionFile("claude", filepath.Join(r.Claude, "없음.jsonl"), nil); ok {
+		t.Fatal("missing file")
+	}
+}
+
+func TestFindSession_세션_id로_기록_파일을_찾는다(t *testing.T) {
+	r := roots(t)
+	w(t, filepath.Join(r.Codex, "sessions", "2026", "10", "26", "rollout-2026-10-26T04-00-00-0199aa.jsonl"), codexLog)
+	if got := FindSession(r, "claude", "s1"); got != filepath.Join(r.Claude, "projects", "-w-app", "s1.jsonl") {
+		t.Fatalf("claude = %q", got)
+	}
+	if got := FindSession(r, "codex", "0199aa"); !strings.HasSuffix(got, "rollout-2026-10-26T04-00-00-0199aa.jsonl") {
+		t.Fatalf("codex = %q", got)
+	}
+	if got := FindSession(r, "claude", "../x"); got != "" {
+		t.Fatalf("bad id = %q", got)
+	}
+}

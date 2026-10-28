@@ -29,11 +29,34 @@ type Config struct {
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
 	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
 	PluginSource    string   `json:"pluginSource,omitempty"` // Orbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
+
+	SessionRetro         bool   `json:"sessionRetro"`                // 세션이 끝나면 그 세션만 짧게 회고한다
+	SessionRetroModel    string `json:"sessionRetroModel,omitempty"` // 비우면 claude는 haiku, codex는 호스트 기본
+	SessionRetroDailyMax int    `json:"sessionRetroDailyMax"`        // 하루 세션 끝 회고 실행 상한, 0은 상한 없음
+	RecallChars          int    `json:"recallChars"`                 // 요청마다 넣는 작업 회상의 글자 수 상한
+	LedgerWindowDays     int    `json:"ledgerWindowDays"`            // 변경 효과를 보는 변경 전·후 기간(일)
+}
+
+// maxRecallChars keeps the per-request context under the hosts' hook context
+// limit (about 10,000 characters in Claude Code).
+const maxRecallChars = 9000
+
+// SessionModel is the model of the session-end retrospective: the setting,
+// else haiku on Claude and the host default on Codex.
+func (c Config) SessionModel() string {
+	if c.SessionRetroModel != "" {
+		return c.SessionRetroModel
+	}
+	if c.RetroHost == "claude" {
+		return "haiku"
+	}
+	return ""
 }
 
 // Default is the starting configuration.
 func Default() Config {
-	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"}}
+	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
+		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -49,6 +72,12 @@ func (c Config) Validate() error {
 	}
 	if c.RecentDecisions < 0 || c.RecentDecisions > 20 || c.BackupKeep < 1 {
 		return errors.New("recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요")
+	}
+	if c.RecallChars < 100 || c.RecallChars > maxRecallChars {
+		return fmt.Errorf("recallChars는 100-%d입니다: %d", maxRecallChars, c.RecallChars)
+	}
+	if c.LedgerWindowDays < 1 || c.LedgerWindowDays > 90 || c.SessionRetroDailyMax < 0 {
+		return errors.New("ledgerWindowDays(1-90)·sessionRetroDailyMax(0 이상)을 확인해 주세요")
 	}
 	return nil
 }
