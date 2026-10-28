@@ -4,6 +4,7 @@
 package hook
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -178,19 +179,34 @@ func (t *translator) sessionStart() {
 	t.add(work.KindSessionStart, "", p)
 }
 
-// surface reads the host's entry point. A session started from inside
-// another one inherits its parent's variable, so this is a best guess.
+// surface says where the session runs. Entry point variables are inherited
+// by a session started from inside another one, so each host's own
+// per-session signal comes first.
 func (t *translator) surface() string {
 	if t.env.Host == "codex" {
-		switch v := t.env.Getenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE"); {
+		source, originator := codexMeta(t.in.Transcript, t.in.Session)
+		switch source {
+		case "exec":
+			return "headless"
+		case "cli":
+			return "cli"
+		}
+		if originator == "" {
+			originator = t.env.Getenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE")
+		}
+		switch v := strings.ToLower(originator); {
 		case strings.Contains(v, "exec"):
 			return "headless"
-		case strings.Contains(v, "desktop") || strings.Contains(v, "app"):
+		case strings.Contains(v, "desktop"):
 			return "desktop"
-		case v != "":
+		case v == "codex_cli_rs":
 			return "cli"
 		}
 		return "unknown"
+	}
+	// 각 세션이 자기 훅에 새로 넣는다(물려받지 않음). claude -p는 0
+	if t.env.Getenv("CLAUDE_CODE_SESSION_ATTENDED") == "0" {
+		return "headless"
 	}
 	switch ep := t.env.Getenv("CLAUDE_CODE_ENTRYPOINT"); {
 	case ep == "cli":
@@ -201,6 +217,36 @@ func (t *translator) surface() string {
 		return "headless"
 	}
 	return "unknown"
+}
+
+// codexMeta reads source and originator from the session_meta line Codex
+// writes first in its transcript (before SessionStart). A line from another
+// session gives nothing.
+func codexMeta(path, session string) (source, originator string) {
+	if path == "" {
+		return "", ""
+	}
+	b, err := readHead(path, 1<<20)
+	if err != nil {
+		return "", ""
+	}
+	line, _, ok := bytes.Cut(b, []byte("\n"))
+	if !ok {
+		return "", ""
+	}
+	var rec struct {
+		Type    string `json:"type"`
+		Payload struct {
+			ID         string          `json:"id"`
+			Source     json.RawMessage `json:"source"` // "exec"·"cli"·"vscode"·{"subagent":…}
+			Originator string          `json:"originator"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &rec) != nil || rec.Type != "session_meta" || rec.Payload.ID != session {
+		return "", ""
+	}
+	_ = json.Unmarshal(rec.Payload.Source, &source)
+	return source, rec.Payload.Originator
 }
 
 // parseParent reads ORBIT_PARENT=<host>:<session>:<step>.

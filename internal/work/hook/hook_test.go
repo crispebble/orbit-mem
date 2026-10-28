@@ -95,6 +95,19 @@ func TestSessionStartAndTurns(t *testing.T) {
 			t.Errorf("표면 %q → %s, %s여야 합니다", ep, got, want)
 		}
 	}
+	// 실측(2.1.309, 2026-10-29): 진입점은 부모 것을 물려받지만, 사람이 보는 세션인지는
+	// 각 세션이 자기 훅에 CLAUDE_CODE_SESSION_ATTENDED로 새로 넣는다. claude -p는 0이다
+	for _, c := range []struct{ ep, attended, want string }{
+		{"claude-desktop", "0", "headless"}, // 데스크톱 앱 세션이 띄운 claude -p
+		{"cli", "0", "headless"},
+		{"claude-desktop", "1", "desktop"},
+		{"cli", "1", "cli"},
+	} {
+		p := Translate(probe(t, "SessionStart.1"), env("claude", map[string]string{"CLAUDE_CODE_ENTRYPOINT": c.ep, "CLAUDE_CODE_SESSION_ATTENDED": c.attended}))
+		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != c.want {
+			t.Errorf("표면 %q·attended %s → %s, %s여야 합니다", c.ep, c.attended, got, c.want)
+		}
+	}
 	p = Translate(probe(t, "UserPromptSubmit.1"), env("claude", nil))
 	if got := payload[work.Turn](t, p, work.KindTurnStart).Prompt; got != "d734d3cf-4ce2-4d5a-837d-8632ab1d59be" {
 		t.Errorf("요청 id %q", got)
@@ -371,6 +384,43 @@ func TestSnapshotTools(t *testing.T) {
 	p = Translate(wrap, env("claude", nil))
 	if o := payload[work.PlanOps](t, p, work.KindPlanOps); !o.Finish || o.Advance || o.List != work.ListAppPlan || o.ID != "D1" || !p.Sync || !p.ListTool {
 		t.Errorf("목록 닫기: %+v %+v", o, p)
+	}
+}
+
+// Codex 표면은 대화 기록 첫 줄(session_meta)의 source·originator로 정한다. 기록이 없을
+// 때만 환경 변수로 짐작한다(데스크톱 앱이 띄운 codex exec도 그 변수를 물려받는다).
+func TestCodexSurface(t *testing.T) {
+	dir := t.TempDir()
+	meta := func(name, id, source, originator string) string {
+		path := filepath.Join(dir, name)
+		line := `{"timestamp":"2026-10-28T22:29:55.071Z","type":"session_meta","payload":{"id":"` + id + `","originator":"` + originator +
+			`","cli_version":"0.164.0-alpha.11.1","source":` + source + `,"base_instructions":{"text":"` + strings.Repeat("x", 30000) + `"}}}`
+		if err := os.WriteFile(path, []byte(line+"\n"+`{"type":"turn_context"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	start := func(transcript string) []byte {
+		b, _ := json.Marshal(map[string]string{"hook_event_name": "SessionStart", "session_id": "C1", "transcript_path": transcript, "cwd": "/repo", "source": "startup"})
+		return b
+	}
+	desktopEnv := map[string]string{"CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop"}
+	for _, c := range []struct {
+		name, transcript string
+		vars             map[string]string
+		want             string
+	}{
+		{"exec", meta("exec.jsonl", "C1", `"exec"`, "codex_exec"), desktopEnv, "headless"},
+		{"데스크톱", meta("app.jsonl", "C1", `"vscode"`, "Codex Desktop"), desktopEnv, "desktop"},
+		{"TUI", meta("tui.jsonl", "C1", `"cli"`, "codex_cli_rs"), nil, "cli"},
+		{"다른 세션의 기록", meta("other.jsonl", "C2", `"exec"`, "codex_exec"), desktopEnv, "desktop"},
+		{"기록 없음·데스크톱 변수", filepath.Join(dir, "none.jsonl"), desktopEnv, "desktop"},
+		{"기록 없음", "", nil, "unknown"},
+	} {
+		p := Translate(start(c.transcript), env("codex", c.vars))
+		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != c.want {
+			t.Errorf("%s: %s, %s여야 합니다", c.name, got, c.want)
+		}
 	}
 }
 
