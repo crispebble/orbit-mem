@@ -2,7 +2,7 @@
   "tool": "work_list",
   "args": {
     "scope": "all",
-    "limit": 2,
+    "limit": 3,
     "fliter": "open"
   },
   "result": {
@@ -14,7 +14,7 @@
         1
       ]
     },
-    "seq": "9c41e7a2-1287",
+    "seq": "nEHnogAAAAAAAAUH",
     "items": [
       {
         "id": "w-7d2a91c04e5b",
@@ -56,6 +56,47 @@
         }
       },
       {
+        "id": "w-0c5e8f2a9d14",
+        "title": "층 계산 고치기",
+        "titleSource": "step",
+        "state": "open",
+        "cwd": "/Users/dev/repo/orbit/.claude/worktrees/graph",
+        "project": {
+          "scope": "project:github.com/onidot-labs/orbit",
+          "label": "github.com/onidot-labs/orbit"
+        },
+        "origin": {
+          "host": "codex",
+          "surface": "headless",
+          "sessionId": "019a2b7c-55e1-7c30-9d42-6f1e0a8b3c27",
+          "list": {
+            "kind": "codex-plan"
+          }
+        },
+        "parent": {
+          "workId": "w-7d2a91c04e5b",
+          "stepId": "st-3c4d5e6f7081"
+        },
+        "openedAt": "2026-10-28T06:01:58.420Z",
+        "updatedAt": "2026-10-28T06:35:00.000Z",
+        "counts": {
+          "pending": 1,
+          "ready": 0,
+          "in_progress": 1,
+          "blocked": 0,
+          "done": 0,
+          "cancelled": 0
+        },
+        "stepCount": 2,
+        "verification": {
+          "none": 2,
+          "pass": 0,
+          "fail": 0,
+          "needs_user": 0,
+          "outdated": 0
+        }
+      },
+      {
         "id": "w-a4c6e8f0b2d1",
         "title": "탐침 결과 정리",
         "titleSource": "step",
@@ -93,7 +134,7 @@
         }
       }
     ],
-    "nextCursor": "p1.9c41e7a2.1287.1251.w-a4c6e8f0b2d1",
+    "nextCursor": "eyJrIjoidyIsImQiOiI5YzQxZTdhMiIsInMiOjEyODcsInAiOjEyNTEsImkiOiJ3LWE0YzZlOGYwYjJkMSJ9",
     "limitMax": 50,
     "ignoredArgs": [
       "fliter"

@@ -16,7 +16,8 @@
 - 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.work", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 단계 상태는 "알 수 없음"으로 보이고 배치는 `pending`처럼 한다. 모르는 막힘 사유·증거 종류·사건 종류는 이름만 보인다.
-- `response.schema.json`은 oni가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험이 이 Schema로 실제 응답을 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
+- `response.schema.json`은 oni가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni의 작업 도구 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
+- 예시 값의 모양(id·`seq`·커서 글자)에는 뜻이 없다. 예시끼리는 같은 시점(`seq`)의 한 기록을 보이도록 맞췄다. `work_list.page1`의 `fliter`는 `ignoredArgs`를 보이려고 일부러 틀린 칸 이름이다.
 
 ## 도구
 
@@ -54,11 +55,32 @@
 | `work_changes` | `after` | 문자열 | 없음 | 앞 응답의 `seq`. 없으면 `reset: true` |
 | | `wait` | 정수(밀리초) | `0` | 바뀐 것이 없을 때 기다릴 시간. `waitMax`보다 크면 `waitMax`로 줄인다. 음수면 `INVALID_ARGUMENT` |
 
+## 파생 규칙
+
+호스트가 아는 것은 단계의 대기·진행·완료·삭제뿐이다. 아래 값은 oni가 기록에서 계산한다(설계 「모델」). 읽는 쪽은 다시 계산하지 않고 받은 값을 쓴다.
+
+| 칸 | 규칙 |
+| --- | --- |
+| `status` | 호스트 대기 + 끝나지 않은 선행 있음 → `pending`. 호스트 대기 + 선행이 모두 `done`·`cancelled` → `ready`. 호스트 진행 → `in_progress`, 막힘 사유가 열려 있으면 `blocked`. 성공한 완료 갱신 → `done`. 호스트 삭제·스냅숏 목록에서 빠짐 → `cancelled` |
+| `block.reason` | 사유가 여럿 열려 있으면 `waiting_user` → `run_failed` → `run_lost` → `declared` → `interrupted` → `stale` 순으로 앞의 하나를 보인다(제안) |
+| `after` | Claude Code Task의 `blockedBy`·`blocks`에서 온 간선은 `native`. 선행을 담지 못하는 목록(스냅숏)은 목록 순서대로 앞 단계 하나를 선행으로 두고 `order`. 빠진(`cancelled`) 단계는 순서 사슬에 넣지 않는다(제안). 순환이 생기는 간선은 받지 않는다 |
+| `wave` | 가장 긴 선행 경로의 길이. 선행이 없으면 0 |
+| `verification.state` | 1) 판정 증거가 있으면 가장 최근 판정: 통과·승인 `pass`, 수정 필요·수정 요구 `fail`, 사용자 확인 필요 `needs_user`. 2) 판정이 없고 시험 명령 증거가 있으면 가장 최근 시험 명령의 결과(`ok` → `pass`, `fail` → `fail`). 3) 둘 다 없으면 `none`. `evidenceId`는 1)·2)에서 고른 증거 |
+| `verification.outdated` | 고른 증거보다 뒤에 같은 단계의 `commit` 증거가 있으면 `true` |
+| `done` | 검증 결과에 묶이지 않는다. 검증 결과는 상태를 바꾸지 않고 배지로 붙는다 |
+| 증거 `result` | `command`는 `ok`·`fail`, `verdict`는 `pass`·`needs_fix`·`needs_user`, `commit`은 `ok`(제안)와 `ref.repo`·`ref.sha` |
+| 작업 요약 | `stepCount`(단계 수)와 `verification`(검증 결과별 단계 수, `outdated`는 지난 검증이 붙은 단계 수)은 `work_list`·`work_title`에만 있다(제안) |
+| 세션 `activeStepIds` | 그 세션이 마지막으로 갱신한 단계 중 호스트 진행인 것(`in_progress`·`blocked`) |
+| 세션 `openWorkIds` | 그 세션이 연 작업 중 열린 것. 끝난(`ended`) 세션도 열린 작업을 가질 수 있다 |
+
+- `stale`(세션 상태와 막힘 사유)은 읽을 때 PC 설정 시간으로 계산한다. 시간이 지나 생긴 `stale`은 사건이 아니므로 `work_changes`에 나오지 않는다. PC 설정 시간이 없으면 `stale`은 나오지 않는다.
+- 단계에 잇지 못한 실행(`stepId` 없음)과 세션 수준 증거는 `work_get`에 없고 `work_sessions({sessionId})`에만 있다.
+
 ## 쪽 넘김
 
 - `work_list`·`work_sessions` 세션 쪽은 마지막으로 바뀐 사건 위치가 최근인 것부터, 같으면 id 순이다.
 - 첫 쪽의 `seq`가 그 목록의 기준점이다. 뒤 쪽도 같은 `seq`를 돌려주고, 그 `seq` 뒤에 바뀐 항목은 뒤 쪽에서 뺀다. 그래서 넘기는 동안 바뀐 항목이 빠지거나 두 번 나오지 않는다. 그동안 바뀐 항목은 첫 쪽 `seq`로 `work_changes`를 불러 받는다.
-- 세션 사건 쪽은 오래된 것부터다. `runs`·`evidence`는 첫 쪽에만 있다.
+- 세션 사건 쪽은 오래된 것부터다. `runs`·`evidence`는 첫 쪽에만 있고 `limit`과 상관없이 그 세션의 것이 모두 들어간다(설계). 그래서 `limitMax`는 사건 수의 상한이며 첫 쪽 응답 크기의 상한은 아니다.
 - `nextCursor`가 없으면 마지막 쪽이다. 커서는 불투명한 문자열이다. 모양이 틀리거나 다른 기록 DB에서 온 커서는 `INVALID_ARGUMENT`다.
 
 ## 변경 대기
@@ -81,9 +103,9 @@
 | 코드 | 언제 | 더 있는 칸 |
 | --- | --- | --- |
 | `UNSUPPORTED_MAJOR` | `major`가 지원하지 않는 판 | `supportedMajors` |
-| `INVALID_ARGUMENT` | 칸의 형이 틀림, 필수 칸 없음, 읽는 쪽이 `scope=project`에 `project`를 비움, 모양이 틀린 쪽 커서 | `field` |
+| `INVALID_ARGUMENT` | 칸의 형이 틀림, 필수 칸 없음, 읽는 쪽이 `scope=project`에 `project`를 비움, 모양이 틀린 쪽 커서 | `field`(제안) |
 | `AMBIGUOUS_WORK` | `work_title`에 `workId`가 없고 작업을 하나로 정할 수 없음 | `candidates`(후보 작업 id. 없으면 빈 배열) |
-| `NOT_FOUND`(제안) | 없는 `workId`·`sessionId` | `field` |
+| `NOT_FOUND`(제안) | 없는 `workId`·`sessionId` | `field`(제안) |
 
 ## oni가 정한 값
 
@@ -100,4 +122,5 @@
 - 시각은 RFC 3339 UTC 밀리초(`2026-10-28T05:12:30.123Z`)다. 끝나지 않은 칸은 생략한다.
 - id·`seq`·커서는 불투명한 문자열이다. 읽는 쪽은 해석·비교·계산하지 않고 받은 값을 그대로 돌려준다. `native.id`는 호스트가 붙인 번호이며 작업 안에서만 뜻이 있다.
 - `sessionId`는 호스트가 붙인 세션 id 그대로다.
+- 세션의 `endDetail`(제안)은 호스트가 세션 끝 사건에 준 이유(Claude Code `SessionEnd`의 `reason`)를 그대로 옮긴 글이다.
 - 글 칸은 일반 텍스트이고 비밀값을 가린다. `ref.transcript`·`ref.agentTranscript`는 이 PC의 로컬 경로다.

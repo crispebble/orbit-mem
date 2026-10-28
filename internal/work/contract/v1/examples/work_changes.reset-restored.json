@@ -1,7 +1,7 @@
 {
   "tool": "work_changes",
   "args": {
-    "after": "5e07b3d9-2001"
+    "after": "Xgez2QAAAAAAAAfR"
   },
   "result": {
     "contract": {
@@ -12,7 +12,7 @@
         1
       ]
     },
-    "seq": "9c41e7a2-1290",
+    "seq": "nEHnogAAAAAAAAUK",
     "reset": true,
     "more": false,
     "waitMax": 30000

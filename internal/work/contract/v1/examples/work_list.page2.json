@@ -2,8 +2,8 @@
   "tool": "work_list",
   "args": {
     "scope": "all",
-    "limit": 2,
-    "cursor": "p1.9c41e7a2.1287.1251.w-a4c6e8f0b2d1"
+    "limit": 3,
+    "cursor": "eyJrIjoidyIsImQiOiI5YzQxZTdhMiIsInMiOjEyODcsInAiOjEyNTEsImkiOiJ3LWE0YzZlOGYwYjJkMSJ9"
   },
   "result": {
     "contract": {
@@ -14,7 +14,7 @@
         1
       ]
     },
-    "seq": "9c41e7a2-1287",
+    "seq": "nEHnogAAAAAAAAUH",
     "items": [
       {
         "id": "w-5b0e2d7c11aa",

@@ -1,7 +1,7 @@
 {
   "tool": "work_changes",
   "args": {
-    "after": "9c41e7a2-1287",
+    "after": "nEHnogAAAAAAAAUH",
     "wait": 25000
   },
   "result": {
@@ -13,11 +13,12 @@
         1
       ]
     },
-    "seq": "9c41e7a2-1290",
+    "seq": "nEHnogAAAAAAAAUK",
     "reset": false,
     "more": false,
     "waitMax": 30000,
     "workIds": [
+      "w-a4c6e8f0b2d1",
       "w-7d2a91c04e5b"
     ],
     "sessionIds": [

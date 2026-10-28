@@ -12,7 +12,7 @@
         1
       ]
     },
-    "seq": "9c41e7a2-1287",
+    "seq": "nEHnogAAAAAAAAUH",
     "sessions": [
       {
         "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
@@ -26,14 +26,39 @@
           "label": "github.com/onidot-labs/orbit"
         },
         "model": "claude-opus-5-5",
-        "state": "running",
+        "state": "waiting_user",
         "startedAt": "2026-10-28T05:12:01.004Z",
         "lastSeenAt": "2026-10-28T06:40:11.902Z",
         "openWorkIds": [
           "w-7d2a91c04e5b"
         ],
         "activeStepIds": [
-          "st-3c4d5e6f7081"
+          "st-3c4d5e6f7081",
+          "st-4d5e6f708192",
+          "st-5e6f708192a3",
+          "st-6f708192a3b4"
+        ]
+      },
+      {
+        "sessionId": "019a2b7c-55e1-7c30-9d42-6f1e0a8b3c27",
+        "host": "codex",
+        "surface": "headless",
+        "cwd": "/Users/dev/repo/orbit/.claude/worktrees/graph",
+        "repo": "/Users/dev/repo/orbit/.claude/worktrees/graph",
+        "branch": "codex/graph",
+        "project": {
+          "scope": "project:github.com/onidot-labs/orbit",
+          "label": "github.com/onidot-labs/orbit"
+        },
+        "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+        "state": "running",
+        "startedAt": "2026-10-28T06:01:30.000Z",
+        "lastSeenAt": "2026-10-28T06:40:05.000Z",
+        "openWorkIds": [
+          "w-0c5e8f2a9d14"
+        ],
+        "activeStepIds": [
+          "st-51a2b3c4d5e6"
         ]
       },
       {
@@ -47,35 +72,14 @@
           "scope": "project:github.com/onidot-labs/atlas",
           "label": "github.com/onidot-labs/atlas"
         },
-        "state": "waiting_user",
-        "startedAt": "2026-10-28T06:00:00.000Z",
-        "lastSeenAt": "2026-10-28T06:39:50.120Z",
-        "openWorkIds": [
-          "w-8e2a4c6e33cc"
-        ],
-        "activeStepIds": [
-          "st-a0b1c2d3e4f5"
-        ]
-      },
-      {
-        "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
-        "host": "claude",
-        "surface": "desktop",
-        "cwd": "/Users/dev/repo/orbit",
-        "repo": "/Users/dev/repo/orbit",
-        "branch": "main",
-        "project": {
-          "scope": "project:github.com/onidot-labs/orbit",
-          "label": "github.com/onidot-labs/orbit"
-        },
         "state": "idle",
-        "startedAt": "2026-10-28T03:00:00.000Z",
-        "lastSeenAt": "2026-10-28T06:12:00.000Z",
+        "startedAt": "2026-10-28T06:00:00.000Z",
+        "lastSeenAt": "2026-10-28T06:30:50.120Z",
         "openWorkIds": [],
         "activeStepIds": []
       }
     ],
-    "nextCursor": "p1.9c41e7a2.1287.1190.b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+    "nextCursor": "eyJrIjoicyIsImQiOiI5YzQxZTdhMiIsInMiOjEyODcsInAiOjEyMDMsImkiOiI3YTNlNWMxYi05ZDJmLTRiOGEtYTZjMC1lNGYyZDhiMWM5MzcifQ",
     "limitMax": 50
   }
 }
