@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	_ "modernc.org/sqlite"
+	"github.com/onidot-labs/orbit/internal/sqlitedb"
 )
 
 // Store is this PC's memory database (one SQLite file).
@@ -91,7 +91,7 @@ PRAGMA user_version=2;
 `
 
 // addColumns adds the columns later versions put on tables an older Orbit made.
-func addColumns(db *sql.DB) error {
+func addColumns(db *sql.Tx) error {
 	for _, c := range []struct{ table, column, def string }{
 		{"retros", "session", "TEXT NOT NULL DEFAULT ''"},
 	} {
@@ -110,31 +110,35 @@ func addColumns(db *sql.DB) error {
 	return err
 }
 
+// migrate creates and upgrades the tables in one immediate transaction. Taking the
+// write lock first lets the busy timeout apply when several processes open a fresh
+// or old DB together; a statement that reads first and then writes would get
+// SQLITE_BUSY at once instead of waiting.
+func migrate(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(schema + eventsSchema); err != nil {
+		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+	}
+	if err := addColumns(tx); err != nil {
+		return fmt.Errorf("기억 DB를 새 판으로 올리지 못했습니다: %w", err)
+	}
+	return tx.Commit()
+}
+
 // Open opens (creating if needed) the memory database at path. The directory is private to the user.
 func Open(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
-	// _txlock=immediate: a writer waits for the busy timeout instead of failing at once
-	// when hooks, the MCP server and a retrospective write at the same time.
-	dsn := "file:" + escaped + "?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sqlitedb.Open(path, 5*time.Second, "foreign_keys(1)", "synchronous(NORMAL)")
 	if err != nil {
-		return nil, err
-	}
-	// One connection per process: SQLite takes one writer at a time anyway, and
-	// a single connection keeps the busy wait between processes, not inside one.
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema + eventsSchema); err != nil {
-		db.Close()
 		return nil, fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}
-	if err := addColumns(db); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("기억 DB를 새 판으로 올리지 못했습니다: %w", err)
+		return nil, err
 	}
-	_ = os.Chmod(path, 0o600)
 	return &Store{db: db, path: path, Now: time.Now}, nil
 }
 

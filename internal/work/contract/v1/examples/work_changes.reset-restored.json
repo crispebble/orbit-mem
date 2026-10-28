@@ -1,0 +1,20 @@
+{
+  "tool": "work_changes",
+  "args": {
+    "after": "Xgez2QAAAAAAAAfR"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUK",
+    "reset": true,
+    "more": false,
+    "waitMax": 30000
+  }
+}

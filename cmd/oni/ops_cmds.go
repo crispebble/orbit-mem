@@ -20,6 +20,7 @@ import (
 	"github.com/onidot-labs/orbit/internal/retro"
 	"github.com/onidot-labs/orbit/internal/transcript"
 	"github.com/onidot-labs/orbit/internal/version"
+	"github.com/onidot-labs/orbit/internal/work"
 )
 
 func selfPath() string {
@@ -335,6 +336,7 @@ func cmdInstall(a *app, args []string) error {
 	noSchedule := fs.Bool("no-schedule", false, "회고 예약을 등록하지 않음")
 	noHosts := fs.Bool("no-hosts", false, "호스트 플러그인 등록을 건너뜀")
 	dry := fs.Bool("dry-run", false, "무엇을 할지만 보여 줌")
+	enablePlan := fs.Bool("enable-codex-plan", false, "Codex 계획 도구(update_plan)를 ~/.codex/config.toml에 켠다(고치기 전 사본을 남김)")
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -445,7 +447,17 @@ func cmdInstall(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, "등록하면 밀린 회고를 곧바로 한 번 돕니다(처음이면 어제 하루, 호스트 사용량을 씁니다). 결과: oni retro status")
 	}
 	if h.Codex != "" && !*noHosts {
-		fmt.Fprintln(a.stdout, "Codex는 플러그인 훅을 신뢰해야 돕니다. Codex에서 /hooks 로 Orbit 훅을 검토·신뢰해 주세요.")
+		fmt.Fprintln(a.stdout, "Codex는 플러그인 훅을 신뢰해야 돕니다. Codex에서 /hooks 로 Orbit 훅(기억 주입과 작업 기록)을 검토·신뢰해 주세요. 훅 파일이 바뀌면 다시 신뢰해야 합니다.")
+		switch {
+		case install.CodexPlanEnabled(codexHome()):
+		case *enablePlan:
+			if err := install.EnableCodexPlan(codexHome()); err != nil {
+				return fmt.Errorf("Codex 계획 도구를 켜지 못했습니다: %w", err)
+			}
+			fmt.Fprintln(a.stdout, "Codex 계획 도구(update_plan)를 켰습니다: "+filepath.Join(codexHome(), "config.toml"))
+		default:
+			fmt.Fprintln(a.stdout, "Codex 계획 도구(update_plan)가 꺼져 있어 Codex 작업은 작업 그래프에 남지 않습니다. 켜려면: oni install --enable-codex-plan (또는 config.toml에 [tools.update_plan] enabled = true)")
+		}
 	}
 	fmt.Fprintln(a.stdout, "새 세션부터 기억이 붙습니다. 상태 확인: oni doctor")
 	return nil
@@ -495,6 +507,30 @@ type doctorReport struct {
 	Schedule     bool                `json:"schedule"`
 	LastRetros   []retro.RetroStatus `json:"lastRetros"`
 	LastBackup   string              `json:"lastBackup,omitempty"`
+	CodexPlan    bool                `json:"codexPlanTool"`
+	Work         workStatus          `json:"work"`
+}
+
+type workStatus struct {
+	On      bool `json:"on"`
+	Open    int  `json:"openWorks"`
+	Total   int  `json:"works"`
+	Spooled int  `json:"spooled"` // 아직 DB에 넣지 못한 훅 사건
+}
+
+func workReport(cfg config.Config) workStatus {
+	st := workStatus{On: cfg.WorkOn()}
+	if files, err := filepath.Glob(filepath.Join(paths().WorkSpool(), "*.json")); err == nil {
+		st.Spooled = len(files)
+	}
+	if _, err := os.Stat(paths().WorkDB()); err != nil {
+		return st
+	}
+	if s, err := work.Open(paths().WorkDB()); err == nil {
+		st.Open, st.Total = s.Count()
+		s.Close()
+	}
+	return st
 }
 
 func cmdDoctor(a *app, args []string) error {
@@ -533,6 +569,8 @@ func cmdDoctor(a *app, args []string) error {
 		rep.Plugin[name] = strings.Contains(string(out), "orbit@orbit")
 	}
 	rep.Schedule = install.ScheduleInstalled(install.RunCommand)
+	rep.CodexPlan = h.Codex != "" && install.CodexPlanEnabled(codexHome())
+	rep.Work = workReport(cfg)
 	if entries, err := os.ReadDir(p.Backups()); err == nil && len(entries) > 0 {
 		rep.LastBackup = filepath.Join(p.Backups(), entries[len(entries)-1].Name())
 	}
@@ -556,6 +594,13 @@ func cmdDoctor(a *app, args []string) error {
 	for _, name := range []string{"claude", "codex"} {
 		if path, ok := rep.Hosts[name]; ok {
 			fmt.Fprintf(a.stdout, "%s: %s · Orbit 플러그인 %s\n", name, path, yes(rep.Plugin[name]))
+			if name == "codex" {
+				if rep.CodexPlan {
+					fmt.Fprintln(a.stdout, "codex 계획 도구(update_plan): 켜짐 · 작업 훅은 /hooks에서 신뢰해야 돕니다")
+				} else {
+					fmt.Fprintln(a.stdout, "codex 계획 도구(update_plan): 꺼짐 · 켜려면 oni install --enable-codex-plan")
+				}
+			}
 		} else {
 			fmt.Fprintf(a.stdout, "%s: 없음\n", name)
 		}
@@ -566,5 +611,7 @@ func cmdDoctor(a *app, args []string) error {
 	if rep.LastBackup != "" {
 		fmt.Fprintln(a.stdout, "최근 백업: "+rep.LastBackup)
 	}
+	onOff := map[bool]string{true: "켜짐", false: "꺼짐"}[rep.Work.On]
+	fmt.Fprintf(a.stdout, "작업 기록: %s · 열린 작업 %d · 전체 %d · 스풀 %d\n", onOff, rep.Work.Open, rep.Work.Total, rep.Work.Spooled)
 	return nil
 }

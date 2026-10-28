@@ -1,0 +1,30 @@
+{
+  "tool": "work_changes",
+  "args": {
+    "after": "nEHnogAAAAAAAAGc",
+    "wait": 25000
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAOQ",
+    "reset": false,
+    "more": true,
+    "waitMax": 30000,
+    "workIds": [
+      "w-7d2a91c04e5b",
+      "w-a4c6e8f0b2d1",
+      "w-5b0e2d7c11aa"
+    ],
+    "sessionIds": [
+      "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+      "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48"
+    ]
+  }
+}

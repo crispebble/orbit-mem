@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onidot.dev/schemas/orbit.work/1/inputs.schema.json",
+  "title": "orbit.work 1.0 도구 입력",
+  "description": "모든 칸은 선택이다(표시한 필수 칸 제외). 모르는 칸은 받아들이고 응답 ignoredArgs에 이름이 나온다. 형이 틀린 칸은 INVALID_ARGUMENT다.",
+  "$defs": {
+    "major": {"type": "integer", "minimum": 1, "description": "읽는 쪽이 읽을 수 있는 주판. 기본 1"},
+    "scope": {"enum": ["all", "project"], "description": "all(기본) 또는 project"},
+    "project": {"type": "string", "description": "프로젝트 범위(project:…). scope=project일 때만 쓴다"},
+    "cwdPrefix": {"type": "array", "items": {"type": "string"}, "description": "작업 디렉토리가 이 절대경로들 중 하나이거나 그 아래인 것만. 경로 구분자 단위로 비교한다"},
+    "cursor": {"type": "string", "description": "앞 응답의 nextCursor"},
+    "limit": {"type": "integer", "minimum": 1, "description": "쪽 크기. limitMax보다 크면 limitMax로 줄인다"},
+    "work_list": {
+      "type": "object",
+      "properties": {
+        "major": {"$ref": "#/$defs/major"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "project": {"$ref": "#/$defs/project"},
+        "cwdPrefix": {"$ref": "#/$defs/cwdPrefix"},
+        "state": {"enum": ["open", "done", "any"], "description": "작업 상태. 기본 any"},
+        "updatedSince": {"type": "string", "description": "RFC 3339 시각. 이 시각 뒤에 갱신된 것만"},
+        "cursor": {"$ref": "#/$defs/cursor"},
+        "limit": {"$ref": "#/$defs/limit"}
+      }
+    },
+    "work_get": {
+      "type": "object",
+      "required": ["workId"],
+      "properties": {
+        "major": {"$ref": "#/$defs/major"},
+        "workId": {"type": "string", "description": "읽을 작업 id"},
+        "includeChildren": {"type": "boolean", "description": "자식 작업 전체를 work.children에 넣는다. 기본 false"}
+      }
+    },
+    "work_title": {
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "major": {"$ref": "#/$defs/major"},
+        "workId": {"type": "string", "description": "정할 작업 id. 비우면 이 작업 디렉토리에 열린 작업이 하나일 때만 그 작업"},
+        "title": {"type": "string", "description": "무엇을 하는 작업인지 한 줄 제목"}
+      }
+    },
+    "work_sessions": {
+      "type": "object",
+      "properties": {
+        "major": {"$ref": "#/$defs/major"},
+        "sessionId": {"type": "string", "description": "넘기면 그 세션의 사건 쪽, 안 넘기면 세션 쪽"},
+        "scope": {"$ref": "#/$defs/scope"},
+        "project": {"$ref": "#/$defs/project"},
+        "cwdPrefix": {"$ref": "#/$defs/cwdPrefix"},
+        "state": {"type": "array", "items": {"enum": ["running", "waiting_user", "idle", "stale", "ended"]}, "description": "세션 상태로 거른다. 기본 모두"},
+        "cursor": {"$ref": "#/$defs/cursor"},
+        "limit": {"$ref": "#/$defs/limit"}
+      }
+    },
+    "work_changes": {
+      "type": "object",
+      "properties": {
+        "major": {"$ref": "#/$defs/major"},
+        "after": {"type": "string", "description": "앞 응답의 seq. 없으면 reset: true"},
+        "wait": {"type": "integer", "minimum": 0, "description": "바뀐 것이 없을 때 기다릴 밀리초. 기본 0, waitMax보다 크면 waitMax"}
+      }
+    }
+  }
+}

@@ -17,15 +17,23 @@ type Options struct {
 	Project      string // 이 세션의 프로젝트 범위("project:<키>")
 	ProjectLabel string
 	Version      string
+	Work         *WorkOptions // 있으면 작업 도구(work_list·work_get·work_title)를 연다
 }
 
 const instructions = `Orbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.`
 
+const workInstructions = `
+작업 기록: 재개할 때 work_list·work_get으로 이전 작업과 단계를 읽는다. 작업 목록 도구로 작업을 처음 열면 work_title로 무엇을 하는 작업인지 한 줄 제목을 정한다(단계 기록은 훅이 한다).`
+
 // New builds the server over the store.
 func New(s *memory.Store, o Options) *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit", Version: o.Version}, &mcp.ServerOptions{Instructions: instructions})
+	ins := instructions
+	if o.Work != nil {
+		ins += workInstructions
+	}
+	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit", Version: o.Version}, &mcp.ServerOptions{Instructions: ins})
 	h := handlers{s: s, o: o}
 	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다."},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
@@ -59,6 +67,9 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID}
 		}))
+	if o.Work != nil {
+		addWorkTools(srv, newWorkTools(*o.Work, false))
+	}
 	return srv
 }
 

@@ -163,3 +163,56 @@ func TestBuild_잘못된_원본은_거절한다(t *testing.T) {
 		t.Error("''' in body accepted")
 	}
 }
+
+// 설계 「훅」: 호스트마다 matcher가 다른 훅을 적을 수 있고, 비동기 훅은 두 호스트 모두 async로 낸다.
+func TestBuild_훅은_호스트별로_나누고_비동기를_표시한다(t *testing.T) {
+	src, out := t.TempDir(), t.TempDir()
+	write(t, src, map[string]string{
+		"plugin.json": `{"name":"orbit","version":"0.1.0","description":"d","skills":["memory"],
+		  "hooks":{"PostToolUse":[
+		     {"hosts":["claude"],"matcher":"TaskCreate|TaskUpdate","command":"oni hook work --host {{host}}","timeout":10},
+		     {"hosts":["codex"],"matcher":"update_plan","command":"oni hook work --host {{host}}","timeout":10},
+		     {"matcher":".*","command":"oni hook work --host {{host}} --skip-lists","async":true}],
+		   "PostToolUseFailure":[{"hosts":["claude"],"matcher":".*","command":"oni hook work --host {{host}}","async":true}],
+		   "PermissionRequest":[{"command":"oni hook work --host {{host}}","async":true}]}}`,
+		"skills/memory/SKILL.md": "---\nname: memory\ndescription: d\n---\nx",
+	})
+	if _, err := Build(Options{Source: src, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(out, "plugins", "orbit", "hooks")
+	type group struct {
+		Matcher string `json:"matcher"`
+		Hooks   []struct {
+			Command string `json:"command"`
+			Async   bool   `json:"async"`
+		} `json:"hooks"`
+	}
+	load := func(name string) map[string][]group {
+		var f struct {
+			Hooks map[string][]group `json:"hooks"`
+		}
+		if err := json.Unmarshal([]byte(read(t, filepath.Join(p, name))), &f); err != nil {
+			t.Fatal(err)
+		}
+		return f.Hooks
+	}
+	ch, xh := load("claude.json"), load("codex.json")
+	if len(ch["PostToolUse"]) != 2 || ch["PostToolUse"][0].Matcher != "TaskCreate|TaskUpdate" || ch["PostToolUse"][1].Matcher != ".*" || !ch["PostToolUse"][1].Hooks[0].Async {
+		t.Errorf("claude PostToolUse: %+v", ch["PostToolUse"])
+	}
+	if len(xh["PostToolUse"]) != 2 || xh["PostToolUse"][0].Matcher != "update_plan" || ch["PostToolUse"][0].Hooks[0].Async {
+		t.Errorf("codex PostToolUse: %+v", xh["PostToolUse"])
+	}
+	if _, ok := xh["PostToolUseFailure"]; ok || len(ch["PostToolUseFailure"]) != 1 {
+		t.Errorf("Claude 전용 사건이 Codex에 들어갔습니다: %+v / %+v", xh, ch["PostToolUseFailure"])
+	}
+	if !xh["PermissionRequest"][0].Hooks[0].Async || !strings.Contains(xh["PermissionRequest"][0].Hooks[0].Command, "--host codex") {
+		t.Errorf("codex PermissionRequest: %+v", xh["PermissionRequest"])
+	}
+	write(t, src, map[string]string{"plugin.json": `{"name":"orbit","version":"0.1.0","description":"d","skills":["memory"],
+		  "hooks":{"Stop":[{"hosts":["gemini"],"command":"x"}]}}`})
+	if _, err := Build(Options{Source: src, Out: t.TempDir()}); err == nil {
+		t.Error("모르는 호스트를 받았습니다")
+	}
+}
