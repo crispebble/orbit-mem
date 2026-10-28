@@ -154,6 +154,35 @@ func TestWorkToolLists(t *testing.T) {
 	}
 }
 
+// 작업 도구는 MCP 주석으로 성질을 밝힌다. 읽는 도구는 읽기 전용이고, work_title은 이 PC의 work.db에만 덧붙인다.
+// Codex는 주석이 없으면 파괴적·바깥 세계 도구로 보고 승인을 요구해, 승인 정책 never에서 work_title이 실패했다(ONID-8).
+func TestWorkToolAnnotations(t *testing.T) {
+	e := newWorkEnv(t)
+	for _, cs := range []*mcp.ClientSession{aiHost(t, e), readerHost(t, e)} {
+		res, err := cs.ListTools(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tl := range res.Tools {
+			if !strings.HasPrefix(tl.Name, "work_") {
+				continue
+			}
+			a := tl.Annotations
+			if a == nil || a.OpenWorldHint == nil || *a.OpenWorldHint {
+				t.Errorf("%s: 바깥 세계 도구가 아님을 밝혀야 합니다: %+v", tl.Name, a)
+				continue
+			}
+			if tl.Name == "work_title" {
+				if a.ReadOnlyHint || a.DestructiveHint == nil || *a.DestructiveHint || !a.IdempotentHint {
+					t.Errorf("work_title 주석: %+v", a)
+				}
+			} else if !a.ReadOnlyHint {
+				t.Errorf("%s: 읽기 전용이어야 합니다", tl.Name)
+			}
+		}
+	}
+}
+
 // 끝 기준: 실제 응답이 모두 1판 Schema를 통과하고 시각은 RFC 3339 UTC 밀리초다.
 func TestWorkResponsesMatchContract(t *testing.T) {
 	e := newWorkEnv(t)

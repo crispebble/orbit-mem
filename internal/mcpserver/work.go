@@ -73,12 +73,21 @@ func (w *workTools) Close() {
 }
 
 func addWorkTools(srv *mcp.Server, w *workTools) {
+	// Every work tool stays inside this PC's work.db. Without annotations a host
+	// such as Codex treats a tool as destructive and open-world and asks for
+	// approval, which fails under approval policy never.
+	no := false
+	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &no}
 	add := func(name, desc string, h func(context.Context, args) (any, error)) {
 		schema, err := contract.InputSchema(contract.Major, name)
 		if err != nil {
 			panic(err)
 		}
-		srv.AddTool(&mcp.Tool{Name: name, Description: desc, InputSchema: schema}, w.handler(name, schema, h))
+		a := read
+		if name == "work_title" {
+			a = &mcp.ToolAnnotations{DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}
+		}
+		srv.AddTool(&mcp.Tool{Name: name, Description: desc, InputSchema: schema, Annotations: a}, w.handler(name, schema, h))
 	}
 	add("work_list", "이 PC의 작업 목록 쪽(orbit.work). 범위(all·project)·cwdPrefix·상태(open·done·any)·updatedSince로 거르고 cursor로 넘긴다. 최근에 바뀐 것부터.", w.list)
 	add("work_get", "작업 하나의 전체 그래프(단계·선행·실행·증거·자식 작업 id). includeChildren이면 자식 작업 전체.", w.get)

@@ -259,3 +259,46 @@ func gitLog(t *testing.T, repo string) map[string]string {
 	}
 	return m
 }
+
+// 끝 기준: Codex 헤드리스 세션에서 update_plan 세 항목을 차례로 진행·완료하면 단계 셋, order 간선 둘,
+// 층 0·1·2, 모두 done, 작업 done. Orbit 도구 호출은 work_title뿐이고, 그 전에는 첫 단계 제목·step, 뒤에는 ai.
+func TestE2ECodexPlan(t *testing.T) {
+	dir := e2eDir(t)
+	calls := orbitCalls(toolCalls(t, filepath.Join(dir, "codex-c.jsonl")))
+	if strings.Join(calls, ",") != "work_title" {
+		t.Errorf("Orbit 도구 호출: %v (work_title 한 번이어야 합니다)", calls)
+	}
+	s := e2eStore(t, filepath.Join(dir, "c"))
+	ws := worksOf(t, s, "codex")
+	if len(ws) != 1 {
+		t.Fatalf("Codex 작업 %d개", len(ws))
+	}
+	w := ws[0]
+	if len(w.Steps) != 3 {
+		t.Fatalf("단계 %d개", len(w.Steps))
+	}
+	order := 0
+	for i, st := range w.Steps {
+		if st.Wave != i {
+			t.Errorf("%s: 층 %d", st.Title, st.Wave)
+		}
+		for _, a := range st.After {
+			if a.Source == "order" {
+				order++
+			}
+		}
+		if st.Status != "done" {
+			t.Errorf("%s: %s", st.Title, st.Status)
+		}
+	}
+	if order != 2 || w.State != "done" || w.Origin.List.Kind != ListCodexPlan {
+		t.Errorf("order 간선 %d, 작업 %s, 목록 %s", order, w.State, w.Origin.List.Kind)
+	}
+	if w.TitleSource != "ai" || w.Title == w.Steps[0].Title {
+		t.Errorf("제목 뒤: %q %s", w.Title, w.TitleSource)
+	}
+	b := beforeTitle(t, s, w.ID)
+	if b.TitleSource != "step" || b.Title != w.Steps[0].Title {
+		t.Errorf("제목 전: %q %s", b.Title, b.TitleSource)
+	}
+}
