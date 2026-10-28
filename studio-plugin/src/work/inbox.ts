@@ -1,6 +1,6 @@
 // 받은 일: `blocked` + `waiting_user` 단계를 kind 'waiting' 항목으로. 확인·거절 동작은 없다(계약 1.0은 읽기 전용).
-// 주의: ctx.inbox.set은 플러그인의 받은 일 전체를 바꾼다. 제안 항목(store.ts)과 합쳐서 한 번에 set해야 하므로
-// 여기서는 항목만 만들고 set은 부르지 않는다.
+// ctx.inbox.set은 플러그인의 받은 일 전체를 바꾸므로 여기서는 항목만 만든다.
+// 화면에 붙일 때 store.ts와 같은 받은 일 갈래 합치기(inbox-parts.ts)에 'waiting' 갈래로 넣는다.
 import {blockText, waitingSteps} from './display.ts';
 import type {Work, WorkInboxItem} from './types.ts';
 

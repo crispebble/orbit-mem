@@ -12,6 +12,7 @@ import {
 } from './model.ts';
 import {decideArgs, findArgs, type DecideArgs, type FindParams, type UpdateArgs} from './requests.ts';
 import type {OrbitMemory} from './parts/index.ts';
+import {createInboxParts} from './inbox-parts.ts';
 
 export interface OrbitState {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -39,7 +40,8 @@ const browserTimers: Timers = {
   clearInterval: id => clearInterval(id),
 };
 
-export function createStore(ctx: PluginContext, timers: Timers = browserTimers) {
+/** `inbox`는 받은 일 갈래 합치기. 작업의 확인 기다림 항목도 같은 것에 'waiting' 갈래로 넣어야 서로 지우지 않는다. */
+export function createStore(ctx: PluginContext, timers: Timers = browserTimers, inbox = createInboxParts<InboxItem>(ctx.inbox)) {
   let state: OrbitState = {status: 'idle', proposals: []};
   const listeners = new Set<() => void>();
   let inflight: Promise<void> | undefined;
@@ -60,7 +62,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
       lastLogged = undefined;
       set({status: 'ready', proposals, error: undefined});
       const items: InboxItem[] = toInboxItems(proposals);
-      ctx.inbox.set(items);
+      inbox.set('proposals', items);
       ctx.app.setBadge('orbit', items.length > 0 ? items.length : null);
     } catch (e) {
       const message = errorMessage(e);
