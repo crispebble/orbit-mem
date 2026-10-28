@@ -112,6 +112,8 @@ var (
 	writeTools = []string{"Write", "Edit", "NotebookEdit"}
 	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "SubagentStart", "SubagentStop"}
 	hookHosts  = []string{"claude", "codex"}
+
+	codexSessionEndMax = 3
 )
 
 func has(list []string, v string) bool {
@@ -207,6 +209,10 @@ func (m *Manifest) validate() error {
 				if !has(hookHosts, host) {
 					return fmt.Errorf("hooks.%s: 모르는 호스트 %s", ev, host)
 				}
+			}
+			// Codex는 SessionEnd 훅 timeout을 3초로 줄이고 훅을 불러올 때 경고한다.
+			if ev == "SessionEnd" && h.Timeout > codexSessionEndMax && (len(h.Hosts) == 0 || has(h.Hosts, "codex")) {
+				return fmt.Errorf("hooks.SessionEnd: Codex는 timeout을 %d초까지만 받습니다(%d초)", codexSessionEndMax, h.Timeout)
 			}
 		}
 	}
