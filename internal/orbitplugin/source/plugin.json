@@ -41,6 +41,12 @@
         "command": "{{onicmd}} hook prompt --host {{host}}",
         "timeout": 5
       }
+    ],
+    "SessionEnd": [
+      {
+        "command": "{{onicmd}} hook session-end --host {{host}}",
+        "timeout": 5
+      }
     ]
   },
   "agentsCommon": "agents-common.md",

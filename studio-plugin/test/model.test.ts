@@ -150,6 +150,17 @@ describe('제안 변환', () => {
     assert.equal(d.kind, 'direction');
   });
 
+  it('기억 고치기·변경 되돌리기는 이름을 보이고 내용은 설명으로 보인다', () => {
+    assert.equal(toProposalRow(pending({kind: 'edit'}), now).kindLabel, '기억 고치기');
+    assert.equal(toProposalRow(pending({kind: 'revert'}), now).kindLabel, '변경 되돌리기');
+    for (const kind of ['edit', 'revert']) {
+      const p = toProposal(pending({kind, body: '이유\n```diff\n+제목: 새 제목\n```'}), [memory], now);
+      assert.equal(p.kind, 'cleanup');
+      assert.equal(p.explanation, '이유\n```diff\n+제목: 새 제목\n```');
+      assert.equal(p.title, '확정할까요?');
+    }
+  });
+
   it('Orbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
     for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
