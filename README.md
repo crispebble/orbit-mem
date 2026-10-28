@@ -23,6 +23,8 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni ledger [--all] [--json]` | 승인한 기억·하네스·지침 변경과 효과 판정(도움됨·해로움·효과 없음·섞임) |
 | `oni config`, `oni backup`, `oni uninstall` | 설정, 즉시 백업, 등록·예약 해제(데이터는 남김) |
 
+Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고, 훅이 바뀌면 신뢰가 풀린다. 새 판을 `oni install`로 깐 뒤에는 Codex에서 `/hooks`를 열어 Orbit 훅을 다시 신뢰한다. 신뢰가 없으면 기억 문맥과 작업 기록이 Codex에서 돌지 않는다.
+
 ## 데이터
 
 - 위치: `ORBIT_HOME`, 없으면 Mac `~/Library/Application Support/orbit`, Windows `%AppData%\orbit`.
