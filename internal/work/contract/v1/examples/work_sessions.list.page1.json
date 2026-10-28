@@ -1,0 +1,81 @@
+{
+  "tool": "work_sessions",
+  "args": {
+    "limit": 3
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "9c41e7a2-1287",
+    "sessions": [
+      {
+        "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+        "host": "claude",
+        "surface": "cli",
+        "cwd": "/Users/dev/repo/orbit",
+        "repo": "/Users/dev/repo/orbit",
+        "branch": "claude/work-graph",
+        "project": {
+          "scope": "project:github.com/onidot-labs/orbit",
+          "label": "github.com/onidot-labs/orbit"
+        },
+        "model": "claude-opus-5-5",
+        "state": "running",
+        "startedAt": "2026-10-28T05:12:01.004Z",
+        "lastSeenAt": "2026-10-28T06:40:11.902Z",
+        "openWorkIds": [
+          "w-7d2a91c04e5b"
+        ],
+        "activeStepIds": [
+          "st-3c4d5e6f7081"
+        ]
+      },
+      {
+        "sessionId": "7a3e5c1b-9d2f-4b8a-a6c0-e4f2d8b1c937",
+        "host": "claude",
+        "surface": "desktop",
+        "cwd": "/Users/dev/repo/atlas",
+        "repo": "/Users/dev/repo/atlas",
+        "branch": "main",
+        "project": {
+          "scope": "project:github.com/onidot-labs/atlas",
+          "label": "github.com/onidot-labs/atlas"
+        },
+        "state": "waiting_user",
+        "startedAt": "2026-10-28T06:00:00.000Z",
+        "lastSeenAt": "2026-10-28T06:39:50.120Z",
+        "openWorkIds": [
+          "w-8e2a4c6e33cc"
+        ],
+        "activeStepIds": [
+          "st-a0b1c2d3e4f5"
+        ]
+      },
+      {
+        "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "host": "claude",
+        "surface": "desktop",
+        "cwd": "/Users/dev/repo/orbit",
+        "repo": "/Users/dev/repo/orbit",
+        "branch": "main",
+        "project": {
+          "scope": "project:github.com/onidot-labs/orbit",
+          "label": "github.com/onidot-labs/orbit"
+        },
+        "state": "idle",
+        "startedAt": "2026-10-28T03:00:00.000Z",
+        "lastSeenAt": "2026-10-28T06:12:00.000Z",
+        "openWorkIds": [],
+        "activeStepIds": []
+      }
+    ],
+    "nextCursor": "p1.9c41e7a2.1287.1190.b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+    "limitMax": 50
+  }
+}

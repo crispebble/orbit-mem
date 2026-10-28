@@ -1,0 +1,57 @@
+{
+  "tool": "work_title",
+  "args": {
+    "workId": "w-a4c6e8f0b2d1",
+    "title": "Codex update_plan 어댑터\n탐침과 고치기"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "9c41e7a2-1288",
+    "work": {
+      "id": "w-a4c6e8f0b2d1",
+      "title": "Codex update_plan 어댑터 탐침과 고치기",
+      "titleSource": "ai",
+      "state": "open",
+      "cwd": "/Users/dev/repo/orbit/.claude/worktrees/codex-probe",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "origin": {
+        "host": "codex",
+        "surface": "cli",
+        "sessionId": "019a2a10-3e7d-7b21-8c90-5d4f1e2a6b38",
+        "list": {
+          "kind": "codex-plan"
+        }
+      },
+      "openedAt": "2026-10-28T04:00:51.009Z",
+      "updatedAt": "2026-10-28T04:22:31.045Z",
+      "counts": {
+        "pending": 1,
+        "ready": 0,
+        "in_progress": 0,
+        "blocked": 1,
+        "done": 1,
+        "cancelled": 1
+      },
+      "stepCount": 4,
+      "verification": {
+        "none": 3,
+        "pass": 1,
+        "fail": 0,
+        "needs_user": 0,
+        "outdated": 0
+      },
+      "titleUpdatedAt": "2026-10-28T04:22:31.045Z"
+    },
+    "titleMax": 120
+  }
+}

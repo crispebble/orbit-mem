@@ -1,0 +1,90 @@
+{
+  "tool": "work_sessions",
+  "args": {
+    "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+    "limit": 5,
+    "cursor": "e1.9c41e7a2.1287.1131"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "9c41e7a2-1287",
+    "session": {
+      "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+      "host": "claude",
+      "surface": "desktop",
+      "cwd": "/Users/dev/repo/orbit",
+      "repo": "/Users/dev/repo/orbit",
+      "branch": "main",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "state": "ended",
+      "startedAt": "2026-10-28T03:00:00.000Z",
+      "lastSeenAt": "2026-10-28T03:40:00.000Z",
+      "openWorkIds": [
+        "w-5b0e2d7c11aa"
+      ],
+      "endReason": "session_end",
+      "endDetail": "prompt_input_exit",
+      "endedAt": "2026-10-28T03:40:00.000Z",
+      "activeStepIds": []
+    },
+    "events": [
+      {
+        "seq": "9c41e7a2-1140",
+        "at": "2026-10-28T03:10:20.000Z",
+        "kind": "run.started",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "runId": "r-32b3c4d5e6f7",
+        "summary": "orbit:worker 시작(백그라운드)"
+      },
+      {
+        "seq": "9c41e7a2-1150",
+        "at": "2026-10-28T03:15:00.000Z",
+        "kind": "block.opened",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-33c4d5e6f708",
+        "summary": "사용자 응답 대기: AskUserQuestion"
+      },
+      {
+        "seq": "9c41e7a2-1151",
+        "at": "2026-10-28T03:16:30.000Z",
+        "kind": "block.cleared",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-33c4d5e6f708",
+        "summary": "사용자 응답 대기 풀림"
+      },
+      {
+        "seq": "9c41e7a2-1160",
+        "at": "2026-10-28T03:31:02.000Z",
+        "kind": "run.ended",
+        "runId": "r-33d4e5f6a7b8",
+        "summary": "orbit:explorer 끝",
+        "ref": {
+          "agentTranscript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48/subagents/agent-a4f6b8d0e2c35.jsonl"
+        }
+      },
+      {
+        "seq": "9c41e7a2-1170",
+        "at": "2026-10-28T03:35:00.000Z",
+        "kind": "turn.ended"
+      },
+      {
+        "seq": "9c41e7a2-1180",
+        "at": "2026-10-28T03:40:00.000Z",
+        "kind": "session.ended",
+        "summary": "세션 끝(prompt_input_exit)"
+      }
+    ],
+    "limitMax": 200
+  }
+}
