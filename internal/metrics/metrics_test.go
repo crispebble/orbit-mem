@@ -130,3 +130,70 @@ func TestCompute_사건이_없어도_빈_보고를_낸다(t *testing.T) {
 		t.Fatal(Render(rep))
 	}
 }
+
+func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비용(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
+	rec := func(day string, e memory.Event, data any) {
+		at(s, day, 10)
+		if err := s.RecordEvent(e, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at(s, "2026-10-20", 9)
+	a, _ := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "어긴 교훈", Source: memory.Source{Kind: memory.SourceSession}})
+	b, _ := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "상관없는 교훈", Source: memory.Source{Kind: memory.SourceSession}})
+	for _, v := range []struct{ id, verdict string }{{a.ID, "violated"}, {a.ID, "violated"}, {a.ID, "followed"}, {b.ID, "irrelevant"}, {b.ID, "followed"}} {
+		rec("2026-10-22", memory.Event{Kind: memory.EventMemoryUsed, Session: "s1"}, map[string]any{"memoryId": v.id, "verdict": v.verdict})
+	}
+	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{a.ID}, "chars": 600})
+	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{}, "chars": 0})
+	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{b.ID}, "chars": 200})
+	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "session", "costKnown": true, "costUsd": 0.25, "inputTokens": 1000, "outputTokens": 100})
+	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "daily", "costKnown": true, "costUsd": 0.5, "inputTokens": 2000, "outputTokens": 200})
+	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "session", "costKnown": false})
+	day := func(d string, h int) int64 { at(s, d, h); return s.Now().UnixMilli() }
+	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('s1','session','2026-10-23','done',?,?)`, day("2026-10-23", 9), day("2026-10-23", 9)+1000)
+	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('s2','session','2026-10-23','empty',?,?)`, day("2026-10-23", 10), day("2026-10-23", 10))
+	at(s, "2026-10-23", 11)
+	s.RecordJudgment(memory.Judgment{Kind: "fact", Title: "가", Verdict: memory.VerdictKeep})
+	s.RecordJudgment(memory.Judgment{Kind: "fact", Title: "나", Verdict: memory.VerdictHold})
+	s.RecordJudgment(memory.Judgment{Kind: "fact", Title: "다", Verdict: memory.VerdictReject, Reason: "일회성"})
+	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "고치기", MemoryIDs: []string{a.ID}, Payload: memory.Payload{Title: "고친 교훈"}})
+	s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
+	pr, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalDirection, Title: "방향"})
+	s.Decide(memory.DecideInput{ID: pr.ID, Decision: "reject", Note: "아님"})
+	at(s, "2026-10-27", 12)
+
+	rep, err := Compute(s, "2026-10-21", "2026-10-27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := rep.Usage
+	if u.Followed != 2 || u.Violated != 2 || u.Irrelevant != 1 || len(u.TopViolated) != 1 || u.TopViolated[0].ID != a.ID || u.TopViolated[0].Count != 2 ||
+		len(u.TopIrrelevant) != 1 || u.TopIrrelevant[0].ID != b.ID {
+		t.Errorf("usage = %+v", u)
+	}
+	if rep.Prompts.AvgChars != 400 {
+		t.Errorf("prompt avg chars = %d (hits only)", rep.Prompts.AvgChars)
+	}
+	if rep.Ledger.Changes != 1 || rep.Ledger.Pending != 1 {
+		t.Errorf("ledger = %+v", rep.Ledger)
+	}
+	w := rep.Writes
+	if w.Keep != 1 || w.Hold != 1 || w.Reject != 1 || w.UserRejected != 1 || w.UserEdited != 0 {
+		t.Errorf("writes = %+v", w)
+	}
+	if k := rep.Retros.Kinds["session"]; k.Runs != 2 || k.Done != 1 || k.Empty != 1 {
+		t.Errorf("session retros = %+v", rep.Retros.Kinds)
+	}
+	if c := rep.Retros.Cost; c.USD != 0.75 || c.Known != 2 || c.Unknown != 1 || c.InputTokens != 3000 || c.OutputTokens != 300 || c.SessionUSD != 0.25 {
+		t.Errorf("cost = %+v", c)
+	}
+	text := Render(rep)
+	for _, want := range []string{"사용 판정: 따름 2 · 어김 2 · 상관없음 1", "고친 교훈", "효과 원장: 변경 1건", "관찰 중 1", "쓰기 판정: 유지 1 · 보류 1 · 거절 1", "사용자 거절 1",
+		"평균 400자", "세션 끝 2번", "$0.75", "모름 1"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("render missing %q:\n%s", want, text)
+		}
+	}
+}
