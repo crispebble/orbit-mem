@@ -334,12 +334,24 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	flags := append(append([]string{}, sub.Flags...), sub.Patterns...)
 	fb, _ := json.Marshal(nonNil(flags))
-	if _, err := s.DB().Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status='submitting'`,
+	// 완료 표시와 읽은 발화 구간은 함께 남긴다: 하나만 남으면 같은 발화를 다시 읽거나 영영 못 읽는다.
+	tx, err := s.DB().Begin()
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status='submitting'`,
 		StatusDone, s.Now().UnixMilli(), sub.Summary, string(fb), journalID, id); err != nil {
+		tx.Rollback()
+		return "", err
+	}
+	if err := recordCoverage(tx, id, mat.Read); err != nil {
+		tx.Rollback()
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	finished = true
-	recordCoverage(s, id, mat.Read)
 	// 교정과 사용 판정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
 	// 그 사이에 프로세스가 죽으면 그 회고의 교정·판정만 빠진다(감수한다).
 	if mat.Kind != KindWeekly {

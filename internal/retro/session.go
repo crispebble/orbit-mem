@@ -72,15 +72,27 @@ func markEnd(s *memory.Store, e SessionEnd, retroID string) {
 // lock. When another retrospective holds the lock it returns at once: that
 // run, or the next daily catch-up, takes the queue.
 func (r *Runner) DrainSessions(ctx context.Context) ([]Result, error) {
-	unlock, err := r.lock()
-	if errors.Is(err, ErrBusy) {
-		return nil, nil
+	var results []Result
+	// 잠금을 푸는 사이에 새로 들어온 세션의 실행은 바쁨으로 끝났을 수 있다: 풀고 나서 한 번 더 본다.
+	for attempt := 0; attempt < 3; attempt++ {
+		unlock, err := r.lock()
+		if errors.Is(err, ErrBusy) {
+			return results, nil
+		}
+		if err != nil {
+			return results, err
+		}
+		res, err := r.drain(ctx)
+		unlock()
+		results = append(results, res...)
+		if err != nil || ctx.Err() != nil {
+			return results, err
+		}
+		if pending, _ := Pending(r.Store); len(pending) == 0 {
+			break
+		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-	return r.drain(ctx)
+	return results, nil
 }
 
 // drain runs the queue until it is empty. Callers hold the lock.
@@ -126,11 +138,13 @@ func (r *Runner) sessionsToday() int {
 // RunSession runs the session-end retrospective of one queued session. Callers hold the lock.
 func (r *Runner) RunSession(ctx context.Context, e SessionEnd) (Result, error) {
 	res := Result{Kind: KindSession, Period: dayOf(r.now())}
-	path := e.Transcript
-	if path == "" {
-		path = transcript.FindSession(r.Roots, e.Host, e.Session)
+	exclude := []string{r.Paths.Home}
+	sess, ok := transcript.SessionFile(e.Host, e.Transcript, exclude)
+	if !ok { // 훅이 경로를 주지 않았거나 그 경로가 틀렸다
+		if found := transcript.FindSession(r.Roots, e.Host, e.Session); found != "" && found != e.Transcript {
+			sess, ok = transcript.SessionFile(e.Host, found, exclude)
+		}
 	}
-	sess, ok := transcript.SessionFile(e.Host, path, []string{r.Paths.Home})
 	if ok {
 		sess = uncovered(r.Store, sess)
 	}
@@ -138,18 +152,12 @@ func (r *Runner) RunSession(ctx context.Context, e SessionEnd) (Result, error) {
 	for _, t := range sess.Turns {
 		hasUser = hasUser || t.Role == "user"
 	}
-	key := e.Host + ":" + e.Session
-	if ok && sess.ID != "" {
-		key = sess.Host + ":" + sess.ID
-	}
+	key := sess.Host + ":" + sess.ID
 	if !ok || !hasUser {
-		res.ID = memory.NewID("r-")
-		nowMs := r.now().UnixMilli()
+		// 읽을 기록이 없거나(프로그램 세션·지워진 기록) 새 사용자 발화가 없다: 회고 줄 없이 대기열만 닫는다.
 		res.Status = StatusEmpty
-		_, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary,session) VALUES(?,?,?,?,?,?,?,?,?)`,
-			res.ID, KindSession, res.Period, StatusEmpty, "", nowMs, nowMs, "새 발화 없음", key)
-		markEnd(r.Store, e, res.ID)
-		return res, err
+		markEnd(r.Store, e, StatusEmpty)
+		return res, nil
 	}
 	if limit := r.Cfg.SessionRetroDailyMax; limit > 0 && r.sessionsToday() >= limit {
 		res.Status = StatusCapped
@@ -174,8 +182,8 @@ func (r *Runner) sessionMaterial(sess transcript.Session, e SessionEnd) (Materia
 		}
 	}
 	mat := Material{Kind: KindSession, Period: dayOf(last.In(r.loc()))}
-	ss, note := transcript.Fit([]transcript.Session{sess}, maxSessionBytes)
-	mat.Sessions, mat.Note = ss, note
+	fitted, note := fitSession(sess, maxSessionBytes)
+	mat.Sessions, mat.Note = []transcript.Session{fitted}, note
 	maskSessions(mat.Sessions)
 	mat.Read = readRanges(mat.Sessions)
 	ids := injectedIDs(r.Store, e.Session, sess.ID)
@@ -190,6 +198,25 @@ func (r *Runner) sessionMaterial(sess transcript.Session, e SessionEnd) (Materia
 		return mat, err
 	}
 	return mat, nil
+}
+
+// fitSession keeps a session within budget: answers shortened first (as for a
+// day), then only the earliest turns. The turns left out stay unread, so the
+// next retrospective reads them.
+func fitSession(sess transcript.Session, budget int) (transcript.Session, string) {
+	ss, note := transcript.Fit([]transcript.Session{sess}, budget)
+	if len(ss) == 0 {
+		return sess, note
+	}
+	out := ss[0]
+	total := len(out.Turns)
+	for len(out.Turns) > 1 && transcript.Size([]transcript.Session{out}) > budget {
+		out.Turns = out.Turns[:len(out.Turns)-1]
+	}
+	if dropped := total - len(out.Turns); dropped > 0 {
+		note = fmt.Sprintf("세션이 길어 앞 발화 %d개만 읽음(뒤 %d개는 다음 회고가 읽음)", len(out.Turns), dropped)
+	}
+	return out, note
 }
 
 // injectedIDs lists the memories the hooks put into a session, in order.
@@ -288,10 +315,13 @@ func dropCovered(s *memory.Store, ss []transcript.Session) []transcript.Session 
 	return out
 }
 
-func recordCoverage(s *memory.Store, retroID string, rr []ReadRange) {
+func recordCoverage(tx *sql.Tx, retroID string, rr []ReadRange) error {
 	for _, r := range rr {
-		_, _ = s.DB().Exec(`INSERT INTO retro_coverage(session_key,from_at,to_at,retro_id) VALUES(?,?,?,?)`, r.Key, r.From, r.To, retroID)
+		if _, err := tx.Exec(`INSERT INTO retro_coverage(session_key,from_at,to_at,retro_id) VALUES(?,?,?,?)`, r.Key, r.From, r.To, retroID); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // SessionResult is what a finished session-end retrospective left, for the daily one.

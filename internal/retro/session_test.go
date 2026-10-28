@@ -12,6 +12,7 @@ import (
 	"github.com/onidot-labs/orbit/internal/config"
 	"github.com/onidot-labs/orbit/internal/inject"
 	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/orbit/internal/transcript"
 )
 
 func (e *env) session(t *testing.T, id string, lines ...string) string {
@@ -401,5 +402,43 @@ func TestWeekly_정리_재료와_교훈_제출(t *testing.T) {
 	}
 	if !strings.Contains(report, "l-없음") {
 		t.Fatalf("bad lesson not reported: %s", report)
+	}
+}
+
+func TestFitSession_한_세션이_예산을_넘으면_앞부분만_읽는다(t *testing.T) {
+	var sess transcript.Session
+	sess.Host, sess.ID = "claude", "long"
+	base := time.Date(2026, 10, 27, 9, 0, 0, 0, kst)
+	for i := 0; i < 20; i++ {
+		sess.Turns = append(sess.Turns, transcript.Turn{Role: "user", Text: strings.Repeat("가", 100), At: base.Add(time.Duration(i) * time.Minute)})
+	}
+	got, note := fitSession(sess, 1500)
+	if len(got.Turns) == 0 || len(got.Turns) >= 20 || transcript.Size([]transcript.Session{got}) > 1500 || got.Turns[0].At != base || note == "" {
+		t.Fatalf("turns=%d size=%d note=%q", len(got.Turns), transcript.Size([]transcript.Session{got}), note)
+	}
+	rr := readRanges([]transcript.Session{got})
+	if rr[0].To >= base.Add(19*time.Minute).UnixMilli() {
+		t.Fatalf("coverage must stop at the last read turn: %+v", rr)
+	}
+}
+
+func TestSession_훅이_준_경로가_틀리면_세션_id로_찾는다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 15, 0, 0, 0, kst))
+	e.session(t, "sess-z", claudeTurn("2026-10-27", "10:00", "user", "경로가 틀려도 찾아 줘"))
+	e.ai = func(id string) error {
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "찾음"})
+		return err
+	}
+	Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "sess-z", Transcript: "/없는/경로.jsonl"})
+	if res, err := e.r.DrainSessions(context.Background()); err != nil || len(res) != 1 || res[0].Status != StatusDone {
+		t.Fatalf("res = %+v %v", res, err)
+	}
+	// 읽을 기록이 없는 세션은 회고 줄을 남기지 않고 대기열만 닫는다.
+	Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "sess-none", Transcript: "/없는/경로.jsonl"})
+	e.r.DrainSessions(context.Background())
+	var n int
+	e.s.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE session LIKE '%sess-none'`).Scan(&n)
+	if p, _ := Pending(e.s); len(p) != 0 || n != 0 {
+		t.Fatalf("pending=%v rows=%d", p, n)
 	}
 }
