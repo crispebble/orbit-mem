@@ -2,7 +2,7 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {TabProps} from '@onidot-labs/studio-plugin';
 import {Button, EmptyState} from '@onidot-labs/studio-plugin/ui';
-import {MemoryDetail, MemoryForm, type MemoryFormValue, type MemoryRecord} from '@onidot-labs/studio-plugin/ai';
+import {MemoryDetail, MemoryForm, type MemoryFormValue, type OrbitMemory} from './parts/index.ts';
 import {errorMessage, OrbitError} from './oni.ts';
 import {toMemoryDetail, toMemoryRecord, type OniMemory, type OniVersion} from './model.ts';
 import {memoryUpdateSteps, statusArgs, type UpdateArgs} from './requests.ts';
@@ -11,8 +11,8 @@ import {useOrbit} from './runtime.ts';
 interface Loaded {
   memory: OniMemory;
   history: OniVersion[];
-  record: MemoryRecord;
-  related: MemoryRecord[];
+  record: OrbitMemory;
+  related: OrbitMemory[];
 }
 
 const CONFLICT_HINT = '다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요.';
@@ -23,7 +23,7 @@ export function MemoryPane({ctx, tab}: TabProps) {
   const [loaded, setLoaded] = useState<Loaded>();
   const [error, setError] = useState<string>();
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-  const [candidates, setCandidates] = useState<MemoryRecord[]>([]);
+  const [candidates, setCandidates] = useState<OrbitMemory[]>([]);
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
@@ -33,7 +33,7 @@ export function MemoryPane({ctx, tab}: TabProps) {
     setError(undefined);
     try {
       const {memory, history} = await store.getMemory(id);
-      const related: MemoryRecord[] = [];
+      const related: OrbitMemory[] = [];
       if (memory.supersededBy) {
         try {
           related.push(toMemoryRecord({...(await store.getMemory(memory.supersededBy)).memory, summary: '', tags: null}));

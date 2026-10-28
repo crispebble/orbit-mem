@@ -17,6 +17,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "esbuild": "^0.25.0",
+    "lucide-react": "1.62.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "typescript": "^5.9.0"

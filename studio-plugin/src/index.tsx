@@ -1,6 +1,7 @@
 import {definePlugin} from '@onidot-labs/studio-plugin';
 import type {InboxDetailProps, TabProps} from '@onidot-labs/studio-plugin';
 import './index.css';
+import './parts/parts.css';
 import {MemoriesView} from './memories-view.tsx';
 import {MemoryPane} from './memory-pane.tsx';
 import {ProposalPane} from './proposal-pane.tsx';

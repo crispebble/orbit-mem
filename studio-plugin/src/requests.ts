@@ -1,5 +1,5 @@
 // 도구 호출 인자를 만드는 순수 함수들.
-import type {MemoryFormValue, MemoryKind, MemoryListState, ProposalApproval} from '@onidot-labs/studio-plugin/ai';
+import type {MemoryFormValue, MemoryKind, MemoryListState, ProposalApproval} from './parts/index.ts';
 import type {OniMemory, OniProposal} from './model.ts';
 
 export interface FindParams {

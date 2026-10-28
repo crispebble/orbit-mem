@@ -2,7 +2,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import type {PluginContext} from '@onidot-labs/studio-plugin';
 import {Button, EmptyState, Label} from '@onidot-labs/studio-plugin/ui';
-import {ProposalDetail} from '@onidot-labs/studio-plugin/ai';
+import {ProposalDetail} from './parts/index.ts';
 import {errorMessage} from './oni.ts';
 import {formatDate, proposalStatusLabels, toProposal, type OniMemory} from './model.ts';
 import {approvalToDecideArgs, decideArgs} from './requests.ts';
