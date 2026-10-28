@@ -50,7 +50,7 @@
         "hosts": [
           "claude"
         ],
-        "matcher": "TaskCreate|TaskUpdate|TaskGet|TaskList|TodoWrite|mcp__ccd_turn__update_plan",
+        "matcher": "TaskCreate|TaskUpdate|TaskGet|TaskList|TodoWrite|mcp__ccd_turn__update_plan|mcp__ccd_turn__wrap_up",
         "command": "{{onicmd}} hook work --host {{host}}",
         "timeout": 10
       },

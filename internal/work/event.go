@@ -145,13 +145,15 @@ type PlanSnapshot struct {
 	Items []PlanItem `json:"items"`
 }
 
-// PlanOps are the desktop app plan tool's advance/done/start moves.
+// PlanOps are the desktop app plan tool's advance/done/start moves. Finish is
+// the app's wrap_up: it checks off the step in progress and starts no other.
 type PlanOps struct {
 	List    string `json:"list"`
 	ID      string `json:"id"`
 	Advance bool   `json:"advance,omitempty"`
 	Done    []int  `json:"done,omitempty"` // 1부터 센 위치
 	Start   int    `json:"start,omitempty"`
+	Finish  bool   `json:"finish,omitempty"`
 }
 
 // Wait is a permission request or a question to the user.

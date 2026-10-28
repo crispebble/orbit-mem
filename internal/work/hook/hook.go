@@ -226,7 +226,7 @@ func (t *translator) postTool(failed bool) {
 		if !failed {
 			t.claudeTask()
 		}
-	case in.Tool == "TodoWrite" || in.Tool == "mcp__ccd_turn__update_plan" || in.Tool == "update_plan":
+	case in.Tool == "TodoWrite" || in.Tool == "mcp__ccd_turn__update_plan" || in.Tool == "mcp__ccd_turn__wrap_up" || in.Tool == "update_plan":
 		t.plan.Sync, t.plan.ListTool = true, true
 		if !failed {
 			t.snapshot()
@@ -410,6 +410,9 @@ func (t *translator) snapshot() {
 		if args.Advance || len(args.Done) > 0 || args.Start > 0 {
 			t.add(work.KindPlanOps, key, work.PlanOps{List: work.ListAppPlan, ID: in.Session, Advance: args.Advance, Done: args.Done, Start: args.Start})
 		}
+	case "mcp__ccd_turn__wrap_up":
+		// 앱 설명: wrap_up이 목록을 체크해 닫으므로 마지막 update_plan이 없다
+		t.add(work.KindPlanOps, key, work.PlanOps{List: work.ListAppPlan, ID: in.Session, Finish: true})
 	}
 }
 

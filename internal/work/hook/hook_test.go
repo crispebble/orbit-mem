@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -364,6 +365,55 @@ func TestSnapshotTools(t *testing.T) {
 	adv := []byte(`{"hook_event_name":"PostToolUse","session_id":"D1","tool_name":"mcp__ccd_turn__update_plan","tool_use_id":"tu3","tool_input":{"advance":true}}`)
 	if o := payload[work.PlanOps](t, Translate(adv, env("claude", nil)), work.KindPlanOps); !o.Advance {
 		t.Errorf("다음: %+v", o)
+	}
+	// 실제 데스크톱 앱 세션(2026-10-28): wrap_up이 목록을 닫는다
+	wrap := []byte(`{"hook_event_name":"PostToolUse","session_id":"D1","tool_name":"mcp__ccd_turn__wrap_up","tool_use_id":"tu4","tool_input":{"recap":"끝났습니다."}}`)
+	p = Translate(wrap, env("claude", nil))
+	if o := payload[work.PlanOps](t, p, work.KindPlanOps); !o.Finish || o.Advance || o.List != work.ListAppPlan || o.ID != "D1" || !p.Sync || !p.ListTool {
+		t.Errorf("목록 닫기: %+v %+v", o, p)
+	}
+}
+
+// 목록 도구는 동기 훅이 기록하고 비동기 훅은 건너뛴다(--skip-lists). 동기 훅의
+// matcher가 목록 도구를 빠뜨리면 그 도구는 어디에도 기록되지 않는다.
+func TestListToolsHaveSyncHook(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "orbitplugin", "source", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var src struct {
+		Hooks map[string][]struct {
+			Hosts   []string `json:"hosts"`
+			Matcher string   `json:"matcher"`
+			Command string   `json:"command"`
+			Async   bool     `json:"async"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(b, &src); err != nil {
+		t.Fatal(err)
+	}
+	sync := map[string]*regexp.Regexp{}
+	for _, h := range src.Hooks["PostToolUse"] {
+		if h.Async || strings.Contains(h.Command, "--skip-lists") {
+			continue
+		}
+		for _, host := range h.Hosts {
+			sync[host] = regexp.MustCompile("^(?:" + h.Matcher + ")$")
+		}
+	}
+	for host, tools := range map[string][]string{
+		"claude": {"TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite", "mcp__ccd_turn__update_plan", "mcp__ccd_turn__wrap_up"},
+		"codex":  {"update_plan"},
+	} {
+		for _, tool := range tools {
+			in := []byte(`{"hook_event_name":"PostToolUse","session_id":"S1","tool_name":"` + tool + `","tool_use_id":"tu","tool_input":{}}`)
+			if !Translate(in, env(host, nil)).ListTool {
+				t.Errorf("%s %s: 목록 도구로 보지 않습니다", host, tool)
+			}
+			if m := sync[host]; m == nil || !m.MatchString(tool) {
+				t.Errorf("%s %s: 동기 PostToolUse 훅 matcher에 없습니다", host, tool)
+			}
+		}
 	}
 }
 
