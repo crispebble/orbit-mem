@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/onidot-labs/orbit/internal/sqlitedb"
 )
 
 // Store is the work database (work.db).
@@ -108,23 +108,16 @@ func Open(path string) (*Store, error) {
 }
 
 func open(path string, busy time.Duration) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	escaped := strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
-	dsn := fmt.Sprintf("file:%s?_txlock=immediate&_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)", escaped, busy.Milliseconds())
-	db, err := sql.Open("sqlite", dsn)
+	// 한 프로세스에 연결 하나(sqlitedb): data_version은 연결마다 따로이고, 쓰기 대기는 프로세스 사이에서만 한다.
+	db, err := sqlitedb.Open(path, busy, "synchronous(NORMAL)")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
 	}
-	// 한 프로세스에 연결 하나: data_version은 연결마다 따로이고, 쓰기 대기는 프로세스 사이에서만 한다.
-	db.SetMaxOpenConns(1)
 	s := &Store{db: db, path: path, Now: time.Now}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
 	}
-	_ = os.Chmod(path, 0o600)
 	return s, nil
 }
 
