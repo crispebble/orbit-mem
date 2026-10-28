@@ -121,10 +121,10 @@ func (a args) has(k string) bool { _, ok := a[k]; return ok }
 
 // callError is a contract error (계약 README 「오류」).
 type callError struct {
-	Code       string   `json:"code"`
-	Message    string   `json:"message"`
-	Field      string   `json:"field,omitempty"`
-	Supported  []int    `json:"supportedMajors,omitempty"`
+	Code       string    `json:"code"`
+	Message    string    `json:"message"`
+	Field      string    `json:"field,omitempty"`
+	Supported  []int     `json:"supportedMajors,omitempty"`
 	Candidates *[]string `json:"candidates,omitempty"` // AMBIGUOUS_WORK에는 빈 배열이라도 둔다
 }
 
