@@ -192,3 +192,58 @@ func TestTools_호출을_사건으로_남긴다(t *testing.T) {
 		t.Errorf("get must record the ids it returned: %+v", gets)
 	}
 }
+
+// hints is what a tool's MCP annotations say about it.
+type hints struct{ read, destructive, idempotent bool }
+
+// checkHints checks the annotations of each tool in want. Every Orbit tool
+// stays on this PC, so none is open-world.
+func checkHints(t *testing.T, cs *mcp.ClientSession, want map[string]hints) {
+	t.Helper()
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range res.Tools {
+		w, ok := want[tl.Name]
+		if !ok {
+			continue
+		}
+		delete(want, tl.Name)
+		a := tl.Annotations
+		if a == nil || a.OpenWorldHint == nil || *a.OpenWorldHint {
+			t.Errorf("%s: 바깥 세계 도구가 아님을 밝혀야 합니다: %+v", tl.Name, a)
+			continue
+		}
+		if a.ReadOnlyHint != w.read {
+			t.Errorf("%s: 읽기 전용 %v, 기대 %v", tl.Name, a.ReadOnlyHint, w.read)
+		}
+		if w.read {
+			continue
+		}
+		if a.DestructiveHint == nil || *a.DestructiveHint != w.destructive {
+			t.Errorf("%s: 파괴적 %v, 기대 %v", tl.Name, a.DestructiveHint, w.destructive)
+		}
+		if a.IdempotentHint != w.idempotent {
+			t.Errorf("%s: 멱등 %v, 기대 %v", tl.Name, a.IdempotentHint, w.idempotent)
+		}
+	}
+	for name := range want {
+		t.Errorf("%s: 도구 목록에 없습니다", name)
+	}
+}
+
+// 기억·제안 도구는 MCP 주석으로 성질을 밝힌다. 주석이 없으면 Codex는 파괴적·바깥 세계 도구로 보고 승인을 요구해,
+// 승인 정책 never에서 호출이 실패한다(ONID-8). memory_update는 판본을 남기며 고치므로 파괴적이지 않고,
+// proposal_decide는 파일 반영·되돌리기로 사용자 파일을 덮거나 지우므로 파괴적이다. 결정된 제안은 다시 결정되지 않는다.
+func TestToolAnnotations(t *testing.T) {
+	cs, _ := connect(t)
+	checkHints(t, cs, map[string]hints{
+		"memory_find":     {read: true},
+		"memory_get":      {read: true},
+		"proposals":       {read: true},
+		"memory_save":     {},
+		"memory_update":   {},
+		"proposal_decide": {destructive: true, idempotent: true},
+	})
+}

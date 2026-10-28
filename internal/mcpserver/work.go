@@ -73,19 +73,15 @@ func (w *workTools) Close() {
 }
 
 func addWorkTools(srv *mcp.Server, w *workTools) {
-	// Every work tool stays inside this PC's work.db. Without annotations a host
-	// such as Codex treats a tool as destructive and open-world and asks for
-	// approval, which fails under approval policy never.
-	no := false
-	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &no}
+	// Every work tool stays inside this PC's work.db; work_title only sets a title.
 	add := func(name, desc string, h func(context.Context, args) (any, error)) {
 		schema, err := contract.InputSchema(contract.Major, name)
 		if err != nil {
 			panic(err)
 		}
-		a := read
+		a := readHints()
 		if name == "work_title" {
-			a = &mcp.ToolAnnotations{DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &no}
+			a = writeHints(false, true)
 		}
 		srv.AddTool(&mcp.Tool{Name: name, Description: desc, InputSchema: schema, Annotations: a}, w.handler(name, schema, h))
 	}
