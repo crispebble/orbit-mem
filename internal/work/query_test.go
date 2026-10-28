@@ -471,3 +471,24 @@ func TestRebuildKeepsGraph(t *testing.T) {
 		t.Errorf("다시 만든 그래프가 다릅니다\n%s\n%s", before, after)
 	}
 }
+
+// 설계 「저장」: 일일 백업은 기억 DB와 작업 기록 DB를 함께 복사한다.
+func TestDailyBackupRotates(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "work.db")
+	if p, err := DailyBackup(db, filepath.Join(dir, "backups"), 2, time.Now()); err != nil || p != "" {
+		t.Fatalf("DB가 없으면 건너뜁니다: %q %v", p, err)
+	}
+	s, _ := Open(db)
+	s.Close()
+	for i := 0; i < 3; i++ {
+		p, err := DailyBackup(db, filepath.Join(dir, "backups"), 2, time.Date(2026, 10, 26+i, 4, 0, 0, 0, time.Local))
+		if err != nil || p == "" {
+			t.Fatal(err)
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "backups", "work-*.sqlite"))
+	if len(files) != 2 || !strings.HasSuffix(files[1], "work-20261028.sqlite") {
+		t.Errorf("남은 백업: %v", files)
+	}
+}

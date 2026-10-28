@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -306,4 +307,37 @@ func (s *Store) Backup(dst string) error {
 		return err
 	}
 	return os.Chmod(dst, 0o600)
+}
+
+// DailyBackup copies the work database into dir as work-YYYYMMDD.sqlite and
+// keeps the newest keep copies. A missing database is skipped.
+func DailyBackup(dbPath, dir string, keep int, now time.Time) (string, error) {
+	if _, err := os.Stat(dbPath); err != nil {
+		return "", nil
+	}
+	s, err := Open(dbPath)
+	if err != nil {
+		return "", err
+	}
+	defer s.Close()
+	dst := filepath.Join(dir, "work-"+now.Local().Format("20060102")+".sqlite")
+	if err := s.Backup(dst); err != nil {
+		return "", fmt.Errorf("작업 기록 백업 실패: %w", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return dst, err
+	}
+	var names []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "work-") && strings.HasSuffix(e.Name(), ".sqlite") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	for len(names) > keep {
+		_ = os.Remove(filepath.Join(dir, names[0]))
+		names = names[1:]
+	}
+	return dst, nil
 }

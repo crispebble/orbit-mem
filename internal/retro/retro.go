@@ -21,6 +21,7 @@ import (
 	"github.com/onidot-labs/orbit/internal/config"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/transcript"
+	"github.com/onidot-labs/orbit/internal/work"
 )
 
 // Kinds and statuses of a retrospective.
@@ -230,6 +231,10 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	}
 	defer unlock()
 	if _, err := r.Store.Backup(r.Paths.Backups(), max(r.Cfg.BackupKeep, 1)); err != nil {
+		return nil, err
+	}
+	// 작업 기록 DB도 같은 날 함께 복사한다(설계 · Orbit 2차 「저장」)
+	if _, err := work.DailyBackup(r.Paths.WorkDB(), r.Paths.Backups(), max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
 		return nil, err
 	}
 	today := r.now()

@@ -1,0 +1,25 @@
+{
+ "session_id": "ba9cceae-9566-4355-bbc3-e9f153a5018d",
+ "transcript_path": "/home/.claude/projects/-repo/ba9cceae-9566-4355-bbc3-e9f153a5018d.jsonl",
+ "cwd": "/repo",
+ "scratchpad_dir": "/tmp/scratch",
+ "prompt_id": "d734d3cf-4ce2-4d5a-837d-8632ab1d59be",
+ "permission_mode": "default",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PostToolUse",
+ "tool_name": "TaskCreate",
+ "tool_input": {
+  "subject": "A 준비",
+  "description": "A 준비 단계"
+ },
+ "tool_response": {
+  "task": {
+   "id": "1",
+   "subject": "A 준비"
+  }
+ },
+ "tool_use_id": "toolu_01WsxiJXmZKNbux6NfBSqk55",
+ "duration_ms": 31
+}

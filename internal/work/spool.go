@@ -105,3 +105,35 @@ func spoolOr(dir string, e Event, cause error) error {
 	}
 	return nil
 }
+
+// RecordAll appends events from one hook call with one connection. Events the
+// database cannot take now go to the spool in order.
+func RecordAll(path, spool string, evs []Event) []Result {
+	out := make([]Result, len(evs))
+	s, err := Open(path)
+	if err != nil {
+		for _, e := range evs {
+			_ = spoolOr(spool, e, err)
+		}
+		return out
+	}
+	defer s.Close()
+	s.Spool = spool
+	if _, err := s.Drain(); err != nil {
+		for _, e := range evs {
+			_ = spoolOr(spool, e, err)
+		}
+		return out
+	}
+	for i, e := range evs {
+		res, err := s.Append(e)
+		if err != nil {
+			for _, rest := range evs[i:] {
+				_ = spoolOr(spool, rest, err)
+			}
+			return out
+		}
+		out[i] = res
+	}
+	return out
+}

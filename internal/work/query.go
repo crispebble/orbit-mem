@@ -547,3 +547,9 @@ func (s *Store) changesAfter(from int64) (Changes, error) {
 	}
 	return c, rows.Err()
 }
+
+// Count returns open and all works.
+func (s *Store) Count() (open, total int) {
+	_ = s.db.QueryRow(`SELECT COALESCE(SUM(closed_at=0),0), COUNT(*) FROM works`).Scan(&open, &total)
+	return open, total
+}

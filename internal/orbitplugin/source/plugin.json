@@ -41,6 +41,94 @@
         "command": "{{onicmd}} hook prompt --host {{host}}",
         "timeout": 5
       }
+    ],
+    "PostToolUse": [
+      {
+        "hosts": [
+          "claude"
+        ],
+        "matcher": "TaskCreate|TaskUpdate|TaskGet|TaskList|TodoWrite|mcp__ccd_turn__update_plan",
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10
+      },
+      {
+        "hosts": [
+          "codex"
+        ],
+        "matcher": "update_plan",
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10
+      },
+      {
+        "matcher": ".*",
+        "command": "{{onicmd}} hook work --host {{host}} --skip-lists",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hosts": [
+          "claude"
+        ],
+        "matcher": ".*",
+        "command": "{{onicmd}} hook work --host {{host}} --skip-lists",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hosts": [
+          "claude"
+        ],
+        "matcher": "AskUserQuestion",
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10,
+        "async": true
+      },
+      {
+        "hosts": [
+          "codex"
+        ],
+        "matcher": "request_user_input",
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "SubagentStart": [
+      {
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "SubagentStop": [
+      {
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 10,
+        "async": true
+      }
+    ],
+    "Stop": [
+      {
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 5
+      }
+    ],
+    "SessionEnd": [
+      {
+        "command": "{{onicmd}} hook work --host {{host}}",
+        "timeout": 3
+      }
     ]
   },
   "agentsCommon": "agents-common.md",

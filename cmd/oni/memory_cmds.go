@@ -18,6 +18,8 @@ import (
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/project"
 	"github.com/onidot-labs/orbit/internal/version"
+	"github.com/onidot-labs/orbit/internal/work"
+	"github.com/onidot-labs/orbit/internal/work/hook"
 )
 
 func paths() config.Paths { return config.Paths{Home: config.Home()} }
@@ -69,15 +71,21 @@ type hookInput struct {
 	Event     string `json:"hook_event_name"`
 }
 
+// hookContextRunes is about the hosts' hook context limit (Claude Code
+// 10,000자). The resume context uses what the memory context leaves.
+const hookContextRunes = 10000
+
 // cmdHook never fails the host: any problem, wrong arguments included, prints
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
 func cmdHook(a *app, args []string) error {
+	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다(비동기 훅의 도착 순서는 믿지 않는다)
 	fs := a.flags("hook")
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
+	skipLists := fs.Bool("skip-lists", false, "목록 도구는 동기 훅에 맡기고 기록하지 않는다")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt") {
-		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 기억을 넣지 않았습니다 (oni hook session-start|prompt --host claude|codex)")
+	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "work") || (*host != "claude" && *host != "codex") {
+		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 넘어갑니다 (oni hook session-start|prompt|work --host claude|codex)")
 		return nil
 	}
 	deadline := time.After(4 * time.Second)
@@ -90,50 +98,27 @@ func cmdHook(a *app, args []string) error {
 				done <- ""
 			}
 		}()
-		var in hookInput
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
-		_ = json.Unmarshal(b, &in)
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Fprintln(a.stderr, "oni hook: 설정을 읽지 못해 기억을 넣지 않았습니다: "+err.Error())
+			fmt.Fprintln(a.stderr, "oni hook: 설정을 읽지 못해 넘어갑니다: "+err.Error())
 			done <- ""
 			return
 		}
-		if _, err := os.Stat(paths().DB()); err != nil {
-			done <- ""
+		opened, listTool := recordWork(*host, b, at, cfg, *skipLists)
+		if pos[0] == "work" {
+			var ctx []string
+			if listTool {
+				for _, id := range opened {
+					ctx = append(ctx, work.TitleRequest(id))
+				}
+			}
+			done <- inject.HookOutput("PostToolUse", strings.Join(ctx, "\n"))
 			return
 		}
-		s, err := openStore()
-		if err != nil {
-			done <- ""
-			return
-		}
-		defer s.Close()
-		scope := ""
-		if in.Cwd != "" {
-			scope = project.Resolve(in.Cwd).Scope
-		}
-		var inj inject.Injection
-		kind := memory.EventInjectSessionStart
-		if pos[0] == "session-start" {
-			inj = inject.SessionStartInjection(s, cfg, scope)
-			done <- inject.HookOutput("SessionStart", inj.Text)
-		} else {
-			kind = memory.EventInjectPrompt
-			inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
-			done <- inject.HookOutput("UserPromptSubmit", inj.Text)
-		}
-		// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」). 넣지 않는 수준·빈 요청과
-		// 회고 실행 안에서 도는 훅은 사용이 아니므로 세지 않는다.
-		if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
-			(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(in.Prompt) == "")) {
-			return
-		}
-		data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
-		if kind == memory.EventInjectSessionStart {
-			data["titleOnly"] = inj.TitleOnly
-		}
-		_ = s.RecordEvent(memory.Event{Kind: kind, Host: *host, Session: in.SessionID, Scope: scope}, data)
+		var in hookInput
+		_ = json.Unmarshal(b, &in)
+		memoryHook(a, done, pos[0], *host, in, cfg)
 	}()
 	select {
 	case out := <-done:
@@ -146,9 +131,92 @@ func cmdHook(a *app, args []string) error {
 		case <-deadline:
 		}
 	case <-deadline:
-		fmt.Fprintln(a.stderr, "oni hook: 시간이 걸려 기억을 넣지 않았습니다")
+		fmt.Fprintln(a.stderr, "oni hook: 시간이 걸려 넘어갑니다")
 	}
 	return nil
+}
+
+// recordWork turns the hook input into work ledger events (설계 · Orbit 2차
+// 「훅」). It returns the works this call opened and whether it was a list tool.
+func recordWork(host string, raw []byte, at int64, cfg config.Config, skipLists bool) ([]string, bool) {
+	if !cfg.WorkOn() || os.Getenv("ORBIT_RETRO_ID") != "" {
+		return nil, false
+	}
+	env := hook.Env{Host: host, Getenv: os.Getenv, Git: hook.SystemGit{}, Now: at,
+		TestCommands: append(append([]string{}, hook.DefaultTestCommands...), cfg.WorkTestCommands...),
+		Project: func(cwd string) work.Project {
+			p := project.Resolve(cwd)
+			return work.Project{Scope: p.Scope, Label: p.Label}
+		}}
+	plan := hook.Translate(raw, env)
+	if len(plan.Events) == 0 || (skipLists && plan.ListTool) {
+		return nil, plan.ListTool
+	}
+	var opened []string
+	for _, res := range work.RecordAll(paths().WorkDB(), paths().WorkSpool(), plan.Events) {
+		opened = append(opened, res.Opened...)
+	}
+	return opened, plan.ListTool
+}
+
+// memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」),
+// with the open works of the project at session start (설계 · Orbit 2차 O9).
+func memoryHook(a *app, done chan<- string, which, host string, in hookInput, cfg config.Config) {
+	scope := ""
+	if in.Cwd != "" {
+		scope = project.Resolve(in.Cwd).Scope
+	}
+	if _, err := os.Stat(paths().DB()); err != nil {
+		done <- ""
+		return
+	}
+	s, err := openStore()
+	if err != nil {
+		done <- ""
+		return
+	}
+	defer s.Close()
+	var inj inject.Injection
+	kind := memory.EventInjectSessionStart
+	if which == "session-start" {
+		inj = inject.SessionStartInjection(s, cfg, scope)
+		text := inj.Text
+		if resume := resumeContext(cfg, scope, hookContextRunes-len([]rune(text))-200); resume != "" {
+			text = strings.TrimSpace(text + "\n" + resume)
+		}
+		done <- inject.HookOutput("SessionStart", text)
+	} else {
+		kind = memory.EventInjectPrompt
+		inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
+		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
+	}
+	// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」). 넣지 않는 수준·빈 요청과
+	// 회고 실행 안에서 도는 훅은 사용이 아니므로 세지 않는다.
+	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
+		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(in.Prompt) == "")) {
+		return
+	}
+	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
+	if kind == memory.EventInjectSessionStart {
+		data["titleOnly"] = inj.TitleOnly
+	}
+	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: in.SessionID, Scope: scope}, data)
+}
+
+// resumeContext is the open works of the project, only at the full injection level.
+func resumeContext(cfg config.Config, scope string, budget int) string {
+	if cfg.Inject != config.InjectFull || !cfg.WorkOn() || scope == "" {
+		return ""
+	}
+	if _, err := os.Stat(paths().WorkDB()); err != nil {
+		return ""
+	}
+	ws, err := work.Open(paths().WorkDB())
+	if err != nil {
+		return ""
+	}
+	defer ws.Close()
+	return ws.ResumeContext(scope, budget, work.ReadOptions{StaleAfter: cfg.StaleAfter()})
 }
 
 func kindName(k string) string {
@@ -402,6 +470,13 @@ func cmdBackup(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, "백업했습니다: "+path)
+	wpath, err := work.DailyBackup(paths().WorkDB(), paths().Backups(), cfg.BackupKeep, time.Now())
+	if err != nil {
+		return err
+	}
+	if wpath != "" {
+		fmt.Fprintln(a.stdout, "백업했습니다: "+wpath)
+	}
 	return nil
 }
 

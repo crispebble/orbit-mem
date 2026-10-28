@@ -47,3 +47,28 @@ func TestValidate_잘못된_값은_거절(t *testing.T) {
 		t.Fatal("bad hour accepted")
 	}
 }
+
+func TestWork_작업_기록_설정(t *testing.T) {
+	c := Default()
+	if !c.WorkOn() || c.StaleAfter() != 0 {
+		t.Fatalf("기본은 켜짐, 응답 없음 계산 안 함: %+v", c)
+	}
+	c.Work, c.WorkStaleAfter = WorkOff, "20m"
+	if c.Validate() != nil || c.WorkOn() || c.StaleAfter().Minutes() != 20 {
+		t.Fatalf("%+v", c)
+	}
+	for _, bad := range []Config{{Work: "maybe"}, {WorkStaleAfter: "soon"}, {WorkStaleAfter: "-1m"}} {
+		b := Default()
+		if bad.Work != "" {
+			b.Work = bad.Work
+		}
+		b.WorkStaleAfter = bad.WorkStaleAfter
+		if b.Validate() == nil {
+			t.Errorf("잘못된 값을 받았습니다: %+v", bad)
+		}
+	}
+	p := Paths{Home: "/h"}
+	if p.WorkDB() != "/h/work.db" || p.WorkSpool() != "/h/work/spool" {
+		t.Error(p.WorkDB(), p.WorkSpool())
+	}
+}
