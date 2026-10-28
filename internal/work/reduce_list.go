@@ -708,7 +708,7 @@ func (r *reducer) planOps() error {
 			return err
 		}
 	}
-	if p.Advance {
+	if p.Advance || p.Finish {
 		cur := -1
 		for i, s := range listed {
 			if s.status == hostActive {
@@ -721,7 +721,7 @@ func (r *reducer) planOps() error {
 				return err
 			}
 		}
-		for i := cur + 1; i < len(listed); i++ {
+		for i := cur + 1; p.Advance && i < len(listed); i++ {
 			if listed[i].status == hostPending {
 				if err := set(i, hostActive); err != nil {
 					return err

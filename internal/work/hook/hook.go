@@ -178,19 +178,34 @@ func (t *translator) sessionStart() {
 	t.add(work.KindSessionStart, "", p)
 }
 
-// surface reads the host's entry point. A session started from inside
-// another one inherits its parent's variable, so this is a best guess.
+// surface says where the session runs. Entry point variables are inherited
+// by a session started from inside another one, so each host's own
+// per-session signal comes first.
 func (t *translator) surface() string {
 	if t.env.Host == "codex" {
-		switch v := t.env.Getenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE"); {
-		case strings.Contains(v, "exec"):
+		source, originator := codexMeta(t.in.Transcript, t.in.Session)
+		switch source {
+		case "exec":
 			return "headless"
-		case strings.Contains(v, "desktop") || strings.Contains(v, "app"):
-			return "desktop"
-		case v != "":
+		case "cli":
 			return "cli"
 		}
-		return "unknown"
+		if originator == "" {
+			originator = t.env.Getenv("CODEX_INTERNAL_ORIGINATOR_OVERRIDE")
+		}
+		switch v := strings.ToLower(originator); {
+		case strings.Contains(v, "exec"):
+			return "headless"
+		case strings.Contains(v, "desktop"):
+			return "desktop"
+		case v == "codex_cli_rs":
+			return "cli"
+		}
+		return "unknown" // 모르는 originator는 짐작하지 않는다
+	}
+	// 각 세션이 자기 훅에 새로 넣는다(물려받지 않음). claude -p는 0
+	if t.env.Getenv("CLAUDE_CODE_SESSION_ATTENDED") == "0" {
+		return "headless"
 	}
 	switch ep := t.env.Getenv("CLAUDE_CODE_ENTRYPOINT"); {
 	case ep == "cli":
@@ -201,6 +216,34 @@ func (t *translator) surface() string {
 		return "headless"
 	}
 	return "unknown"
+}
+
+// codexMeta reads source and originator from the session_meta line Codex
+// writes first in its transcript (before SessionStart). A line from another
+// session gives nothing. A resumed session appends to the same transcript and
+// keeps that one line (실측 codex-cli 0.164), so it keeps the surface it
+// started on even when resumed elsewhere.
+func codexMeta(path, session string) (source, originator string) {
+	if path == "" {
+		return "", ""
+	}
+	line, err := readFirstLine(path, 1<<20)
+	if err != nil {
+		return "", ""
+	}
+	var rec struct {
+		Type    string `json:"type"`
+		Payload struct {
+			ID         string          `json:"id"`
+			Source     json.RawMessage `json:"source"` // "exec"·"cli"·"vscode"·{"subagent":…}
+			Originator string          `json:"originator"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &rec) != nil || rec.Type != "session_meta" || rec.Payload.ID != session {
+		return "", ""
+	}
+	_ = json.Unmarshal(rec.Payload.Source, &source)
+	return source, rec.Payload.Originator
 }
 
 // parseParent reads ORBIT_PARENT=<host>:<session>:<step>.
@@ -226,7 +269,7 @@ func (t *translator) postTool(failed bool) {
 		if !failed {
 			t.claudeTask()
 		}
-	case in.Tool == "TodoWrite" || in.Tool == "mcp__ccd_turn__update_plan" || in.Tool == "update_plan":
+	case in.Tool == "TodoWrite" || in.Tool == "mcp__ccd_turn__update_plan" || in.Tool == "mcp__ccd_turn__wrap_up" || in.Tool == "update_plan":
 		t.plan.Sync, t.plan.ListTool = true, true
 		if !failed {
 			t.snapshot()
@@ -410,6 +453,9 @@ func (t *translator) snapshot() {
 		if args.Advance || len(args.Done) > 0 || args.Start > 0 {
 			t.add(work.KindPlanOps, key, work.PlanOps{List: work.ListAppPlan, ID: in.Session, Advance: args.Advance, Done: args.Done, Start: args.Start})
 		}
+	case "mcp__ccd_turn__wrap_up":
+		// 앱 설명: wrap_up이 목록을 체크해 닫으므로 마지막 update_plan이 없다
+		t.add(work.KindPlanOps, key, work.PlanOps{List: work.ListAppPlan, ID: in.Session, Finish: true})
 	}
 }
 
@@ -668,7 +714,8 @@ func roleBase(role string) string {
 // 「전체 판정」, agents/reviewer.md 「판정」). Models do not always keep the
 // template: the verdict may follow the heading on the same line
 // ("## 판정: 수정 필요") or on the next non-empty line. The first heading wins;
-// "완료 기준별 판정" is a table, not the verdict.
+// "완료 기준별 판정" is a table, not the verdict. A heading that does not read
+// as a verdict (an unfilled template, a sentence) gives way to the next one.
 func parseVerdict(role, text string) *work.Verdict {
 	base := roleBase(role)
 	if (base != "gate" && base != "reviewer") || text == "" {
@@ -687,7 +734,9 @@ func parseVerdict(role, text string) *work.Verdict {
 				}
 			}
 		}
-		return verdictOf(role, rest)
+		if v := verdictOf(role, rest); v != nil {
+			return v
+		}
 	}
 	return nil
 }
@@ -696,18 +745,22 @@ func cleanVerdict(s string) string {
 	return strings.TrimSpace(strings.Trim(strings.TrimSpace(s), "*_`#>:：—-– "))
 }
 
-// verdictHeading says whether a line is the verdict heading and returns what
-// follows it on the same line.
+// verdictHeading says whether a line is the verdict line (판정: …, what the
+// role definitions ask for) or a verdict heading, and returns what follows it
+// on the same line.
 func verdictHeading(l string) (string, bool) {
 	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "#") && !strings.HasPrefix(t, "**") {
-		return "", false
-	}
+	marked := strings.HasPrefix(t, "#") || strings.HasPrefix(t, "**")
 	t = strings.TrimLeft(t, "#* ")
 	for _, h := range []string{"전체 판정", "판정"} {
-		if strings.HasPrefix(t, h) {
-			return cleanVerdict(t[len(h):]), true
+		rest, ok := strings.CutPrefix(t, h)
+		if !ok {
+			continue
 		}
+		if r := strings.TrimSpace(rest); !marked && !strings.HasPrefix(r, ":") && !strings.HasPrefix(r, "：") {
+			return "", false // 꾸밈 없는 줄은 판정 줄 모양만 받는다
+		}
+		return cleanVerdict(rest), true
 	}
 	return "", false
 }

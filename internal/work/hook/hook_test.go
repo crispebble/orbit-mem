@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -92,6 +93,19 @@ func TestSessionStartAndTurns(t *testing.T) {
 		p := Translate(probe(t, "SessionStart.1"), env("claude", map[string]string{"CLAUDE_CODE_ENTRYPOINT": ep}))
 		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != want {
 			t.Errorf("표면 %q → %s, %s여야 합니다", ep, got, want)
+		}
+	}
+	// 실측(2.1.309, 2026-10-29): 진입점은 부모 것을 물려받지만, 사람이 보는 세션인지는
+	// 각 세션이 자기 훅에 CLAUDE_CODE_SESSION_ATTENDED로 새로 넣는다. claude -p는 0이다
+	for _, c := range []struct{ ep, attended, want string }{
+		{"claude-desktop", "0", "headless"}, // 데스크톱 앱 세션이 띄운 claude -p
+		{"cli", "0", "headless"},
+		{"claude-desktop", "1", "desktop"},
+		{"cli", "1", "cli"},
+	} {
+		p := Translate(probe(t, "SessionStart.1"), env("claude", map[string]string{"CLAUDE_CODE_ENTRYPOINT": c.ep, "CLAUDE_CODE_SESSION_ATTENDED": c.attended}))
+		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != c.want {
+			t.Errorf("표면 %q·attended %s → %s, %s여야 합니다", c.ep, c.attended, got, c.want)
 		}
 	}
 	p = Translate(probe(t, "UserPromptSubmit.1"), env("claude", nil))
@@ -276,14 +290,42 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		}
 		return string(b)
 	}
-	gate, reviewer := read("gate.md"), read("reviewer.md")
-	if !strings.Contains(gate, "### 전체 판정\n통과 / 수정 필요 / 사용자 확인 필요") {
-		t.Error("gate.md 반환 형식이 바뀌었습니다. 판정 읽기를 함께 고쳐 주세요")
-	}
-	if !strings.Contains(reviewer, "### 판정\n승인 / 수정 요구") {
-		t.Error("reviewer.md 반환 형식이 바뀌었습니다. 판정 읽기를 함께 고쳐 주세요")
+	// 역할 정의가 정한 판정 줄(첫 줄, 글자 그대로)을 모두 읽어야 한다
+	line := regexp.MustCompile("`(판정: [^`]+)`")
+	for name, want := range map[string]map[string]string{
+		"gate.md":     {"판정: 통과": "pass", "판정: 수정 필요": "needs_fix", "판정: 사용자 확인 필요": "needs_user"},
+		"reviewer.md": {"판정: 승인": "pass", "판정: 수정 요구": "needs_fix"},
+	} {
+		body := read(name)
+		if !strings.Contains(body, "첫 줄") {
+			t.Errorf("%s에 판정 줄을 첫 줄에 쓰라는 문장이 없습니다", name)
+		}
+		got := map[string]bool{}
+		for _, m := range line.FindAllStringSubmatch(body, -1) {
+			got[m[1]] = true
+		}
+		role := "orbit:" + strings.TrimSuffix(name, ".md")
+		for l, result := range want {
+			if !got[l] {
+				t.Errorf("%s 반환 형식에 %q가 없습니다. 판정 읽기를 함께 고쳐 주세요", name, l)
+			}
+			if v := parseVerdict(role, l+"\n\n### 완료 기준별 판정\n| a | 충족 |"); v == nil || v.Result != result {
+				t.Errorf("%s %q를 %s로 읽지 못합니다: %+v", name, l, result, v)
+			}
+		}
+		if len(got) != len(want) {
+			t.Errorf("%s 판정 줄 %v, %v여야 합니다", name, got, want)
+		}
 	}
 	cases := []struct{ role, text, want string }{
+		{"orbit:gate", "판정: <통과 | 수정 필요 | 사용자 확인 필요>\n", ""}, // 채우지 않은 틀
+		{"orbit:reviewer", "판정: 수정 요구\n\n### 지적", "needs_fix"},
+		{"orbit:gate", "판정 : 통과", "pass"},
+		{"orbit:gate", "이번 판정: 시험이 없어 보류합니다", ""},
+		{"orbit:gate", "판정：통과", "pass"}, // 전각 콜론
+		// 판정으로 읽히지 않는 앞 줄은 뒤의 판정 제목을 가리지 않는다
+		{"orbit:reviewer", "판정: 시험이 없어 보류합니다\n\n### 판정\n수정 요구", "needs_fix"},
+		// 옛 틀(이전 판 역할 파일이 남은 호스트)
 		{"orbit:gate", "### 전체 판정\n통과\n", "pass"},
 		{"orbit:gate", "### 전체 판정\n\n수정 필요 — 시험 로그가 없습니다", "needs_fix"},
 		{"orbit:gate", "### 전체 판정\n사용자 확인 필요\n", "needs_user"},
@@ -364,6 +406,104 @@ func TestSnapshotTools(t *testing.T) {
 	adv := []byte(`{"hook_event_name":"PostToolUse","session_id":"D1","tool_name":"mcp__ccd_turn__update_plan","tool_use_id":"tu3","tool_input":{"advance":true}}`)
 	if o := payload[work.PlanOps](t, Translate(adv, env("claude", nil)), work.KindPlanOps); !o.Advance {
 		t.Errorf("다음: %+v", o)
+	}
+	// 실제 데스크톱 앱 세션(2026-10-28): wrap_up이 목록을 닫는다
+	wrap := []byte(`{"hook_event_name":"PostToolUse","session_id":"D1","tool_name":"mcp__ccd_turn__wrap_up","tool_use_id":"tu4","tool_input":{"recap":"끝났습니다."}}`)
+	p = Translate(wrap, env("claude", nil))
+	if o := payload[work.PlanOps](t, p, work.KindPlanOps); !o.Finish || o.Advance || o.List != work.ListAppPlan || o.ID != "D1" || !p.Sync || !p.ListTool {
+		t.Errorf("목록 닫기: %+v %+v", o, p)
+	}
+}
+
+// Codex 표면은 대화 기록 첫 줄(session_meta)의 source·originator로 정한다. 기록이 없을
+// 때만 환경 변수로 짐작한다(데스크톱 앱이 띄운 codex exec도 그 변수를 물려받는다).
+func TestCodexSurface(t *testing.T) {
+	dir := t.TempDir()
+	meta := func(name, id, source, originator string) string {
+		path := filepath.Join(dir, name)
+		line := `{"timestamp":"2026-10-28T22:29:55.071Z","type":"session_meta","payload":{"id":"` + id + `","originator":"` + originator +
+			`","cli_version":"0.164.0-alpha.11.1","source":` + source + `,"base_instructions":{"text":"` + strings.Repeat("x", 30000) + `"}}}`
+		if err := os.WriteFile(path, []byte(line+"\n"+`{"type":"turn_context"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	start := func(transcript string) []byte {
+		b, _ := json.Marshal(map[string]string{"hook_event_name": "SessionStart", "session_id": "C1", "transcript_path": transcript, "cwd": "/repo", "source": "startup"})
+		return b
+	}
+	desktopEnv := map[string]string{"CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop"}
+	trunc := filepath.Join(dir, "trunc.jsonl")
+	if err := os.WriteFile(trunc, []byte(`{"type":"session_meta","payload":{"id":"C1","source":"exec"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	long := filepath.Join(dir, "long.jsonl")
+	if err := os.WriteFile(long, []byte(`{"type":"session_meta","payload":{"id":"C1","source":"exec","x":"`+strings.Repeat("x", 1<<20)+`"}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, transcript string
+		vars             map[string]string
+		want             string
+	}{
+		{"exec", meta("exec.jsonl", "C1", `"exec"`, "codex_exec"), desktopEnv, "headless"},
+		{"데스크톱", meta("app.jsonl", "C1", `"vscode"`, "Codex Desktop"), desktopEnv, "desktop"},
+		{"TUI", meta("tui.jsonl", "C1", `"cli"`, "codex_cli_rs"), nil, "cli"},
+		{"다른 세션의 기록", meta("other.jsonl", "C2", `"exec"`, "codex_exec"), desktopEnv, "desktop"},
+		{"기록 없음·데스크톱 변수", filepath.Join(dir, "none.jsonl"), desktopEnv, "desktop"},
+		{"기록 없음", "", nil, "unknown"},
+		{"모르는 originator", meta("vsc.jsonl", "C1", `"vscode"`, "codex_vscode"), nil, "unknown"},
+		{"서브에이전트 스레드", meta("sub.jsonl", "C1", `{"subagent":{"other":"guardian"}}`, "Codex Desktop"), nil, "desktop"},
+		{"줄바꿈 없이 잘린 기록", trunc, desktopEnv, "desktop"},
+		{"1MiB를 넘는 첫 줄", long, nil, "unknown"},
+	} {
+		p := Translate(start(c.transcript), env("codex", c.vars))
+		if got := payload[work.SessionStart](t, p, work.KindSessionStart).Surface; got != c.want {
+			t.Errorf("%s: %s, %s여야 합니다", c.name, got, c.want)
+		}
+	}
+}
+
+// 목록 도구는 동기 훅이 기록하고 비동기 훅은 건너뛴다(--skip-lists). 동기 훅의
+// matcher가 목록 도구를 빠뜨리면 그 도구는 어디에도 기록되지 않는다.
+func TestListToolsHaveSyncHook(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "orbitplugin", "source", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var src struct {
+		Hooks map[string][]struct {
+			Hosts   []string `json:"hosts"`
+			Matcher string   `json:"matcher"`
+			Command string   `json:"command"`
+			Async   bool     `json:"async"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(b, &src); err != nil {
+		t.Fatal(err)
+	}
+	sync := map[string]*regexp.Regexp{}
+	for _, h := range src.Hooks["PostToolUse"] {
+		if h.Async || strings.Contains(h.Command, "--skip-lists") {
+			continue
+		}
+		for _, host := range h.Hosts {
+			sync[host] = regexp.MustCompile("^(?:" + h.Matcher + ")$")
+		}
+	}
+	for host, tools := range map[string][]string{
+		"claude": {"TaskCreate", "TaskUpdate", "TaskGet", "TaskList", "TodoWrite", "mcp__ccd_turn__update_plan", "mcp__ccd_turn__wrap_up"},
+		"codex":  {"update_plan"},
+	} {
+		for _, tool := range tools {
+			in := []byte(`{"hook_event_name":"PostToolUse","session_id":"S1","tool_name":"` + tool + `","tool_use_id":"tu","tool_input":{}}`)
+			if !Translate(in, env(host, nil)).ListTool {
+				t.Errorf("%s %s: 목록 도구로 보지 않습니다", host, tool)
+			}
+			if m := sync[host]; m == nil || !m.MatchString(tool) {
+				t.Errorf("%s %s: 동기 PostToolUse 훅 matcher에 없습니다", host, tool)
+			}
+		}
 	}
 }
 

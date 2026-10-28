@@ -22,13 +22,16 @@ const (
 	EventLimitMax = 200
 	ChangesMax    = 500 // work_changes 한 응답에 담는 id 수. 넘으면 more
 
-	PollInterval   = 100 * time.Millisecond
-	summaryScanMax = 5000
+	PollInterval = 100 * time.Millisecond
 )
 
 // WaitMax is the longest work_changes wait. It must stay under Studio's MCP call
 // timeout (McpHub callTimeoutMs, 60초). A variable so tests can shorten it.
 var WaitMax = 30 * time.Second
+
+// summaryScanMax caps how many sessions one work_sessions call reads while
+// filtering by state. A variable so tests can lower it.
+var summaryScanMax = 5000
 
 // ErrBadCursor is a page cursor oni cannot read or from another database.
 var ErrBadCursor = errors.New("쪽 커서를 읽을 수 없습니다")
@@ -309,10 +312,11 @@ func (s *Store) ListSessions(f Filter, opt ReadOptions) (SessionPage, error) {
 	limit := f.limit(ListLimit, ListLimitMax)
 	rd := s.reader(opt)
 	page := SessionPage{Seq: snap, Sessions: []Session{}}
-	scanned := 0
+	after := ` AND (updated_seq<? OR (updated_seq=? AND host||char(0)||id>?))`
+	scanned, lastHost, lastID := 0, "", ""
 	// 상태는 읽을 때 계산하므로 거른 뒤 쪽을 채울 때까지 이어 읽는다
 	for len(page.Sessions) <= limit && scanned < summaryScanMax {
-		rows, err := rd.q.Query(`SELECT host, id, updated_seq FROM sessions WHERE `+cond+` AND (updated_seq<? OR (updated_seq=? AND host||char(0)||id>?))
+		rows, err := rd.q.Query(`SELECT host, id, updated_seq FROM sessions WHERE `+cond+after+`
 			ORDER BY updated_seq DESC, host||char(0)||id LIMIT ?`, append(args, pos, pos, posID, limit+1)...)
 		if err != nil {
 			return SessionPage{}, err
@@ -333,7 +337,7 @@ func (s *Store) ListSessions(f Filter, opt ReadOptions) (SessionPage, error) {
 		}
 		for _, k := range batch {
 			scanned++
-			pos, posID = k.seq, k.host+"\x00"+k.id
+			pos, posID, lastHost, lastID = k.seq, k.host+"\x00"+k.id, k.host, k.id
 			sd := rd.session(k.host, k.id)
 			if sd == nil {
 				continue
@@ -348,6 +352,13 @@ func (s *Store) ListSessions(f Filter, opt ReadOptions) (SessionPage, error) {
 				return page, nil
 			}
 			page.Sessions = append(page.Sessions, doc)
+		}
+	}
+	if scanned >= summaryScanMax {
+		// 훑기 상한에 걸렸다. 뒤에 세션이 남았으면 훑은 자리에서 이어 읽게 한다
+		var more int
+		if rd.q.QueryRow(`SELECT 1 FROM sessions WHERE `+cond+after+` LIMIT 1`, append(args, pos, pos, posID)...).Scan(&more) == nil {
+			page.NextCursor = s.encodeCursor(pageCursor{Kind: "s", Snap: snap, Pos: pos, ID: lastID, Host: lastHost})
 		}
 	}
 	return page, nil

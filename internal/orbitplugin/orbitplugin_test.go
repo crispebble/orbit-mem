@@ -73,6 +73,12 @@ func TestHarnessSentencesForWorkGraph(t *testing.T) {
 	if !strings.Contains(delegate, "ORBIT_PARENT=") || !strings.Contains(delegate, "진행으로 바꾸고") {
 		t.Error("delegate에 맡기기 전 진행·하위 세션 ORBIT_PARENT 문장이 없습니다")
 	}
+	// 셸에서 자기 세션 id를 주는 변수(실측: Claude Code 2.1.303, codex-cli 0.164)
+	for _, v := range []string{"CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"} {
+		if !strings.Contains(delegate, v) {
+			t.Errorf("delegate에 부모 세션 id 변수 %s가 없습니다", v)
+		}
+	}
 	if !strings.Contains(verify, "커밋이 생겼는지") {
 		t.Error("verify에 판정 뒤 커밋 확인 문장이 없습니다")
 	}

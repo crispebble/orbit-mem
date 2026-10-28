@@ -279,6 +279,28 @@ func TestAppPlanOps(t *testing.T) {
 	}
 }
 
+// 앱의 wrap_up은 목록을 닫는다: 진행 중인 단계를 끝내고 다음 단계를 시작하지 않는다.
+func TestAppPlanFinish(t *testing.T) {
+	w := newTW(t)
+	ap := func(kind string, p any) { w.ev(kind, "claude", "D1", p) }
+	ap(KindPlanSnapshot, PlanSnapshot{List: ListAppPlan, ID: "D1", Items: []PlanItem{{"A", "done", ""}, {"B", "in_progress", ""}}})
+	ap(KindPlanOps, PlanOps{List: ListAppPlan, ID: "D1", Finish: true})
+	doc := w.only()
+	eq(t, "끝", statuses(doc), []string{"done", "done"})
+	if doc.State != "done" {
+		t.Errorf("작업 %s", doc.State)
+	}
+
+	w = newTW(t)
+	ap(KindPlanSnapshot, PlanSnapshot{List: ListAppPlan, ID: "D1", Items: []PlanItem{{"A", "in_progress", ""}, {"B", "pending", ""}}})
+	ap(KindPlanOps, PlanOps{List: ListAppPlan, ID: "D1", Finish: true})
+	doc = w.only()
+	eq(t, "남은 단계", statuses(doc), []string{"done", "ready"}) // 시작하지 않았다
+	if doc.State == "done" {
+		t.Error("남은 단계가 있는데 작업이 끝났습니다")
+	}
+}
+
 func TestDeclaredBlock(t *testing.T) {
 	w := newTW(t)
 	w.claude(KindTaskCreate, TaskCreate{List: "S1", ID: "1", Subject: "A"})

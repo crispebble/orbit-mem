@@ -68,7 +68,7 @@ description: 일을 서브에이전트에 맡기고 결과를 목표와 대조�
 ## 5. 작업 목록과 맡기기
 
 - 단계를 맡기기 직전에 그 단계를 호스트 작업 목록에서 진행으로 바꾸고, 결과를 받아 대조한 뒤 완료로 바꾼다. 서브에이전트의 끝 보고만으로 완료로 바꾸지 않는다.
-- 하위 세션(헤드리스 `claude -p`, `codex exec`)에 단계를 맡길 때는 환경 변수 `ORBIT_PARENT=<호스트>:<이 세션 id>:<단계 번호>`를 붙여 띄운다. 호스트는 `claude` 또는 `codex`, 단계 번호는 Claude Code Task 번호이거나 목록형 도구에서 1부터 센 위치다. Claude Code에서 이 세션 id는 셸의 `CLAUDE_CODE_SESSION_ID`다.
+- 하위 세션(헤드리스 `claude -p`, `codex exec`)에 단계를 맡길 때는 환경 변수 `ORBIT_PARENT=<호스트>:<이 세션 id>:<단계 번호>`를 붙여 띄운다. 호스트는 `claude` 또는 `codex`, 단계 번호는 Claude Code Task 번호이거나 목록형 도구에서 1부터 센 위치다. 이 세션 id는 Claude Code에서 셸의 `CLAUDE_CODE_SESSION_ID`, Codex에서 셸의 `CODEX_THREAD_ID`다.
 
 ## 6. 결과 받기
 

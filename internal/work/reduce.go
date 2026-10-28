@@ -516,7 +516,23 @@ func (r *reducer) blockEvents(kind, summary string) error {
 type stepRef struct{ id, work, owner string }
 
 func (r *reducer) activeSteps(host, session string) ([]stepRef, error) {
-	rows, err := r.tx.Query(`SELECT s.id, s.work_id, s.owner FROM steps s WHERE s.last_host=? AND s.last_session=? AND s.host_status='in_progress' ORDER BY s.started_at DESC, s.id`, host, session)
+	return r.querySteps(`s.host_status='in_progress'`, host, session)
+}
+
+// activeStepsAt returns the steps that were in progress when this event's
+// hook fired. An async hook can arrive after a later sync hook moved the list
+// on, so evidence and runs follow the hook's time, not the arrival.
+//
+// Steps keep one start and one finish, not their history: a step reopened
+// later counts as in progress since its first start, and only the session
+// that touched a step last finds it. A finish and a hook in the same
+// millisecond leave the finished step out.
+func (r *reducer) activeStepsAt(host, session string) ([]stepRef, error) {
+	return r.querySteps(`s.started_at>0 AND s.started_at<=? AND (s.host_status='in_progress' OR s.finished_at>?)`, host, session, r.e.At, r.e.At)
+}
+
+func (r *reducer) querySteps(cond, host, session string, args ...any) ([]stepRef, error) {
+	rows, err := r.tx.Query(`SELECT s.id, s.work_id, s.owner FROM steps s WHERE s.last_host=? AND s.last_session=? AND `+cond+` ORDER BY s.started_at DESC, s.id`, append([]any{host, session}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +584,7 @@ func (r *reducer) queryRuns(cond string, args ...any) ([]runRef, error) {
 
 // linkStep picks the step a new subagent run works on (설계 「서브에이전트를 단계에 잇는 순서」).
 func (r *reducer) linkStep(role string) (string, string, error) {
-	steps, err := r.activeSteps(r.e.Host, r.e.Session)
+	steps, err := r.activeStepsAt(r.e.Host, r.e.Session)
 	if err != nil {
 		return "", "none", err
 	}
@@ -773,7 +789,7 @@ func (r *reducer) evidence() error {
 		if r.tx.QueryRow(`SELECT step_id FROM runs WHERE id=?`, runID).Scan(&step) != nil {
 			runID = ""
 		}
-	} else if steps, err := r.activeSteps(r.e.Host, r.e.Session); err != nil {
+	} else if steps, err := r.activeStepsAt(r.e.Host, r.e.Session); err != nil {
 		return err
 	} else if len(steps) == 1 {
 		step = steps[0].id
