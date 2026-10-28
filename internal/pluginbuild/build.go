@@ -74,10 +74,14 @@ type MCPServer struct {
 }
 
 // HookSpec is one hook. {{host}} in Command becomes claude or codex.
+// Hosts limits it to some hosts (비우면 둘 다); Async runs it without making
+// the host wait (both hosts accept "async" on command hooks).
 type HookSpec struct {
-	Matcher string `json:"matcher,omitempty"`
-	Command string `json:"command"`
-	Timeout int    `json:"timeout,omitempty"`
+	Hosts   []string `json:"hosts,omitempty"`
+	Matcher string   `json:"matcher,omitempty"`
+	Command string   `json:"command"`
+	Timeout int      `json:"timeout,omitempty"`
+	Async   bool     `json:"async,omitempty"`
 }
 
 // Options are the build inputs.
@@ -106,7 +110,8 @@ var (
 	codexEff   = []string{"low", "medium", "high", "xhigh"}
 	sandboxes  = []string{"read-only", "workspace-write"}
 	writeTools = []string{"Write", "Edit", "NotebookEdit"}
-	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse", "SubagentStart", "SubagentStop"}
+	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "SubagentStart", "SubagentStop"}
+	hookHosts  = []string{"claude", "codex"}
 )
 
 func has(list []string, v string) bool {
@@ -197,6 +202,11 @@ func (m *Manifest) validate() error {
 		for _, h := range specs {
 			if h.Command == "" || h.Timeout < 0 || h.Timeout > 600 {
 				return fmt.Errorf("hooks.%s", ev)
+			}
+			for _, host := range h.Hosts {
+				if !has(hookHosts, host) {
+					return fmt.Errorf("hooks.%s: 모르는 호스트 %s", ev, host)
+				}
 			}
 		}
 	}
@@ -350,9 +360,15 @@ func (b *builder) generate() error {
 		for ev, specs := range m.Hooks {
 			var groups []any
 			for _, h := range specs {
+				if len(h.Hosts) > 0 && !has(h.Hosts, host) {
+					continue
+				}
 				hook := map[string]any{"type": "command", "command": strings.ReplaceAll(b.subst(h.Command), "{{host}}", host)}
 				if h.Timeout > 0 {
 					hook["timeout"] = h.Timeout
+				}
+				if h.Async {
+					hook["async"] = true
 				}
 				g := map[string]any{"hooks": []any{hook}}
 				if h.Matcher != "" {
@@ -360,7 +376,9 @@ func (b *builder) generate() error {
 				}
 				groups = append(groups, g)
 			}
-			events[ev] = groups
+			if len(groups) > 0 {
+				events[ev] = groups
+			}
 		}
 		return jsonBytes(map[string]any{"hooks": events})
 	}
