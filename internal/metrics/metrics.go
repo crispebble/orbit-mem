@@ -443,6 +443,6 @@ func Render(r Report) string {
 	}
 	b.WriteString("\n")
 	cost := t.Cost
-	fmt.Fprintf(&b, "- 회고 비용(호스트 추정) $%.2f(세션 끝 $%.2f), 토큰 입력 %d · 출력 %d, 비용 모름 %d번\n", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown)
+	fmt.Fprintf(&b, "- 회고 비용(호스트 추정) $%.4f(세션 끝 $%.4f), 토큰 입력 %d · 출력 %d, 비용 모름 %d번\n", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown)
 	return b.String()
 }

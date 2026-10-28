@@ -191,7 +191,7 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 	}
 	text := Render(rep)
 	for _, want := range []string{"사용 판정: 따름 2 · 어김 2 · 상관없음 1", "고친 교훈", "효과 원장: 변경 1건", "관찰 중 1", "쓰기 판정: 유지 1 · 보류 1 · 거절 1", "사용자 거절 1",
-		"평균 400자", "세션 끝 2번", "$0.75", "모름 1"} {
+		"평균 400자", "세션 끝 2번", "$0.7500", "모름 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
