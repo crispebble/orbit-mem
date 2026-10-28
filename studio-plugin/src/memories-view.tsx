@@ -2,7 +2,7 @@
 import {useEffect, useRef, useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {Button} from '@onidot-labs/studio-plugin/ui';
-import {MemoryList, type MemoryKind, type MemoryListState, type MemoryRecord} from '@onidot-labs/studio-plugin/ai';
+import {MemoryList, type MemoryKind, type MemoryListState, type OrbitMemory} from './parts/index.ts';
 import {errorMessage} from './oni.ts';
 import {useOrbit} from './runtime.ts';
 
@@ -13,7 +13,7 @@ export function MemoriesView({ctx}: ViewProps) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<MemoryKind | 'all'>('all');
   const [filterState, setFilterState] = useState<MemoryListState>('all');
-  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const [memories, setMemories] = useState<OrbitMemory[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState<string>();
   const [selected, setSelected] = useState<string>();

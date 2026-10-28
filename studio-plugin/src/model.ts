@@ -3,15 +3,15 @@
 import type {InboxItem} from '@onidot-labs/studio-plugin';
 import type {
   MemoryKind,
-  MemoryRecord,
   MemorySource,
   MemorySourceKind,
   MemoryState,
   MemoryVersion,
+  OrbitMemory,
   Proposal,
   ProposalEvidence,
   ProposalKind,
-} from '@onidot-labs/studio-plugin/ai';
+} from './parts/index.ts';
 
 // ---------- oni가 주는 모양(Go JSON). 빈 목록은 null로 올 수 있다. ----------
 
@@ -134,7 +134,7 @@ export function scopeLabel(scope: string, project?: string): string {
 const asKind = (v: string): MemoryKind => (KINDS as readonly string[]).includes(v) ? (v as MemoryKind) : 'fact';
 const asState = (v: string): MemoryState => (STATES as readonly string[]).includes(v) ? (v as MemoryState) : 'candidate';
 
-export function toMemoryRecord(s: OniSummary, now: Date = new Date()): MemoryRecord {
+export function toMemoryRecord(s: OniSummary, now: Date = new Date()): OrbitMemory {
   return {
     id: s.id,
     title: s.title,
@@ -176,8 +176,8 @@ function toVersions(history: readonly OniVersion[], now: Date): MemoryVersion[] 
   return out.reverse();
 }
 
-export function toMemoryDetail(m: OniMemory, history: readonly OniVersion[] = [], now: Date = new Date()): MemoryRecord {
-  const rec: MemoryRecord = {
+export function toMemoryDetail(m: OniMemory, history: readonly OniVersion[] = [], now: Date = new Date()): OrbitMemory {
+  const rec: OrbitMemory = {
     id: m.id,
     title: m.title,
     content: m.body,

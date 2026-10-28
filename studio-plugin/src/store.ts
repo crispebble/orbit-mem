@@ -11,7 +11,7 @@ import {
   type OniVersion,
 } from './model.ts';
 import {decideArgs, findArgs, type DecideArgs, type FindParams, type UpdateArgs} from './requests.ts';
-import type {MemoryRecord} from '@onidot-labs/studio-plugin/ai';
+import type {OrbitMemory} from './parts/index.ts';
 
 export interface OrbitState {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -94,7 +94,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
     }
   }
 
-  async function findMemories(p: FindParams): Promise<MemoryRecord[]> {
+  async function findMemories(p: FindParams): Promise<OrbitMemory[]> {
     const out = await callOni<unknown>(ctx, 'memory_find', findArgs(p));
     const now = new Date();
     return itemsOf<OniSummary>(out, 'memory_find').map(s => toMemoryRecord(s, now));
