@@ -29,6 +29,9 @@
   ],
   "inbox": true,
   "connections": {
-    "mcp": [{"id": "oni", "command": "oni", "args": ["mcp"]}]
+    "mcp": [
+      {"id": "oni", "command": "oni", "args": ["mcp"]},
+      {"id": "work", "command": "oni", "args": ["mcp", "--reader"]}
+    ]
   }
 }

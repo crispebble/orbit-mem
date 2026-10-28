@@ -1,0 +1,25 @@
+{
+  "tool": "work_title",
+  "args": {
+    "title": "계약 예시 손보기"
+  },
+  "isError": true,
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "error": {
+      "code": "AMBIGUOUS_WORK",
+      "message": "이 작업 디렉토리에 열린 작업이 둘 이상입니다. workId를 넘겨 주세요.",
+      "candidates": [
+        "w-7d2a91c04e5b",
+        "w-5b0e2d7c11aa"
+      ]
+    }
+  }
+}

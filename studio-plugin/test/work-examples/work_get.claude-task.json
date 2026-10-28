@@ -1,0 +1,496 @@
+{
+  "tool": "work_get",
+  "args": {
+    "workId": "w-7d2a91c04e5b"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUH",
+    "work": {
+      "id": "w-7d2a91c04e5b",
+      "title": "orbit.work 1판 계약과 기록 DB 만들기",
+      "titleSource": "ai",
+      "titleUpdatedAt": "2026-10-28T05:13:02.410Z",
+      "state": "open",
+      "cwd": "/Users/dev/repo/orbit",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "origin": {
+        "host": "claude",
+        "surface": "cli",
+        "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+        "list": {
+          "kind": "claude-task",
+          "id": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71"
+        }
+      },
+      "openedAt": "2026-10-28T05:12:30.123Z",
+      "updatedAt": "2026-10-28T06:40:11.902Z",
+      "counts": {
+        "pending": 1,
+        "ready": 1,
+        "in_progress": 1,
+        "blocked": 3,
+        "done": 2,
+        "cancelled": 1
+      },
+      "steps": [
+        {
+          "id": "st-1a2b3c4d5e6f",
+          "native": {
+            "kind": "claude-task",
+            "id": "1"
+          },
+          "title": "계약 파일 쓰기",
+          "order": 0,
+          "wave": 0,
+          "after": [],
+          "status": "done",
+          "assignee": {
+            "kind": "main",
+            "host": "claude",
+            "model": "claude-opus-5-5"
+          },
+          "startedAt": "2026-10-28T05:12:40.000Z",
+          "finishedAt": "2026-10-28T05:30:00.000Z",
+          "verification": {
+            "state": "pass",
+            "outdated": false,
+            "evidenceId": "ev-2b3c4d5e6f70"
+          },
+          "evidenceIds": [
+            "ev-1a2b3c4d5e6f",
+            "ev-2b3c4d5e6f70"
+          ],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-2b3c4d5e6f70",
+          "native": {
+            "kind": "claude-task",
+            "id": "2"
+          },
+          "title": "기록 DB 원장 만들기",
+          "order": 1,
+          "wave": 0,
+          "after": [],
+          "status": "done",
+          "assignee": {
+            "kind": "subagent",
+            "role": "orbit:worker",
+            "host": "claude"
+          },
+          "startedAt": "2026-10-28T05:13:10.000Z",
+          "finishedAt": "2026-10-28T05:58:41.220Z",
+          "verification": {
+            "state": "fail",
+            "outdated": true,
+            "evidenceId": "ev-4d5e6f708192"
+          },
+          "evidenceIds": [
+            "ev-3c4d5e6f7081",
+            "ev-4d5e6f708192",
+            "ev-5e6f708192a3"
+          ],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-3c4d5e6f7081",
+          "native": {
+            "kind": "claude-task",
+            "id": "3"
+          },
+          "title": "그래프 계산",
+          "activeTitle": "그래프 계산 중",
+          "order": 2,
+          "wave": 1,
+          "after": [
+            {
+              "stepId": "st-1a2b3c4d5e6f",
+              "source": "native"
+            },
+            {
+              "stepId": "st-2b3c4d5e6f70",
+              "source": "native"
+            }
+          ],
+          "status": "in_progress",
+          "assignee": {
+            "kind": "session",
+            "host": "codex"
+          },
+          "startedAt": "2026-10-28T06:01:05.000Z",
+          "verification": {
+            "state": "needs_user",
+            "outdated": false,
+            "evidenceId": "ev-6f708192a3b4"
+          },
+          "evidenceIds": [
+            "ev-6f708192a3b4"
+          ],
+          "childWorkIds": [
+            "w-0c5e8f2a9d14"
+          ]
+        },
+        {
+          "id": "st-4d5e6f708192",
+          "native": {
+            "kind": "claude-task",
+            "id": "4"
+          },
+          "title": "훅 연결",
+          "order": 3,
+          "wave": 1,
+          "after": [
+            {
+              "stepId": "st-1a2b3c4d5e6f",
+              "source": "native"
+            }
+          ],
+          "status": "blocked",
+          "block": {
+            "reason": "waiting_user",
+            "detail": "Bash 권한 요청",
+            "since": "2026-10-28T06:38:20.514Z"
+          },
+          "assignee": {
+            "kind": "main",
+            "host": "claude"
+          },
+          "startedAt": "2026-10-28T06:30:00.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-5e6f708192a3",
+          "native": {
+            "kind": "claude-task",
+            "id": "5"
+          },
+          "title": "MCP 도구",
+          "order": 4,
+          "wave": 1,
+          "after": [
+            {
+              "stepId": "st-2b3c4d5e6f70",
+              "source": "native"
+            }
+          ],
+          "status": "blocked",
+          "block": {
+            "reason": "run_failed",
+            "detail": "orbit:worker 실행이 실패로 끝났습니다",
+            "since": "2026-10-28T06:20:45.007Z"
+          },
+          "assignee": {
+            "kind": "subagent",
+            "role": "orbit:worker",
+            "host": "claude"
+          },
+          "startedAt": "2026-10-28T06:05:00.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-6f708192a3b4",
+          "native": {
+            "kind": "claude-task",
+            "id": "6"
+          },
+          "title": "제목 요청 문맥",
+          "order": 5,
+          "wave": 0,
+          "after": [],
+          "status": "blocked",
+          "block": {
+            "reason": "declared",
+            "detail": "Codex 훅 신뢰 승인이 필요합니다",
+            "since": "2026-10-28T06:10:00.000Z"
+          },
+          "assignee": {
+            "kind": "main",
+            "host": "claude"
+          },
+          "startedAt": "2026-10-28T06:09:30.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-708192a3b4c5",
+          "native": {
+            "kind": "claude-task",
+            "id": "7"
+          },
+          "title": "하네스 문장",
+          "order": 6,
+          "wave": 1,
+          "after": [
+            {
+              "stepId": "st-1a2b3c4d5e6f",
+              "source": "native"
+            }
+          ],
+          "status": "ready",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-8192a3b4c5d6",
+          "native": {
+            "kind": "claude-task",
+            "id": "8"
+          },
+          "title": "끝 기준 시험",
+          "order": 7,
+          "wave": 2,
+          "after": [
+            {
+              "stepId": "st-3c4d5e6f7081",
+              "source": "native"
+            }
+          ],
+          "status": "pending",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-92a3b4c5d6e7",
+          "native": {
+            "kind": "claude-task",
+            "id": "9"
+          },
+          "title": "옛 표식 방식 정리",
+          "order": 8,
+          "wave": 0,
+          "after": [],
+          "status": "cancelled",
+          "finishedAt": "2026-10-28T05:20:00.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        }
+      ],
+      "runs": [
+        {
+          "id": "r-0a1b2c3d4e5f",
+          "kind": "subagent",
+          "host": "claude",
+          "role": "orbit:gate",
+          "agentId": "a91c3e5f7b2d4",
+          "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-1a2b3c4d5e6f",
+          "link": "single_active",
+          "background": false,
+          "cwd": "/Users/dev/repo/orbit",
+          "repo": "/Users/dev/repo/orbit",
+          "branch": "claude/work-graph",
+          "state": "finished",
+          "endReason": "completed",
+          "startedAt": "2026-10-28T05:25:00.000Z",
+          "lastSeenAt": "2026-10-28T05:29:40.000Z",
+          "finishedAt": "2026-10-28T05:29:50.000Z"
+        },
+        {
+          "id": "r-1b2c3d4e5f60",
+          "kind": "subagent",
+          "host": "claude",
+          "role": "orbit:worker",
+          "agentId": "a3f9e1c2b4d56",
+          "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-2b3c4d5e6f70",
+          "link": "owner",
+          "background": false,
+          "cwd": "/Users/dev/repo/orbit",
+          "repo": "/Users/dev/repo/orbit",
+          "branch": "claude/work-graph",
+          "state": "finished",
+          "endReason": "completed",
+          "startedAt": "2026-10-28T05:13:20.000Z",
+          "lastSeenAt": "2026-10-28T05:50:02.000Z",
+          "finishedAt": "2026-10-28T05:50:10.000Z"
+        },
+        {
+          "id": "r-2c3d4e5f6071",
+          "kind": "subagent",
+          "host": "claude",
+          "role": "orbit:reviewer",
+          "agentId": "a5d7f9b1c3e20",
+          "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-2b3c4d5e6f70",
+          "link": "owner",
+          "background": false,
+          "cwd": "/Users/dev/repo/orbit",
+          "repo": "/Users/dev/repo/orbit",
+          "branch": "claude/work-graph",
+          "state": "finished",
+          "endReason": "completed",
+          "startedAt": "2026-10-28T05:51:00.000Z",
+          "lastSeenAt": "2026-10-28T05:55:30.000Z",
+          "finishedAt": "2026-10-28T05:55:41.000Z"
+        },
+        {
+          "id": "r-3d4e5f607182",
+          "kind": "subagent",
+          "host": "claude",
+          "role": "orbit:worker",
+          "agentId": "a7b9d1f3e5c42",
+          "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-5e6f708192a3",
+          "link": "single_active",
+          "background": true,
+          "cwd": "/Users/dev/repo/orbit",
+          "repo": "/Users/dev/repo/orbit",
+          "branch": "claude/work-graph",
+          "state": "failed",
+          "endReason": "failed",
+          "startedAt": "2026-10-28T06:05:10.000Z",
+          "lastSeenAt": "2026-10-28T06:20:44.000Z",
+          "finishedAt": "2026-10-28T06:20:45.007Z"
+        },
+        {
+          "id": "r-4e5f60718293",
+          "kind": "subagent",
+          "host": "claude",
+          "role": "orbit:gate",
+          "agentId": "a2c4e6a8b0d13",
+          "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-3c4d5e6f7081",
+          "link": "owner",
+          "background": false,
+          "cwd": "/Users/dev/repo/orbit",
+          "repo": "/Users/dev/repo/orbit",
+          "branch": "claude/work-graph",
+          "state": "finished",
+          "endReason": "completed",
+          "startedAt": "2026-10-28T06:25:00.000Z",
+          "lastSeenAt": "2026-10-28T06:28:10.000Z",
+          "finishedAt": "2026-10-28T06:28:12.000Z"
+        },
+        {
+          "id": "r-5f60718293a4",
+          "kind": "session",
+          "host": "codex",
+          "sessionId": "019a2b7c-55e1-7c30-9d42-6f1e0a8b3c27",
+          "parentSessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
+          "stepId": "st-3c4d5e6f7081",
+          "link": "parent_env",
+          "background": true,
+          "cwd": "/Users/dev/repo/orbit/.claude/worktrees/graph",
+          "repo": "/Users/dev/repo/orbit/.claude/worktrees/graph",
+          "branch": "codex/graph",
+          "state": "running",
+          "startedAt": "2026-10-28T06:01:30.000Z",
+          "lastSeenAt": "2026-10-28T06:40:11.902Z"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "ev-1a2b3c4d5e6f",
+          "kind": "command",
+          "stepId": "st-1a2b3c4d5e6f",
+          "at": "2026-10-28T05:24:12.330Z",
+          "result": "ok",
+          "summary": "go test ./internal/work/contract/..."
+        },
+        {
+          "id": "ev-2b3c4d5e6f70",
+          "kind": "verdict",
+          "stepId": "st-1a2b3c4d5e6f",
+          "runId": "r-0a1b2c3d4e5f",
+          "at": "2026-10-28T05:29:50.000Z",
+          "result": "pass",
+          "summary": "orbit:gate 통과",
+          "ref": {
+            "transcript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71/subagents/agent-a91c3e5f7b2d4.jsonl"
+          }
+        },
+        {
+          "id": "ev-3c4d5e6f7081",
+          "kind": "command",
+          "stepId": "st-2b3c4d5e6f70",
+          "runId": "r-1b2c3d4e5f60",
+          "at": "2026-10-28T05:40:03.118Z",
+          "result": "fail",
+          "summary": "go test ./..."
+        },
+        {
+          "id": "ev-4d5e6f708192",
+          "kind": "verdict",
+          "stepId": "st-2b3c4d5e6f70",
+          "runId": "r-2c3d4e5f6071",
+          "at": "2026-10-28T05:55:41.000Z",
+          "result": "needs_fix",
+          "summary": "orbit:reviewer 수정 요구",
+          "ref": {
+            "transcript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71/subagents/agent-a5d7f9b1c3e20.jsonl"
+          }
+        },
+        {
+          "id": "ev-5e6f708192a3",
+          "kind": "commit",
+          "stepId": "st-2b3c4d5e6f70",
+          "at": "2026-10-28T05:58:41.220Z",
+          "result": "ok",
+          "summary": "feat: Add the work ledger",
+          "ref": {
+            "repo": "/Users/dev/repo/orbit",
+            "sha": "3b9e0c1f7a2d4e6b8c0a1f3e5d7b9c2a4e6f8a0b"
+          },
+          "files": [
+            "internal/work/store.go",
+            "internal/work/store_test.go"
+          ]
+        },
+        {
+          "id": "ev-6f708192a3b4",
+          "kind": "verdict",
+          "stepId": "st-3c4d5e6f7081",
+          "runId": "r-4e5f60718293",
+          "at": "2026-10-28T06:28:12.000Z",
+          "result": "needs_user",
+          "summary": "orbit:gate 사용자 확인 필요",
+          "ref": {
+            "transcript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71/subagents/agent-a2c4e6a8b0d13.jsonl"
+          }
+        }
+      ]
+    }
+  }
+}
