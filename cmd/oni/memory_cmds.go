@@ -157,7 +157,9 @@ func cmdHook(a *app, args []string) error {
 	until := start.Add(hookDeadline - hookExitMargin) // 이때까지 사건을 쓰거나 스풀에 남긴다
 	done := make(chan string, 1)
 	recorded := make(chan struct{})
+	finished := make(chan struct{}) // 기억 사건까지 남겼다
 	go func() {
+		defer close(finished)
 		defer func() {
 			if recover() != nil {
 				done <- ""
@@ -199,9 +201,14 @@ func cmdHook(a *app, args []string) error {
 		if out != "" {
 			fmt.Fprintln(a.stdout, out)
 		}
-		select { // 기록은 until 전에 쓰거나 스풀에 남기고 끝난다
-		case <-recorded:
-		case <-deadline:
+		// 작업 기록은 until 전에 쓰거나 스풀에 남기고, 기억 사건은 문맥을 낸 뒤에 쓴다.
+		// 둘 다 기다리지 않고 끝나면 프로세스와 함께 사라진다.
+		for _, ch := range []<-chan struct{}{recorded, finished} {
+			select {
+			case <-ch:
+			case <-deadline:
+				return nil
+			}
 		}
 	case <-deadline:
 		fmt.Fprintln(a.stderr, "oni hook: 시간이 걸려 넘어갑니다")
