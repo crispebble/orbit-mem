@@ -53,3 +53,37 @@ func TestOrbit플러그인_버전은_oni_버전과_같다(t *testing.T) {
 		t.Fatalf("plugin.json version must be %s", version.Version)
 	}
 }
+
+// 설계 · Orbit 2차 「하네스 문장」: plan·delegate·verify는 호스트 작업 목록 사용법만 말하고
+// "Orbit에 기록하라"는 절차를 넣지 않는다. 예외는 작업 제목(work_title) 한 줄이다.
+func TestHarnessSentencesForWorkGraph(t *testing.T) {
+	read := func(skill string) string {
+		b, err := os.ReadFile(filepath.Join("source", "skills", skill, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	plan, delegate, verify := read("plan"), read("delegate"), read("verify")
+	for _, want := range []string{"addBlockedBy", "owner", "실행 순서대로", "work_title"} {
+		if !strings.Contains(plan, want) {
+			t.Errorf("plan에 %q가 없습니다", want)
+		}
+	}
+	if !strings.Contains(delegate, "ORBIT_PARENT=") || !strings.Contains(delegate, "진행으로 바꾸고") {
+		t.Error("delegate에 맡기기 전 진행·하위 세션 ORBIT_PARENT 문장이 없습니다")
+	}
+	if !strings.Contains(verify, "커밋이 생겼는지") {
+		t.Error("verify에 판정 뒤 커밋 확인 문장이 없습니다")
+	}
+	for name, body := range map[string]string{"plan": plan, "delegate": delegate, "verify": verify} {
+		for _, bad := range []string{"Orbit에 기록", "work_list", "work_get"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s에 기록 절차 %q가 들어갔습니다", name, bad)
+			}
+		}
+		if strings.Count(body, "work_title") > 1 {
+			t.Errorf("%s에 work_title 문장이 여럿입니다", name)
+		}
+	}
+}
