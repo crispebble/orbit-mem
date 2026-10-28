@@ -284,6 +284,12 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		{"orbit-reviewer", "### 판정\n승인", "pass"},
 		{"orbit:worker", "### 판정\n승인", ""},
 		{"orbit:gate", "판정 없음", ""},
+		// 실제 gate 답(2026-10-28 헤드리스 세션): 틀 대신 한 줄 제목에 판정을 붙였다
+		{"orbit:gate", "## 판정: 수정 필요\n\n완료 주장의 세 부분 모두 맞지 않습니다.\n\n### 완료 기준별 판정\n| 기준 | 판정 |", "needs_fix"},
+		{"orbit:gate", "**전체 판정:** 통과", "pass"},
+		{"orbit:reviewer", "### 판정 — 승인", "pass"},
+		{"orbit:gate", "### 완료 기준별 판정\n| a | 충족 |\n\n### 전체 판정\n사용자 확인 필요", "needs_user"},
+		{"orbit:gate", "판정을 내리기 어렵습니다", ""},
 	}
 	for _, c := range cases {
 		v := parseVerdict(c.role, c.text)

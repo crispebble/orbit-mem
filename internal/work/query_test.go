@@ -492,3 +492,8 @@ func TestDailyBackupRotates(t *testing.T) {
 		t.Errorf("남은 백업: %v", files)
 	}
 }
+
+func execGit(dir string, args ...string) (string, error) {
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	return string(out), err
+}

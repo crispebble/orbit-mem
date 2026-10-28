@@ -664,32 +664,61 @@ func roleBase(role string) string {
 	return strings.TrimPrefix(r, "orbit-")
 }
 
-// parseVerdict reads the verdict line under the role's heading
-// (agents/gate.md 「전체 판정」, agents/reviewer.md 「판정」).
+// parseVerdict reads the verdict under the role's heading (agents/gate.md
+// 「전체 판정」, agents/reviewer.md 「판정」). Models do not always keep the
+// template: the verdict may follow the heading on the same line
+// ("## 판정: 수정 필요") or on the next non-empty line. The first heading wins;
+// "완료 기준별 판정" is a table, not the verdict.
 func parseVerdict(role, text string) *work.Verdict {
-	heading := map[string]string{"gate": "### 전체 판정", "reviewer": "### 판정"}[roleBase(role)]
-	if heading == "" || text == "" {
+	base := roleBase(role)
+	if (base != "gate" && base != "reviewer") || text == "" {
 		return nil
 	}
 	lines := strings.Split(text, "\n")
 	for i, l := range lines {
-		if strings.TrimSpace(l) != heading {
+		rest, ok := verdictHeading(l)
+		if !ok {
 			continue
 		}
-		for _, next := range lines[i+1:] {
-			v := strings.Trim(strings.TrimSpace(next), "*_` ")
-			if v == "" {
-				continue
-			}
-			if strings.Contains(v, "/") {
-				return nil // 채우지 않은 틀
-			}
-			for word, result := range map[string]string{"사용자 확인 필요": "needs_user", "수정 필요": "needs_fix", "수정 요구": "needs_fix", "통과": "pass", "승인": "pass"} {
-				if strings.HasPrefix(v, word) {
-					return &work.Verdict{Role: role, Result: result, Line: work.Clean(v, 120)}
+		if rest == "" {
+			for _, next := range lines[i+1:] {
+				if rest = cleanVerdict(next); rest != "" {
+					break
 				}
 			}
-			return nil
+		}
+		return verdictOf(role, rest)
+	}
+	return nil
+}
+
+func cleanVerdict(s string) string {
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(s), "*_`#>:：—-– "))
+}
+
+// verdictHeading says whether a line is the verdict heading and returns what
+// follows it on the same line.
+func verdictHeading(l string) (string, bool) {
+	t := strings.TrimSpace(l)
+	if !strings.HasPrefix(t, "#") && !strings.HasPrefix(t, "**") {
+		return "", false
+	}
+	t = strings.TrimLeft(t, "#* ")
+	for _, h := range []string{"전체 판정", "판정"} {
+		if strings.HasPrefix(t, h) {
+			return cleanVerdict(t[len(h):]), true
+		}
+	}
+	return "", false
+}
+
+func verdictOf(role, v string) *work.Verdict {
+	if v == "" || strings.Contains(v, "/") {
+		return nil // 채우지 않은 틀
+	}
+	for _, w := range []struct{ word, result string }{{"사용자 확인 필요", "needs_user"}, {"수정 필요", "needs_fix"}, {"수정 요구", "needs_fix"}, {"통과", "pass"}, {"승인", "pass"}} {
+		if strings.HasPrefix(v, w.word) {
+			return &work.Verdict{Role: role, Result: w.result, Line: work.Clean(v, 120)}
 		}
 	}
 	return nil
