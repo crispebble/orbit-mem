@@ -21,16 +21,24 @@ const UNKNOWN: StatusView = {label: '알 수 없음', tone: 'muted', known: fals
 export const RUN_FRESH_MS = 5 * 60_000;
 
 // ---- 단계 ----
+// 문구는 Studio 2차 설계 「상태 표시 대응」을 따른다.
 const STEP: Record<string, StatusView> = {
   pending: {label: '대기', tone: 'muted', known: true},
-  ready: {label: '시작할 수 있음', tone: 'info', known: true},
+  ready: {label: '준비됨', tone: 'info', known: true},
   in_progress: {label: '진행 중', tone: 'info', known: true},
   blocked: {label: '막힘', tone: 'warning', known: true},
-  done: {label: '완료', tone: 'success', known: true},
-  cancelled: {label: '취소됨', tone: 'muted', known: true},
+  done: {label: '끝', tone: 'success', known: true},
+  cancelled: {label: '취소', tone: 'muted', known: true},
+};
+/** 막힌 단계는 사유로 가른다. 사용자가 풀 몫은 `waiting_user`뿐이고, 「실패」는 `run_failed`만 가리킨다. */
+const BLOCKED: Record<string, StatusView> = {
+  waiting_user: {label: '사용자 확인 기다림', tone: 'warning', known: true},
+  run_failed: {label: '실패', tone: 'danger', known: true},
+  run_lost: STEP.blocked, interrupted: STEP.blocked, stale: STEP.blocked, declared: STEP.blocked,
 };
 
-export function stepStatusView(status: string): StatusView {
+export function stepStatusView(status: string, block?: StepBlock): StatusView {
+  if (status === 'blocked' && block) return BLOCKED[block.reason] ?? UNKNOWN;
   return STEP[status] ?? UNKNOWN;
 }
 
@@ -41,10 +49,10 @@ export function layoutStatus(status: string): string {
 
 // ---- 세션 ----
 const SESSION: Record<string, StatusView> = {
-  running: {label: '실행 중', tone: 'info', known: true},
-  waiting_user: {label: '확인 기다림', tone: 'warning', known: true},
+  running: {label: '도는 중', tone: 'info', known: true},
+  waiting_user: {label: '사용자 확인 기다림', tone: 'warning', known: true},
   idle: {label: '쉬는 중', tone: 'neutral', known: true},
-  stale: {label: '응답 없음', tone: 'warning', known: true},
+  stale: {label: '관측 오래됨', tone: 'warning', known: true},
   ended: {label: '끝남', tone: 'muted', known: true},
 };
 
@@ -54,7 +62,7 @@ export function sessionStateView(state: string): StatusView {
 
 // ---- 실행 ----
 const RUN: Record<string, StatusView> = {
-  running: {label: '실행 중', tone: 'info', known: true},
+  running: {label: '도는 중', tone: 'info', known: true},
   finished: {label: '끝남', tone: 'muted', known: true},
   failed: {label: '실패', tone: 'danger', known: true},
   lost: {label: '연결 끊김', tone: 'warning', known: true},
@@ -105,40 +113,38 @@ export interface BadgeView {
   outdated: boolean;
 }
 
-const VERIFY: Record<string, {label: string; tone: Tone}> = {
-  pass: {label: '검증 통과', tone: 'success'},
-  fail: {label: '검증 실패', tone: 'danger'},
-  needs_user: {label: '확인 필요', tone: 'warning'},
-};
-
-/** 검증은 단계 상태를 바꾸지 않고 배지로만 붙는다. 검증 결과가 없으면 배지 없음. */
-export function verificationBadge(v: Step['verification'] | undefined): BadgeView | undefined {
-  if (!v || v.state === 'none') return undefined;
-  const base = VERIFY[v.state] ?? {label: '알 수 없음', tone: 'muted' as Tone};
-  if (v.outdated) return {label: `지난 검증 · ${base.label}`, tone: 'muted', outdated: true};
-  return {...base, outdated: false};
+/**
+ * 검증은 단계 상태를 바꾸지 않고 배지로만 붙는다(설계 「상태 표시 대응」). 실패는 끝난 단계면 「끝남 · 검증 실패」,
+ * 아니면 「검증 실패」, `needs_user`는 「사용자 확인 필요」, 지난 검증은 「오래됨」. 통과·결과 없음은 배지가 없다.
+ */
+export function verificationBadge(v: Step['verification'] | undefined, status: string): BadgeView | undefined {
+  if (!v || v.state === 'none' || v.state === 'pass') return undefined;
+  if (v.outdated) return {label: '오래됨', tone: 'muted', outdated: true};
+  if (v.state === 'fail') return {label: status === 'done' ? '끝남 · 검증 실패' : '검증 실패', tone: 'danger', outdated: false};
+  if (v.state === 'needs_user') return {label: '사용자 확인 필요', tone: 'warning', outdated: false};
+  return {label: '알 수 없음', tone: 'muted', outdated: false};
 }
 
 // ---- 막힘 사유 ----
 const BLOCK: Record<string, string> = {
-  waiting_user: '사용자 확인을 기다립니다',
-  run_failed: '실행이 실패했습니다',
-  run_lost: '실행이 끊겼습니다',
-  declared: '막힘으로 표시됐습니다',
-  interrupted: '중단됐습니다',
-  stale: '오래 응답이 없습니다',
+  waiting_user: '사용자 확인 기다림',
+  run_failed: '진행 중 실패',
+  run_lost: '실행 끊김',
+  interrupted: '중단됨',
+  stale: '오래 멈춤',
+  declared: '막힘 보고',
 };
 
-/** 막힘 사유 문구. 모르는 사유는 이름만, 자세한 글이 있으면 덧붙인다. */
+/** 막힘 사유 문구. 모르는 사유는 「알 수 없음」, 자세한 글이 있으면 덧붙인다. */
 export function blockText(block: StepBlock): string {
-  const head = BLOCK[block.reason] ?? block.reason;
+  const head = BLOCK[block.reason] ?? '알 수 없음';
   return block.detail ? `${head}: ${block.detail}` : head;
 }
 
 // ---- 작업 ----
 /** 목록 줄의 상태. pendingReview는 「끝남 · 확인 전」 */
 export function workStateView(w: Pick<WorkSummary, 'state'>, pendingReview: boolean): StatusView {
-  if (w.state === 'open') return {label: '진행 중', tone: 'info', known: true};
+  if (w.state === 'open') return {label: '진행', tone: 'info', known: true};
   if (w.state === 'done') {
     return pendingReview ? {label: '끝남 · 확인 전', tone: 'warning', known: true} : {label: '끝남', tone: 'muted', known: true};
   }
