@@ -1,6 +1,7 @@
 package work
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -71,6 +72,86 @@ func TestWaitingUserPermutations(t *testing.T) {
 				t.Errorf("세션 상태 %s", state)
 			}
 		})
+	}
+}
+
+// permutations returns every order of n items.
+func permutations(n int) [][]int {
+	if n == 0 {
+		return [][]int{{}}
+	}
+	var out [][]int
+	for _, p := range permutations(n - 1) {
+		for i := 0; i <= len(p); i++ {
+			q := append(append(append([]int{}, p[:i]...), n-1), p[i:]...)
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
+// 비동기 훅(명령·서브에이전트)은 뒤 동기 훅(Task 갱신)보다 늦게 도착할 수 있다. 증거와 실행은
+// 도착했을 때가 아니라 훅이 불린 시각에 진행 중이던 단계에 붙는다(ONID-14 순열 시험).
+func TestAsyncEventsUseEventTime(t *testing.T) {
+	type ev struct {
+		at      int64
+		kind    string
+		payload any
+	}
+	next := []ev{ // 단계 1을 끝내고 2를 시작한다(동기)
+		{5, KindTaskUpdate, TaskUpdate{List: "S1", ID: "1", Status: str("completed")}},
+		{6, KindTaskUpdate, TaskUpdate{List: "S1", ID: "2", Status: str("in_progress")}},
+	}
+	for _, c := range []struct {
+		name  string
+		async []ev // 단계 1이 진행 중일 때 불린 비동기 훅
+		check func(t *testing.T, doc Work, step1 string)
+	}{
+		{"시험 명령", []ev{{2, KindCommand, Command{Text: "go test ./...", OK: true}}}, func(t *testing.T, doc Work, step1 string) {
+			if len(doc.Evidence) != 1 || doc.Evidence[0].StepID != step1 {
+				t.Errorf("증거 %+v, 단계 1(%s)에 붙어야 합니다", doc.Evidence, step1)
+			}
+		}},
+		{"커밋", []ev{{2, KindCommit, Commit{Repo: "/repo", SHA: "abc1234", Subject: "feat: A"}}}, func(t *testing.T, doc Work, step1 string) {
+			if len(doc.Evidence) != 1 || doc.Evidence[0].StepID != step1 {
+				t.Errorf("증거 %+v, 단계 1(%s)에 붙어야 합니다", doc.Evidence, step1)
+			}
+		}},
+		{"서브에이전트", []ev{
+			{2, KindRunStart, RunStart{Agent: "a1", Type: "orbit:worker"}},
+			{3, KindRunStop, RunStop{Agent: "a1", Type: "orbit:worker"}},
+			{4, KindRunTool, RunTool{ToolUse: "tu1", Agent: "a1", Type: "orbit:worker", OK: true}},
+		}, func(t *testing.T, doc Work, step1 string) {
+			if len(doc.Runs) != 1 || doc.Runs[0].StepID != step1 || doc.Runs[0].State != "finished" {
+				t.Errorf("실행 %+v, 단계 1(%s)에 붙고 끝나야 합니다", doc.Runs, step1)
+			}
+		}},
+	} {
+		all := append(append([]ev{}, c.async...), next...)
+		for _, order := range permutations(len(all)) {
+			// 동기 훅끼리의 순서는 바뀌지 않는다
+			if pos := func(i int) int {
+				for j, k := range order {
+					if k == i {
+						return j
+					}
+				}
+				return -1
+			}; pos(len(all)-2) > pos(len(all)-1) {
+				continue
+			}
+			t.Run(c.name+fmt.Sprint(order), func(t *testing.T) {
+				w := newTW(t)
+				activeTask(w, "1", "2")
+				base := w.at
+				for _, i := range order {
+					e := all[i]
+					w.evAt(base+e.at*1000, e.kind, "claude", "S1", e.payload)
+				}
+				doc := w.only()
+				c.check(t, doc, doc.Steps[0].ID)
+			})
+		}
 	}
 }
 
