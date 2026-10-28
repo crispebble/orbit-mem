@@ -95,7 +95,7 @@ func TestBuild_MCP와_훅은_호스트별로_변수를_채운다(t *testing.T) {
 	src, out := t.TempDir(), t.TempDir()
 	write(t, src, map[string]string{
 		"plugin.json": `{"name":"orbit","version":"0.1.0","description":"d","skills":["memory"],
-		  "mcpServers":{"orbit":{"command":"{{oni}}","args":["mcp"]}},
+		  "mcpServers":{"orbit":{"command":"{{oni}}","args":["mcp"],"envVars":["ORBIT_HOME"]}},
 		  "hooks":{"SessionStart":[{"matcher":"startup|resume","command":"{{oniq}} hook session-start --host {{host}}","timeout":10}],
 		           "UserPromptSubmit":[{"command":"{{oniq}} hook prompt --host {{host}}","timeout":5}]}}`,
 		"skills/memory/SKILL.md": "---\nname: memory\ndescription: d\n---\nx",
@@ -105,8 +105,19 @@ func TestBuild_MCP와_훅은_호스트별로_변수를_채운다(t *testing.T) {
 	}
 	p := filepath.Join(out, "plugins", "orbit")
 	mcp := read(t, filepath.Join(p, ".mcp.json"))
-	if !strings.Contains(mcp, `"command": "/opt/oni"`) {
+	if !strings.Contains(mcp, `"command": "/opt/oni"`) || strings.Contains(mcp, "ORBIT_HOME") {
 		t.Fatal(mcp)
+	}
+	// Codex는 MCP 서버에 정해 둔 환경 변수만 넘기므로, 훅과 같은 ORBIT_HOME을 보게 env_vars로 넘긴다.
+	var xm struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			EnvVars []string `json:"env_vars"`
+		} `json:"mcpServers"`
+	}
+	json.Unmarshal([]byte(read(t, filepath.Join(p, "codex", "mcp.json"))), &xm)
+	if s := xm.MCPServers["orbit"]; s.Command != "/opt/oni" || strings.Join(s.EnvVars, ",") != "ORBIT_HOME" {
+		t.Fatalf("codex mcp %+v", xm)
 	}
 	ch := read(t, filepath.Join(p, "hooks", "claude.json"))
 	xh := read(t, filepath.Join(p, "hooks", "codex.json"))
@@ -115,7 +126,7 @@ func TestBuild_MCP와_훅은_호스트별로_변수를_채운다(t *testing.T) {
 	}
 	var codex map[string]any
 	json.Unmarshal([]byte(read(t, filepath.Join(p, ".codex-plugin", "plugin.json"))), &codex)
-	if codex["mcpServers"] != "./.mcp.json" || codex["hooks"] != "./hooks/codex.json" {
+	if codex["mcpServers"] != "./codex/mcp.json" || codex["hooks"] != "./hooks/codex.json" {
 		t.Fatalf("codex manifest %v", codex)
 	}
 	var claude map[string]any
