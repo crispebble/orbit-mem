@@ -71,6 +71,16 @@ type CodexAgent struct {
 type MCPServer struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
+	// EnvVars are passed through to the server on Codex, which gives an MCP
+	// server only a few variables. Claude Code passes the whole environment.
+	EnvVars []string `json:"envVars,omitempty"`
+}
+
+// codexMCPServer is a server in the Codex plugin's MCP file.
+type codexMCPServer struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+	EnvVars []string `json:"env_vars,omitempty"`
 }
 
 // HookSpec is one hook. {{host}} in Command becomes claude or codex.
@@ -350,15 +360,17 @@ func (b *builder) generate() error {
 	}
 	// mcp
 	if len(m.MCPServers) > 0 {
-		servers := map[string]MCPServer{}
+		servers, codex := map[string]MCPServer{}, map[string]codexMCPServer{}
 		for name, s := range m.MCPServers {
 			args := make([]string, len(s.Args))
 			for i, a := range s.Args {
 				args[i] = b.subst(a)
 			}
 			servers[name] = MCPServer{Command: b.subst(s.Command), Args: args}
+			codex[name] = codexMCPServer{Command: b.subst(s.Command), Args: args, EnvVars: s.EnvVars}
 		}
 		b.put(base+"/.mcp.json", jsonBytes(map[string]any{"mcpServers": servers}))
+		b.put(base+"/codex/mcp.json", jsonBytes(map[string]any{"mcpServers": codex}))
 	}
 	// hooks
 	hookFile := func(host string) []byte {
@@ -403,7 +415,7 @@ func (b *builder) generate() error {
 		claude["hooks"], codex["hooks"] = "./hooks/claude.json", "./hooks/codex.json"
 	}
 	if len(m.MCPServers) > 0 {
-		codex["mcpServers"] = "./.mcp.json" // Claude Code는 플러그인 루트의 .mcp.json을 스스로 읽는다
+		codex["mcpServers"] = "./codex/mcp.json" // Claude Code는 플러그인 루트의 .mcp.json을 스스로 읽는다
 	}
 	display := m.DisplayName
 	if display == "" {

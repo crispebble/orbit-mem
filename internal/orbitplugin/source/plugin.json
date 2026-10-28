@@ -25,6 +25,9 @@
       "command": "{{oni}}",
       "args": [
         "mcp"
+      ],
+      "envVars": [
+        "ORBIT_HOME"
       ]
     }
   },
