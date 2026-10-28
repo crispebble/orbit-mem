@@ -79,6 +79,9 @@ func dayBounds(day string, loc *time.Location) (time.Time, time.Time, error) {
 	return start, start.AddDate(0, 0, 1), nil
 }
 
+// Excluded says whether cwd is one of the directories in exclude or under one.
+func Excluded(cwd string, exclude []string) bool { return excluded(cwd, exclude) }
+
 func excluded(cwd string, exclude []string) bool {
 	norm := func(p string) string {
 		p = filepath.ToSlash(filepath.Clean(p))
