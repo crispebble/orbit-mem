@@ -290,14 +290,39 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		}
 		return string(b)
 	}
-	gate, reviewer := read("gate.md"), read("reviewer.md")
-	if !strings.Contains(gate, "### 전체 판정\n통과 / 수정 필요 / 사용자 확인 필요") {
-		t.Error("gate.md 반환 형식이 바뀌었습니다. 판정 읽기를 함께 고쳐 주세요")
-	}
-	if !strings.Contains(reviewer, "### 판정\n승인 / 수정 요구") {
-		t.Error("reviewer.md 반환 형식이 바뀌었습니다. 판정 읽기를 함께 고쳐 주세요")
+	// 역할 정의가 정한 판정 줄(첫 줄, 글자 그대로)을 모두 읽어야 한다
+	line := regexp.MustCompile("`(판정: [^`]+)`")
+	for name, want := range map[string]map[string]string{
+		"gate.md":     {"판정: 통과": "pass", "판정: 수정 필요": "needs_fix", "판정: 사용자 확인 필요": "needs_user"},
+		"reviewer.md": {"판정: 승인": "pass", "판정: 수정 요구": "needs_fix"},
+	} {
+		body := read(name)
+		if !strings.Contains(body, "첫 줄") {
+			t.Errorf("%s에 판정 줄을 첫 줄에 쓰라는 문장이 없습니다", name)
+		}
+		got := map[string]bool{}
+		for _, m := range line.FindAllStringSubmatch(body, -1) {
+			got[m[1]] = true
+		}
+		role := "orbit:" + strings.TrimSuffix(name, ".md")
+		for l, result := range want {
+			if !got[l] {
+				t.Errorf("%s 반환 형식에 %q가 없습니다. 판정 읽기를 함께 고쳐 주세요", name, l)
+			}
+			if v := parseVerdict(role, l+"\n\n### 완료 기준별 판정\n| a | 충족 |"); v == nil || v.Result != result {
+				t.Errorf("%s %q를 %s로 읽지 못합니다: %+v", name, l, result, v)
+			}
+		}
+		if len(got) != len(want) {
+			t.Errorf("%s 판정 줄 %v, %v여야 합니다", name, got, want)
+		}
 	}
 	cases := []struct{ role, text, want string }{
+		{"orbit:gate", "판정: <통과 | 수정 필요 | 사용자 확인 필요>\n", ""}, // 채우지 않은 틀
+		{"orbit:reviewer", "판정: 수정 요구\n\n### 지적", "needs_fix"},
+		{"orbit:gate", "판정 : 통과", "pass"},
+		{"orbit:gate", "이번 판정: 시험이 없어 보류합니다", ""},
+		// 옛 틀(이전 판 역할 파일이 남은 호스트)
 		{"orbit:gate", "### 전체 판정\n통과\n", "pass"},
 		{"orbit:gate", "### 전체 판정\n\n수정 필요 — 시험 로그가 없습니다", "needs_fix"},
 		{"orbit:gate", "### 전체 판정\n사용자 확인 필요\n", "needs_user"},

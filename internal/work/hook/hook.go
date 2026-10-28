@@ -745,18 +745,22 @@ func cleanVerdict(s string) string {
 	return strings.TrimSpace(strings.Trim(strings.TrimSpace(s), "*_`#>:：—-– "))
 }
 
-// verdictHeading says whether a line is the verdict heading and returns what
-// follows it on the same line.
+// verdictHeading says whether a line is the verdict line (판정: …, what the
+// role definitions ask for) or a verdict heading, and returns what follows it
+// on the same line.
 func verdictHeading(l string) (string, bool) {
 	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "#") && !strings.HasPrefix(t, "**") {
-		return "", false
-	}
+	marked := strings.HasPrefix(t, "#") || strings.HasPrefix(t, "**")
 	t = strings.TrimLeft(t, "#* ")
 	for _, h := range []string{"전체 판정", "판정"} {
-		if strings.HasPrefix(t, h) {
-			return cleanVerdict(t[len(h):]), true
+		rest, ok := strings.CutPrefix(t, h)
+		if !ok {
+			continue
 		}
+		if !marked && !strings.HasPrefix(strings.TrimSpace(rest), ":") {
+			return "", false // 꾸밈 없는 줄은 판정 줄 모양만 받는다
+		}
+		return cleanVerdict(rest), true
 	}
 	return "", false
 }
