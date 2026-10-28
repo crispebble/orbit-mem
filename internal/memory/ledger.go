@@ -37,10 +37,14 @@ type FileBefore struct {
 
 // LedgerBefore is what a change replaced.
 type LedgerBefore struct {
-	Memories []Memory    `json:"memories,omitempty"` // 바뀐 기억의 바꾸기 전 판본
-	Created  []string    `json:"created,omitempty"`  // 새로 만든 기억
-	File     *FileBefore `json:"file,omitempty"`
+	Memories []Memory       `json:"memories,omitempty"` // 바뀐 기억의 바꾸기 전 판본
+	Created  []string       `json:"created,omitempty"`  // 새로 만든 기억
+	File     *FileBefore    `json:"file,omitempty"`
+	After    map[string]int `json:"after,omitempty"` // 바꾼 직후 기억 판본. 되돌릴 때 그 뒤 바뀌었는지 본다
 }
+
+// ErrMemoryChanged means a memory changed again after the change being undone.
+var ErrMemoryChanged = errors.New("되돌릴 변경 뒤에 기억이 다시 바뀌었습니다. 이력을 보고 직접 고쳐 주세요")
 
 // Window counts the signals about a change's memories in one period.
 type Window struct {
@@ -289,6 +293,12 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 		}
 	}
 	memIDs = uniq(memIDs)
+	before.After = map[string]int{}
+	for _, id := range memIDs {
+		if m, err := getTx(s.db, id); err == nil {
+			before.After[id] = m.Version
+		}
+	}
 	if before.File == nil {
 		e.Targets = memIDs
 		e.Observe = memIDs
@@ -322,8 +332,10 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 }
 
 // revert undoes a ledger line: memories go back to the version before the
-// change, memories the change made go stale, and a file gets its old content
-// unless it changed again since.
+// change, memories the change made go stale, and a file gets its old content.
+// Nothing is undone when a memory or the file changed again since: the undo
+// would wipe that later change. A file already back to its old content (an
+// earlier attempt stopped half way) counts as undone.
 func (s *Store) revert(p Proposal, res *DecideResult) error {
 	e, err := s.LedgerEntry(p.Payload.LedgerID)
 	if err != nil {
@@ -332,26 +344,52 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 	if e.RevertedBy != "" {
 		return fmt.Errorf("%w: 이미 되돌린 변경입니다(%s)", ErrInvalid, e.RevertedBy)
 	}
-	if f := e.Before.File; f != nil {
-		if FileHash(f.Path) != f.AfterHash {
-			return ErrFileChanged
-		}
-		target, err := realTarget(f.Path)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	ids := make([]string, 0, len(e.Before.Memories)+len(e.Before.Created))
+	for _, m := range e.Before.Memories {
+		ids = append(ids, m.ID)
+	}
+	ids = append(ids, e.Before.Created...)
+	for _, id := range uniq(ids) {
+		cur, err := getTx(tx, id)
 		if err != nil {
 			return err
 		}
-		if f.Absent {
-			if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-		} else if err := writeFileAtomic(target, []byte(f.Content)); err != nil {
+		if v, ok := e.Before.After[id]; ok && cur.Version != v {
+			return fmt.Errorf("%w: %s(판본 %d → 지금 %d)", ErrMemoryChanged, id, v, cur.Version)
+		}
+	}
+	writeFile := false
+	if f := e.Before.File; f != nil {
+		old := "absent"
+		if !f.Absent {
+			old = hashBytes([]byte(f.Content))
+		}
+		switch FileHash(f.Path) {
+		case f.AfterHash:
+			writeFile = true
+		case old: // 앞선 시도가 파일만 되돌리고 멈췄다
+		default:
+			return ErrFileChanged
+		}
+	}
+	now := s.nowMs()
+	restored := map[string]bool{}
+	for _, snap := range e.Before.Memories {
+		m, err := getTx(tx, snap.ID)
+		if err != nil {
 			return err
 		}
-		res.File = f.Path
-	}
-	restored := map[string]bool{}
-	for _, m := range e.Before.Memories {
-		if err := s.restore(m, "되돌림 "+p.ID); err != nil {
+		m.Kind, m.Scope, m.Project, m.State = snap.Kind, snap.Scope, snap.Project, snap.State
+		m.Title, m.Body, m.Tags = snap.Title, snap.Body, snap.Tags
+		m.SupersededBy, m.StaleReason = snap.SupersededBy, snap.StaleReason
+		m.Version++
+		m.UpdatedAt = now
+		if err := writeTx(tx, m, "revert", "되돌림 "+p.ID, now); err != nil {
 			return err
 		}
 		restored[m.ID] = true
@@ -361,32 +399,35 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		if restored[id] {
 			continue
 		}
-		if _, err := s.SetState(id, StateStale, "되돌림 "+p.ID); err != nil {
+		m, err := getTx(tx, id)
+		if err != nil {
+			return err
+		}
+		m.State, m.StaleReason = StateStale, "되돌림 "+p.ID
+		m.Version++
+		m.UpdatedAt = now
+		if err := writeTx(tx, m, StateStale, "되돌림 "+p.ID, now); err != nil {
 			return err
 		}
 		res.Changed = append(res.Changed, id)
 	}
-	return nil
-}
-
-// restore writes a memory's earlier snapshot back as a new version.
-func (s *Store) restore(snap Memory, reason string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	m, err := getTx(tx, snap.ID)
-	if err != nil {
-		return err
-	}
-	m.Kind, m.Scope, m.Project, m.State = snap.Kind, snap.Scope, snap.Project, snap.State
-	m.Title, m.Body, m.Tags = snap.Title, snap.Body, snap.Tags
-	m.SupersededBy, m.StaleReason = snap.SupersededBy, snap.StaleReason
-	m.Version++
-	m.UpdatedAt = s.nowMs()
-	if err := writeTx(tx, m, "revert", reason, m.UpdatedAt); err != nil {
-		return err
+	// 파일은 기억을 모두 확인한 뒤, 기억을 확정하기 전에 쓴다. 쓰고 나서 기억 쪽이
+	// 실패하면 다음 승인이 「이미 옛 내용」으로 보고 기억만 마저 되돌린다.
+	if f := e.Before.File; f != nil {
+		if writeFile {
+			target, err := realTarget(f.Path)
+			if err != nil {
+				return err
+			}
+			if f.Absent {
+				if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			} else if err := writeFileAtomic(target, []byte(f.Content)); err != nil {
+				return err
+			}
+		}
+		res.File = f.Path
 	}
 	return tx.Commit()
 }
@@ -403,6 +444,19 @@ func (s *Store) SetLedgerLesson(id, lessonID string) error {
 	}
 	_, err = s.db.Exec(`UPDATE ledger SET lesson_id=? WHERE id=? AND lesson_id=''`, lessonID, id)
 	return err
+}
+
+func subset(a, b []string) bool {
+	set := map[string]bool{}
+	for _, x := range b {
+		set[x] = true
+	}
+	for _, x := range a {
+		if !set[x] {
+			return false
+		}
+	}
+	return true
 }
 
 func overlaps(a, b []string) bool {
@@ -449,7 +503,9 @@ func (s *Store) JudgeLedger(windowDays int) (int, error) {
 			if err := s.observe(&obs, e.Observe); err != nil {
 				return n, err
 			}
-			evidence = obs.Before.Bad+obs.After.Bad+obs.Before.Irrelevant+obs.After.Irrelevant > 0
+			// 이 변경이 만든 기억만 보면 변경 전에는 넣을 수 없었다: 비교할 전이 없다.
+			comparable := !subset(e.Observe, e.Before.Created)
+			evidence = comparable && obs.Before.Bad+obs.After.Bad+obs.Before.Irrelevant+obs.After.Irrelevant > 0
 		}
 		if len(obs.MixedWith) == 0 {
 			verdict = judge(obs, evidence)

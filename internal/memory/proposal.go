@@ -88,6 +88,10 @@ func FileHash(path string) string {
 	if err != nil {
 		return "absent"
 	}
+	return hashBytes(b)
+}
+
+func hashBytes(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -544,7 +548,7 @@ func editedMemory(m Memory, pl Payload, title, body *string) Memory {
 	if given(title) {
 		m.Title = strings.TrimSpace(*title)
 	}
-	if body != nil && (given(body) || title != nil) {
+	if given(body) {
 		m.Body = *body
 	}
 	return m

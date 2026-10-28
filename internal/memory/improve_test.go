@@ -452,3 +452,104 @@ func TestLastUse_주입_읽기_찾기_사용판정을_마지막_사용으로_본
 		t.Fatalf("old = %d", last["m-old"])
 	}
 }
+
+func TestLedger_되돌리기는_그_뒤에_바뀐_기억을_덮지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := candidate(t, s, "A")
+	first := approveEdit(t, s, m.ID, "B")
+	approveEdit(t, s, m.ID, "C")
+	p, err := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "첫 고침 되돌리기", Payload: Payload{LedgerID: first}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"}); !errors.Is(err, ErrMemoryChanged) {
+		t.Fatalf("err = %v", err)
+	}
+	if got, _ := s.Get(m.ID); got.Title != "C" {
+		t.Fatalf("later edit overwritten: %+v", got)
+	}
+	// 사용자가 직접 고친 것도 지키지 않는다.
+	n := candidate(t, s, "가")
+	id := approveEdit(t, s, n.ID, "나")
+	body := "사용자가 고친 본문"
+	s.Update(UpdateInput{ID: n.ID, Body: &body})
+	p2, _ := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌리기", Payload: Payload{LedgerID: id}})
+	if _, err := s.Decide(DecideInput{ID: p2.ID, Decision: "approve"}); !errors.Is(err, ErrMemoryChanged) {
+		t.Fatalf("hand edit: %v", err)
+	}
+}
+
+func TestLedger_파일과_기억을_함께_되돌리다_멈춰도_다시_승인하면_끝난다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := candidate(t, s, "규칙")
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	os.WriteFile(path, []byte("옛\n"), 0o644)
+	p, _ := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "반영", MemoryIDs: []string{m.ID}, Payload: Payload{Path: path, Content: "새\n"}})
+	res, _ := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	pr, _ := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌리기", Payload: Payload{LedgerID: res.LedgerID}})
+	// 파일만 먼저 옛 내용이 된 상태(앞선 승인이 중간에 멈춤)에서 다시 승인한다.
+	os.WriteFile(path, []byte("옛\n"), 0o644)
+	if _, err := s.Decide(DecideInput{ID: pr.ID, Decision: "approve"}); err != nil {
+		t.Fatalf("retry after partial revert: %v", err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "옛\n" {
+		t.Fatalf("file = %q", b)
+	}
+}
+
+func TestLedger_새로_만든_기억은_변경_전이_없어_증거_없음(t *testing.T) {
+	s, clk := newTestStore(t)
+	start := clk.t
+	p, _ := s.Propose(ProposalInput{Kind: ProposalDirection, Title: "새 방향", Body: "이유"})
+	res, _ := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	for i := 0; i < 3; i++ {
+		at := start.Add(time.Duration(i+1) * 24 * time.Hour)
+		sess := "s" + string(rune('a'+i))
+		injectAt(t, s, sess, at, res.Created)
+		if i == 0 {
+			signal(t, s, EventMemoryUsed, sess, res.Created, "violated", at.Add(time.Minute))
+		}
+	}
+	clk.t = start.Add(8 * 24 * time.Hour)
+	s.JudgeLedger(7)
+	if e, _ := s.LedgerEntry(res.LedgerID); e.Verdict != VerdictNoEffect || e.Evidence {
+		t.Fatalf("new memory judged without a before period: %+v", e)
+	}
+}
+
+func TestOpen_옛_DB를_여러_프로세스가_동시에_처음_열어도_된다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memory.db")
+	db, _ := sql.Open("sqlite", "file:"+path)
+	db.Exec(`CREATE TABLE retros (id TEXT PRIMARY KEY, kind TEXT NOT NULL, period TEXT NOT NULL, status TEXT NOT NULL, host TEXT NOT NULL DEFAULT '',
+		started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL DEFAULT 0, summary TEXT NOT NULL DEFAULT '', flags TEXT NOT NULL DEFAULT '[]',
+		journal_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '')`)
+	db.Close()
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func() {
+			s, err := Open(path)
+			if err == nil {
+				s.Close()
+			}
+			errs <- err
+		}()
+	}
+	for i := 0; i < 8; i++ {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestProposal_고쳐서_승인할_때_빈_본문은_그대로_둔다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m, _ := s.Save(SaveInput{Kind: KindLesson, Title: "제목", Body: "원래 본문", Source: Source{Kind: SourceSession}})
+	p, _ := s.Propose(ProposalInput{Kind: ProposalEdit, Title: "고치기", MemoryIDs: []string{m.ID}, Payload: Payload{Title: "회고 제목"}})
+	title, empty := "사용자 제목", ""
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve", Title: &title, Body: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(m.ID); got.Title != "사용자 제목" || got.Body != "원래 본문" {
+		t.Fatalf("got %+v", got)
+	}
+}

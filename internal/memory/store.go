@@ -100,7 +100,8 @@ func addColumns(db *sql.DB) error {
 			return err
 		}
 		if n == 0 {
-			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.def); err != nil {
+			// 다른 프로세스(훅·MCP)가 같은 순간에 먼저 더했으면 이미 있는 열이다.
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.def); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 				return err
 			}
 		}
