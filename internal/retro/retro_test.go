@@ -303,7 +303,7 @@ func TestLock_동시에_두_번_돌지_않는다(t *testing.T) {
 
 func TestHostCommand_Claude와_Codex(t *testing.T) {
 	e := setup(t, time.Now())
-	c := e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
+	c := e.r.hostCommand("r-1", "/tmp/run", "프롬프트", e.r.Cfg.RetroModel)
 	joined := strings.Join(c.Args, " ")
 	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "--setting-sources project", "mcp__orbit-retro__retro_submit"} {
 		if !strings.Contains(joined, want) {
@@ -318,7 +318,7 @@ func TestHostCommand_Claude와_Codex(t *testing.T) {
 		t.Errorf("mcp config file: %s", cfg)
 	}
 	e.r.Cfg.RetroHost, e.r.Cfg.RetroModel = "codex", "gpt-x"
-	c = e.r.hostCommand("r-1", "/tmp/run", "프롬프트")
+	c = e.r.hostCommand("r-1", "/tmp/run", "프롬프트", e.r.Cfg.RetroModel)
 	joined = strings.Join(c.Args, " ")
 	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run", `default_tools_approval_mode="approve"`, " -"} {
 		if !strings.Contains(joined, want) {

@@ -126,8 +126,8 @@
     ],
     "SessionEnd": [
       {
-        "command": "{{onicmd}} hook work --host {{host}}",
-        "timeout": 3
+        "command": "{{onicmd}} hook session-end --host {{host}}",
+        "timeout": 5
       }
     ]
   },

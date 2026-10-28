@@ -21,6 +21,8 @@ const (
 	ProposalReclassify = "reclassify" // 종류 재분류(옛 ISSUE·NOTE)
 	ProposalApplyFile  = "apply_file" // 확정 규칙을 플러그인 스킬 원본이나 지침 파일에 반영(diff)
 	ProposalDirection  = "direction"  // 방향 제안(주간 회고)
+	ProposalEdit       = "edit"       // 기억 하나의 제목·본문·태그·범위 고치기
+	ProposalRevert     = "revert"     // 원장 한 줄의 변경 되돌리기
 )
 
 // Proposal statuses.
@@ -31,7 +33,7 @@ const (
 	StatusSettled  = "settled" // 다른 길로 이미 이뤄져 닫힘
 )
 
-var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection}
+var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert}
 
 var (
 	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
@@ -41,13 +43,18 @@ var (
 
 // Payload carries what a proposal needs beyond memory ids.
 type Payload struct {
-	Kind        string `json:"kind,omitempty"`        // reclassify: 새 종류, merge: 합친 기억 종류
-	MergedTitle string `json:"mergedTitle,omitempty"` // merge
-	MergedBody  string `json:"mergedBody,omitempty"`  // merge
-	Path        string `json:"path,omitempty"`        // apply_file: 절대경로
-	BaseHash    string `json:"baseHash,omitempty"`    // apply_file: 제안 때 파일 hash(없던 파일이면 "absent")
-	Content     string `json:"content,omitempty"`     // apply_file: 새 내용 전체
-	Scope       string `json:"scope,omitempty"`       // direction·merge로 만들 기억 범위
+	Kind        string   `json:"kind,omitempty"`        // reclassify: 새 종류, merge: 합친 기억 종류
+	MergedTitle string   `json:"mergedTitle,omitempty"` // merge
+	MergedBody  string   `json:"mergedBody,omitempty"`  // merge
+	Path        string   `json:"path,omitempty"`        // apply_file: 절대경로
+	BaseHash    string   `json:"baseHash,omitempty"`    // apply_file: 제안 때 파일 hash(없던 파일이면 "absent")
+	Content     string   `json:"content,omitempty"`     // apply_file: 새 내용 전체
+	Scope       string   `json:"scope,omitempty"`       // direction·merge로 만들 기억 범위, edit의 새 범위
+	Title       string   `json:"title,omitempty"`       // edit: 새 제목
+	Body        string   `json:"body,omitempty"`        // edit: 새 본문(비우면 그대로)
+	Tags        []string `json:"tags,omitempty"`        // edit: 새 태그
+	Project     string   `json:"project,omitempty"`     // edit: 새 범위가 프로젝트면 그 이름
+	LedgerID    string   `json:"ledgerId,omitempty"`    // revert: 되돌릴 원장 줄
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -81,6 +88,10 @@ func FileHash(path string) string {
 	if err != nil {
 		return "absent"
 	}
+	return hashBytes(b)
+}
+
+func hashBytes(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -98,6 +109,10 @@ func fingerprint(in ProposalInput) string {
 		parts = append(parts, TitleKey(in.Payload.MergedTitle))
 	case ProposalReclassify:
 		parts = append(parts, in.Payload.Kind)
+	case ProposalEdit:
+		parts = append(parts, in.Payload.Title, in.Payload.Body, strings.Join(in.Payload.Tags, ","), in.Payload.Scope)
+	case ProposalRevert:
+		parts = append(parts, in.Payload.LedgerID)
 	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(h[:16])
@@ -142,6 +157,32 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
 		}
 		in.Body = strings.TrimSpace(in.Body + "\n\n파일: " + in.Payload.Path + "\n```diff\n" + diff + "```")
+	case ProposalEdit:
+		if len(in.MemoryIDs) != 1 {
+			return Proposal{}, fmt.Errorf("%w: 고칠 기억 하나가 필요합니다", ErrInvalid)
+		}
+		if in.Payload.Scope != "" && !validScope(in.Payload.Scope) {
+			return Proposal{}, fmt.Errorf("%w: 범위는 global 또는 project:<키>입니다", ErrInvalid)
+		}
+		old, _ := getTx(s.db, in.MemoryIDs[0])
+		next := editedMemory(old, in.Payload, nil, nil)
+		diff := LineDiff(memoryText(old), memoryText(next), 2)
+		if strings.TrimSpace(diff) == "" {
+			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n```diff\n" + diff + "```")
+	case ProposalRevert:
+		e, err := s.LedgerEntry(in.Payload.LedgerID)
+		if err != nil {
+			return Proposal{}, err
+		}
+		if e.RevertedBy != "" {
+			return Proposal{}, fmt.Errorf("%w: 이미 되돌린 변경입니다(%s)", ErrInvalid, e.RevertedBy)
+		}
+		if e.TargetKind == TargetMemory {
+			in.MemoryIDs = e.Targets
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n되돌릴 변경(" + e.ID + ", 판정 " + e.Verdict + "):\n```diff\n" + e.Change + "```")
 	}
 	fp := fingerprint(in)
 	var status string
@@ -233,9 +274,10 @@ type DecideInput struct {
 // DecideResult says what changed.
 type DecideResult struct {
 	Proposal Proposal `json:"proposal"`
-	Changed  []string `json:"changed,omitempty"` // 바뀐 기억 id
-	Created  string   `json:"created,omitempty"` // 새로 만든 기억 id
-	File     string   `json:"file,omitempty"`    // 바꾼 파일
+	Changed  []string `json:"changed,omitempty"`  // 바뀐 기억 id
+	Created  string   `json:"created,omitempty"`  // 새로 만든 기억 id
+	File     string   `json:"file,omitempty"`     // 바꾼 파일
+	LedgerID string   `json:"ledgerId,omitempty"` // 승인한 변경의 원장 줄
 }
 
 // Decide approves or rejects a proposal and applies it.
@@ -248,6 +290,10 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		return DecideResult{Proposal: p}, ErrDecided
 	}
 	res := DecideResult{}
+	decision := in.Decision
+	if decision == "approve" && (given(in.Title) || given(in.Body)) {
+		decision = "edit"
+	}
 	switch in.Decision {
 	case "reject":
 		if p.Kind == ProposalConfirm {
@@ -264,19 +310,27 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 			return res, err
 		}
 	case "approve":
+		before, err := s.snapshotFor(p)
+		if err != nil {
+			return res, err
+		}
 		if err := s.apply(p, in, &res); err != nil {
 			return res, err
 		}
 		if err := s.finish(&p, StatusApproved, in.Note); err != nil {
 			return res, err
 		}
+		if res.LedgerID, err = s.recordLedger(p, before, res); err != nil {
+			return res, fmt.Errorf("변경은 반영했지만 원장에 남기지 못했습니다: %w", err)
+		}
 	default:
 		return res, fmt.Errorf("%w: decision은 approve 또는 reject", ErrInvalid)
 	}
 	res.Proposal = p
-	decision := in.Decision
-	if decision == "approve" && (given(in.Title) || given(in.Body)) {
-		decision = "edit"
+	if decision != "approve" {
+		if err := s.attachDecision(p, decision, ClipRunes(MaskSecrets(in.Note), 300)); err != nil {
+			return res, fmt.Errorf("결정은 반영했지만 판정 기록에 붙이지 못했습니다: %w", err)
+		}
 	}
 	_ = s.RecordEvent(Event{Kind: EventProposalDecided}, map[string]any{"proposalId": p.ID, "proposalKind": p.Kind,
 		"decision": decision, "waitMs": p.DecidedAt - p.CreatedAt})
@@ -360,6 +414,22 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			}
 			res.Changed = append(res.Changed, id)
 		}
+	case ProposalEdit:
+		m, err := getTx(s.db, p.MemoryIDs[0])
+		if err != nil {
+			return err
+		}
+		next := editedMemory(m, p.Payload, in.Title, in.Body)
+		if _, err := s.Update(UpdateInput{ID: m.ID, Title: &next.Title, Body: &next.Body, Tags: &next.Tags, Scope: &next.Scope, Project: &next.Project,
+			Reason: "제안 승인 " + p.ID, Action: "edit"}); err != nil {
+			return err
+		}
+		res.Changed = append(res.Changed, m.ID)
+	case ProposalRevert:
+		if given(in.Title) || given(in.Body) {
+			return fmt.Errorf("%w: 되돌리기는 고쳐서 승인할 수 없습니다", ErrInvalid)
+		}
+		return s.revert(p, res)
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
 			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
@@ -454,4 +524,32 @@ func writeFileAtomic(path string, content []byte) error {
 	}
 	ok = true
 	return nil
+}
+
+// editedMemory is m after an edit proposal, with the user's title and body
+// taking the place of the proposal's when given.
+func editedMemory(m Memory, pl Payload, title, body *string) Memory {
+	if pl.Title != "" {
+		m.Title = pl.Title
+	}
+	if pl.Body != "" {
+		m.Body = pl.Body
+	}
+	if pl.Tags != nil {
+		m.Tags = cleanTags(pl.Tags)
+	}
+	if pl.Scope != "" {
+		m.Scope = pl.Scope
+		m.Project = ""
+		if pl.Scope != ScopeGlobal {
+			m.Project = pl.Project
+		}
+	}
+	if given(title) {
+		m.Title = strings.TrimSpace(*title)
+	}
+	if given(body) {
+		m.Body = *body
+	}
+	return m
 }

@@ -63,6 +63,18 @@ func cmdRetro(a *app, args []string) error {
 	ctx, cancel := signalContext()
 	defer cancel()
 	switch args[0] {
+	case "sessions":
+		pending, err := retro.Pending(s)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(a.stdout, "%s 대기 세션 %d개\n", time.Now().Format("2006-01-02 15:04:05"), len(pending))
+		if len(pending) == 0 {
+			return nil
+		}
+		results, err := r.DrainSessions(ctx)
+		a.printResults(results)
+		return err
 	case "run":
 		var results []retro.Result
 		switch {
@@ -97,12 +109,13 @@ func cmdRetro(a *app, args []string) error {
 			return a.json(list)
 		}
 		for _, st := range list {
-			fmt.Fprintf(a.stdout, "%s %s %-7s %s %s\n", st.Period, st.Kind, st.Status, st.ID, oneLine(st.Summary+" "+st.Error, 100))
+			fmt.Fprintf(a.stdout, "%s %s %-7s %s %s%s\n", st.Period, st.Kind, st.Status, st.ID, sessionTag(st.Session), oneLine(st.Summary+" "+st.Error, 100))
 			for _, f := range st.Flags {
 				fmt.Fprintln(a.stdout, "    짚을 점: "+f)
 			}
 		}
-		fmt.Fprintf(a.stdout, "대기 제안 %d건\n", s.PendingCount())
+		pending, _ := retro.Pending(s)
+		fmt.Fprintf(a.stdout, "대기 제안 %d건 · 세션 끝 회고 대기 %d개\n", s.PendingCount(), len(pending))
 		return nil
 	case "material":
 		if *day == "" {
@@ -121,6 +134,13 @@ func cmdRetro(a *app, args []string) error {
 		return nil
 	}
 	return errUsage
+}
+
+func sessionTag(session string) string {
+	if session == "" {
+		return ""
+	}
+	return "[" + session + "] "
 }
 
 func (a *app) printResults(results []retro.Result) {
@@ -475,19 +495,20 @@ func cmdUninstall(a *app, args []string) error {
 }
 
 type doctorReport struct {
-	Version    string              `json:"version"`
-	Binary     string              `json:"binary"`
-	Home       string              `json:"home"`
-	Config     config.Config       `json:"config"`
-	Memories   map[string]int      `json:"memories"`
-	Pending    int                 `json:"pendingProposals"`
-	Hosts      map[string]string   `json:"hosts"`
-	Plugin     map[string]bool     `json:"pluginRegistered"`
-	Schedule   bool                `json:"schedule"`
-	LastRetros []retro.RetroStatus `json:"lastRetros"`
-	LastBackup string              `json:"lastBackup,omitempty"`
-	CodexPlan  bool                `json:"codexPlanTool"`
-	Work       workStatus          `json:"work"`
+	Version      string              `json:"version"`
+	Binary       string              `json:"binary"`
+	Home         string              `json:"home"`
+	Config       config.Config       `json:"config"`
+	Memories     map[string]int      `json:"memories"`
+	Pending      int                 `json:"pendingProposals"`
+	SessionQueue int                 `json:"sessionQueue"`
+	Hosts        map[string]string   `json:"hosts"`
+	Plugin       map[string]bool     `json:"pluginRegistered"`
+	Schedule     bool                `json:"schedule"`
+	LastRetros   []retro.RetroStatus `json:"lastRetros"`
+	LastBackup   string              `json:"lastBackup,omitempty"`
+	CodexPlan    bool                `json:"codexPlanTool"`
+	Work         workStatus          `json:"work"`
 }
 
 type workStatus struct {
@@ -534,6 +555,9 @@ func cmdDoctor(a *app, args []string) error {
 		rep.Memories[m.State]++
 	}
 	rep.Pending = s.PendingCount()
+	if waiting, err := retro.Pending(s); err == nil {
+		rep.SessionQueue = len(waiting)
+	}
 	rep.LastRetros, _ = retro.Recent(s, 3)
 	h := install.FindHosts()
 	for name, path := range map[string]string{"claude": h.Claude, "codex": h.Codex} {
@@ -562,6 +586,11 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintf(a.stdout, "oni %s (%s, %s/%s)\n데이터: %s\n", rep.Version, rep.Binary, runtime.GOOS, runtime.GOARCH, rep.Home)
 	fmt.Fprintf(a.stdout, "기억: 확정 %d · 후보 %d · 낡음 %d · 숨김 %d · 대기 제안 %d\n", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending)
 	fmt.Fprintf(a.stdout, "회고: %s %s, 매일 %02d시, 주입 %s · 예약 %s\n", cfg.RetroHost, cfg.RetroModel, cfg.RetroHour, cfg.Inject, yes(rep.Schedule))
+	sessionRetro := "끔"
+	if cfg.SessionRetro {
+		sessionRetro = "켬(" + cfg.SessionModel() + ")"
+	}
+	fmt.Fprintf(a.stdout, "세션 끝 회고: %s · 대기 %d개 · 작업 회상 %d자\n", sessionRetro, rep.SessionQueue, cfg.RecallChars)
 	for _, name := range []string{"claude", "codex"} {
 		if path, ok := rep.Hosts[name]; ok {
 			fmt.Fprintf(a.stdout, "%s: %s · Orbit 플러그인 %s\n", name, path, yes(rep.Plugin[name]))

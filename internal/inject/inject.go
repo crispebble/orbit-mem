@@ -5,6 +5,7 @@ package inject
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -37,6 +38,25 @@ func (in Injection) done(b *strings.Builder) Injection {
 		in.MemoryIDs = []string{}
 	}
 	return in
+}
+
+// SessionBundle is the fixed session-start bundle (설계 「작업 기준 회상」의
+// 고정 묶음): built once per session and handed back unchanged when the same
+// session starts again (resume, compaction), so the host's prompt cache holds.
+// Without a session id it is built afresh.
+func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session string) Injection {
+	if session != "" {
+		if text, ids, ok := s.SessionBundle(host, session); ok {
+			var b strings.Builder
+			b.WriteString(text)
+			return Injection{MemoryIDs: ids}.done(&b)
+		}
+	}
+	inj := SessionStartInjection(s, cfg, scope)
+	if session != "" && inj.Text != "" {
+		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
+	}
+	return inj
 }
 
 // SessionStart is the session-start context: confirmed rules of the global
@@ -139,13 +159,22 @@ func retroLine(s *memory.Store) string {
 	return strings.Join(parts, " · ")
 }
 
-// Prompt is the per-request context: at most three memories that match the
-// request strongly, by title and id. A weak match adds nothing.
+// Prompt is the per-request context: the memories that match the request
+// strongly, ranked and packed within the configured length. A weak match adds nothing.
 func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 	return PromptInjection(s, cfg, scope, prompt).Text
 }
 
-// PromptInjection is Prompt with the memories it named.
+// recallBodyRunes is how much of a memory's body the work recall shows, the
+// same length as a memory_find summary.
+const recallBodyRunes = 200
+
+// PromptInjection is the work recall (설계 「작업 기준 회상」): memories that
+// match the request strongly, ordered by match score, this project's scope
+// first, then net usage (followed − irrelevant) over the ledger window, then
+// the most recently edited, packed as title and body excerpt within
+// cfg.RecallChars. A body that does not fit is left out; a title that does
+// not fit ends the list.
 func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -166,20 +195,62 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		byID[m.ID] = m
 		docs = append(docs, m.Doc())
 	}
-	hits := memory.StrongMatches(docs, prompt, 3)
+	hits := memory.Strong(docs, prompt)
 	if len(hits) == 0 {
 		return inj.done(&b)
 	}
-	b.WriteString("[Orbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n")
-	for _, d := range hits {
-		m := byID[d.ID]
+	now := s.Now()
+	usage, _ := s.UsageCounts(memory.Day(now.AddDate(0, 0, -max(cfg.LedgerWindowDays, 1))), memory.Day(now))
+	net := func(id string) int { u := usage[id]; return u.Followed - u.Irrelevant }
+	local := func(id string) bool { return scope != "" && byID[id].Scope == scope }
+	sort.SliceStable(hits, func(i, j int) bool {
+		a, c := hits[i], hits[j]
+		if a.Score != c.Score {
+			return a.Score > c.Score
+		}
+		if la, lc := local(a.Doc.ID), local(c.Doc.ID); la != lc {
+			return la
+		}
+		if na, nc := net(a.Doc.ID), net(c.Doc.ID); na != nc {
+			return na > nc
+		}
+		return byID[a.Doc.ID].UpdatedAt > byID[c.Doc.ID].UpdatedAt
+	})
+	budget := cfg.RecallChars
+	if budget <= 0 {
+		budget = config.Default().RecallChars
+	}
+	head := "[Orbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
+	used := utf8.RuneCountInString(head)
+	var entries strings.Builder
+	for _, h := range hits {
+		m := byID[h.Doc.ID]
 		state := "확정"
 		if m.State == memory.StateCandidate {
 			state = "후보"
 		}
-		fmt.Fprintf(&b, "- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
+		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
+		body := ""
+		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
+			body = "  " + memory.ClipRunes(text, recallBodyRunes) + "\n"
+		}
+		n := utf8.RuneCountInString(line)
+		if used+n > budget {
+			break
+		}
+		if bn := utf8.RuneCountInString(body); body != "" && used+n+bn <= budget {
+			line += body
+			n += bn
+		}
+		entries.WriteString(line)
+		used += n
 		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 	}
+	if len(inj.MemoryIDs) == 0 {
+		return inj.done(&b)
+	}
+	b.WriteString(head)
+	b.WriteString(entries.String())
 	return inj.done(&b)
 }
 

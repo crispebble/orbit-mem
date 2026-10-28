@@ -32,11 +32,13 @@ type MemoryIn struct {
 	SameAs     string   `json:"sameAs,omitempty" jsonschema:"이미 있는 기억과 같은 내용이면 그 id. 새로 만들지 않고 다시 나왔다고 기록한다"`
 	Quote      string   `json:"quote,omitempty" jsonschema:"근거가 된 사용자 말을 재료에서 글자 그대로 옮김. 맞으면 바로 확정된다"`
 	SessionRef string   `json:"sessionRef,omitempty" jsonschema:"근거 세션(호스트:세션 id)"`
+	Verdict    string   `json:"verdict,omitempty" jsonschema:"keep(유지, 기본)·hold(보류: 후보로만)·reject(거절: 남기지 않음)"`
+	Reason     string   `json:"reason,omitempty" jsonschema:"판정 사유. reject에는 필수"`
 }
 
 // ProposalIn is a proposal from the retrospective.
 type ProposalIn struct {
-	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction"`
+	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction·edit·revert"`
 	Title       string   `json:"title"`
 	Body        string   `json:"body,omitempty" jsonschema:"왜 제안하는지"`
 	MemoryIDs   []string `json:"memoryIds,omitempty"`
@@ -45,6 +47,28 @@ type ProposalIn struct {
 	MergedBody  string   `json:"mergedBody,omitempty"`
 	Path        string   `json:"path,omitempty" jsonschema:"apply_file 대상 파일 절대경로(반영 대상 목록 안)"`
 	Content     string   `json:"content,omitempty" jsonschema:"apply_file의 새 파일 내용 전체"`
+	NewTitle    string   `json:"newTitle,omitempty" jsonschema:"edit: 새 제목"`
+	NewBody     string   `json:"newBody,omitempty" jsonschema:"edit: 새 본문"`
+	NewTags     []string `json:"newTags,omitempty" jsonschema:"edit: 새 태그"`
+	NewScope    string   `json:"newScope,omitempty" jsonschema:"edit: 새 범위 global 또는 project"`
+	Project     string   `json:"project,omitempty" jsonschema:"edit: 새 범위가 project면 그 작업 디렉터리"`
+	LedgerID    string   `json:"ledgerId,omitempty" jsonschema:"revert: 되돌릴 원장 id"`
+}
+
+// UsageIn is the session-end retrospective's verdict on one memory put into the session.
+type UsageIn struct {
+	MemoryID string `json:"memoryId" jsonschema:"이 세션에 넣은 기억 id"`
+	Verdict  string `json:"verdict" jsonschema:"followed(따름)·violated(어김)·irrelevant(상관없음)"`
+	Note     string `json:"note,omitempty" jsonschema:"근거 한 줄"`
+}
+
+// LessonIn is a lesson the weekly retrospective drew from a judged change.
+type LessonIn struct {
+	LedgerID   string `json:"ledgerId" jsonschema:"교훈을 받는 원장 id(효과 판정이 난 변경)"`
+	Signal     string `json:"signal" jsonschema:"적용 신호: 언제 이 교훈을 떠올리는지"`
+	Lesson     string `json:"lesson" jsonschema:"교훈 한 줄"`
+	Basis      string `json:"basis" jsonschema:"근거: 판정과 관찰 수"`
+	Confidence string `json:"confidence" jsonschema:"확신도 high·medium·low"`
 }
 
 // CorrectionIn is a moment the user corrected or pointed out the AI's mistake.
@@ -64,12 +88,15 @@ type Submission struct {
 	Flags       []string       `json:"flags,omitempty" jsonschema:"짚을 점: 잘못 가는 방향, 반복된 실수"`
 	Patterns    []string       `json:"patterns,omitempty" jsonschema:"주간: 반복 패턴"`
 	Proposals   []ProposalIn   `json:"proposals,omitempty"`
+	Usage       []UsageIn      `json:"usage,omitempty" jsonschema:"세션 끝: 이 세션에 넣은 기억마다 사용 판정"`
+	Lessons     []LessonIn     `json:"lessons,omitempty" jsonschema:"주간: 효과 판정에서 얻은 교훈"`
 }
 
 const (
 	maxSubmitMemories    = 40
 	maxSubmitProposals   = 20
 	maxSubmitCorrections = 60
+	maxSubmitLessons     = 20
 )
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -123,7 +150,10 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindDaily && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
 		return "", errors.New("하루 회고는 journal(title, body)이 필요합니다")
 	}
-	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals || len(sub.Corrections) > maxSubmitCorrections {
+	if mat.Kind == KindSession {
+		sub.Journal = nil // 세션 끝 회고의 요약은 summary 한 줄이고, 일지는 하루 회고가 쓴다
+	}
+	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals || len(sub.Corrections) > maxSubmitCorrections || len(sub.Lessons) > maxSubmitLessons {
 		return "", fmt.Errorf("기억은 %d건, 제안은 %d건, 교정은 %d건까지 냅니다. 중요한 것만 골라 다시 제출해 주세요", maxSubmitMemories, maxSubmitProposals, maxSubmitCorrections)
 	}
 	// 한 번만 받는다: running을 submitting으로 먼저 차지한 호출만 진행한다.
@@ -162,30 +192,49 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		journalID = m.ID
 		report = append(report, "일지 "+m.ID)
 	}
-	created, seen := 0, 0
+	created, seen, held, rejected := 0, 0, 0, 0
 	for _, in := range sub.Memories {
 		ref := in.SessionRef
 		if ref == "" {
 			ref = "retro:" + id
 		}
+		verdict := strings.TrimSpace(in.Verdict)
+		if verdict == "" {
+			verdict = memory.VerdictKeep
+		}
+		judgment := memory.Judgment{RetroID: id, Session: in.SessionRef, Kind: in.Kind, Title: in.Title, Excerpt: in.Body, Verdict: verdict, Reason: in.Reason}
+		if judgment.Session == "" {
+			judgment.Session = mat.Session
+		}
+		if verdict == memory.VerdictReject {
+			if _, err := s.RecordJudgment(judgment); err != nil {
+				notes = append(notes, fmt.Sprintf("%s: %v", in.Title, err))
+				continue
+			}
+			rejected++
+			continue
+		}
+		if verdict != memory.VerdictKeep && verdict != memory.VerdictHold {
+			notes = append(notes, in.Title+": verdict는 keep·hold·reject입니다")
+			continue
+		}
 		src := memory.Source{Kind: memory.SourceSession, Ref: ref, Excerpt: in.Quote}
 		if in.Quote != "" && quoteFound(mat, in.Quote, in.Title, in.Body) {
 			src.Kind = memory.SourceQuote
 		}
-		if in.SameAs != "" && mat.Kind == KindWeekly {
-			// 주간 재료는 그 주 일지라 같은 근거를 다시 센다: 출처만 붙인다.
-			if err := s.AddSource(in.SameAs, src); err != nil {
-				notes = append(notes, fmt.Sprintf("%s: %v", in.SameAs, err))
-				continue
-			}
-			seen++
-			continue
-		}
 		if in.SameAs != "" {
-			if _, err := s.Seen(in.SameAs, src, day); err != nil {
+			if mat.Kind == KindWeekly {
+				// 주간 재료는 그 주 일지라 같은 근거를 다시 센다: 출처만 붙인다.
+				if err := s.AddSource(in.SameAs, src); err != nil {
+					notes = append(notes, fmt.Sprintf("%s: %v", in.SameAs, err))
+					continue
+				}
+			} else if _, err := s.Seen(in.SameAs, src, day); err != nil {
 				notes = append(notes, fmt.Sprintf("%s: %v", in.SameAs, err))
 				continue
 			}
+			judgment.MemoryID, judgment.Verdict = in.SameAs, memory.VerdictKeep
+			_, _ = s.RecordJudgment(judgment)
 			seen++
 			continue
 		}
@@ -209,22 +258,58 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		after, _ := s.Count()
-		if after > before {
+		isNew := after > before
+		if isNew {
 			created++
 		} else {
 			seen++
 		}
-		if m.State == memory.StateCandidate && after > before {
-			_, _ = s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "후보 확정: " + m.Title,
-				Body: "회고 " + mat.Period + "에서 나온 후보입니다. " + m.Body, MemoryIDs: []string{m.ID}, RetroID: id})
+		if m.State != memory.StateCandidate {
+			judgment.Verdict = memory.VerdictKeep // 인용으로 바로 확정됐다
 		}
+		judgment.MemoryID, judgment.Kind, judgment.Title = m.ID, m.Kind, m.Title
+		_, _ = s.RecordJudgment(judgment)
+		if judgment.Verdict == memory.VerdictHold {
+			held++
+			continue
+		}
+		if m.State == memory.StateCandidate && isNew {
+			if p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "후보 확정: " + m.Title,
+				Body: "회고 " + mat.Period + "에서 나온 후보입니다. " + m.Body, MemoryIDs: []string{m.ID}, RetroID: id}); err == nil {
+				_ = s.LinkJudgment(m.ID, p.ID)
+			}
+		}
+	}
+	if held+rejected > 0 {
+		report = append(report, fmt.Sprintf("보류 %d건, 거절 %d건", held, rejected))
 	}
 	report = append(report, fmt.Sprintf("새 기억 %d건, 다시 나옴 %d건", created, seen))
 	proposed := 0
+	if mat.Kind == KindSession && len(sub.Proposals) > 0 {
+		notes = append(notes, "세션 끝 회고는 제안을 내지 않습니다. 하루·주간 회고가 냅니다")
+		sub.Proposals = nil
+	}
 	for _, in := range sub.Proposals {
 		pi := memory.ProposalInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, RetroID: id,
-			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content}}
+			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content,
+				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID}}
 		switch in.Kind {
+		case memory.ProposalEdit:
+			switch in.NewScope {
+			case "":
+			case "global":
+				pi.Payload.Scope = memory.ScopeGlobal
+			case "project":
+				if in.Project == "" {
+					notes = append(notes, in.Title+": project 범위에는 project 경로가 필요합니다")
+					continue
+				}
+				pr := project.Resolve(in.Project)
+				pi.Payload.Scope, pi.Payload.Project = pr.Scope, pr.Label
+			default:
+				notes = append(notes, in.Title+": newScope는 global 또는 project입니다")
+				continue
+			}
 		case memory.ProposalConfirm:
 			notes = append(notes, in.Title+": 후보 확정 제안은 Orbit이 만듭니다")
 			continue
@@ -249,19 +334,49 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	flags := append(append([]string{}, sub.Flags...), sub.Patterns...)
 	fb, _ := json.Marshal(nonNil(flags))
-	if _, err := s.DB().Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status='submitting'`,
+	// 완료 표시와 읽은 발화 구간은 함께 남긴다: 하나만 남으면 같은 발화를 다시 읽거나 영영 못 읽는다.
+	tx, err := s.DB().Begin()
+	if err != nil {
+		return "", err
+	}
+	if _, err := tx.Exec(`UPDATE retros SET status=?, finished_at=?, summary=?, flags=?, journal_id=? WHERE id=? AND status='submitting'`,
 		StatusDone, s.Now().UnixMilli(), sub.Summary, string(fb), journalID, id); err != nil {
+		tx.Rollback()
+		return "", err
+	}
+	if err := recordCoverage(tx, id, mat.Read); err != nil {
+		tx.Rollback()
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return "", err
 	}
 	finished = true
-	// 교정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
-	// 그 사이에 프로세스가 죽으면 그날 교정만 빠진다(감수한다).
-	if mat.Kind == KindDaily {
-		n, cnotes := recordCorrections(s, mat, id, sub.Corrections)
+	// 교정과 사용 판정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
+	// 그 사이에 프로세스가 죽으면 그 회고의 교정·판정만 빠진다(감수한다).
+	if mat.Kind != KindWeekly {
+		n, corrected, cnotes := recordCorrections(s, mat, id, sub.Corrections)
 		notes = append(notes, cnotes...)
 		report = append(report, fmt.Sprintf("교정 %d건", n))
+		if mat.Kind == KindSession {
+			u, unotes := recordUsage(s, mat, id, sub.Usage, corrected)
+			notes = append(notes, unotes...)
+			report = append(report, fmt.Sprintf("사용 판정 %d건", u))
+		}
 	} else if len(sub.Corrections) > 0 {
-		notes = append(notes, "교정은 하루 회고에서만 받습니다")
+		notes = append(notes, "교정은 하루·세션 끝 회고에서만 받습니다")
+	}
+	if mat.Kind != KindSession && len(sub.Usage) > 0 {
+		notes = append(notes, "사용 판정은 세션 끝 회고에서만 받습니다")
+	}
+	if mat.Kind == KindWeekly {
+		n, lnotes := recordLessons(s, mat, id, sub.Lessons)
+		notes = append(notes, lnotes...)
+		if n > 0 || len(sub.Lessons) > 0 {
+			report = append(report, fmt.Sprintf("교훈 %d건", n))
+		}
+	} else if len(sub.Lessons) > 0 {
+		notes = append(notes, "교훈은 주간 회고에서만 받습니다")
 	}
 	for _, h := range mat.HostMemory {
 		_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, at=excluded.at`, h.Path, h.Hash, s.Now().UnixMilli())
@@ -299,8 +414,9 @@ func findQuote(mat Material, ref, quote string) (transcript.Session, time.Time, 
 // day, judged against the session's injections (설계 「측정」의 교정 판정).
 // Only the user's own words found in the material count, once per session.
 // A memory made at or after the correction does not make it a repeat.
-func recordCorrections(s *memory.Store, mat Material, retroID string, cs []CorrectionIn) (int, []string) {
+func recordCorrections(s *memory.Store, mat Material, retroID string, cs []CorrectionIn) (int, map[string]bool, []string) {
 	var notes []string
+	corrected := map[string]bool{} // 세션 키 + "\x00" + 기억 id
 	n, missing, dup := 0, 0, 0
 	seen := map[string]bool{}
 	for _, c := range cs {
@@ -340,10 +456,13 @@ func recordCorrections(s *memory.Store, mat Material, retroID string, cs []Corre
 		}
 		err := s.RecordEvent(memory.Event{Kind: memory.EventCorrection, Day: mat.Period, Host: sess.Host, Session: sess.ID}, map[string]any{
 			"quote": memory.ClipRunes(memory.MaskSecrets(q), 300), "note": memory.ClipRunes(memory.MaskSecrets(c.Note), 200),
-			"memoryId": memoryID, "injected": injected, "retroId": retroID})
+			"memoryId": memoryID, "injected": injected, "retroId": retroID, "occurredAt": at.UnixMilli()})
 		if err != nil {
 			notes = append(notes, "교정 기록 실패: "+err.Error())
 			continue
+		}
+		if memoryID != "" {
+			corrected[sessionKey(sess)+"\x00"+memoryID] = true
 		}
 		n++
 	}
@@ -353,7 +472,129 @@ func recordCorrections(s *memory.Store, mat Material, retroID string, cs []Corre
 	if dup > 0 {
 		notes = append(notes, fmt.Sprintf("교정 %d건은 같은 세션의 같은 말이라 중복으로 뺐습니다", dup))
 	}
+	return n, corrected, notes
+}
+
+// recordUsage keeps the session-end retrospective's usage verdicts as
+// memory.used events. Only memories put into the session count, once each;
+// a memory the session's corrections point at was violated whatever the
+// retrospective said (설계 「교정과 맞춰 본다」).
+func recordUsage(s *memory.Store, mat Material, retroID string, us []UsageIn, corrected map[string]bool) (int, []string) {
+	if len(mat.Sessions) == 0 {
+		return 0, nil
+	}
+	sess := mat.Sessions[0]
+	key := sessionKey(sess)
+	last := sess.Turns[0].At
+	for _, t := range sess.Turns {
+		if t.At.After(last) {
+			last = t.At
+		}
+	}
+	injected := map[string]bool{}
+	for _, b := range mat.Injected {
+		injected[b.ID] = true
+	}
+	var notes []string
+	verdicts := map[string]UsageIn{}
+	var order []string
+	outside := 0
+	for _, u := range us {
+		switch {
+		case !injected[u.MemoryID]:
+			outside++
+			continue
+		case !contains(memory.UsageVerdicts, u.Verdict):
+			notes = append(notes, fmt.Sprintf("사용 판정 %s: verdict는 followed·violated·irrelevant입니다", u.MemoryID))
+			continue
+		}
+		if _, dup := verdicts[u.MemoryID]; dup {
+			continue
+		}
+		verdicts[u.MemoryID] = u
+		order = append(order, u.MemoryID)
+	}
+	for _, b := range mat.Injected {
+		if !corrected[key+"\x00"+b.ID] {
+			continue
+		}
+		u, ok := verdicts[b.ID]
+		if !ok {
+			order = append(order, b.ID)
+		}
+		if u.Verdict != memory.UsageViolated {
+			u = UsageIn{MemoryID: b.ID, Verdict: memory.UsageViolated, Note: strings.TrimSpace("같은 세션 교정과 맞춤 " + u.Note)}
+		}
+		verdicts[b.ID] = u
+	}
+	n := 0
+	for _, id := range order {
+		u := verdicts[id]
+		if err := s.RecordEvent(memory.Event{Kind: memory.EventMemoryUsed, Day: mat.Period, Host: sess.Host, Session: sess.ID}, map[string]any{
+			"memoryId": id, "verdict": u.Verdict, "note": memory.ClipRunes(memory.MaskSecrets(u.Note), 200), "retroId": retroID,
+			"occurredAt": last.UnixMilli()}); err != nil {
+			notes = append(notes, "사용 판정 기록 실패: "+err.Error())
+			continue
+		}
+		n++
+	}
+	if outside > 0 {
+		notes = append(notes, fmt.Sprintf("사용 판정 %d건은 이 세션에 넣지 않은 기억이라 뺐습니다", outside))
+	}
+	if missing := len(mat.Injected) - len(verdicts); missing > 0 {
+		notes = append(notes, fmt.Sprintf("넣은 기억 %d건은 판정이 없습니다", missing))
+	}
 	return n, notes
+}
+
+var confidences = []string{"high", "medium", "low"}
+
+// recordLessons keeps the weekly retrospective's lessons as candidate lesson
+// memories, each tied to the judged change it came from. A change without
+// evidence gets none (설계 「판정 근거가 없으면 교훈을 쓰지 않는다」).
+func recordLessons(s *memory.Store, mat Material, retroID string, ls []LessonIn) (int, []string) {
+	allowed := map[string]bool{}
+	for _, e := range mat.Effects {
+		if e.Lesson {
+			allowed[e.ID] = true
+		}
+	}
+	var notes []string
+	n := 0
+	for _, l := range ls {
+		lesson := strings.TrimSpace(l.Lesson)
+		switch {
+		case !allowed[l.LedgerID]:
+			notes = append(notes, fmt.Sprintf("교훈 %s: 증거 있는 판정이 난 변경이 아닙니다", l.LedgerID))
+			continue
+		case lesson == "" || strings.TrimSpace(l.Signal) == "" || strings.TrimSpace(l.Basis) == "" || !contains(confidences, l.Confidence):
+			notes = append(notes, fmt.Sprintf("교훈 %s: 적용 신호·교훈·근거·확신도(high·medium·low)가 필요합니다", l.LedgerID))
+			continue
+		}
+		title := memory.ClipRunes(strings.Join(strings.Fields(lesson), " "), 120)
+		body := fmt.Sprintf("적용 신호: %s\n교훈: %s\n근거: %s\n확신도: %s\n원장: %s", l.Signal, lesson, l.Basis, l.Confidence, l.LedgerID)
+		m, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: title, Body: body, Scope: memory.ScopeGlobal, Day: memory.Day(s.Now()),
+			Source: memory.Source{Kind: memory.SourceSession, Ref: "retro:" + retroID, Excerpt: "효과 판정 " + l.LedgerID}})
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("교훈 %s: %v", l.LedgerID, err))
+			continue
+		}
+		if err := s.SetLedgerLesson(l.LedgerID, m.ID); err != nil {
+			notes = append(notes, fmt.Sprintf("교훈 %s: %v", l.LedgerID, err))
+			continue
+		}
+		n++
+	}
+	return n, notes
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func nonNil(s []string) []string {

@@ -31,11 +31,30 @@ type Corrections struct {
 	Top         []Count `json:"top,omitempty"`
 }
 
-// Prompts are the per-request injections.
+// Prompts are the per-request injections (the work recall).
 type Prompts struct {
-	Total   int     `json:"total"`
-	Hits    int     `json:"hits"`
-	HitRate float64 `json:"hitRate"`
+	Total    int     `json:"total"`
+	Hits     int     `json:"hits"`
+	HitRate  float64 `json:"hitRate"`
+	AvgChars int     `json:"avgChars"` // 기억을 넣은 요청의 평균 글자 수
+}
+
+// Usage are the session-end retrospectives' verdicts on injected memories.
+type Usage struct {
+	Followed      int     `json:"followed"`
+	Violated      int     `json:"violated"`
+	Irrelevant    int     `json:"irrelevant"`
+	TopViolated   []Count `json:"topViolated,omitempty"`
+	TopIrrelevant []Count `json:"topIrrelevant,omitempty"`
+}
+
+// Writes are the retrospectives' write verdicts and the user's answers.
+type Writes struct {
+	Keep         int `json:"keep"`
+	Hold         int `json:"hold"`
+	Reject       int `json:"reject"`
+	UserRejected int `json:"userRejected"`
+	UserEdited   int `json:"userEdited"`
 }
 
 // Find is memory_find use.
@@ -73,25 +92,49 @@ type Proposals struct {
 
 // Retros are the retrospectives started in the period.
 type Retros struct {
-	Runs       int `json:"runs"`
-	Done       int `json:"done"`
-	Empty      int `json:"empty"`
-	Failed     int `json:"failed"`
-	AvgSeconds int `json:"avgSeconds"`
+	Runs       int                  `json:"runs"`
+	Done       int                  `json:"done"`
+	Empty      int                  `json:"empty"`
+	Failed     int                  `json:"failed"`
+	AvgSeconds int                  `json:"avgSeconds"`
+	Kinds      map[string]RetroKind `json:"kinds"`
+	Cost       Cost                 `json:"cost"`
+}
+
+// RetroKind counts the retrospectives of one kind (session, daily, weekly).
+type RetroKind struct {
+	Runs   int `json:"runs"`
+	Done   int `json:"done"`
+	Empty  int `json:"empty"`
+	Failed int `json:"failed"`
+}
+
+// Cost is what the retrospectives' host runs reported. USD is the host's own
+// estimate (Claude Code); runs that report nothing count as unknown.
+type Cost struct {
+	USD          float64 `json:"usd"`
+	SessionUSD   float64 `json:"sessionUsd"`
+	Known        int     `json:"known"`
+	Unknown      int     `json:"unknown"`
+	InputTokens  int     `json:"inputTokens"`
+	OutputTokens int     `json:"outputTokens"`
 }
 
 // Report is the metrics of a period of days (inclusive).
 type Report struct {
-	From         string         `json:"from"`
-	To           string         `json:"to"`
-	Corrections  Corrections    `json:"corrections"`
-	Prompts      Prompts        `json:"prompts"`
-	Find         Find           `json:"find"`
-	Saves        Saves          `json:"saves"`
-	SessionStart SessionStart   `json:"sessionStart"`
-	Proposals    Proposals      `json:"proposals"`
-	Retros       Retros         `json:"retros"`
-	Tools        map[string]int `json:"tools"`
+	From         string               `json:"from"`
+	To           string               `json:"to"`
+	Corrections  Corrections          `json:"corrections"`
+	Prompts      Prompts              `json:"prompts"`
+	Find         Find                 `json:"find"`
+	Saves        Saves                `json:"saves"`
+	SessionStart SessionStart         `json:"sessionStart"`
+	Proposals    Proposals            `json:"proposals"`
+	Retros       Retros               `json:"retros"`
+	Tools        map[string]int       `json:"tools"`
+	Usage        Usage                `json:"usage"`
+	Ledger       memory.LedgerSummary `json:"ledger"`
+	Writes       Writes               `json:"writes"`
 }
 
 const topN = 5
@@ -127,7 +170,7 @@ func top(m map[string]int, n int) []string {
 
 // Compute reads the store for the days from..to (inclusive, local time).
 func Compute(s *memory.Store, from, to string) (Report, error) {
-	r := Report{From: from, To: to, Tools: map[string]int{}}
+	r := Report{From: from, To: to, Tools: map[string]int{}, Retros: Retros{Kinds: map[string]RetroKind{}}}
 	evs, err := s.Events(memory.EventFilter{FromDay: from, ToDay: to})
 	if err != nil {
 		return r, err
@@ -135,7 +178,8 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	corrected := map[string]int{}
 	sessions := map[string]bool{}
 	emptyQ := map[string]int{}
-	chars := 0
+	violated, irrelevant := map[string]int{}, map[string]int{}
+	chars, promptChars := 0, 0
 	for _, e := range evs {
 		var d struct {
 			MemoryIDs  []string `json:"memoryIds"`
@@ -148,6 +192,12 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			MemoryID   string   `json:"memoryId"`
 			Injected   string   `json:"injected"`
 			Decision   string   `json:"decision"`
+			Verdict    string   `json:"verdict"`
+			RetroKind  string   `json:"retroKind"`
+			CostKnown  bool     `json:"costKnown"`
+			CostUSD    float64  `json:"costUsd"`
+			Input      int      `json:"inputTokens"`
+			Output     int      `json:"outputTokens"`
 		}
 		_ = json.Unmarshal(e.Data, &d)
 		ok := d.OK == nil || *d.OK
@@ -166,6 +216,31 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			r.Prompts.Total++
 			if len(d.MemoryIDs) > 0 {
 				r.Prompts.Hits++
+				promptChars += d.Chars
+			}
+		case e.Kind == memory.EventMemoryUsed:
+			switch d.Verdict {
+			case memory.UsageFollowed:
+				r.Usage.Followed++
+			case memory.UsageViolated:
+				r.Usage.Violated++
+				violated[d.MemoryID]++
+			case memory.UsageIrrelevant:
+				r.Usage.Irrelevant++
+				irrelevant[d.MemoryID]++
+			}
+		case e.Kind == memory.EventRetroRun:
+			c := &r.Retros.Cost
+			if !d.CostKnown {
+				c.Unknown++
+				continue
+			}
+			c.Known++
+			c.USD += d.CostUSD
+			c.InputTokens += d.Input
+			c.OutputTokens += d.Output
+			if d.RetroKind == "session" {
+				c.SessionUSD += d.CostUSD
 			}
 		case strings.HasPrefix(e.Kind, memory.EventToolPrefix):
 			name := strings.TrimPrefix(e.Kind, memory.EventToolPrefix)
@@ -218,17 +293,16 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 		r.SessionStart.AvgChars = chars / r.SessionStart.Starts
 	}
 	r.Prompts.HitRate = rate(r.Prompts.Hits, r.Prompts.Total)
+	if r.Prompts.Hits > 0 {
+		r.Prompts.AvgChars = promptChars / r.Prompts.Hits
+	}
+	r.Usage.TopViolated = topMemories(s, violated)
+	r.Usage.TopIrrelevant = topMemories(s, irrelevant)
 	r.Find.EmptyRate = rate(r.Find.Empty, r.Find.Total)
 	for _, q := range top(emptyQ, topN) {
 		r.Find.EmptyQueries = append(r.Find.EmptyQueries, Count{Query: q, Count: emptyQ[q]})
 	}
-	for _, id := range top(corrected, topN) {
-		c := Count{ID: id, Count: corrected[id]}
-		if m, err := s.Get(id); err == nil {
-			c.Title = m.Title
-		}
-		r.Corrections.Top = append(r.Corrections.Top, c)
-	}
+	r.Corrections.Top = topMemories(s, corrected)
 
 	startMs := dayStart(from).UnixMilli()
 	endMs := dayStart(to).AddDate(0, 0, 1).UnixMilli()
@@ -243,30 +317,44 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if oldest > 0 {
 		r.Proposals.OldestPendingDays = int(s.Now().Sub(time.UnixMilli(oldest)).Hours() / 24)
 	}
-	rows, err := db.Query(`SELECT status, started_at, finished_at FROM retros WHERE started_at>=? AND started_at<?`, startMs, endMs)
+	if r.Ledger, err = s.SummarizeLedger(startMs, endMs); err != nil {
+		return r, err
+	}
+	jc, err := s.JudgmentCounts(startMs, endMs)
+	if err != nil {
+		return r, err
+	}
+	r.Writes = Writes{Keep: jc[memory.VerdictKeep], Hold: jc[memory.VerdictHold], Reject: jc[memory.VerdictReject], UserRejected: jc["user_reject"], UserEdited: jc["user_edit"]}
+	rows, err := db.Query(`SELECT kind, status, started_at, finished_at FROM retros WHERE started_at>=? AND started_at<?`, startMs, endMs)
 	if err != nil {
 		return r, err
 	}
 	defer rows.Close()
 	var took int64
 	for rows.Next() {
-		var status string
+		var kind, status string
 		var started, finished int64
-		if err := rows.Scan(&status, &started, &finished); err != nil {
+		if err := rows.Scan(&kind, &status, &started, &finished); err != nil {
 			return r, err
 		}
+		k := r.Retros.Kinds[kind]
 		r.Retros.Runs++
+		k.Runs++
 		switch status {
 		case "done":
 			r.Retros.Done++
+			k.Done++
 			if finished > started {
 				took += finished - started
 			}
 		case "empty":
 			r.Retros.Empty++
+			k.Empty++
 		case "failed":
 			r.Retros.Failed++
+			k.Failed++
 		}
+		r.Retros.Kinds[kind] = k
 	}
 	if r.Retros.Done > 0 {
 		r.Retros.AvgSeconds = int(took / int64(r.Retros.Done) / 1000)
@@ -274,7 +362,33 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	return r, rows.Err()
 }
 
+func topMemories(s *memory.Store, counts map[string]int) []Count {
+	var out []Count
+	for _, id := range top(counts, topN) {
+		c := Count{ID: id, Count: counts[id]}
+		if m, err := s.Get(id); err == nil {
+			c.Title = m.Title
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 func pct(f float64) string { return fmt.Sprintf("%.0f%%", f*100) }
+
+func titled(cs []Count) string {
+	var parts []string
+	for _, c := range cs {
+		title := c.Title
+		if title == "" {
+			title = "(없는 기억)"
+		}
+		parts = append(parts, fmt.Sprintf("%s(%s) %d회", title, c.ID, c.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}}
 
 // Render is the report as short Korean text for the terminal and the weekly retrospective.
 func Render(r Report) string {
@@ -289,7 +403,15 @@ func Render(r Report) string {
 		}
 		fmt.Fprintf(&b, "  - %s (%s) %d회\n", title, t.ID, t.Count)
 	}
-	fmt.Fprintf(&b, "- 요청 적중 %d/%d (%s)\n", r.Prompts.Hits, r.Prompts.Total, pct(r.Prompts.HitRate))
+	fmt.Fprintf(&b, "- 요청 적중 %d/%d (%s), 넣은 요청 평균 %d자\n", r.Prompts.Hits, r.Prompts.Total, pct(r.Prompts.HitRate), r.Prompts.AvgChars)
+	u := r.Usage
+	fmt.Fprintf(&b, "- 사용 판정: 따름 %d · 어김 %d · 상관없음 %d\n", u.Followed, u.Violated, u.Irrelevant)
+	if len(u.TopViolated) > 0 {
+		fmt.Fprintf(&b, "  - 어김: %s\n", titled(u.TopViolated))
+	}
+	if len(u.TopIrrelevant) > 0 {
+		fmt.Fprintf(&b, "  - 상관없음: %s\n", titled(u.TopIrrelevant))
+	}
 	fmt.Fprintf(&b, "- 빈 검색 %d/%d (%s)", r.Find.Empty, r.Find.Total, pct(r.Find.EmptyRate))
 	if len(r.Find.EmptyQueries) > 0 {
 		var qs []string
@@ -303,7 +425,24 @@ func Render(r Report) string {
 	fmt.Fprintf(&b, "- 세션 %d개(시작 훅 %d번), 평균 %d자, 제목만 넣은 규칙 최대 %d개\n", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax)
 	p := r.Proposals
 	fmt.Fprintf(&b, "- 제안: 새로 %d건, 승인 %d · 고쳐서 승인 %d · 거절 %d, 지금 대기 %d건(가장 오래된 것 %d일)\n", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays)
+	w := r.Writes
+	fmt.Fprintf(&b, "- 쓰기 판정: 유지 %d · 보류 %d · 거절 %d, 사용자 거절 %d · 고쳐서 승인 %d\n", w.Keep, w.Hold, w.Reject, w.UserRejected, w.UserEdited)
+	l := r.Ledger
+	fmt.Fprintf(&b, "- 효과 원장: 변경 %d건, 판정 도움됨 %d · 해로움 %d · 효과 없음 %d · 섞임 %d(증거 있음 %d), 지금 관찰 중 %d\n", l.Changes,
+		l.Judged[memory.VerdictHelped], l.Judged[memory.VerdictHarmful], l.Judged[memory.VerdictNoEffect], l.Judged[memory.VerdictMixed], l.Evidence, l.Pending)
 	t := r.Retros
-	fmt.Fprintf(&b, "- 회고 %d번: 완료 %d · 빈 회고 %d · 실패 %d, 평균 %d초\n", t.Runs, t.Done, t.Empty, t.Failed, t.AvgSeconds)
+	fmt.Fprintf(&b, "- 회고 %d번: 완료 %d · 빈 회고 %d · 실패 %d, 평균 %d초", t.Runs, t.Done, t.Empty, t.Failed, t.AvgSeconds)
+	var kinds []string
+	for _, k := range retroKindNames {
+		if c, ok := t.Kinds[k.kind]; ok && c.Runs > 0 {
+			kinds = append(kinds, fmt.Sprintf("%s %d번", k.name, c.Runs))
+		}
+	}
+	if len(kinds) > 0 {
+		b.WriteString(" (" + strings.Join(kinds, " · ") + ")")
+	}
+	b.WriteString("\n")
+	cost := t.Cost
+	fmt.Fprintf(&b, "- 회고 비용(호스트 추정) $%.4f(세션 끝 $%.4f), 토큰 입력 %d · 출력 %d, 비용 모름 %d번\n", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown)
 	return b.String()
 }

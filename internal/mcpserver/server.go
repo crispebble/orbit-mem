@@ -29,11 +29,19 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	h := handlers{s: s, o: o}
 	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다."},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
-			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope}
+			ids := make([]string, 0, len(out.Items))
+			for _, m := range out.Items {
+				ids = append(ids, m.ID)
+			}
+			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope, "ids": ids}
 		}))
 	mcp.AddTool(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 출처와 후보가 나온 날을 함께 준다."},
 		track(h, "memory_get", h.get, func(in GetIn, out GetOut) map[string]any {
-			return map[string]any{"requested": len(in.IDs), "results": len(out.Items)}
+			ids := make([]string, 0, len(out.Items))
+			for _, m := range out.Items {
+				ids = append(ids, m.ID)
+			}
+			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
 	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 같은 제목의 후보가 다른 날 다시 저장되면 확정된다."},
 		track(h, "memory_save", h.save, func(in SaveIn, out MemoryOut) map[string]any {
@@ -43,7 +51,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향)을 대상 기억과 함께 보여 준다."},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기)을 대상 기억과 함께 보여 준다."},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))

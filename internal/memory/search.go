@@ -119,19 +119,33 @@ func promptTerms(q string) []string {
 	return out
 }
 
-// StrongMatches returns at most n docs that match prompt q strongly: at least two
-// prompt words match, one of them fully, at least one in the title, and either
-// two in the title or three overall. A weak overlap returns nothing.
+// Match is a strongly matching doc and its scores.
+type Match struct {
+	Doc          Doc
+	Score, Title float64
+}
+
+// StrongMatches returns at most n docs that match prompt q strongly (see Strong).
 func StrongMatches(docs []Doc, q string, n int) []Doc {
+	var out []Doc
+	for _, m := range Strong(docs, q) {
+		if len(out) == n {
+			break
+		}
+		out = append(out, m.Doc)
+	}
+	return out
+}
+
+// Strong returns the docs that match prompt q strongly, best first: at least
+// two prompt words match, one of them fully, at least one in the title, and
+// either two in the title or three overall. A weak overlap returns nothing.
+func Strong(docs []Doc, q string) []Match {
 	terms := promptTerms(q)
 	if len(terms) < 2 {
 		return nil
 	}
-	type hit struct {
-		doc          Doc
-		score, title float64
-	}
-	var hits []hit
+	var hits []Match
 	for _, d := range docs {
 		title, all := haystack(d)
 		var matched, full, inTitle int
@@ -152,18 +166,14 @@ func StrongMatches(docs []Doc, q string, n int) []Doc {
 			}
 		}
 		if full >= 1 && matched >= 2 && inTitle >= 1 && (inTitle >= 2 || matched >= 3) {
-			hits = append(hits, hit{d, score, titleScore})
+			hits = append(hits, Match{d, score, titleScore})
 		}
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
-		if hits[i].score != hits[j].score {
-			return hits[i].score > hits[j].score
+		if hits[i].Score != hits[j].Score {
+			return hits[i].Score > hits[j].Score
 		}
-		return hits[i].title > hits[j].title
+		return hits[i].Title > hits[j].Title
 	})
-	var out []Doc
-	for i := 0; i < len(hits) && i < n; i++ {
-		out = append(out, hits[i].doc)
-	}
-	return out
+	return hits
 }

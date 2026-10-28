@@ -34,15 +34,16 @@ func commands() []command {
 		{"uninstall", "oni uninstall   # 플러그인 등록·예약을 지운다. 기억 DB는 남긴다", cmdUninstall},
 		{"doctor", "oni doctor [--json]", cmdDoctor},
 		{"mcp", "oni mcp [--retro ID]   # 호스트가 띄우는 MCP 서버(stdio)", cmdMCP},
-		{"hook", "oni hook session-start|prompt --host claude|codex   # 호스트 훅(stdin JSON)", cmdHook},
+		{"hook", "oni hook session-start|prompt|session-end --host claude|codex   # 호스트 훅(stdin JSON)", cmdHook},
 		{"memory", "oni memory find [질의] [--kind K] [--all] [--json] | show <id> [--history]", cmdMemory},
 		{"proposals", "oni proposals [list|review|show <id>|approve <id> [--title T] [--body B|--body-file F] [--note N]|reject <id> [--note N]] [--all]", cmdProposals},
-		{"retro", "oni retro run [--day YYYY-MM-DD|--week YYYY-MM-DD] | status [--n N] | material --day YYYY-MM-DD", cmdRetro},
+		{"retro", "oni retro run [--day YYYY-MM-DD|--week YYYY-MM-DD] | sessions | status [--n N] | material --day YYYY-MM-DD", cmdRetro},
 		{"migrate", "oni migrate --from <knowledge-auto-*.sqlite 사본> [--dry-run] [--json]", cmdMigrate},
 		{"plugin", "oni plugin build <원본> [--out D] [--check] [--var k=v]... | install <빌드한 마켓 디렉터리>", cmdPlugin},
 		{"config", "oni config [show | set <키> <값>]", cmdConfig},
 		{"backup", "oni backup   # 기억 DB 사본을 지금 만든다", cmdBackup},
-		{"stats", "oni stats [--days N | --week YYYY-MM-DD(월요일)] [--json]   # 교정·회상·제안·회고 지표", cmdStats},
+		{"stats", "oni stats [--days N | --week YYYY-MM-DD(월요일)] [--json]   # 교정·회상·사용 판정·원장·제안·회고 지표", cmdStats},
+		{"ledger", "oni ledger [--all] [--n N] [--json]   # 승인한 변경과 효과 판정", cmdLedger},
 	}
 }
 

@@ -99,6 +99,7 @@ const sourceLabels: Record<MemorySourceKind, string> = {
 
 const proposalKindLabels: Record<string, string> = {
   confirm: '후보 확정', stale: '낡은 기억 정리', merge: '기억 합치기', reclassify: '종류 다시 분류', apply_file: '파일 반영', direction: '방향 제안',
+  edit: '기억 고치기', revert: '변경 되돌리기',
 };
 
 const actionLabels: Record<string, string> = {
@@ -211,8 +212,14 @@ export function toProposalRow(p: OniProposal, now: Date = new Date()): ProposalR
 
 const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction'];
 
-/** oni가 모르는 종류를 주면 Forma가 모르는 종류를 받지 않게 확정으로 본다. */
-const asProposalKind = (kind: string): ProposalKind => ((PROPOSAL_KINDS as readonly string[]).includes(kind) ? (kind as ProposalKind) : 'confirm');
+/**
+ * Forma 0.9.0에 없는 Orbit 종류: 기억 고치기·변경 되돌리기는 가장 가까운 「기억 정리」로 그리고
+ * 바뀔 내용(diff)은 설명으로 보인다. 그 밖에 모르는 종류는 확정으로 본다.
+ */
+const asProposalKind = (kind: string): ProposalKind => {
+  if (kind === 'edit' || kind === 'revert') return 'cleanup';
+  return (PROPOSAL_KINDS as readonly string[]).includes(kind) ? (kind as ProposalKind) : 'confirm';
+};
 
 function addLines(text: string) {
   return text.split('\n').map((t, i) => ({no: i + 1, kind: 'add' as const, text: t}));

@@ -151,3 +151,24 @@ func TestHook_세션_시작에_열린_작업을_알린다(t *testing.T) {
 		t.Errorf("요청 뒤 세션: %+v %v", d.Session, err)
 	}
 }
+
+// Orbit 개선의 세션 끝 훅(hook session-end)이 작업 세션 끝도 남긴다. 진행 중 단계는 중단이 된다.
+func TestHook_세션_끝은_작업_세션도_끝낸다(t *testing.T) {
+	home(t)
+	dir := t.TempDir()
+	run(t, withSession(t, probeInput(t, "PostToolUse.TaskCreate.1"), "S1", dir), "hook", "work", "--host", "claude")
+	run(t, withSession(t, probeInput(t, "PostToolUse.TaskUpdate.2"), "S1", dir), "hook", "work", "--host", "claude")
+	if _, _, code := run(t, withSession(t, probeInput(t, "SessionEnd.1"), "S1", dir), "hook", "session-end", "--host", "claude"); code != 0 {
+		t.Fatal(code)
+	}
+	s, _ := work.Open(paths().WorkDB())
+	defer s.Close()
+	d, err := s.SessionEvents("S1", "", 0, work.ReadOptions{})
+	if err != nil || d.Session.State != "ended" || d.Session.EndReason != "session_end" {
+		t.Fatalf("세션: %+v %v", d.Session, err)
+	}
+	w, _, _ := s.GetWork(works(t).Items[0].ID, false, work.ReadOptions{})
+	if w.Steps[0].Status != "blocked" || w.Steps[0].Block.Reason != "interrupted" {
+		t.Errorf("중단: %+v", w.Steps[0])
+	}
+}

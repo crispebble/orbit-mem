@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -70,5 +71,53 @@ func TestWork_작업_기록_설정(t *testing.T) {
 	p := Paths{Home: "/h"}
 	if p.WorkDB() != "/h/work.db" || p.WorkSpool() != "/h/work/spool" {
 		t.Error(p.WorkDB(), p.WorkSpool())
+	}
+}
+
+func TestDefault_2차_설정_기본값(t *testing.T) {
+	c := Default()
+	if !c.SessionRetro || c.SessionRetroModel != "" || c.SessionRetroDailyMax != 0 || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+		t.Fatalf("defaults = %+v", c)
+	}
+}
+
+func TestLoad_옛_설정_파일에는_2차_기본값이_채워진다(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil || !c.SessionRetro || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+		t.Fatalf("got %+v %v", c, err)
+	}
+}
+
+func TestSessionModel_claude는_haiku_codex는_호스트_기본(t *testing.T) {
+	c := Default()
+	if c.SessionModel() != "haiku" {
+		t.Fatalf("claude = %q", c.SessionModel())
+	}
+	c.RetroHost = "codex"
+	if c.SessionModel() != "" {
+		t.Fatalf("codex = %q", c.SessionModel())
+	}
+	c.SessionRetroModel = "sonnet"
+	if c.SessionModel() != "sonnet" {
+		t.Fatalf("set = %q", c.SessionModel())
+	}
+}
+
+func TestValidate_2차_설정_범위(t *testing.T) {
+	for _, f := range []func(*Config){
+		func(c *Config) { c.RecallChars = 99 },
+		func(c *Config) { c.RecallChars = 9001 },
+		func(c *Config) { c.LedgerWindowDays = 0 },
+		func(c *Config) { c.SessionRetroDailyMax = -1 },
+	} {
+		c := Default()
+		f(&c)
+		if c.Validate() == nil {
+			t.Fatalf("accepted %+v", c)
+		}
 	}
 }
