@@ -291,7 +291,8 @@ func TestCatchUp_먼저_세션_대기열을_비운다(t *testing.T) {
 }
 
 func TestHostOutput_Claude_JSON에서_비용과_결과를_읽는다(t *testing.T) {
-	out := "경고 한 줄\n" + `{"type":"result","subtype":"success","is_error":false,"result":"제출했습니다","total_cost_usd":0.0123,"usage":{"input_tokens":1200,"cache_read_input_tokens":300,"cache_creation_input_tokens":0,"output_tokens":45}}`
+	// claude 2.1.303 실제 출력 모양: type이 맨 앞이 아니고 한 줄짜리 객체다.
+	out := "경고 한 줄\n" + `{"duration_api_ms":1078,"stop_reason":"end_turn","total_cost_usd":0.0123,"usage":{"input_tokens":1200,"cache_creation_input_tokens":0,"cache_read_input_tokens":300,"output_tokens":45,"iterations":[{"input_tokens":1}]},"result":"제출했습니다","type":"result","is_error":false}` + "\n"
 	r := parseHostOutput(out)
 	if !r.Known || r.CostUSD != 0.0123 || r.InputTokens != 1500 || r.OutputTokens != 45 || r.Text != "제출했습니다" {
 		t.Fatalf("parsed = %+v", r)

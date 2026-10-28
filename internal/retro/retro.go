@@ -243,29 +243,34 @@ type HostOutput struct {
 	Text         string
 }
 
-// parseHostOutput reads the last JSON result object in out (claude -p
-// --output-format json); without one the whole output is the text.
+// parseHostOutput reads the last line of out that is a JSON object with a
+// cost (claude -p --output-format json prints one); without one the whole
+// output is the text.
 func parseHostOutput(out string) HostOutput {
 	h := HostOutput{Text: out}
-	i := strings.LastIndex(out, `{"type":"result"`)
-	if i < 0 {
-		return h
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var v struct {
+			Result string   `json:"result"`
+			Cost   *float64 `json:"total_cost_usd"`
+			Usage  struct {
+				Input       int `json:"input_tokens"`
+				CacheRead   int `json:"cache_read_input_tokens"`
+				CacheCreate int `json:"cache_creation_input_tokens"`
+				Output      int `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal([]byte(line), &v) != nil || v.Cost == nil {
+			continue
+		}
+		return HostOutput{Known: true, CostUSD: *v.Cost, InputTokens: v.Usage.Input + v.Usage.CacheRead + v.Usage.CacheCreate,
+			OutputTokens: v.Usage.Output, Text: v.Result}
 	}
-	var v struct {
-		Result string   `json:"result"`
-		Cost   *float64 `json:"total_cost_usd"`
-		Usage  struct {
-			Input       int `json:"input_tokens"`
-			CacheRead   int `json:"cache_read_input_tokens"`
-			CacheCreate int `json:"cache_creation_input_tokens"`
-			Output      int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	if json.NewDecoder(strings.NewReader(out[i:])).Decode(&v) != nil || v.Cost == nil {
-		return h
-	}
-	return HostOutput{Known: true, CostUSD: *v.Cost, InputTokens: v.Usage.Input + v.Usage.CacheRead + v.Usage.CacheCreate,
-		OutputTokens: v.Usage.Output, Text: v.Result}
+	return h
 }
 
 // CatchUp backs up the memory database, then runs every missing daily
