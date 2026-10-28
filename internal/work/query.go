@@ -15,15 +15,19 @@ import (
 
 // Page sizes and waits oni chose (계약 README 「oni가 정한 값」).
 const (
-	ListLimit      = 20
-	ListLimitMax   = 50
-	EventLimit     = 100
-	EventLimitMax  = 200
-	ChangesMax     = 500 // work_changes 한 응답에 담는 id 수. 넘으면 more
-	WaitMax        = 30 * time.Second
+	ListLimit     = 20
+	ListLimitMax  = 50
+	EventLimit    = 100
+	EventLimitMax = 200
+	ChangesMax    = 500 // work_changes 한 응답에 담는 id 수. 넘으면 more
+
 	PollInterval   = 100 * time.Millisecond
 	summaryScanMax = 5000
 )
+
+// WaitMax is the longest work_changes wait. It must stay under Studio's MCP call
+// timeout (McpHub callTimeoutMs, 60초). A variable so tests can shorten it.
+var WaitMax = 30 * time.Second
 
 // ErrBadCursor is a page cursor oni cannot read or from another database.
 var ErrBadCursor = errors.New("쪽 커서를 읽을 수 없습니다")

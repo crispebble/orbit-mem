@@ -47,8 +47,27 @@ func sessionProject() project.Project {
 func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
 	retroID := fs.String("retro", "", "회고 id(회고 실행 전용 도구만 연다)")
+	reader := fs.Bool("reader", false, "읽는 쪽(Studio 등) 전용: 작업 도구 넷(work_list·work_get·work_sessions·work_changes)만 연다")
 	if _, err := parse(fs, args); err != nil {
 		return err
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	p := sessionProject()
+	cwd := os.Getenv("CLAUDE_PROJECT_DIR")
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	wo := &mcpserver.WorkOptions{DB: paths().WorkDB(), Spool: paths().WorkSpool(), Cwd: cwd, Project: p.Scope, Read: work.ReadOptions{StaleAfter: cfg.StaleAfter()}}
+	if *reader {
+		ctx, cancel := signalContext()
+		defer cancel()
+		return mcpserver.NewReader(*wo, version.Version).Run(ctx, &mcp.StdioTransport{})
+	}
+	if !cfg.WorkOn() {
+		wo = nil
 	}
 	s, err := openStore()
 	if err != nil {
@@ -61,8 +80,7 @@ func cmdMCP(a *app, args []string) error {
 	if *retroID != "" {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
-		p := sessionProject()
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version})
+		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, Work: wo})
 	}
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
