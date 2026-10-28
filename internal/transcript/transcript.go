@@ -182,41 +182,52 @@ func collectClaude(root string, start, end time.Time, exclude []string) []Sessio
 	})
 	var out []Session
 	for _, f := range files {
-		s := Session{Host: "claude", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
-		program := false
-		_ = eachLine(f, func(line []byte) {
-			var l claudeLine
-			if json.Unmarshal(line, &l) != nil {
-				return
-			}
-			if l.Entrypoint == "sdk-ts" { // 플러그인·프로그램이 띄운 세션
-				program = true
-			}
-			if (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.IsSidechain {
-				return
-			}
-			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-			if err != nil || at.Before(start) || !at.Before(end) {
-				return
-			}
-			if s.Cwd == "" && l.Cwd != "" {
-				s.Cwd = l.Cwd
-			}
-			text := claudeText(l)
-			if text == "" {
-				return
-			}
-			role, n := "user", maxUserRunes
-			if l.Type == "assistant" {
-				role, n = "ai", maxAIRunes
-			}
-			s.Turns = append(s.Turns, Turn{Role: role, Text: clip(text, n), At: at})
-		})
-		if len(s.Turns) > 0 && !program && !excluded(s.Cwd, exclude) {
+		if s, ok := readClaude(f, start, end, exclude); ok {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+// within says whether at is inside [start, end); a zero bound is open.
+func within(at, start, end time.Time) bool {
+	return (start.IsZero() || !at.Before(start)) && (end.IsZero() || at.Before(end))
+}
+
+func readClaude(f string, start, end time.Time, exclude []string) (Session, bool) {
+	s := Session{Host: "claude", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+	program := false
+	if err := eachLine(f, func(line []byte) {
+		var l claudeLine
+		if json.Unmarshal(line, &l) != nil {
+			return
+		}
+		if l.Entrypoint == "sdk-ts" { // 플러그인·프로그램이 띄운 세션
+			program = true
+		}
+		if (l.Type != "user" && l.Type != "assistant") || l.IsMeta || l.IsSidechain {
+			return
+		}
+		at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+		if err != nil || !within(at, start, end) {
+			return
+		}
+		if s.Cwd == "" && l.Cwd != "" {
+			s.Cwd = l.Cwd
+		}
+		text := claudeText(l)
+		if text == "" {
+			return
+		}
+		role, n := "user", maxUserRunes
+		if l.Type == "assistant" {
+			role, n = "ai", maxAIRunes
+		}
+		s.Turns = append(s.Turns, Turn{Role: role, Text: clip(text, n), At: at})
+	}); err != nil {
+		return s, false
+	}
+	return s, len(s.Turns) > 0 && !program && !excluded(s.Cwd, exclude)
 }
 
 func claudeText(l claudeLine) string {
@@ -280,57 +291,100 @@ func collectCodex(root string, start, end time.Time, exclude []string) []Session
 	files := recentFiles(filepath.Join(root, "sessions"), start, func(rel string) bool { return strings.HasSuffix(rel, ".jsonl") })
 	var out []Session
 	for _, f := range files {
-		s := Session{Host: "codex", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
-		sub := false
-		_ = eachLine(f, func(line []byte) {
-			var l codexLine
-			if json.Unmarshal(line, &l) != nil || sub {
-				return
-			}
-			if l.Type == "session_meta" {
-				// 하위 에이전트·자동 검토 스레드는 사용자 대화가 아니다.
-				if l.Payload.ParentThreadID != "" || strings.Contains(string(l.Payload.Source), "subagent") {
-					sub = true
-					return
-				}
-				s.Cwd = l.Payload.Cwd
-				if l.Payload.ID != "" {
-					s.ID = l.Payload.ID
-				}
-				return
-			}
-			if l.Type != "response_item" || l.Payload.Type != "message" {
-				return
-			}
-			at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
-			if err != nil || at.Before(start) || !at.Before(end) {
-				return
-			}
-			var parts []string
-			for _, c := range l.Payload.Content {
-				parts = append(parts, c.Text)
-			}
-			text := strings.TrimSpace(strings.Join(parts, "\n"))
-			switch l.Payload.Role {
-			case "user":
-				if strings.HasPrefix(text, "# AGENTS.md instructions") || (strings.HasPrefix(text, "<") && !strings.HasPrefix(text, "<send_user_message_question_reply>")) {
-					return
-				}
-				if text != "" {
-					s.Turns = append(s.Turns, Turn{Role: "user", Text: clip(text, maxUserRunes), At: at})
-				}
-			case "assistant":
-				if l.Payload.Phase == "commentary" || text == "" {
-					return
-				}
-				s.Turns = append(s.Turns, Turn{Role: "ai", Text: clip(text, maxAIRunes), At: at})
-			}
-		})
-		if len(s.Turns) > 0 && !sub && !excluded(s.Cwd, exclude) {
+		if s, ok := readCodex(f, start, end, exclude); ok {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+func readCodex(f string, start, end time.Time, exclude []string) (Session, bool) {
+	s := Session{Host: "codex", ID: strings.TrimSuffix(filepath.Base(f), ".jsonl")}
+	sub := false
+	if err := eachLine(f, func(line []byte) {
+		var l codexLine
+		if json.Unmarshal(line, &l) != nil || sub {
+			return
+		}
+		if l.Type == "session_meta" {
+			// 하위 에이전트·자동 검토 스레드는 사용자 대화가 아니다.
+			if l.Payload.ParentThreadID != "" || strings.Contains(string(l.Payload.Source), "subagent") {
+				sub = true
+				return
+			}
+			s.Cwd = l.Payload.Cwd
+			if l.Payload.ID != "" {
+				s.ID = l.Payload.ID
+			}
+			return
+		}
+		if l.Type != "response_item" || l.Payload.Type != "message" {
+			return
+		}
+		at, err := time.Parse(time.RFC3339Nano, l.Timestamp)
+		if err != nil || !within(at, start, end) {
+			return
+		}
+		var parts []string
+		for _, c := range l.Payload.Content {
+			parts = append(parts, c.Text)
+		}
+		text := strings.TrimSpace(strings.Join(parts, "\n"))
+		switch l.Payload.Role {
+		case "user":
+			if strings.HasPrefix(text, "# AGENTS.md instructions") || (strings.HasPrefix(text, "<") && !strings.HasPrefix(text, "<send_user_message_question_reply>")) {
+				return
+			}
+			if text != "" {
+				s.Turns = append(s.Turns, Turn{Role: "user", Text: clip(text, maxUserRunes), At: at})
+			}
+		case "assistant":
+			if l.Payload.Phase == "commentary" || text == "" {
+				return
+			}
+			s.Turns = append(s.Turns, Turn{Role: "ai", Text: clip(text, maxAIRunes), At: at})
+		}
+	}); err != nil {
+		return s, false
+	}
+	return s, len(s.Turns) > 0 && !sub && !excluded(s.Cwd, exclude)
+}
+
+// SessionFile reads one conversation log of host in full: every day, the
+// user's words and the AI's answers only. It is false for a log that is
+// missing, empty, a subagent's or a program's, or under an excluded directory.
+func SessionFile(host, path string, exclude []string) (Session, bool) {
+	if host == "codex" {
+		return readCodex(path, time.Time{}, time.Time{}, exclude)
+	}
+	return readClaude(path, time.Time{}, time.Time{}, exclude)
+}
+
+// FindSession finds the log of a session by its id: Claude keeps
+// projects/<dir>/<id>.jsonl, Codex sessions/…/rollout-…-<id>.jsonl.
+func FindSession(r Roots, host, id string) string {
+	if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+		return ""
+	}
+	var root string
+	var match func(rel string) bool
+	switch host {
+	case "claude":
+		root = filepath.Join(r.Claude, "projects")
+		match = func(rel string) bool { return strings.Count(rel, "/") == 1 && filepath.Base(rel) == id+".jsonl" }
+	case "codex":
+		root = filepath.Join(r.Codex, "sessions")
+		match = func(rel string) bool {
+			return strings.HasSuffix(rel, "-"+id+".jsonl") || filepath.Base(rel) == id+".jsonl"
+		}
+	default:
+		return ""
+	}
+	files := recentFiles(root, time.Time{}, match)
+	if len(files) == 0 {
+		return ""
+	}
+	return files[len(files)-1]
 }
 
 // CodexSummaries returns Codex's own conversation summaries dated day
