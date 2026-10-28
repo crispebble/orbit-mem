@@ -216,3 +216,32 @@ func TestBuild_훅은_호스트별로_나누고_비동기를_표시한다(t *tes
 		t.Error("모르는 호스트를 받았습니다")
 	}
 }
+
+// Codex는 SessionEnd 훅 timeout을 3초로 줄이고 경고를 띄운다(codex-cli 0.164 "clamping SessionEnd hook timeout to 3s").
+// Codex에도 나가는 SessionEnd 훅은 3초를 넘길 수 없고, Claude 전용이면 제한하지 않는다.
+func TestBuild_Codex에_나가는_SessionEnd_훅은_3초를_넘지_않는다(t *testing.T) {
+	hooked := func(spec string) string {
+		return strings.Replace(manifest, `"skills": ["tdd"],`, `"skills": ["tdd"], "hooks": {"SessionEnd": [`+spec+`]},`, 1)
+	}
+	cases := map[string]struct {
+		spec string
+		ok   bool
+	}{
+		"두 호스트 5초":    {`{"command": "x", "timeout": 5}`, false},
+		"Codex만 4초":   {`{"command": "x", "timeout": 4, "hosts": ["codex"]}`, false},
+		"두 호스트 3초":    {`{"command": "x", "timeout": 3}`, true},
+		"timeout 없음":  {`{"command": "x"}`, true},
+		"Claude만 10초": {`{"command": "x", "timeout": 10, "hosts": ["claude"]}`, true},
+	}
+	for name, c := range cases {
+		src := fixture(t)
+		os.WriteFile(filepath.Join(src, "plugin.json"), []byte(hooked(c.spec)), 0o644)
+		_, err := Build(Options{Source: src, Out: t.TempDir()})
+		if c.ok && err != nil {
+			t.Errorf("%s: rejected: %v", name, err)
+		}
+		if !c.ok && (err == nil || !strings.Contains(err.Error(), "3초")) {
+			t.Errorf("%s: want 3초 error, got %v", name, err)
+		}
+	}
+}
