@@ -279,6 +279,40 @@ func contains(list []string, v string) bool {
 	return false
 }
 
+// 상태로 거를 때 한 번에 훑는 세션 수에 상한이 있다. 상한에 걸려도 nextCursor를 주어
+// 뒤쪽의 세션을 빠뜨리지 않는다(쪽은 limit보다 짧거나 비어 있을 수 있다).
+func TestSessionScanLimitKeepsCursor(t *testing.T) {
+	old := summaryScanMax
+	summaryScanMax = 3
+	t.Cleanup(func() { summaryScanMax = old })
+	w := newTW(t)
+	w.start("claude", "R1", SessionStart{Surface: "cli"})
+	w.ev(KindTurnStart, "claude", "R1", Turn{Prompt: "p"})
+	for i := 0; i < 7; i++ {
+		w.start("claude", fmt.Sprintf("S%d", i), SessionStart{Surface: "cli"})
+	}
+	w.start("claude", "R2", SessionStart{Surface: "cli"})
+	w.ev(KindTurnStart, "claude", "R2", Turn{Prompt: "p"})
+	var got []string
+	cursor, pages := "", 0
+	for {
+		p, err := w.s.ListSessions(Filter{Limit: 5, States: []string{"running"}, Cursor: cursor}, ReadOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range p.Sessions {
+			got = append(got, s.SessionID)
+		}
+		if cursor = p.NextCursor; cursor == "" {
+			break
+		}
+		if pages++; pages > 10 {
+			t.Fatal("커서가 끝나지 않습니다")
+		}
+	}
+	eq(t, "진행 중 세션", got, []string{"R2", "R1"})
+}
+
 // 끝 기준: work_sessions를 작은 limit으로 부르면 nextCursor를 따라 모든 세션과 한 세션의 모든 사건을 빠짐없이, 겹침 없이 읽는다.
 func TestSessionPaging(t *testing.T) {
 	w := newTW(t)
