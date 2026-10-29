@@ -46,20 +46,11 @@ export function stepTitleMap(state: WorkState): Map<string, string> {
   return map;
 }
 
-const asked = new Set<string>();
-
-/**
- * 세션 줄·세션 탭이 단계 제목을 쓰도록, 세션이 연 작업 중 아직 읽지 않은 것을 읽어 둔다(store.details에 들어간다).
- * 한 번 물은 작업은 다시 묻지 않는다(실시간 갱신은 store가 한다). 실패하면 제목 대신 개수를 보인다.
- */
-export function useLoadWorks(store: WorkStore | undefined, ids: readonly string[], details: Readonly<Record<string, unknown>>): void {
-  const missing = ids.filter(id => !details[id] && !asked.has(id));
-  const key = missing.join(',');
+/** 세션 줄·세션 탭이 단계 제목을 쓰도록, 세션이 연 작업 중 아직 읽지 않은 것을 store가 읽어 두게 한다. */
+export function useLoadWorks(store: WorkStore | undefined, ids: readonly string[], tick: number): void {
+  const key = [...new Set(ids)].sort().join(',');
+  // tick(useNow)이 바뀔 때도 다시 부른다: 실패한 읽기는 그때 다시 시도된다(이미 읽은 것은 store가 건너뛴다)
   useEffect(() => {
-    if (!store || !key) return;
-    for (const id of key.split(',')) {
-      asked.add(id);
-      store.loadDetail(id).catch(() => {});
-    }
-  }, [store, key]);
+    if (store && key) store.ensureDetails(key.split(','));
+  }, [store, key, tick]);
 }

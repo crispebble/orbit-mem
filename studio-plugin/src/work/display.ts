@@ -120,8 +120,10 @@ export interface BadgeView {
  * 아니면 「검증 실패」, `needs_user`는 「사용자 확인 필요」, 지난 검증은 「오래됨」. 통과·결과 없음은 배지가 없다.
  */
 export function verificationBadge(v: Step['verification'] | undefined, status: string): BadgeView | undefined {
-  if (!v || v.state === 'none' || v.state === 'pass') return undefined;
+  if (!v || v.state === 'none') return undefined;
+  // 지난 검증(뒤에 커밋이 있음)은 통과였어도 「오래됨」이다
   if (v.outdated) return {label: '오래됨', tone: 'neutral', outdated: true};
+  if (v.state === 'pass') return undefined;
   if (v.state === 'fail') return {label: status === 'done' ? '끝남 · 검증 실패' : '검증 실패', tone: 'danger', outdated: false};
   if (v.state === 'needs_user') return {label: '사용자 확인 필요', tone: 'warning', outdated: false};
   return {label: '알 수 없음', tone: 'neutral', outdated: false};

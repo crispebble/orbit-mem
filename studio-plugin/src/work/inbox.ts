@@ -12,7 +12,8 @@ export function waitingInboxItems(works: readonly Work[]): WorkInboxItem[] {
     for (const s of waitingSteps(w)) {
       const since = s.block ? Date.parse(s.block.since) : NaN;
       items.push({
-        id: `${PREFIX}${w.id}:${s.id}`,
+        // 계약 id는 불투명 문자열이라 ':'가 들어 있을 수 있어 나눠 읽을 수 있게 인코딩한다
+        id: `${PREFIX}${encodeURIComponent(w.id)}:${encodeURIComponent(s.id)}`,
         kind: 'waiting',
         title: s.title,
         subtitle: s.block ? blockText(s.block) : undefined,
@@ -30,7 +31,12 @@ export function waitingInboxItems(works: readonly Work[]): WorkInboxItem[] {
 export function parseWaitingId(id: string): {workId: string; stepId: string} | undefined {
   if (!id.startsWith(PREFIX)) return undefined;
   const [workId, stepId, ...rest] = id.slice(PREFIX.length).split(':');
-  return workId && stepId && rest.length === 0 ? {workId, stepId} : undefined;
+  if (!workId || !stepId || rest.length > 0) return undefined;
+  try {
+    return {workId: decodeURIComponent(workId), stepId: decodeURIComponent(stepId)};
+  } catch {
+    return undefined;
+  }
 }
 
 interface DetailSource {

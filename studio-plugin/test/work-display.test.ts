@@ -93,6 +93,9 @@ describe('검증 배지와 막힘 사유', () => {
   it('지난 검증(outdated)은 「오래됨」으로 흐리게 보인다', () => {
     const b = verificationBadge({state: 'fail', outdated: true}, 'done');
     assert.deepEqual([b?.label, b?.tone, b?.outdated], ['오래됨', 'neutral', true]);
+    // 통과도 뒤에 커밋이 오면 지난 검증이다
+    assert.equal(verificationBadge({state: 'pass', outdated: true}, 'done')?.label, '오래됨');
+    assert.equal(verificationBadge({state: 'none', outdated: true}, 'done'), undefined);
   });
 
   it('예시: done 단계에 fail 검증이 붙어도 단계 상태는 done 그대로', () => {

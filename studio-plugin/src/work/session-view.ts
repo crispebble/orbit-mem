@@ -160,14 +160,17 @@ const RESUME: Partial<Record<string, (id: string) => string>> = {
 /**
  * 사용자 확인 기다림 때 그 세션으로 가는 길. 계약 1.0은 읽기 전용이라 Studio는 확인을 반영하지 않는다(설계 S4-6).
  * 터미널 이어 가기는 CLI 세션만 준다: 데스크톱 앱·백그라운드 세션은 같은 대화를 터미널에서 이어 가면 갈라질 수 있다.
+ * needCwd면 디렉토리를 모를 때 명령을 주지 않는다(다른 디렉토리에서는 이어 갈 대화를 찾지 못한다).
  */
-export function resumeGuide(o: {host: string; surface: string; sessionId: string}): ResumeGuide {
+export function resumeGuide(o: {host: string; surface: string; sessionId: string; cwd?: string}, opts: {needCwd?: boolean} = {}): ResumeGuide {
   const make = RESUME[o.host];
-  const safe = /^[A-Za-z0-9._:-]+$/.test(o.sessionId);
+  // 첫 글자는 영숫자: '-'로 시작하면 명령의 옵션으로 읽힌다
+  const safe = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(o.sessionId);
+  const where = !opts.needCwd || !!o.cwd;
   return {
     host: hostLabel(o.host),
     surface: surfaceLabel(o.surface),
     sessionId: o.sessionId,
-    command: o.surface === 'cli' && make && safe ? make(o.sessionId) : undefined,
+    command: o.surface === 'cli' && make && safe && where ? make(o.sessionId) : undefined,
   };
 }

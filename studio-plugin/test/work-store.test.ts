@@ -199,4 +199,156 @@ describe('work store', () => {
     store.dispose();
     assert.equal(signal?.aborted, true);
   });
+
+  it('첫 읽기 중에 범위가 바뀌면 끝난 뒤 새 범위로 다시 읽는다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    let first = true;
+    const f = fakeWorkCtx({...s.handlers, work_list: async (a, o) => {
+      if (first) { first = false; await gate; }
+      return s.handlers.work_list(a, o);
+    }}, {kind: 'project', id: 'p', name: 'P', directories: ['/Users/dev/repo/orbit']});
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => f.calls.some(c => c.tool === 'work_list'));
+    f.setScope({kind: 'all'});
+    release();
+    await until(() => f.calls.filter(c => c.tool === 'work_list').length >= 2, '새 범위로 다시 읽기');
+    await until(() => store.getState().scope.kind === 'all' && store.getState().status === 'ready');
+    assert.equal(f.calls.filter(c => c.tool === 'work_list').at(-1)?.args?.cwdPrefix, undefined);
+    store.dispose();
+  });
+
+  it('범위를 바꿔 읽다 실패하면 다시 시도해 ready로 돌아온다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    let failNext = false;
+    const f = fakeWorkCtx({...s.handlers, work_list: (a, o) => {
+      if (failNext) { failNext = false; throw new Error('끊김'); }
+      return s.handlers.work_list(a, o);
+    }});
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => store.getState().status === 'ready');
+    failNext = true;
+    f.setScope({kind: 'project', id: 'p', name: 'P', directories: ['/Users/dev/repo/orbit']});
+    await until(() => f.calls.filter(c => c.tool === 'work_list').length >= 3, '실패 뒤 다시 읽기');
+    await until(() => store.getState().status === 'ready' && store.getState().scope.kind === 'project');
+    store.dispose();
+  });
+
+  it('변경 대기가 거듭 실패하면 오류로 알리고, 다시 되면 ready로 돌아온다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    let failures = 0;
+    const f = fakeWorkCtx({...s.handlers, work_changes: (a, o) => {
+      if ((a?.wait || failures > 0) && failures < 2) { failures++; throw new Error('끊김'); }
+      return s.handlers.work_changes(a, o);
+    }});
+    const states: string[] = [];
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    store.subscribe(() => states.push(store.getState().status));
+    await store.start();
+    await until(() => failures === 2 && f.calls.filter(c => c.tool === 'work_changes').length >= 4, '실패 두 번 뒤 다시 걸기');
+    await until(() => store.getState().status === 'ready');
+    assert.ok(states.includes('error'), '두 번 연달아 실패하면 오류를 보인다');
+    store.dispose();
+  });
+
+  it('reset 뒤에는 갱신 시각이 바뀐 상세를 다시 읽는다(열린 탭이 옛 그래프를 보이지 않게)', async () => {
+    const s = server([mkWork('w0', 'done'), mkWork('w1', 'open')]);
+    const f = fakeWorkCtx(s.handlers);
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => store.getState().status === 'ready');
+    await store.loadDetail('w0');
+    await until(() => f.calls.filter(c => c.tool === 'work_changes').length >= 2);
+    const w0 = mkWork('w0', 'done');
+    w0.updatedAt = '2026-10-29T00:00:00.000Z';
+    w0.title = '새 제목';
+    s.api.table.set('w0', w0);
+    s.api.push({contract, seq: 'q9', reset: true, more: false, waitMax: 30000});
+    await until(() => store.getState().details.w0?.title === '새 제목', '상세 다시 읽기');
+    store.dispose();
+  });
+
+  it('목록은 nextCursor가 없을 때까지 쪽 상한(limitMax)으로 읽는다', async () => {
+    const works = Array.from({length: 5}, (_, i) => mkWork(`w${i}`, 'done'));
+    const s = server(works);
+    const f = fakeWorkCtx({...s.handlers, work_list: a => {
+      const at = Number(a?.cursor ?? 0);
+      const items = s.api.summaries().slice(at, at + 2);
+      return res({contract, seq: 'q1', items, limitMax: 2, ...(at + 2 < works.length ? {nextCursor: String(at + 2)} : {})});
+    }});
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => store.getState().status === 'ready');
+    assert.equal(store.getState().works.length, 5);
+    assert.deepEqual(f.calls.filter(c => c.tool === 'work_list').slice(1).map(c => c.args?.limit), [2, 2]);
+    store.dispose();
+  });
+
+  it('켜는 중에 끄면 읽기를 시작하지 않는다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    const f = fakeWorkCtx(s.handlers);
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    const started = store.start();
+    store.dispose();
+    await started;
+    for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r));
+    assert.deepEqual(f.calls.map(c => c.tool), []);
+  });
+
+  it('판 때문에 멈춘 뒤 「다시 확인」으로 이어 읽는다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    const newer = {contract: {...contract, major: 2, supportedMajors: [2]}, error: {code: 'UNSUPPORTED_MAJOR', message: 'x', supportedMajors: [2]}};
+    let upgraded = false;
+    const f = fakeWorkCtx({...s.handlers, work_list: (a, o) => (upgraded ? s.handlers.work_list(a, o) : {isError: true, text: 'x', structured: newer})});
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => store.getState().status === 'paused');
+    upgraded = true;
+    store.recheck();
+    await until(() => store.getState().status === 'ready');
+    assert.equal(store.getState().pause, undefined);
+    store.dispose();
+  });
+
+  it('지워진 작업은 확인 전 표시에서도 뺀다', async () => {
+    const s = server([mkWork('w1', 'open')]);
+    const f = fakeWorkCtx(s.handlers);
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => f.calls.filter(c => c.tool === 'work_changes').length >= 2);
+    s.api.table.set('w1', mkWork('w1', 'done'));
+    s.api.push({contract, seq: 'q2', reset: false, more: false, waitMax: 30000, workIds: ['w1'], sessionIds: []});
+    await until(() => store.getState().pendingReview.length === 1);
+    s.api.table.delete('w1');
+    s.api.push({contract, seq: 'q3', reset: false, more: false, waitMax: 30000, workIds: ['w1'], sessionIds: []});
+    await until(() => store.getState().works.length === 0);
+    assert.deepEqual(store.getState().pendingReview, []);
+    assert.deepEqual(f.storage.get('work.review.v1'), {pending: []});
+    store.dispose();
+  });
+
+  it('ensureDetails: 없는 상세만 한 번 읽고, 실패하면 다음에 다시, 없는 작업은 다시 묻지 않는다', async () => {
+    const s = server([mkWork('w0', 'done')]);
+    let flaky = true;
+    const f = fakeWorkCtx({...s.handlers, work_get: (a, o) => {
+      if (a?.workId === 'w0' && flaky) { flaky = false; throw new Error('끊김'); }
+      return s.handlers.work_get(a, o);
+    }});
+    const store = createWorkStore(f.ctx, {sleep: noSleep});
+    await store.start();
+    await until(() => store.getState().status === 'ready');
+    const gets = () => f.calls.filter(c => c.tool === 'work_get').map(c => String(c.args?.workId));
+    store.ensureDetails(['w0', 'gone']);
+    store.ensureDetails(['w0', 'gone']); // 읽는 중에는 다시 묻지 않는다
+    await until(() => gets().length === 2);
+    for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    assert.equal(store.getState().details.w0, undefined);
+    store.ensureDetails(['w0', 'gone']);
+    await until(() => store.getState().details.w0 !== undefined, '실패한 것을 다시 읽기');
+    assert.deepEqual(gets().sort(), ['gone', 'w0', 'w0']);
+    store.dispose();
+  });
 });

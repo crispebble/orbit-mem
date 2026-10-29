@@ -7,6 +7,7 @@ import {groupWorks, progressOf, workStateView, type WorkNode} from '../work/disp
 import {hostLabel} from '../work/graph.ts';
 import type {WorkSummary} from '../work/types.ts';
 import {useWork} from './runtime.ts';
+import {Paused} from './paused.tsx';
 
 type Filter = 'default' | 'all';
 
@@ -17,7 +18,7 @@ export function WorksView({ctx}: ViewProps) {
 
   if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
   if (state.status === 'paused') {
-    return <div className="orbit-side"><EmptyState title="작업 기록을 읽지 않습니다" description={state.pause?.message} /></div>;
+    return <div className="orbit-side"><Paused store={store} state={state} title="작업 기록을 읽지 않습니다" /></div>;
   }
   if (state.status === 'error' && state.works.length === 0) {
     return <div className="orbit-side"><EmptyState title="작업 기록을 읽지 못했습니다" description={`${state.error ?? ''} 잠시 뒤 다시 읽습니다.`} /></div>;

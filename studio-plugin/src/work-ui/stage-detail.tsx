@@ -89,7 +89,7 @@ function WaitingGuide({ctx, work, step, sessions}: {ctx: PluginContext; work: Wo
 }
 
 function WaitingTarget({ctx, target}: {ctx: PluginContext; target: NonNullable<ReturnType<typeof waitingSessionOf>>}) {
-  const guide = resumeGuide(target);
+  const guide = resumeGuide(target, {needCwd: true});
   return (
     <>
       <PropertyList items={[

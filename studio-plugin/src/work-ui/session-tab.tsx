@@ -15,6 +15,7 @@ import type {Evidence, Run, Session, SessionEvent} from '../work/types.ts';
 import {VerificationItem, type StageNav} from './stage-detail.tsx';
 import {stepTitleMap, useLoadWorks, useNow, useWork} from './runtime.ts';
 import {workNav} from './work-tab.tsx';
+import {Paused} from './paused.tsx';
 
 export interface Page {
   cursor?: string;
@@ -65,45 +66,64 @@ export function SessionTab({ctx, tab}: TabProps) {
   const [error, setError] = useState<string>();
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 읽기 줄이 마지막으로 정한 값. 화면 상태(loaded)보다 먼저 바뀌므로 다음 읽기가 이것을 기준으로 한다.
   const loadedRef = useRef<Loaded>(undefined);
-  loadedRef.current = loaded;
 
-  /** 쪽 하나를 읽는다. replaceFrom이 있으면 그 쪽부터 갈아 끼운다(실시간 갱신은 마지막 쪽만 다시 읽는다). */
-  const fetchPage = useCallback(async (cursor: string | undefined, replaceFrom: number) => {
-    if (!store) return;
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const pending = useRef(0);
+  /** 읽기를 한 줄로 세운다: 실시간 갱신과 「사건 더 보기」가 겹쳐 서로의 쪽을 덮어쓰지 않게 한다 */
+  const enqueue = useCallback((job: () => Promise<void>) => {
+    pending.current += 1;
     setBusy(true);
-    try {
-      const page = await store.loadSession(id, cursor);
-      const prev = loadedRef.current;
-      const pages = [...(prev?.pages.slice(0, replaceFrom) ?? []), {cursor, events: page.events, nextCursor: page.nextCursor}];
-      setLoaded({
-        session: page.session,
-        runs: page.runs ?? prev?.runs ?? [],
-        evidence: page.evidence ?? prev?.evidence ?? [],
-        pages,
-      });
-      setError(undefined);
-      setMissing(false);
-    } catch (e) {
+    queue.current = queue.current.then(job).catch((e: unknown) => {
       if (e instanceof WorkToolError && e.code === 'NOT_FOUND') setMissing(true);
       else setError(errorMessage(e));
-    } finally {
-      setBusy(false);
+    }).finally(() => {
+      pending.current -= 1;
+      if (pending.current === 0) setBusy(false);
+    });
+  }, []);
+
+  const keep = (next: Loaded) => {
+    loadedRef.current = next;
+    setLoaded(next);
+    setError(undefined);
+    setMissing(false);
+  };
+
+  /** 첫 쪽부터 지금까지 읽은 쪽 수만큼 다시 읽는다. runs·evidence는 첫 쪽에 모두 있어 계보·증거도 새로 된다. */
+  const reload = useCallback(() => enqueue(async () => {
+    if (!store) return;
+    const want = Math.max(1, loadedRef.current?.pages.length ?? 1);
+    const first = await store.loadSession(id);
+    const pages: Page[] = [{events: first.events, nextCursor: first.nextCursor}];
+    for (let cursor = first.nextCursor; cursor && pages.length < want; cursor = pages.at(-1)!.nextCursor) {
+      const page = await store.loadSession(id, cursor);
+      pages.push({cursor, events: page.events, nextCursor: page.nextCursor});
     }
-  }, [store, id]);
+    keep({session: first.session, runs: first.runs ?? [], evidence: first.evidence ?? [], pages});
+  }), [enqueue, store, id]);
+
+  /** 다음 사건 쪽을 덧붙인다 */
+  const more = useCallback(() => enqueue(async () => {
+    const cur = loadedRef.current;
+    const cursor = cur?.pages.at(-1)?.nextCursor;
+    if (!store || !cur || !cursor) return;
+    const page = await store.loadSession(id, cursor);
+    keep({...cur, pages: [...cur.pages, {cursor, events: page.events, nextCursor: page.nextCursor}]});
+  }), [enqueue, store, id]);
 
   // 처음 읽기
-  useEffect(() => { void fetchPage(undefined, 0); }, [fetchPage]);
+  useEffect(() => { reload(); }, [reload]);
 
-  // 이 세션이 바뀌었다는 갱신(store.sessions의 lastSeenAt·state)이 오면 마지막 쪽을 다시 읽는다
+  // 이 세션이 바뀌었다는 갱신(store.sessions의 lastSeenAt·state)이 오면 다시 읽는다
   const live = state.sessions.find(s => s.sessionId === id);
   const liveKey = live ? `${live.lastSeenAt}|${live.state}|${live.activeStepIds.join(',')}` : '';
   useEffect(() => {
     const cur = loadedRef.current;
     if (!liveKey || !cur) return;
     if (cur.session.lastSeenAt === live?.lastSeenAt && cur.session.state === live?.state) return;
-    const last = cur.pages.length - 1;
-    void fetchPage(cur.pages[last]?.cursor, last);
+    reload();
   }, [liveKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -114,20 +134,20 @@ export function SessionTab({ctx, tab}: TabProps) {
 
   const titles = useMemo(() => stepTitleMap(state), [state.details]);
   const nav = useMemo(() => workNav(ctx, () => {}), [ctx]);
-  useLoadWorks(store, loaded?.session.openWorkIds ?? [], state.details);
+  useLoadWorks(store, loaded?.session.openWorkIds ?? [], now);
 
   if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
-  if (state.status === 'paused') return <EmptyState title="세션 기록을 읽지 않습니다" description={state.pause?.message} />;
+  if (state.status === 'paused') return <Paused store={store} state={state} title="세션 기록을 읽지 않습니다" />;
   if (missing) return <EmptyState title="세션을 찾지 못했습니다" description="Orbit 기록에 없는 세션입니다." />;
   if (!loaded) {
-    if (error) return <EmptyState title="세션을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={() => void fetchPage(undefined, 0)}>다시 시도</Button></EmptyState>;
+    if (error) return <EmptyState title="세션을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;
     return <EmptyState title="세션을 불러오는 중입니다" />;
   }
 
   return (
     <SessionBody ctx={ctx} loaded={loaded} now={now} titles={titles} state={state} nav={nav} busy={busy} error={error}
-      onReload={() => void fetchPage(undefined, 0)}
-      onMore={next => void fetchPage(next, loaded.pages.length)} />
+      onReload={reload}
+      onMore={more} />
   );
 }
 
@@ -141,7 +161,7 @@ export interface SessionBodyProps {
   busy?: boolean;
   error?: string;
   onReload(): void;
-  onMore(cursor: string): void;
+  onMore(): void;
 }
 
 /** 세션 탭 본문(읽기와 나눠 둔 그리기) */
@@ -251,7 +271,7 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
       <section aria-labelledby="orbit-tl-h">
         <h3 id="orbit-tl-h" className="orbit-work-sec">사건 기록</h3>
         {events.length === 0 ? <p className="orbit-meta">남은 사건이 없습니다.</p> : <AgentTimeline title="" events={timelineOf(events, titles)} surface="plain" />}
-        {next && <Button variant="secondary" size="sm" disabled={busy} onClick={() => onMore(next)}>사건 더 보기</Button>}
+        {next && <Button variant="secondary" size="sm" disabled={busy} onClick={onMore}>사건 더 보기</Button>}
       </section>
     </div>
   );

@@ -46,8 +46,13 @@ describe('waitingSessionOf', () => {
     assert.deepEqual(w, {host: 'codex', surface: 'cli', sessionId: '019a2b7c-55e1-7c30-9d42-6f1e0a8b3c27', cwd: '/Users/dev/repo/orbit/.claude/worktrees/graph'});
   });
 
-  it('아니면 작업을 연 세션(origin)과 작업 디렉토리', () => {
+  it('아니면 작업을 연 세션(origin), 디렉토리는 그 세션 칸 값이 먼저(이어 가기는 세션을 만든 디렉토리에서)', () => {
     assert.deepEqual(waitingSessionOf(task, id('훅 연결'), []), {host: 'claude', surface: 'cli', sessionId: task.origin!.sessionId, cwd: task.cwd});
+    const own: Session = {
+      sessionId: task.origin!.sessionId, host: 'claude', surface: 'cli', state: 'waiting_user', cwd: '/Users/dev/repo',
+      startedAt: '2026-10-28T06:00:00.000Z', lastSeenAt: '2026-10-28T06:40:00.000Z', openWorkIds: [], activeStepIds: [],
+    };
+    assert.equal(waitingSessionOf(task, id('훅 연결'), [own])?.cwd, '/Users/dev/repo');
   });
 
   it('세션 칸이 없고 실행에도 화면 종류가 없으면 알 수 없음', () => {

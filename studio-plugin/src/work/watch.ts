@@ -54,20 +54,23 @@ export async function watchChanges(ctx: WorkCtx, opts: WatchOptions): Promise<vo
   const sleep = opts.sleep ?? abortableSleep;
   let after = opts.after;
   let waitMax: number | undefined;
+  /** 실패한 뒤 첫 호출은 기다리지 않고 확인만 한다: 다시 이어졌음을 곧바로 알려(onOk) 오류 표시를 거둔다 */
+  let probe = false;
   while (!signal.aborted) {
     // 첫 응답이 waitMax를 밝히기 전에는 기다리지 않는다.
-    const wait = waitMax ?? 0;
+    const wait = probe ? 0 : waitMax ?? 0;
     try {
       const res = await workChanges(ctx, {after, wait}, {timeoutMs: wait + TIMEOUT_GRACE_MS, signal});
       if (signal.aborted) return;
       waitMax = res.waitMax;
+      probe = false;
       handlers.onOk?.();
       const changed = res.workIds.length > 0 || res.sessionIds.length > 0;
       if (res.reset) await handlers.onReset();
       else if (changed) await handlers.onChanges({workIds: res.workIds, sessionIds: res.sessionIds});
       after = res.seq;
       // more면 기다리지 않고 바로 다시. 서버가 기다려 주지 않는데 바뀐 것도 없으면 쉰다.
-      if (!res.more && waitMax === 0 && !changed && !res.reset) await sleep(NO_WAIT_POLL_MS, signal);
+      if (!res.more && wait === 0 && waitMax === 0 && !changed && !res.reset) await sleep(NO_WAIT_POLL_MS, signal);
     } catch (e) {
       if (signal.aborted) return;
       if (e instanceof WorkPaused) {
@@ -75,6 +78,7 @@ export async function watchChanges(ctx: WorkCtx, opts: WatchOptions): Promise<vo
         return;
       }
       handlers.onError(errorMessage(e));
+      probe = true;
       await sleep(RETRY_MS, signal);
     }
   }

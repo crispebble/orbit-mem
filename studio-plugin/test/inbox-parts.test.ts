@@ -35,6 +35,9 @@ describe('작업 확인 기다림 → 받은 일', () => {
     assert.deepEqual(parseWaitingId(item.id), {workId: task.id, stepId: 'st-4d5e6f708192'});
     assert.equal(parseWaitingId('p-123'), undefined);
     assert.equal(parseWaitingId('work-waiting:only'), undefined);
+    // 계약 id는 불투명 문자열이라 ':'가 들어 있어도 되찾는다
+    const [odd] = waitingInboxItems([{...task, id: 'w:1/2', steps: task.steps.map(s => s.id === 'st-4d5e6f708192' ? {...s, id: 'st:x'} : s)}]);
+    assert.deepEqual(parseWaitingId(odd.id), {workId: 'w:1/2', stepId: 'st:x'});
   });
 
   it('store가 바뀔 때마다 읽은 작업의 확인 기다림을 waiting 갈래로 넣고, 끊으면 갈래를 지운다', async () => {

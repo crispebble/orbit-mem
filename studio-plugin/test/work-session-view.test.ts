@@ -108,6 +108,12 @@ describe('resumeGuide', () => {
   });
   it('세션 id가 명령 글자로 안전하지 않으면 명령을 주지 않는다', () => {
     assert.equal(resumeGuide({host: 'claude', surface: 'cli', sessionId: 'a; rm -rf ~'}).command, undefined);
+    // 옵션으로 읽힐 수 있는 id(-로 시작)도 받지 않는다
+    assert.equal(resumeGuide({host: 'claude', surface: 'cli', sessionId: '-x'}).command, undefined);
+  });
+  it('디렉토리를 모르면 명령을 주지 않는다(다른 디렉토리에서는 이어 갈 대화를 찾지 못한다)', () => {
+    assert.equal(resumeGuide({host: 'claude', surface: 'cli', sessionId: 'abc'}, {needCwd: true}).command, undefined);
+    assert.equal(resumeGuide({host: 'claude', surface: 'cli', sessionId: 'abc', cwd: '/repo'}, {needCwd: true}).command, 'claude --resume abc');
   });
   it('화면 종류 글', () => {
     assert.deepEqual(['cli', 'desktop', 'headless', 'unknown', 'x'].map(s => resumeGuide({host: 'claude', surface: s, sessionId: 'a'}).surface), ['CLI', '데스크톱', '백그라운드', '알 수 없음', '알 수 없음']);

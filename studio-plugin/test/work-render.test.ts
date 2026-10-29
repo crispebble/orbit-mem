@@ -83,6 +83,7 @@ describe('작업 탭', () => {
     assert.match(text(h.renderWorkTab(task.id)), /Orbit 앱을 올려 주세요/);
     assert.match(text(h.renderWorks()), /Orbit 앱을 올려 주세요/);
     assert.match(text(h.renderSessions()), /Orbit 앱을 올려 주세요/);
+    assert.match(text(h.renderWorks()), /다시 확인/);
   });
 });
 

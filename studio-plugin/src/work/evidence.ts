@@ -61,5 +61,7 @@ export function waitingSessionOf(work: Pick<Work, 'runs' | 'origin' | 'cwd'>, st
     return {host: own.host, surface: s?.surface ?? 'unknown', sessionId: own.sessionId!, cwd: own.cwd ?? s?.cwd};
   }
   if (!work.origin) return undefined;
-  return {host: work.origin.host, surface: work.origin.surface, sessionId: work.origin.sessionId, cwd: work.cwd};
+  // 이어 가기는 세션을 만든 디렉토리에서 해야 대화를 찾는다: 세션 칸의 cwd가 먼저다
+  const s = sessions.find(x => x.sessionId === work.origin!.sessionId);
+  return {host: work.origin.host, surface: work.origin.surface, sessionId: work.origin.sessionId, cwd: s?.cwd ?? work.cwd};
 }

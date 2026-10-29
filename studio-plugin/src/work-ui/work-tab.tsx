@@ -13,6 +13,7 @@ import {summaryOf} from '../work/store.ts';
 import type {Work} from '../work/types.ts';
 import {StageDetail, type StageNav} from './stage-detail.tsx';
 import {useNow, useWork} from './runtime.ts';
+import {Paused} from './paused.tsx';
 
 type Mode = 'flow' | 'owner';
 
@@ -74,7 +75,7 @@ export function WorkTab({ctx, tab}: TabProps) {
   const graph = useMemo(() => (work ? toFlowGraph(work, now) : undefined), [work, now]);
 
   if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
-  if (state.status === 'paused') return <EmptyState title="작업 기록을 읽지 않습니다" description={state.pause?.message} />;
+  if (state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
   if (missing) return <EmptyState title="작업을 찾지 못했습니다" description="Orbit 기록에서 지워졌거나 다른 PC의 작업입니다." />;
   if (!work) {
     if (error) return <EmptyState title="작업을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;
@@ -147,11 +148,11 @@ export function WorkTab({ctx, tab}: TabProps) {
 
 /** 받은 일에서 「사용자 확인 기다림」 단계를 골랐을 때 메인에 그리는 상세 */
 export function WaitingStepDetail({ctx, workId, stepId}: {ctx: PluginContext; workId: string; stepId: string}) {
-  const {state} = useWork();
+  const {store, state} = useWork();
   const {work, error, missing, reload} = useWorkDetail(workId);
   const now = useNow();
   const nav = useMemo(() => workNav(ctx, sid => ctx.tabs.open({type: 'work', id: workId, title: work?.title ?? '작업', params: {id: workId, step: sid}})), [ctx, workId, work?.title]);
-  if (state.status === 'paused') return <EmptyState title="작업 기록을 읽지 않습니다" description={state.pause?.message} />;
+  if (store && state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
   if (missing) return <EmptyState title="작업을 찾지 못했습니다" />;
   if (!work) {
     if (error) return <EmptyState title="작업을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;

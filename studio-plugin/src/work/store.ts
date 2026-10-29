@@ -20,9 +20,11 @@ export interface WorkState {
   pendingReview: string[];
 }
 
-/** 처음 읽을 때 따라가는 쪽 수의 상한(근거 없는 구현 값: 쪽 크기 최대 50이므로 작업 200건·세션 100건까지) */
-export const MAX_WORK_PAGES = 4;
-export const MAX_SESSION_PAGES = 2;
+/**
+ * 변경 대기가 이만큼 연달아 실패하면 오류로 알린다. 한 번의 실패는 oni가 다시 뜨는 정상 경로라 경고를 띄우지 않는다
+ * (설계 「정상 갱신에서 경고 표시가 튀지 않는다」). 2는 「다시 걸어도 실패」를 뜻하는 구현 값이다.
+ */
+export const WATCH_FAILURES_TO_REPORT = 2;
 
 export interface WorkStoreOptions {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -37,6 +39,8 @@ export function inScope(scope: StudioScope, cwd: string | undefined): boolean {
     return cwd === dir || cwd.startsWith(dir === '/' ? '/' : `${dir}/`);
   });
 }
+
+const sameScope = (a: StudioScope, b: StudioScope) => JSON.stringify(a) === JSON.stringify(b);
 
 /** 작업 전체 그래프에서 목록 줄(요약)을 만든다 */
 export function summaryOf(w: Work): WorkSummary {
@@ -56,15 +60,32 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
   const listeners = new Set<() => void>();
   let abort: AbortController | undefined;
   let offScope: (() => void) | undefined;
-  let generation = 0;
   let lastLogged: string | undefined;
+  let watchFailures = 0;
   /** 지난번에 본 작업 상태. 열림→끝남 전이를 알아보는 데 쓴다 */
   const known = new Map<string, string>();
+  /** ensureDetails: 읽는 중인 id와, 없다고 확인한 id */
+  const fetching = new Set<string>();
+  const absent = new Set<string>();
+  /** 목록 읽기와 변경 반영을 한 줄로 세운다. 겹치면 늦게 끝난 쪽이 옛 스냅숏으로 덮어쓸 수 있다. */
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(job: () => Promise<T>): Promise<T> => {
+    const next = queue.then(job, job);
+    queue = next.catch(() => {});
+    return next;
+  };
 
   const set = (next: Partial<WorkState>) => {
     state = {...state, ...next};
     listeners.forEach(l => l());
   };
+
+  async function savePending(pendingReview: string[]) {
+    const changed = pendingReview.length !== state.pendingReview.length || pendingReview.some((id, i) => id !== state.pendingReview[i]);
+    if (!changed) return;
+    set({pendingReview});
+    await saveReview(ctx, {pending: pendingReview});
+  }
 
   async function applyWorks(next: WorkSummary[], replaceAll: boolean) {
     const base = replaceAll ? [] : state.works.filter(w => !next.some(n => n.id === w.id));
@@ -72,79 +93,92 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     // 처음 읽을 때 이미 끝난 옛 작업은 올리지 않는다(known이 비어 있으므로 열림→끝남 전이가 없다)
     const pendingReview = updatePending(state.pendingReview, known, next);
     next.forEach(w => known.set(w.id, w.state));
-    const changed = pendingReview.length !== state.pendingReview.length || pendingReview.some((id, i) => id !== state.pendingReview[i]);
-    set({works, pendingReview});
-    if (changed) await saveReview(ctx, {pending: pendingReview});
+    set({works});
+    await savePending(pendingReview);
   }
 
-  /** 처음부터 읽는다. 시작·reset·범위 바뀜에서 쓴다. 돌려주는 값은 목록 기준점(seq). */
-  async function loadAll(): Promise<string> {
-    const gen = ++generation;
-    const scope = ctx.scope.current();
-    const items: WorkSummary[] = [];
-    let seq: string | undefined;
+  /** 쪽을 nextCursor가 없을 때까지 읽는다. 두 번째 쪽부터는 서버가 밝힌 쪽 상한(limitMax)으로 묻는다. */
+  async function allPages<T extends {nextCursor?: string; limitMax: number; seq: string}>(read: (cursor?: string, limit?: number) => Promise<T>): Promise<T[]> {
+    const pages: T[] = [];
     let cursor: string | undefined;
-    for (let i = 0; i < MAX_WORK_PAGES; i++) {
-      const page = await workList(ctx, {scope, state: 'any', cursor});
-      seq ??= page.seq;
-      items.push(...page.items);
+    let limit: number | undefined;
+    do {
+      const page = await read(cursor, limit);
+      pages.push(page);
       cursor = page.nextCursor;
-      if (!cursor) break;
-    }
-    const sessions: Session[] = [];
-    cursor = undefined;
-    for (let i = 0; i < MAX_SESSION_PAGES; i++) {
-      const page = await sessionsList(ctx, {scope, cursor});
-      sessions.push(...page.sessions);
-      cursor = page.nextCursor;
-      if (!cursor) break;
-    }
-    // 사용자 확인을 기다릴 수 있는 열린 작업만 그래프를 미리 읽는다(받은 일·홈 위젯용)
-    const details: Record<string, Work> = {};
-    for (const w of items) {
-      if (w.state === 'open' && w.counts.blocked > 0) details[w.id] = (await workGet(ctx, w.id)).work;
-    }
-    if (gen !== generation) return seq ?? ''; // 그동안 범위가 또 바뀜: 이 결과는 버린다
-    const keptDetails = Object.fromEntries(Object.entries(state.details).filter(([id]) => items.some(i => i.id === id)));
-    set({scope, sessions, details: {...keptDetails, ...details}});
-    await applyWorks(items, true);
-    return seq as string;
+      limit = page.limitMax;
+    } while (cursor);
+    return pages;
   }
 
-  async function applyChanges(c: {workIds: string[]; sessionIds: string[]}) {
-    const scope = ctx.scope.current();
-    const details = {...state.details};
-    const updated: WorkSummary[] = [];
-    const gone = new Set<string>();
-    for (const id of c.workIds) {
-      try {
-        const {work} = await workGet(ctx, id);
-        if (!inScope(scope, work.cwd)) {
-          gone.add(id);
-          continue;
+  /** 처음부터 읽는다. 시작·reset·범위 바뀜에서 쓴다. 돌려주는 값은 목록 기준점(seq). 읽는 동안 범위가 바뀌면 새 범위로 다시 읽는다. */
+  function loadAll(): Promise<string> {
+    return serial(async () => {
+      for (;;) {
+        const scope = ctx.scope.current();
+        const pages = await allPages((cursor, limit) => workList(ctx, {scope, state: 'any', cursor, limit}));
+        const seq = pages[0].seq;
+        const items = pages.flatMap(p => p.items);
+        const sessions = (await allPages((cursor, limit) => sessionsList(ctx, {scope, cursor, limit}))).flatMap(p => p.sessions);
+        if (!sameScope(scope, ctx.scope.current())) continue;
+        // 사용자 확인을 기다릴 수 있는 열린 작업은 그래프를 미리 읽는다(받은 일·홈 위젯용).
+        // 이미 읽은 상세는 갱신 시각이 같을 때만 그대로 두고, 바뀌었으면 다시 읽는다(reset 뒤 열린 탭이 옛 그래프를 보이지 않게).
+        const details: Record<string, Work> = {};
+        for (const w of items) {
+          const have = state.details[w.id];
+          const want = have !== undefined || (w.state === 'open' && w.counts.blocked > 0);
+          if (!want) continue;
+          details[w.id] = have && have.updatedAt === w.updatedAt ? have : (await workGet(ctx, w.id)).work;
         }
-        details[id] = work;
-        updated.push(summaryOf(work));
-      } catch (e) {
-        if (e instanceof WorkToolError && e.code === 'NOT_FOUND') gone.add(id);
-        else throw e;
+        if (!sameScope(scope, ctx.scope.current())) continue;
+        set({scope, sessions, details});
+        await applyWorks(items, true);
+        return seq;
       }
-    }
-    let sessions = state.sessions;
-    for (const id of c.sessionIds) {
-      try {
-        const {session} = await sessionGet(ctx, id, undefined, 1);
-        sessions = [session, ...sessions.filter(s => s.sessionId !== id)];
-        if (!inScope(scope, session.cwd)) sessions = sessions.filter(s => s.sessionId !== id);
-      } catch (e) {
-        if (e instanceof WorkToolError && e.code === 'NOT_FOUND') sessions = sessions.filter(s => s.sessionId !== id);
-        else throw e;
+    });
+  }
+
+  function applyChanges(c: {workIds: string[]; sessionIds: string[]}): Promise<void> {
+    return serial(async () => {
+      const scope = ctx.scope.current();
+      const fetched: Record<string, Work> = {};
+      const updated: WorkSummary[] = [];
+      const gone = new Set<string>();
+      for (const id of c.workIds) {
+        try {
+          const {work} = await workGet(ctx, id);
+          if (!inScope(scope, work.cwd)) {
+            gone.add(id);
+            continue;
+          }
+          fetched[id] = work;
+          updated.push(summaryOf(work));
+        } catch (e) {
+          if (e instanceof WorkToolError && e.code === 'NOT_FOUND') gone.add(id);
+          else throw e;
+        }
       }
-    }
-    sessions = [...sessions].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt) || a.sessionId.localeCompare(b.sessionId));
-    gone.forEach(id => { delete details[id]; known.delete(id); });
-    set({details, sessions, works: state.works.filter(w => !gone.has(w.id))});
-    await applyWorks(updated, false);
+      const fresh = new Map<string, Session>();
+      const dropped = new Set<string>();
+      for (const id of c.sessionIds) {
+        try {
+          const {session} = await sessionGet(ctx, id, undefined, 1);
+          if (inScope(scope, session.cwd)) fresh.set(id, session);
+          else dropped.add(id);
+        } catch (e) {
+          if (e instanceof WorkToolError && e.code === 'NOT_FOUND') dropped.add(id);
+          else throw e;
+        }
+      }
+      // 읽는 동안 바뀐 상태 위에 합친다(await 앞의 스냅숏으로 덮어쓰지 않는다)
+      const details = {...state.details, ...fetched};
+      gone.forEach(id => { delete details[id]; known.delete(id); });
+      const sessions = [...fresh.values(), ...state.sessions.filter(s => !fresh.has(s.sessionId) && !dropped.has(s.sessionId))]
+        .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt) || a.sessionId.localeCompare(b.sessionId));
+      set({details, sessions, works: state.works.filter(w => !gone.has(w.id))});
+      await applyWorks(updated, false);
+      if (gone.size) await savePending(state.pendingReview.filter(id => !gone.has(id)));
+    });
   }
 
   function fail(message: string) {
@@ -153,9 +187,31 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     set({status: 'error', error: message});
   }
 
+  function ok() {
+    lastLogged = undefined;
+    watchFailures = 0;
+    if (state.status === 'error' || state.status === 'loading') set({status: 'ready', error: undefined});
+  }
+
   function pause(kind: PauseKind) {
     ctx.log.warn(`작업 기록을 읽지 않습니다: ${PAUSE_MESSAGE[kind]}`);
     set({status: 'paused', pause: {kind, message: PAUSE_MESSAGE[kind]}, error: undefined});
+  }
+
+  /** 범위가 바뀌면 처음부터 다시 읽는다. 실패하면 쉬었다가 될 때까지 다시(변경 대기는 그대로 이어진다). */
+  async function reloadForScope(signal: AbortSignal) {
+    while (!signal.aborted && state.status !== 'paused') {
+      try {
+        await loadAll();
+        if (!signal.aborted) ok();
+        return;
+      } catch (e) {
+        if (signal.aborted) return;
+        if (e instanceof WorkPaused) return pause(e.kind);
+        fail(errorMessage(e));
+        await sleep(RETRY_MS, signal);
+      }
+    }
   }
 
   /** 읽고 → 갱신 대기를 건다. 연결 실패면 쉬었다가 처음부터 다시 */
@@ -164,8 +220,9 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
       try {
         if (state.status !== 'ready') set({status: 'loading', error: undefined});
         const seq = await loadAll();
-        lastLogged = undefined;
-        set({status: 'ready', error: undefined, pause: undefined});
+        if (signal.aborted) return;
+        ok();
+        set({pause: undefined});
         await watchChanges(ctx, {
           after: seq,
           signal,
@@ -174,7 +231,12 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
             onChanges: applyChanges,
             onReset: async () => { await loadAll(); },
             onPaused: pause,
-            onError: message => { if (state.status === 'ready') ctx.log.warn(`작업 변경 대기를 다시 겁니다: ${message}`); },
+            onOk: ok,
+            onError: message => {
+              watchFailures += 1;
+              if (watchFailures >= WATCH_FAILURES_TO_REPORT) fail(message);
+              else if (state.status === 'ready') ctx.log.warn(`작업 변경 대기를 다시 겁니다: ${message}`);
+            },
           },
         });
         return;
@@ -187,21 +249,23 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     }
   }
 
+  function begin(signal: AbortSignal) {
+    offScope?.();
+    offScope = ctx.scope.onChange(() => {
+      if (state.status !== 'paused') void reloadForScope(signal);
+    });
+    void run(signal);
+  }
+
   async function start(): Promise<void> {
     stop();
+    // 시작하자마자 중단 신호를 만든다: 확인 전 목록을 읽는 사이에 끄면 읽기를 시작하지 않는다
+    const controller = new AbortController();
+    abort = controller;
     const review = await loadReview(ctx);
+    if (controller.signal.aborted) return;
     set({pendingReview: review.pending});
-    abort = new AbortController();
-    offScope = ctx.scope.onChange(() => {
-      // 범위가 바뀌면 처음부터 다시 읽는다. 변경 대기는 그대로 이어진다.
-      if (state.status === 'ready') {
-        loadAll().catch(e => {
-          if (e instanceof WorkPaused) pause(e.kind);
-          else fail(errorMessage(e));
-        });
-      }
-    });
-    void run(abort.signal);
+    begin(controller.signal);
   }
 
   function stop() {
@@ -211,10 +275,18 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     offScope = undefined;
   }
 
+  /** 판 때문에 멈춘 뒤 사용자가 Orbit을 올렸으면 다시 읽는다 */
+  function recheck() {
+    if (state.status !== 'paused' || !abort) return;
+    const controller = new AbortController();
+    abort.abort();
+    abort = controller;
+    set({status: 'loading', pause: undefined});
+    begin(controller.signal);
+  }
+
   async function dismiss(workId: string): Promise<void> {
-    const pendingReview = dismissId(state.pendingReview, workId);
-    set({pendingReview});
-    await saveReview(ctx, {pending: pendingReview});
+    await savePending(dismissId(state.pendingReview, workId));
   }
 
   /** 단계·실행을 읽는다. 이미 읽었으면 그대로, force면 다시 */
@@ -226,6 +298,21 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     return work;
   }
 
+  /** 세션 줄·세션 탭이 단계 제목을 쓰도록 아직 읽지 않은 작업을 읽어 둔다. 실패하면 다음 부름에 다시, 없는 작업은 다시 묻지 않는다. */
+  function ensureDetails(ids: readonly string[]) {
+    for (const id of ids) {
+      if (state.details[id] || fetching.has(id) || absent.has(id)) continue;
+      fetching.add(id);
+      loadDetail(id).then(
+        () => fetching.delete(id),
+        (e: unknown) => {
+          fetching.delete(id);
+          if (e instanceof WorkToolError && e.code === 'NOT_FOUND') absent.add(id);
+        },
+      );
+    }
+  }
+
   /** 세션 한 쪽(사건·실행·증거). 화면이 쪽 넘김을 한다 */
   function loadSession(sessionId: string, cursor?: string): Promise<SessionPage> {
     return sessionGet(ctx, sessionId, cursor);
@@ -234,8 +321,10 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
   return {
     start,
     dispose: stop,
+    recheck,
     dismiss,
     loadDetail,
+    ensureDetails,
     loadSession,
     visibleWorks: () => defaultList(state.works, state.pendingReview),
     getState: () => state,
