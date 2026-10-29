@@ -13,10 +13,11 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
+- 1.1은 오류 코드 `UNAVAILABLE`을 더했다. 1.0과 나머지는 같다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 기억 종류·상태, 선·묶음 종류, 연결 종류(`relation`), 만든 쪽(`origin`)은 「알 수 없음」으로 보인다.
-- `response.schema.json`은 oni가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
+- `response.schema.json`은 oni가 내는 1.1 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
 - 예시 값의 모양(id 글자)에는 뜻이 없다. 예시끼리는 같은 시점의 한 기록을 보이도록 맞췄다(같은 기억은 예시마다 같은 모양). `memory_graph.filtered`의 `fliter`는 `ignoredArgs`를 보이려고 일부러 틀린 칸 이름이다.
 
 ## 도구
@@ -43,7 +44,7 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | `tags` | 문자열 목록 | 없음 | 이 태그 중 하나라도 가진 기억만 |
 | `updatedFrom`, `updatedTo` | RFC 3339 시각 | 없음 | 마지막으로 고친 때가 이 사이인 기억만(양 끝 포함) |
 | `relations` | `link`·`supersede`·`session`·`file`·`tag` 목록 | 모두 | 응답에 담을 선·묶음 종류 |
-| `limit` | 정수(1 이상) | `limitMax` | 줄 기억 수 상한. `limitMax`보다 크면 `limitMax`. 넘으면 최근에 고친 것부터 남기고 `truncated: true` |
+| `limit` | 정수(1 이상) | `limitMax` | 줄 기억 수 상한. `limitMax`보다 크면 `limitMax`. 넘으면 최근에 고친 것부터 남기고 `truncated: true`. `focus`는 오래됐어도 남긴다 |
 
 거르기(`kinds`·`states`·`scopes`·`tags`·기간)는 `focus`가 있을 때 주변을 따라가며 만난 기억에도 같이 적용한다. 걸러진 기억은 건너지 않는다.
 
@@ -73,10 +74,11 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | `UNSUPPORTED_MAJOR` | `major`가 지원 판이 아님 | `supportedMajors` |
 | `INVALID_ARGUMENT` | 칸의 형이 틀림 | `field` |
 | `NOT_FOUND` | 없는 `focus` | `field` |
+| `UNAVAILABLE`(1.1) | 기억 기록을 열거나 읽지 못함(잠금이 오래 걸림, 깨진 파일). 인자 탓이 아니므로 다시 부를 수 있다 | 없음 |
 
 ## oni가 정한 값
 
 | 값 | 정한 것 | 근거 |
 | --- | --- | --- |
-| `limitMax` | 1000(제안) | 2026-10-29 집 PC 기억 515개 전체가 본문 없이 약 263KB였다. 그리기 시간을 재고 고친다 |
+| `limitMax` | 1000(제안) | 2026-10-29 집 PC 기억 515개 전체 응답이 261KB, oni 안에서 13~15ms였다(태그 묶음을 빼면 197KB). 그리기 시간을 재고 고친다 |
 | `depthMax` | 3(제안) | 명시 연결이 아직 없어 재지 못했다. 연결이 쌓인 뒤 단계별 노드 수를 재고 고친다 |

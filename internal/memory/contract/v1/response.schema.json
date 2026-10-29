@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onidot.dev/schemas/orbit.memory/1/response.schema.json",
-  "title": "orbit.memory 1.0 응답",
-  "description": "oni가 내는 1.0 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
+  "title": "orbit.memory 1.1 응답",
+  "description": "oni가 내는 1.1 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
   "oneOf": [
     {"$ref": "#/$defs/memory_graph"},
     {"$ref": "#/$defs/error"}
@@ -118,7 +118,7 @@
           "additionalProperties": false,
           "required": ["code", "message"],
           "properties": {
-            "code": {"enum": ["UNSUPPORTED_MAJOR", "INVALID_ARGUMENT", "NOT_FOUND"]},
+            "code": {"enum": ["UNSUPPORTED_MAJOR", "INVALID_ARGUMENT", "NOT_FOUND", "UNAVAILABLE"], "description": "UNAVAILABLE은 1.1부터"},
             "message": {"type": "string"},
             "field": {"type": "string"},
             "supportedMajors": {"type": "array", "items": {"type": "integer", "minimum": 1}}

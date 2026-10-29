@@ -82,6 +82,25 @@ func TestProposals_터미널에서_승인(t *testing.T) {
 	}
 }
 
+func TestProposals_연결_제안의_근거와_결과(t *testing.T) {
+	home(t)
+	s := seed(t)
+	a, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "가", Source: memory.Source{Kind: "session"}})
+	b, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "나", Source: memory.Source{Kind: "session"}})
+	p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalLink, Title: "잇기", MemoryIDs: []string{a.ID, b.ID}, Payload: memory.Payload{Note: "같은 결정의 근거"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ := run(t, "", "proposals", "show", p.ID)
+	if !strings.Contains(out, "잇는 근거: 같은 결정의 근거") {
+		t.Fatalf("show: %s", out)
+	}
+	out, errOut, code := run(t, "", "proposals", "approve", p.ID)
+	if code != 0 || !strings.Contains(out, "이은 연결 l-") {
+		t.Fatalf("approve: %s %s", out, errOut)
+	}
+}
+
 func TestProposals_하나씩_검토(t *testing.T) {
 	home(t)
 	s := seed(t)

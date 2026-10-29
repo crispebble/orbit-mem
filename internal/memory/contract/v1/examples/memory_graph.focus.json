@@ -7,7 +7,7 @@
     "contract": {
       "name": "orbit.memory",
       "major": 1,
-      "minor": 0,
+      "minor": 1,
       "supportedMajors": [
         1
       ]

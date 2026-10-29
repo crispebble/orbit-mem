@@ -14,7 +14,7 @@ describe('어휘', () => {
     assert.deepEqual(Object.keys(memoryKindLabels), [...KINDS]);
     assert.deepEqual(Object.keys(memoryStateLabels), ['candidate', 'confirmed', 'stale', 'hidden']);
     assert.deepEqual(Object.keys(memorySourceLabels), ['quote', 'file', 'command', 'session', 'host_memory', 'legacy']);
-    assert.deepEqual(Object.keys(proposalKindLabels), ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'cleanup', 'harness']);
+    assert.deepEqual(Object.keys(proposalKindLabels), ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link', 'cleanup', 'harness']);
     assert.deepEqual(Object.keys(proposalApproveHints), Object.keys(proposalKindLabels));
   });
   it('승인 안내 문구가 Forma 0.9.x와 같다', () => {

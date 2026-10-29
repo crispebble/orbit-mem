@@ -26,7 +26,7 @@ export interface MemoryVersion {
 }
 
 /** Orbit 제안 종류. cleanup·harness는 0.8.0까지의 묶음 이름이며 그대로 받는다. */
-export type ProposalKind = 'confirm' | 'stale' | 'merge' | 'reclassify' | 'apply_file' | 'direction' | 'cleanup' | 'harness';
+export type ProposalKind = 'confirm' | 'stale' | 'merge' | 'reclassify' | 'apply_file' | 'direction' | 'link' | 'cleanup' | 'harness';
 
 /**
  * 부품이 그리는 기억 한 건. forma-ai의 MemoryRecord에서 Orbit 칸을 그대로 가져온 플러그인 자기 형식이다.
@@ -81,6 +81,7 @@ export const proposalKindLabels: Record<ProposalKind, string> = {
   reclassify: '종류 재분류',
   apply_file: '파일 반영',
   direction: '방향 제안',
+  link: '관련 기억 잇기',
   cleanup: '기억 정리·합치기',
   harness: '하네스 반영',
 };
@@ -93,6 +94,7 @@ export const proposalApproveHints: Record<ProposalKind, string> = {
   reclassify: '승인하면 기억의 종류를 바꿉니다.',
   apply_file: '승인하면 파일 변경만 만들어 둡니다. 커밋은 직접 합니다.',
   direction: '승인하면 결정 기억으로 남깁니다.',
+  link: '승인하면 두 기억을 잇습니다. 기억 내용은 바뀌지 않습니다.',
   cleanup: '승인하면 결정을 기록합니다.',
   harness: '승인하면 파일 변경만 만들어 둡니다. 커밋은 직접 합니다.',
 };

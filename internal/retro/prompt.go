@@ -21,7 +21,9 @@ const dailyPrompt = `너는 이 PC의 Orbit 하루 회고를 맡았다. 회고 i
      같은 내용의 기존 기억(규칙·결정·교훈)이 있으면 memoryId에 그 id를 쓴다. 없으면 비우고, 다시 쓸 만하면 memories에도 낸다.
    - 짚을 점(flags): 잘못 가는 방향, 반복된 실수. 없으면 비운다.
    - 제안(proposals): 낡은 기억 정리(stale), 겹치는 기억 합치기(merge), 옛 ISSUE·NOTE 재분류(reclassify, newKind),
-     확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에).
+     확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에),
+     서로 관련 있지만 합칠 것은 아닌 기존 기억 둘 잇기(link: memoryIds에 둘, note에 잇는 근거 한 줄).
+     같은 태그·같은 세션이라는 것만으로는 잇지 않는다(그건 그래프가 따로 보인다). 이미 이어진 기억은 memory_get의 links에 있다.
 3. retro_submit을 한 번만 부른다. 오류가 나면 고쳐서 다시 부른다.
 제출이 끝나면 한 줄로 결과만 말하고 끝낸다.`
 
@@ -35,6 +37,7 @@ const weeklyPrompt = `너는 이 PC의 Orbit 주간 회고를 맡았다. 회고 
    - 이번 주 지표를 본다. 반복 교정(넣었는데 어김이면 그 기억 문구나 지침·하네스를, 넣지 못함이면 회상 조건을 고칠 거리),
      빈 검색 질의, 대기가 오래된 제안이 있으면 그것을 근거로 고칠 제안(apply_file·merge·stale·direction)을 낸다.
    - 정리: 「오래 쓰지 않은 기억」은 낡음(stale), 「겹칠 수 있는 기억」 중 같은 말은 합치기(merge),
+     같은 말은 아니지만 서로 근거·보완이 되면 잇기(link: memoryIds 둘, note 근거 한 줄),
      서로 어긋나면 최신 출처 쪽을 남기는 낡음(stale, body에 어긋나는 점과 남길 기억 id).
      지우지 않는다. 그대로 둘 것은 제안하지 않는다.
    - 「사용 판정」: 어김이면 문구 고치기(edit: newTitle·newBody)나 반영(apply_file), 상관없음이 반복되면

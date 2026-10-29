@@ -59,7 +59,7 @@ func aiHost(t *testing.T, e workEnv) *mcp.ClientSession {
 }
 
 func readerHost(t *testing.T, e workEnv) *mcp.ClientSession {
-	return connectServer(t, NewReader(e.opts(), "test"))
+	return connectServer(t, NewReader(e.opts(), e.memDB(), "test"))
 }
 
 // seedWork fills work.db with a graph that touches most states.
@@ -137,7 +137,7 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 	return names
 }
 
-// 끝 기준: AI 호스트에는 work_list·work_get·work_title만, --reader에는 work_title이 없다.
+// 끝 기준: AI 호스트에는 work_list·work_get·work_title만, --reader에는 work_title이 없고 memory_graph가 있다.
 func TestWorkToolLists(t *testing.T) {
 	e := newWorkEnv(t)
 	ai := strings.Join(toolNames(t, aiHost(t, e)), ",")
@@ -149,7 +149,7 @@ func TestWorkToolLists(t *testing.T) {
 	if strings.Contains(ai, "work_sessions") || strings.Contains(ai, "work_changes") {
 		t.Errorf("AI 호스트에 읽는 쪽 도구가 섞였습니다: %s", ai)
 	}
-	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "work_changes,work_get,work_list,work_sessions" {
+	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "memory_graph,work_changes,work_get,work_list,work_sessions" {
 		t.Errorf("읽는 쪽 도구: %s", got)
 	}
 }

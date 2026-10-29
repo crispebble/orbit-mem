@@ -25,14 +25,17 @@ type WorkOptions struct {
 	Read    work.ReadOptions // 응답 없음 시간 등
 }
 
-const readerInstructions = `Orbit 작업 기록(orbit.work 1판)을 읽는다. work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
+const readerInstructions = `Orbit 기록을 읽는다. 작업 기록(orbit.work 1판)은 work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
+기억 그래프(orbit.memory 1판)는 memory_graph로 읽는다.
 응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id·seq·커서는 받은 그대로 돌려준다.`
 
-// NewReader is oni mcp --reader: the four read tools for readers such as
-// Studio. It has no memory tools and no work_title.
-func NewReader(wo WorkOptions, version string) *mcp.Server {
+// NewReader is oni mcp --reader: read tools for readers such as Studio — the
+// four work tools and memory_graph. It has no memory write tools and no
+// work_title. memDB is opened on the first memory_graph call.
+func NewReader(wo WorkOptions, memDB, version string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
 	addWorkTools(srv, newWorkTools(wo, true))
+	addMemoryGraphTool(srv, &memoryGraphTool{path: memDB})
 	return srv
 }
 
@@ -139,21 +142,36 @@ func invalid(field, msg string) *callError {
 	return &callError{Code: "INVALID_ARGUMENT", Message: msg, Field: field}
 }
 
-func contractHead() map[string]any {
-	return map[string]any{"name": contract.Name, "major": contract.Major, "minor": contract.Minor, "supportedMajors": contract.SupportedMajors}
+// contractInfo is the version head of one read contract (orbit.work, orbit.memory).
+type contractInfo struct {
+	Name         string
+	Major, Minor int
+	Supported    []int
+}
+
+var workContract = contractInfo{Name: contract.Name, Major: contract.Major, Minor: contract.Minor, Supported: contract.SupportedMajors}
+
+func (c contractInfo) head() map[string]any {
+	return map[string]any{"name": c.Name, "major": c.Major, "minor": c.Minor, "supportedMajors": c.Supported}
 }
 
 // handler checks the arguments against the contract input schema, then calls h.
 // Unknown arguments are ignored and named in ignoredArgs; a wrong type is
 // INVALID_ARGUMENT; an unsupported major is UNSUPPORTED_MAJOR.
 func (w *workTools) handler(name string, schema map[string]any, h func(context.Context, args) (any, error)) mcp.ToolHandler {
+	return contractHandler(workContract, schema, h)
+}
+
+// contractHandler is the handler of a contract tool: argument checks against the
+// input schema, the contract head on every result, contract errors.
+func contractHandler(c contractInfo, schema map[string]any, h func(context.Context, args) (any, error)) mcp.ToolHandler {
 	props, _ := schema["properties"].(map[string]any)
 	required, _ := schema["required"].([]any)
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var raw map[string]json.RawMessage
 		if len(req.Params.Arguments) > 0 && string(req.Params.Arguments) != "null" {
 			if err := json.Unmarshal(req.Params.Arguments, &raw); err != nil {
-				return errorResult(invalid("", "인자는 JSON 객체여야 합니다")), nil
+				return c.errorResult(invalid("", "인자는 JSON 객체여야 합니다")), nil
 			}
 		}
 		a := args{}
@@ -168,30 +186,30 @@ func (w *workTools) handler(name string, schema map[string]any, h func(context.C
 				continue // null은 넘기지 않은 것으로 본다
 			}
 			if err := checkValue(k, ps, v); err != nil {
-				return errorResult(err), nil
+				return c.errorResult(err), nil
 			}
 			a[k] = v
 		}
-		if a.has("major") && !supported(a.int("major")) {
-			return errorResult(&callError{Code: "UNSUPPORTED_MAJOR", Message: fmt.Sprintf("orbit.work %d판은 지원하지 않습니다.", a.int("major")), Supported: contract.SupportedMajors}), nil
+		if a.has("major") && !c.supports(a.int("major")) {
+			return c.errorResult(&callError{Code: "UNSUPPORTED_MAJOR", Message: fmt.Sprintf("%s %d판은 지원하지 않습니다.", c.Name, a.int("major")), Supported: c.Supported}), nil
 		}
 		for _, r := range required {
 			if k, _ := r.(string); !a.has(k) {
-				return errorResult(invalid(k, k+"가 필요합니다.")), nil
+				return c.errorResult(invalid(k, k+"가 필요합니다.")), nil
 			}
 		}
 		out, err := h(ctx, a)
 		if err != nil {
 			var ce *callError
 			if errors.As(err, &ce) {
-				return errorResult(ce), nil
+				return c.errorResult(ce), nil
 			}
-			return errorResult(&callError{Code: "INVALID_ARGUMENT", Message: err.Error()}), nil
+			return c.errorResult(&callError{Code: "INVALID_ARGUMENT", Message: err.Error()}), nil
 		}
 		doc := map[string]any{}
 		b, _ := json.Marshal(out)
 		_ = json.Unmarshal(b, &doc)
-		doc["contract"] = contractHead()
+		doc["contract"] = c.head()
 		if len(ignored) > 0 {
 			sort.Strings(ignored)
 			doc["ignoredArgs"] = ignored
@@ -201,8 +219,8 @@ func (w *workTools) handler(name string, schema map[string]any, h func(context.C
 	}
 }
 
-func supported(major int) bool {
-	for _, m := range contract.SupportedMajors {
+func (c contractInfo) supports(major int) bool {
+	for _, m := range c.Supported {
 		if m == major {
 			return true
 		}
@@ -210,8 +228,8 @@ func supported(major int) bool {
 	return false
 }
 
-func errorResult(e *callError) *mcp.CallToolResult {
-	body, _ := json.Marshal(map[string]any{"contract": contractHead(), "error": e})
+func (c contractInfo) errorResult(e *callError) *mcp.CallToolResult {
+	body, _ := json.Marshal(map[string]any{"contract": c.head(), "error": e})
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: e.Error()}}, StructuredContent: json.RawMessage(body)}
 }
 

@@ -20,8 +20,9 @@ type Options struct {
 	Work         *WorkOptions // 있으면 작업 도구(work_list·work_get·work_title)를 연다
 }
 
-const instructions = `Orbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다.
+const instructions = `Orbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다.
+저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.`
 
 const workInstructions = `
@@ -62,11 +63,11 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기, 관련 기억 잇기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기는 고쳐서 승인할 수 없다). 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID}
 		}))
@@ -229,6 +230,58 @@ type SaveIn struct {
 	Scope   string   `json:"scope,omitempty" jsonschema:"global(기본) 또는 project(이 프로젝트에만)"`
 	Project string   `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
 	Source  SourceIn `json:"source"`
+	Links   []LinkIn `json:"links,omitempty" jsonschema:"관련 있는 기존 기억과 잇는다(같은 내용이면 잇지 말고 그 기억을 고친다)"`
+}
+
+// LinkIn links to another memory.
+type LinkIn struct {
+	ID   string `json:"id" jsonschema:"이을 기억 id"`
+	Note string `json:"note,omitempty" jsonschema:"왜 관련 있는지 한 줄"`
+}
+
+// UnlinkIn removes a link to another memory.
+type UnlinkIn struct {
+	ID     string `json:"id" jsonschema:"연결을 뗄 상대 기억 id"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// checkLinks makes sure every target exists and is not self, before anything is written.
+func (h handlers) checkLinks(self string, ids ...string) error {
+	for _, id := range ids {
+		if id == self {
+			return fmt.Errorf("%w: 기억을 자기 자신과 이을 수 없습니다", memory.ErrInvalid)
+		}
+		if _, err := h.s.Get(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func linkIDs(in []LinkIn) []string {
+	ids := make([]string, len(in))
+	for i, l := range in {
+		ids[i] = l.ID
+	}
+	return ids
+}
+
+// applyLinks links and unlinks for memory id and returns it read again (with its links).
+func (h handlers) applyLinks(id string, link []LinkIn, unlink []UnlinkIn) (memory.Memory, error) {
+	for _, l := range link {
+		if l.ID == id {
+			continue // 같은 제목 기억에 합쳐져 자기 자신을 가리키게 된 연결
+		}
+		if _, _, err := h.s.Link(memory.LinkInput{From: id, To: l.ID, Note: l.Note, Origin: memory.LinkOriginAI}); err != nil {
+			return memory.Memory{}, err
+		}
+	}
+	for _, u := range unlink {
+		if _, err := h.s.Unlink(id, u.ID, memory.LinkOriginAI, u.Reason); err != nil {
+			return memory.Memory{}, err
+		}
+	}
+	return h.s.Get(id)
 }
 
 // MemoryOut is a single memory result.
@@ -267,32 +320,64 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(fmt.Errorf("quote 출처에는 사용자 말 그대로(excerpt)가 필요합니다"))
 		return r, MemoryOut{}, nil
 	}
+	if err := h.checkLinks("", linkIDs(in.Links)...); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
 	m, err := h.s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}})
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
+	if len(in.Links) > 0 {
+		if m, err = h.applyLinks(m.ID, in.Links, nil); err != nil {
+			r, _ := toolError(err)
+			return r, MemoryOut{}, nil
+		}
+	}
 	return nil, MemoryOut{Memory: m}, nil
 }
 
 // UpdateIn is memory_update's input.
 type UpdateIn struct {
-	ID              string    `json:"id"`
-	ExpectedVersion int       `json:"expectedVersion,omitempty" jsonschema:"읽은 판본. 주면 그사이 바뀌었을 때 거절한다"`
-	Action          string    `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore"`
-	Kind            *string   `json:"kind,omitempty"`
-	Title           *string   `json:"title,omitempty"`
-	Body            *string   `json:"body,omitempty"`
-	Tags            *[]string `json:"tags,omitempty"`
-	Scope           string    `json:"scope,omitempty" jsonschema:"global 또는 project로 범위를 옮긴다"`
-	SupersededBy    string    `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
-	Reason          string    `json:"reason,omitempty"`
+	ID              string     `json:"id"`
+	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 판본. 주면 그사이 바뀌었을 때 거절한다"`
+	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore"`
+	Kind            *string    `json:"kind,omitempty"`
+	Title           *string    `json:"title,omitempty"`
+	Body            *string    `json:"body,omitempty"`
+	Tags            *[]string  `json:"tags,omitempty"`
+	Scope           string     `json:"scope,omitempty" jsonschema:"global 또는 project로 범위를 옮긴다"`
+	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
+	Reason          string     `json:"reason,omitempty"`
+	Link            []LinkIn   `json:"link,omitempty" jsonschema:"관련 있는 기억과 잇는다. 연결만 바꾸면 판은 그대로다"`
+	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다(기록은 남는다)"`
+}
+
+// edits says whether the update changes the memory itself (not only its links).
+func (in UpdateIn) edits() bool {
+	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Scope != "" || in.SupersededBy != ""
 }
 
 func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn) (*mcp.CallToolResult, MemoryOut, error) {
 	var m memory.Memory
 	var err error
+	if err := h.checkLinks(in.ID, linkIDs(in.Link)...); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	if !in.edits() && (len(in.Link) > 0 || len(in.Unlink) > 0) {
+		if _, err := h.s.Get(in.ID); err != nil {
+			r, _ := toolError(err)
+			return r, MemoryOut{}, nil
+		}
+		if m, err = h.applyLinks(in.ID, in.Link, in.Unlink); err != nil {
+			r, _ := toolError(err)
+			return r, MemoryOut{}, nil
+		}
+		return nil, MemoryOut{Memory: m}, nil
+	}
 	if in.ExpectedVersion != 0 {
 		cur, gerr := h.s.Get(in.ID)
 		if gerr == nil && cur.Version != in.ExpectedVersion {
@@ -324,6 +409,9 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		m, err = h.s.Supersede(in.ID, in.SupersededBy, in.Reason)
 	default:
 		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore입니다")
+	}
+	if err == nil && (len(in.Link) > 0 || len(in.Unlink) > 0) {
+		m, err = h.applyLinks(in.ID, in.Link, in.Unlink)
 	}
 	if err != nil {
 		r, _ := toolError(err)

@@ -70,6 +70,8 @@ export interface OniPayload {
   baseHash?: string;
   content?: string;
   scope?: string;
+  /** link: 잇는 근거 */
+  note?: string;
 }
 
 export interface OniProposal {
@@ -99,7 +101,7 @@ const sourceLabels: Record<MemorySourceKind, string> = {
 
 const proposalKindLabels: Record<string, string> = {
   confirm: '후보 확정', stale: '낡은 기억 정리', merge: '기억 합치기', reclassify: '종류 다시 분류', apply_file: '파일 반영', direction: '방향 제안',
-  edit: '기억 고치기', revert: '변경 되돌리기',
+  edit: '기억 고치기', revert: '변경 되돌리기', link: '관련 기억 잇기',
 };
 
 const actionLabels: Record<string, string> = {
@@ -210,7 +212,7 @@ export function toProposalRow(p: OniProposal, now: Date = new Date()): ProposalR
   return {id: p.id, title: p.title, kind: p.kind, kindLabel: proposalKindLabel(p.kind), date: formatDate(p.createdAt, now), status: p.status, pending: p.status === 'pending'};
 }
 
-const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction'];
+const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link'];
 
 /**
  * Forma 0.9.0에 없는 Orbit 종류: 기억 고치기·변경 되돌리기는 가장 가까운 「기억 정리」로 그리고
@@ -262,6 +264,10 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
     if (p.body) out.explanation = p.body;
   } else if (p.kind === 'direction') {
     out.diff = {path: `새 결정 기억 · ${p.title}`, lines: addLines(p.body ?? ''), text: p.body ?? ''};
+  } else if (p.kind === 'link') {
+    // 잇기는 기억 내용을 바꾸지 않아 고쳐서 승인이 없다(oni가 거부한다). 두 기억은 근거에 보인다.
+    const why = [p.body, payload.note && `잇는 근거: ${payload.note}`].filter(Boolean).join('\n\n');
+    if (why) out.explanation = why;
   } else {
     if (p.body) out.explanation = p.body;
     // 확정·재분류는 승인할 때 받은 제목·본문을 대상 기억(하나일 때)에 쓴다. 고칠 칸에는 그 기억의 제목·본문을 채운다.
