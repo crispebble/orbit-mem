@@ -1,19 +1,15 @@
 // memory_graph 응답 → Forma 관계망 그래프(NetworkGraph·NetworkPanel) 입력. DOM·React를 쓰지 않는 순수 함수다.
 // 규칙은 Atlas 「설계 · Orbit 2차 — 기억 그래프」 「Studio 보기」(rev 3): 클러스터는 대표 태그(덮기 순서 7개 + 그 밖),
 // 옛 Knowledge 표식 태그는 클러스터·같은 태그 선에서 뺀다, 종류는 모양이 아니라 설명(말풍선)으로, 색은 클러스터.
+// 부품 타입은 Studio 플러그인 API `/graph`(forma-ui `/graph`를 다시 내보냄)에서 받는다. 플러그인은 Forma를 직접 가져오지 않는다.
+import type {NetworkCluster, NetworkEdge, NetworkNode, NetworkOverlay, NetworkRelation} from '@onidot-labs/studio-plugin/graph';
 import {memoryKindLabels, memoryStateLabels, type MemoryKind, type MemoryState} from '../parts/vocabulary.ts';
 import type {GraphEdge, GraphGroup, GraphNode, MemoryGraph} from './contract.ts';
 
-/* ---------- 부품 입력(Forma 0.10.4 forma-ui `/graph`의 같은 이름 타입과 같은 모양) ---------- */
-// 플러그인은 Forma를 직접 가져오지 않는다. Studio 플러그인 API가 그래프 부품을 다시 내보내면 그 타입으로 바꾼다.
-// 겹쳐보기 icon만 다르다(여기는 이름이고, 화면이 아이콘으로 바꾼다).
-export interface NetworkNode { id: string; label: string; cluster: string; weight?: number; description?: string; muted?: boolean }
-export interface NetworkEdge { id: string; from: string; to: string; relation: string; arrow?: boolean }
-export interface NetworkCluster { id: string; label: string; tone?: string }
-export type EdgeLine = 'solid' | 'dashed' | 'dotted';
-export interface NetworkRelation { id: string; label: string; tone: 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'violet'; line?: EdgeLine; arrow?: boolean; emphasis?: number }
+export type {NetworkCluster, NetworkEdge, NetworkNode, NetworkRelation};
+/** 겹쳐보기 icon은 이름이다. 화면이 아이콘으로 바꿔 부품에 넘긴다 */
 export type OverlayIcon = 'chain' | 'time' | 'retro' | 'session';
-export interface MemoryOverlay { id: OverlayIcon; label: string; icon: OverlayIcon; description: string; count: number; paths: string[][]; highlight?: string[]; numbered?: boolean }
+export interface MemoryOverlay extends NetworkOverlay { id: OverlayIcon; icon: OverlayIcon; description: string; count: number; paths: string[][]; highlight?: string[] }
 
 export interface MemoryNetwork {
   nodes: NetworkNode[];
