@@ -1,7 +1,7 @@
 // 제안 상세: proposal 탭과 받은 일 상세가 함께 쓴다.
 import {useEffect, useMemo, useState} from 'react';
 import type {PluginContext} from '@onidot-labs/studio-plugin';
-import {Button, EmptyState, Label} from '@onidot-labs/studio-plugin/ui';
+import {Button, StateView, Label} from '@onidot-labs/studio-plugin/ui';
 import {ProposalDetail} from './parts/index.ts';
 import {errorMessage} from './oni.ts';
 import {formatDate, proposalStatusLabels, toProposal, type OniMemory} from './model.ts';
@@ -24,13 +24,13 @@ export function ProposalPane({ctx, proposalId}: {ctx: PluginContext; proposalId:
 
   const view = useMemo(() => (proposal ? toProposal(proposal, related) : undefined), [proposal, related]);
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
   if (!proposal || !view) {
     if (state.status === 'error') {
-      return <EmptyState title="Orbit에 연결하지 못했습니다" description={state.error}><Button variant="secondary" size="sm" onClick={() => void store.refresh()}>다시 시도</Button></EmptyState>;
+      return <StateView variant="error" title="Orbit에 연결하지 못했습니다" description={state.error} onRetry={() => void store.refresh()} />;
     }
-    if (state.status === 'idle' || state.status === 'loading') return <EmptyState title="제안을 불러오는 중입니다" />;
-    return <EmptyState title="제안을 찾지 못했습니다" description="이미 정리됐거나 oni에 없는 제안입니다." />;
+    if (state.status === 'idle' || state.status === 'loading') return <StateView variant="loading" title="제안을 불러오는 중입니다" />;
+    return <StateView title="제안을 찾지 못했습니다" description="이미 정리됐거나 oni에 없는 제안입니다." />;
   }
 
   const pending = proposal.status === 'pending';

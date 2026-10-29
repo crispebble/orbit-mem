@@ -1,7 +1,8 @@
 // 기억 목록: 찾기·종류·범위·상태로 거르고 한 건을 고른다.
 import {useState} from 'react';
 import {Search} from 'lucide-react';
-import {AvailabilityNotice, EmptyState, Frame, type Availability} from './shared.tsx';
+import {StateView} from '@onidot-labs/studio-plugin/ui';
+import {AvailabilityNotice, Frame, type Availability} from './shared.tsx';
 import {KindTile, Select, StateMark} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
 import {GLOBAL_SCOPE, KINDS, kindOf, memoryKindLabels, scopeOf, stateOf, type MemoryKind, type OrbitMemory} from './vocabulary.ts';
@@ -130,7 +131,7 @@ export function MemoryList({
         </div>
       )}
       {rows.length === 0 ? (
-        availability === 'ready' ? <EmptyState title={emptyText ?? (server || visible.length > 0 ? '조건에 맞는 기억이 없습니다.' : '저장된 기억이 없습니다.')} /> : null
+        availability === 'ready' ? <StateView title={emptyText ?? (server || visible.length > 0 ? '조건에 맞는 기억이 없습니다.' : '저장된 기억이 없습니다.')} compact headingLevel={3} /> : null
       ) : (
         <ul className="orbit-list orbit-mem-rows" aria-label="기억">
           {rows.map(memory => {

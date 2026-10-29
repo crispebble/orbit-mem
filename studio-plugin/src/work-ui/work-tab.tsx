@@ -3,7 +3,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {AgentOrchestrator, FlowGraph, type FlowGraphView} from '@onidot-labs/studio-plugin/ai';
-import {Badge, Breadcrumbs, Button, EmptyState, Progress, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {Badge, Breadcrumbs, Button, StateView, Progress, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {errorMessage} from '../oni.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {progressOf, workStateView} from '../work/display.ts';
@@ -74,12 +74,12 @@ export function WorkTab({ctx, tab}: TabProps) {
   const nav = useMemo(() => workNav(ctx, select), [ctx, select]);
   const graph = useMemo(() => (work ? toFlowGraph(work, now) : undefined), [work, now]);
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
   if (state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
-  if (missing) return <EmptyState title="작업을 찾지 못했습니다" description="Orbit 기록에서 지워졌거나 다른 PC의 작업입니다." />;
+  if (missing) return <StateView title="작업을 찾지 못했습니다" description="Orbit 기록에서 지워졌거나 다른 PC의 작업입니다." />;
   if (!work) {
-    if (error) return <EmptyState title="작업을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;
-    return <EmptyState title="작업을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title="작업을 읽지 못했습니다" description={error} onRetry={reload} />;
+    return <StateView variant="loading" title="작업을 불러오는 중입니다" />;
   }
 
   const summary = summaryOf(work);
@@ -153,13 +153,13 @@ export function WaitingStepDetail({ctx, workId, stepId}: {ctx: PluginContext; wo
   const now = useNow();
   const nav = useMemo(() => workNav(ctx, sid => ctx.tabs.open({type: 'work', id: workId, title: work?.title ?? '작업', params: {id: workId, step: sid}})), [ctx, workId, work?.title]);
   if (store && state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
-  if (missing) return <EmptyState title="작업을 찾지 못했습니다" />;
+  if (missing) return <StateView title="작업을 찾지 못했습니다" />;
   if (!work) {
-    if (error) return <EmptyState title="작업을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;
-    return <EmptyState title="작업을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title="작업을 읽지 못했습니다" description={error} onRetry={reload} />;
+    return <StateView variant="loading" title="작업을 불러오는 중입니다" />;
   }
   const step = work.steps.find(s => s.id === stepId);
-  if (!step) return <EmptyState title="단계를 찾지 못했습니다" />;
+  if (!step) return <StateView title="단계를 찾지 못했습니다" />;
   return (
     <div className="orbit-pane">
       <div className="orbit-row">

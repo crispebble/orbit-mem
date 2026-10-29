@@ -1,7 +1,7 @@
 // 사이드바 「제안」 보기
 import {useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Button, EmptyState, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {Button, StateView, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {toProposalRow} from './model.ts';
 import {useOrbit} from './runtime.ts';
 
@@ -12,14 +12,14 @@ export function ProposalsView({ctx}: ViewProps) {
   const [filter, setFilter] = useState<Filter>('pending');
   const [selected, setSelected] = useState<string>();
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" compact headingLevel={3} />;
 
   const retry = <Button variant="secondary" size="sm" onClick={() => void store.refresh()}>다시 시도</Button>;
   if (state.status === 'error' && state.proposals.length === 0) {
-    return <div className="orbit-side"><EmptyState title="Orbit에 연결하지 못했습니다" description={state.error}>{retry}</EmptyState></div>;
+    return <div className="orbit-side"><StateView variant="error" title="Orbit에 연결하지 못했습니다" description={state.error} onRetry={() => void store.refresh()} compact headingLevel={3} /></div>;
   }
   if (state.status === 'idle' || (state.status === 'loading' && state.proposals.length === 0)) {
-    return <div className="orbit-side"><EmptyState title="제안을 불러오는 중입니다" /></div>;
+    return <div className="orbit-side"><StateView variant="loading" title="제안을 불러오는 중입니다" compact headingLevel={3} /></div>;
   }
 
   const now = new Date();
@@ -42,7 +42,7 @@ export function ProposalsView({ctx}: ViewProps) {
         </div>
       )}
       {rows.length === 0 ? (
-        <EmptyState title={filter === 'pending' ? '대기 중인 제안이 없습니다' : '제안이 없습니다'} description="회고가 새 제안을 만들면 여기에 나타납니다." />
+        <StateView title={filter === 'pending' ? '대기 중인 제안이 없습니다' : '제안이 없습니다'} description="회고가 새 제안을 만들면 여기에 나타납니다." compact headingLevel={3} />
       ) : (
         <div className="orbit-side-list" role="list" aria-label="제안 목록">
           {rows.map(r => (

@@ -1,4 +1,4 @@
-// 부품이 함께 쓰는 틀·빈 상태·알림·동작 훅. forma-ai의 shared.tsx에서 Orbit 부품이 쓰는 것만 옮겨 왔다.
+// 부품이 함께 쓰는 틀·알림·동작 훅. 빈 상태는 Forma StateView를 쓴다. forma-ai의 shared.tsx에서 Orbit 부품이 쓰는 것만 옮겨 왔다.
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {createActionGate} from './action.ts';
 
@@ -10,15 +10,6 @@ export function Frame({children, label, surface = 'outlined', className = ''}: {
     <section className={`orbit-part orbit-surface ${className}`} data-surface={surface} aria-label={label}>
       {children}
     </section>
-  );
-}
-
-export function EmptyState({title = '표시할 항목이 없습니다.', detail}: {title?: string; detail?: string}) {
-  return (
-    <div className="orbit-empty">
-      <span>{title}</span>
-      {detail && <p className="orbit-meta">{detail}</p>}
-    </div>
   );
 }
 

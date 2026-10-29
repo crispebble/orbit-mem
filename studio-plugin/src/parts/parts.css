@@ -207,7 +207,6 @@
 .orbit-button:disabled{opacity:.48;cursor:not-allowed}
 .orbit-input{width:100%;min-width:0;min-height:var(--forma-control-height);border:1px solid var(--ai-border);border-radius:8px;padding:5px 10px;background:var(--ai-bg);color:var(--forma-text);font-size:var(--forma-font-size);line-height:20px}
 textarea.orbit-input{resize:vertical;min-height:88px;line-height:1.55}
-.orbit-empty{padding:24px 16px;text-align:center;color:var(--forma-muted);font-size:var(--forma-font-size)}
 .orbit-notice{margin:0;padding:8px 12px;font-size:var(--forma-font-small);color:var(--forma-muted);background:var(--forma-surface)}
 .orbit-error{margin:0;padding:8px 12px;color:var(--forma-danger);font-size:var(--forma-font-small);overflow-wrap:anywhere}
 .orbit-part :is(button,input,textarea,select,a,summary,[tabindex]):focus{outline:none}
