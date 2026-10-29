@@ -43,7 +43,7 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | `tags` | 문자열 목록 | 없음 | 이 태그 중 하나라도 가진 기억만 |
 | `updatedFrom`, `updatedTo` | RFC 3339 시각 | 없음 | 마지막으로 고친 때가 이 사이인 기억만(양 끝 포함) |
 | `relations` | `link`·`supersede`·`session`·`file`·`tag` 목록 | 모두 | 응답에 담을 선·묶음 종류 |
-| `limit` | 정수(1 이상) | `limitMax` | 줄 기억 수 상한. `limitMax`보다 크면 `limitMax`. 넘으면 최근에 고친 것부터 남기고 `truncated: true` |
+| `limit` | 정수(1 이상) | `limitMax` | 줄 기억 수 상한. `limitMax`보다 크면 `limitMax`. 넘으면 최근에 고친 것부터 남기고 `truncated: true`. `focus`는 오래됐어도 남긴다 |
 
 거르기(`kinds`·`states`·`scopes`·`tags`·기간)는 `focus`가 있을 때 주변을 따라가며 만난 기억에도 같이 적용한다. 걸러진 기억은 건너지 않는다.
 
@@ -78,5 +78,5 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 
 | 값 | 정한 것 | 근거 |
 | --- | --- | --- |
-| `limitMax` | 1000(제안) | 2026-10-29 집 PC 기억 515개 전체가 본문 없이 약 263KB였다. 그리기 시간을 재고 고친다 |
+| `limitMax` | 1000(제안) | 2026-10-29 집 PC 기억 515개 전체 응답이 261KB, oni 안에서 13~15ms였다(태그 묶음을 빼면 197KB). 그리기 시간을 재고 고친다 |
 | `depthMax` | 3(제안) | 명시 연결이 아직 없어 재지 못했다. 연결이 쌓인 뒤 단계별 노드 수를 재고 고친다 |

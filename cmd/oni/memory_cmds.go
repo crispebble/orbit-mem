@@ -47,7 +47,7 @@ func sessionProject() project.Project {
 func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
 	retroID := fs.String("retro", "", "회고 id(회고 실행 전용 도구만 연다)")
-	reader := fs.Bool("reader", false, "읽는 쪽(Studio 등) 전용: 작업 도구 넷(work_list·work_get·work_sessions·work_changes)만 연다")
+	reader := fs.Bool("reader", false, "읽는 쪽(Studio 등) 전용: 작업 도구 넷(work_list·work_get·work_sessions·work_changes)과 memory_graph만 연다")
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func cmdMCP(a *app, args []string) error {
 	if *reader {
 		ctx, cancel := signalContext()
 		defer cancel()
-		return mcpserver.NewReader(*wo, version.Version).Run(ctx, &mcp.StdioTransport{})
+		return mcpserver.NewReader(*wo, paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
 	}
 	if !cfg.WorkOn() {
 		wo = nil
