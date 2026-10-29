@@ -1,0 +1,22 @@
+{
+  "tool": "memory_graph",
+  "args": {
+    "focus": "m-ffffffffffff"
+  },
+  "isError": true,
+  "result": {
+    "contract": {
+      "name": "orbit.memory",
+      "major": 1,
+      "minor": 1,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "기억 m-ffffffffffff가 없습니다.",
+      "field": "focus"
+    }
+  }
+}

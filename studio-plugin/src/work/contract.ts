@@ -74,7 +74,7 @@ export function checkContract(out: unknown, tool: string): ContractInfo {
 }
 
 /** 오류 응답이면 던진다. 아니면 그대로 */
-function throwIfError(out: unknown, tool: string): void {
+export function throwIfError(out: unknown, tool: string): void {
   if (!isObj(out) || !isObj(out.error)) return;
   const e = out.error;
   throw new WorkToolError(

@@ -1,0 +1,19 @@
+{
+  "tool": "memory_graph",
+  "args": {},
+  "isError": true,
+  "result": {
+    "contract": {
+      "name": "orbit.memory",
+      "major": 1,
+      "minor": 1,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "error": {
+      "code": "UNAVAILABLE",
+      "message": "기억 기록을 읽지 못했습니다: database is locked"
+    }
+  }
+}

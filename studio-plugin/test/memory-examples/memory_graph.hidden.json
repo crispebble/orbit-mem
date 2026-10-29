@@ -1,0 +1,83 @@
+{
+  "tool": "memory_graph",
+  "args": {
+    "focus": "m-3d4e5f607182",
+    "depth": 2,
+    "via": [
+      "link",
+      "tag"
+    ],
+    "states": [
+      "candidate",
+      "confirmed",
+      "stale",
+      "hidden"
+    ]
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.memory",
+      "major": 1,
+      "minor": 1,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "focus": "m-3d4e5f607182",
+    "nodes": [
+      {
+        "id": "m-3d4e5f607182",
+        "kind": "fact",
+        "state": "confirmed",
+        "scope": "global",
+        "title": "Studio는 Forma를 한 벌 싣고 플러그인에 다시 내보낸다",
+        "tags": [
+          "studio",
+          "forma"
+        ],
+        "createdAt": "2026-10-25T02:00:00.000Z",
+        "updatedAt": "2026-10-28T05:00:00.000Z"
+      },
+      {
+        "id": "m-8293a4b5c6d7",
+        "kind": "fact",
+        "state": "hidden",
+        "scope": "global",
+        "title": "옛 Studio는 Forma를 플러그인마다 따로 실었다",
+        "tags": [
+          "studio"
+        ],
+        "createdAt": "2026-10-12T01:00:00.000Z",
+        "updatedAt": "2026-10-20T01:00:00.000Z"
+      }
+    ],
+    "edges": [
+      {
+        "id": "l-7c6d5e4f3021",
+        "kind": "link",
+        "relation": "related",
+        "from": "m-3d4e5f607182",
+        "to": "m-8293a4b5c6d7",
+        "directed": false,
+        "note": "바뀌기 전 방식",
+        "origin": "user",
+        "at": "2026-10-29T09:05:00.000Z"
+      }
+    ],
+    "groups": [
+      {
+        "kind": "tag",
+        "key": "studio",
+        "label": "studio",
+        "members": [
+          "m-3d4e5f607182",
+          "m-8293a4b5c6d7"
+        ]
+      }
+    ],
+    "total": 2,
+    "truncated": false,
+    "limitMax": 1000,
+    "depthMax": 3
+  }
+}
