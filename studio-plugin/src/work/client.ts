@@ -90,4 +90,5 @@ export async function workChanges(ctx: WorkCtx, p: ChangesParams, options?: Call
   return parseChanges(await call(ctx, 'work_changes', args, options));
 }
 
-export {WorkPaused, WorkToolError};
+/** 읽는 쪽 연결의 다른 계약 도구(orbit.memory memory_graph)도 같은 경계로 부른다 */
+export {call as readerCall, WorkPaused, WorkToolError};

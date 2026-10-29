@@ -30,3 +30,25 @@
   margin: 0;
   font-size: var(--forma-font-small);
 }
+/* 기억 그래프 탭: 탭 높이를 그래프가 모두 쓴다 */
+.orbit-graph {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.orbit-graph > * {
+  flex: 1;
+  min-height: 0;
+}
+.orbit-graph-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--forma-space-3);
+}
+.orbit-graph-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

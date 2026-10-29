@@ -4,6 +4,8 @@ import './index.css';
 import './parts/parts.css';
 import './work-ui/work.css';
 import {createInboxParts} from './inbox-parts.ts';
+import {MemoryGraphTab} from './memory-graph/graph-tab.tsx';
+import {openMemoryGraph} from './memory-graph/open.ts';
 import {MemoriesView} from './memories-view.tsx';
 import {MemoryPane} from './memory-pane.tsx';
 import {ProposalPane} from './proposal-pane.tsx';
@@ -72,10 +74,12 @@ export default definePlugin({
     memory: MemoryPane,
     work: WorkTab,
     session: SessionTab,
+    'memory-graph': MemoryGraphTab,
   },
   inboxDetail: OrbitInboxDetail,
   commands: {
     'orbit.find': ctx => ctx.app.show('orbit', 'memories'),
+    'orbit.memory-graph': ctx => openMemoryGraph(ctx),
     'orbit.proposals': ctx => ctx.app.show('orbit', 'proposals'),
     'orbit.works': ctx => ctx.app.show('orbit', 'works'),
     'orbit.sessions': ctx => ctx.app.show('orbit', 'sessions'),

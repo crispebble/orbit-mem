@@ -10,9 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@onidot-labs/forma-ai": "0.10.2",
-    "@onidot-labs/forma-ui": "0.10.2",
-    "@onidot-labs/studio-plugin": "0.10.0",
+    "@onidot-labs/forma-ai": "0.10.4",
+    "@onidot-labs/forma-ui": "0.10.4",
+    "@onidot-labs/studio-plugin": "0.12.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
