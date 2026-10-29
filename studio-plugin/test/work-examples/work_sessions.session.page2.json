@@ -1,0 +1,161 @@
+{
+  "tool": "work_sessions",
+  "args": {
+    "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+    "limit": 20,
+    "cursor": "eyJrIjoiZSIsImQiOiI5YzQxZTdhMiIsInMiOjEyODcsInAiOjExMjAsImkiOiJiNzFkMGUzYy0yYTk0LTRmNmItOGUxNS1jMGQzYTlmMjdlNDgifQ"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUH",
+    "session": {
+      "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+      "host": "claude",
+      "surface": "desktop",
+      "cwd": "/Users/dev/repo/orbit",
+      "repo": "/Users/dev/repo/orbit",
+      "branch": "main",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "state": "ended",
+      "endReason": "session_end",
+      "endDetail": "prompt_input_exit",
+      "startedAt": "2026-10-28T03:00:00.000Z",
+      "lastSeenAt": "2026-10-28T03:40:00.000Z",
+      "endedAt": "2026-10-28T03:40:00.000Z",
+      "openWorkIds": [
+        "w-5b0e2d7c11aa"
+      ],
+      "activeStepIds": []
+    },
+    "events": [
+      {
+        "seq": "nEHnogAAAAAAAARr",
+        "at": "2026-10-28T03:08:12.000Z",
+        "kind": "evidence.added",
+        "runId": "r-33d4e5f6a7b8",
+        "summary": "시험 명령 성공: npm test"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARv",
+        "at": "2026-10-28T03:10:00.000Z",
+        "kind": "run.ended",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-31a2b3c4d5e6",
+        "runId": "r-31a2b3c4d5e6",
+        "summary": "claude 하위 세션 끝"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARw",
+        "at": "2026-10-28T03:10:05.000Z",
+        "kind": "step.changed",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-31a2b3c4d5e6",
+        "summary": "계약 예시 검사 맡기기: 끝남"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARx",
+        "at": "2026-10-28T03:10:10.000Z",
+        "kind": "step.changed",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "summary": "Studio 읽기 시험 정리: 진행"
+      },
+      {
+        "seq": "nEHnogAAAAAAAAR0",
+        "at": "2026-10-28T03:10:20.000Z",
+        "kind": "run.started",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "runId": "r-32b3c4d5e6f7",
+        "summary": "orbit:worker 시작(백그라운드)"
+      },
+      {
+        "seq": "nEHnogAAAAAAAAR-",
+        "at": "2026-10-28T03:15:00.000Z",
+        "kind": "block.opened",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "summary": "사용자 응답 대기: AskUserQuestion"
+      },
+      {
+        "seq": "nEHnogAAAAAAAAR_",
+        "at": "2026-10-28T03:16:30.000Z",
+        "kind": "block.cleared",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "summary": "사용자 응답 대기 풀림"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASD",
+        "at": "2026-10-28T03:20:00.000Z",
+        "kind": "step.changed",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-33c4d5e6f708",
+        "summary": "결과 보고: 진행"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASG",
+        "at": "2026-10-28T03:30:00.000Z",
+        "kind": "evidence.added",
+        "summary": "커밋: test: Read the work examples"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASI",
+        "at": "2026-10-28T03:31:02.000Z",
+        "kind": "run.ended",
+        "runId": "r-33d4e5f6a7b8",
+        "summary": "orbit:explorer 끝",
+        "ref": {
+          "agentTranscript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48/subagents/agent-a4f6b8d0e2c35.jsonl"
+        }
+      },
+      {
+        "seq": "nEHnogAAAAAAAASS",
+        "at": "2026-10-28T03:35:00.000Z",
+        "kind": "turn.ended"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASc",
+        "at": "2026-10-28T03:40:00.000Z",
+        "kind": "session.ended",
+        "summary": "세션 끝(prompt_input_exit)"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASd",
+        "at": "2026-10-28T03:40:00.000Z",
+        "kind": "run.ended",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "runId": "r-32b3c4d5e6f7",
+        "summary": "orbit:worker 잃음: 세션이 끝났습니다"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASe",
+        "at": "2026-10-28T03:40:00.000Z",
+        "kind": "block.opened",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-32b3c4d5e6f7",
+        "summary": "막힘: 맡긴 실행 잃음"
+      },
+      {
+        "seq": "nEHnogAAAAAAAASf",
+        "at": "2026-10-28T03:40:00.000Z",
+        "kind": "block.opened",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-33c4d5e6f708",
+        "summary": "막힘: 중단"
+      }
+    ],
+    "limitMax": 200
+  }
+}

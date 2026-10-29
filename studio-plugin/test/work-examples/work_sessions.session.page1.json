@@ -1,0 +1,165 @@
+{
+  "tool": "work_sessions",
+  "args": {
+    "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+    "limit": 5
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUH",
+    "session": {
+      "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+      "host": "claude",
+      "surface": "desktop",
+      "cwd": "/Users/dev/repo/orbit",
+      "repo": "/Users/dev/repo/orbit",
+      "branch": "main",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "state": "ended",
+      "endReason": "session_end",
+      "endDetail": "prompt_input_exit",
+      "startedAt": "2026-10-28T03:00:00.000Z",
+      "lastSeenAt": "2026-10-28T03:40:00.000Z",
+      "endedAt": "2026-10-28T03:40:00.000Z",
+      "openWorkIds": [
+        "w-5b0e2d7c11aa"
+      ],
+      "activeStepIds": []
+    },
+    "events": [
+      {
+        "seq": "nEHnogAAAAAAAARO",
+        "at": "2026-10-28T03:00:00.000Z",
+        "kind": "session.started",
+        "summary": "claude desktop 세션 시작",
+        "ref": {
+          "transcript": "/Users/dev/.claude/projects/-Users-dev-repo-orbit/b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48.jsonl"
+        }
+      },
+      {
+        "seq": "nEHnogAAAAAAAARP",
+        "at": "2026-10-28T03:04:20.000Z",
+        "kind": "turn.started"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARQ",
+        "at": "2026-10-28T03:04:30.250Z",
+        "kind": "step.changed",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-31a2b3c4d5e6",
+        "summary": "계약 예시 검사 맡기기: 진행"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARS",
+        "at": "2026-10-28T03:05:00.000Z",
+        "kind": "run.started",
+        "workId": "w-5b0e2d7c11aa",
+        "stepId": "st-31a2b3c4d5e6",
+        "runId": "r-31a2b3c4d5e6",
+        "summary": "claude 하위 세션 시작"
+      },
+      {
+        "seq": "nEHnogAAAAAAAARg",
+        "at": "2026-10-28T03:07:00.000Z",
+        "kind": "run.started",
+        "runId": "r-33d4e5f6a7b8",
+        "summary": "orbit:explorer 시작"
+      }
+    ],
+    "runs": [
+      {
+        "id": "r-31a2b3c4d5e6",
+        "kind": "session",
+        "host": "claude",
+        "sessionId": "e2c84b19-7f03-4d5a-b6e1-93a0f5c7d2b6",
+        "parentSessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "stepId": "st-31a2b3c4d5e6",
+        "link": "parent_env",
+        "background": false,
+        "cwd": "/Users/dev/repo/orbit",
+        "repo": "/Users/dev/repo/orbit",
+        "branch": "main",
+        "state": "finished",
+        "endReason": "completed",
+        "startedAt": "2026-10-28T03:05:00.000Z",
+        "lastSeenAt": "2026-10-28T03:09:58.000Z",
+        "finishedAt": "2026-10-28T03:10:00.000Z"
+      },
+      {
+        "id": "r-32b3c4d5e6f7",
+        "kind": "subagent",
+        "host": "claude",
+        "role": "orbit:worker",
+        "agentId": "a8e0c2d4f6b19",
+        "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "parentSessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "stepId": "st-32b3c4d5e6f7",
+        "link": "single_active",
+        "background": true,
+        "cwd": "/Users/dev/repo/orbit",
+        "repo": "/Users/dev/repo/orbit",
+        "branch": "main",
+        "state": "lost",
+        "endReason": "session_ended",
+        "startedAt": "2026-10-28T03:10:20.000Z",
+        "lastSeenAt": "2026-10-28T03:31:02.000Z",
+        "finishedAt": "2026-10-28T03:40:00.000Z"
+      },
+      {
+        "id": "r-33d4e5f6a7b8",
+        "kind": "subagent",
+        "host": "claude",
+        "role": "orbit:explorer",
+        "agentId": "a4f6b8d0e2c35",
+        "sessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "parentSessionId": "b71d0e3c-2a94-4f6b-8e15-c0d3a9f27e48",
+        "link": "none",
+        "background": false,
+        "cwd": "/Users/dev/repo/orbit",
+        "repo": "/Users/dev/repo/orbit",
+        "branch": "main",
+        "state": "finished",
+        "endReason": "completed",
+        "startedAt": "2026-10-28T03:07:00.000Z",
+        "lastSeenAt": "2026-10-28T03:31:00.000Z",
+        "finishedAt": "2026-10-28T03:31:02.000Z"
+      }
+    ],
+    "evidence": [
+      {
+        "id": "ev-33d4e5f6a7b8",
+        "kind": "command",
+        "runId": "r-33d4e5f6a7b8",
+        "at": "2026-10-28T03:08:12.000Z",
+        "result": "ok",
+        "summary": "npm test"
+      },
+      {
+        "id": "ev-34e5f6a7b8c9",
+        "kind": "commit",
+        "at": "2026-10-28T03:30:00.000Z",
+        "result": "ok",
+        "summary": "test: Read the work examples",
+        "ref": {
+          "repo": "/Users/dev/repo/orbit",
+          "sha": "8f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6"
+        },
+        "files": [
+          "studio-plugin/test/work.test.ts"
+        ]
+      }
+    ],
+    "nextCursor": "eyJrIjoiZSIsImQiOiI5YzQxZTdhMiIsInMiOjEyODcsInAiOjExMjAsImkiOiJiNzFkMGUzYy0yYTk0LTRmNmItOGUxNS1jMGQzYTlmMjdlNDgifQ",
+    "limitMax": 200
+  }
+}

@@ -1,0 +1,47 @@
+/* 작업·세션 화면의 배치. 색·글꼴·카드·선은 Forma(FlowGraph·SessionRow·Tree·PropertyList)가 정한다. 왼쪽 색 띠 강조는 쓰지 않는다. */
+.orbit-meta { color: var(--forma-text-muted); font-size: var(--forma-font-small); }
+.orbit-grow { flex: 1; }
+.orbit-work-text { margin: 0; overflow-wrap: anywhere; }
+.orbit-work-break { overflow-wrap: anywhere; }
+.orbit-work-warn { color: var(--forma-warning); font-size: var(--forma-font-small); }
+
+/* 작업 탭: 머리 아래를 그래프가 채운다 */
+.orbit-work-tab { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
+.orbit-work-head { display: flex; flex-direction: column; gap: var(--forma-space-2); padding: var(--forma-space-3) var(--forma-space-4); border-bottom: 1px solid var(--forma-line); }
+.orbit-work-head-row { min-width: 0; }
+.orbit-work-title { margin: 0; font-size: var(--forma-font-size-lg, 15px); font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orbit-work-graph { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.orbit-work-graph > * { flex: 1; min-height: 0; }
+.orbit-work-owners { flex: 1; min-height: 0; overflow: auto; padding: var(--forma-space-4); }
+
+/* 단계 상세(FlowGraph aside 안) */
+.orbit-work-detail { display: flex; flex-direction: column; gap: var(--forma-space-3); padding: var(--forma-space-3) var(--forma-space-4) var(--forma-space-4); min-width: 0; }
+.orbit-work-detail-head { display: flex; align-items: flex-start; gap: var(--forma-space-2); }
+.orbit-work-detail-title { flex: 1; margin: 0; font-size: var(--forma-font-size-lg, 15px); font-weight: 650; overflow-wrap: anywhere; }
+.orbit-work-sec { margin: 0 0 var(--forma-space-2); font-size: var(--forma-font-small); font-weight: 650; }
+.orbit-work-links { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.orbit-work-links button { text-align: start; }
+.orbit-work-runs, .orbit-work-evidence-list, .orbit-work-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-2); }
+.orbit-work-evidence { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--forma-space-2); border-bottom: 1px solid var(--forma-line); }
+.orbit-work-evidence:last-child { border-bottom: 0; }
+.orbit-work-evidence .orbit-work-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.orbit-work-kind { font-size: var(--forma-font-small); font-weight: 600; }
+.orbit-work-waiting { display: flex; flex-direction: column; gap: var(--forma-space-2); padding: var(--forma-space-3); border: 1px solid var(--forma-line); border-radius: var(--forma-radius-panel, 8px); background: var(--forma-warning-soft); }
+.orbit-work-files { display: flex; flex-direction: column; gap: var(--forma-space-1, 4px); }
+.orbit-work-file-list { gap: 2px; font-size: var(--forma-font-small); }
+
+/* 사이드바 작업 목록: 하위 작업은 들여쓴다(사이드바 가로 스크롤 없음) */
+.orbit-work-item[data-depth="1"] { padding-left: var(--forma-space-3); }
+.orbit-work-item[data-depth="2"] { padding-left: calc(var(--forma-space-3) * 2); }
+.orbit-work-item[data-depth="3"] { padding-left: calc(var(--forma-space-3) * 3); }
+.orbit-work-row-title { display: flex; align-items: center; gap: var(--forma-space-2); min-width: 0; }
+.orbit-work-row-title > :not(.orbit-work-row-text) { flex: none; }
+.orbit-work-row-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 세션 */
+.orbit-session-list { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.orbit-session-tab { max-width: 960px; }
+.orbit-lin-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--forma-accent); }
+.orbit-lin-dot[data-ended] { background: var(--forma-line-strong); }
+.orbit-lin-meta { color: var(--forma-text-muted); font-size: var(--forma-font-small); white-space: nowrap; }
+.orbit-lin-ended { color: var(--forma-text-faint); }

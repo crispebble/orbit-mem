@@ -1,0 +1,145 @@
+{
+  "tool": "work_get",
+  "args": {
+    "workId": "w-a4c6e8f0b2d1"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUH",
+    "work": {
+      "id": "w-a4c6e8f0b2d1",
+      "title": "탐침 결과 정리",
+      "titleSource": "step",
+      "state": "open",
+      "cwd": "/Users/dev/repo/orbit/.claude/worktrees/codex-probe",
+      "project": {
+        "scope": "project:github.com/onidot-labs/orbit",
+        "label": "github.com/onidot-labs/orbit"
+      },
+      "origin": {
+        "host": "codex",
+        "surface": "cli",
+        "sessionId": "019a2a10-3e7d-7b21-8c90-5d4f1e2a6b38",
+        "list": {
+          "kind": "codex-plan"
+        }
+      },
+      "openedAt": "2026-10-28T04:00:51.009Z",
+      "updatedAt": "2026-10-28T04:22:10.600Z",
+      "counts": {
+        "pending": 1,
+        "ready": 0,
+        "in_progress": 0,
+        "blocked": 1,
+        "done": 1,
+        "cancelled": 1
+      },
+      "steps": [
+        {
+          "id": "st-c1d2e3f4a5b6",
+          "title": "탐침 결과 정리",
+          "order": 0,
+          "wave": 0,
+          "after": [],
+          "status": "done",
+          "assignee": {
+            "kind": "main",
+            "host": "codex"
+          },
+          "startedAt": "2026-10-28T04:01:00.000Z",
+          "finishedAt": "2026-10-28T04:10:00.000Z",
+          "verification": {
+            "state": "pass",
+            "outdated": false,
+            "evidenceId": "ev-c1d2e3f4a5b6"
+          },
+          "evidenceIds": [
+            "ev-c1d2e3f4a5b6"
+          ],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-d2e3f4a5b6c7",
+          "title": "update_plan 어댑터 고치기",
+          "order": 1,
+          "wave": 1,
+          "after": [
+            {
+              "stepId": "st-c1d2e3f4a5b6",
+              "source": "order"
+            }
+          ],
+          "status": "blocked",
+          "block": {
+            "reason": "stale",
+            "detail": "세션에 사건이 오래 없습니다",
+            "since": "2026-10-28T04:52:00.000Z"
+          },
+          "assignee": {
+            "kind": "main",
+            "host": "codex"
+          },
+          "startedAt": "2026-10-28T04:10:01.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-e3f4a5b6c7d8",
+          "title": "명령 증거 시험",
+          "order": 2,
+          "wave": 2,
+          "after": [
+            {
+              "stepId": "st-d2e3f4a5b6c7",
+              "source": "order"
+            }
+          ],
+          "status": "pending",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        },
+        {
+          "id": "st-f4a5b6c7d8e9",
+          "title": "어댑터 시험 쓰기",
+          "order": 3,
+          "wave": 0,
+          "after": [],
+          "status": "cancelled",
+          "finishedAt": "2026-10-28T04:20:00.000Z",
+          "verification": {
+            "state": "none",
+            "outdated": false
+          },
+          "evidenceIds": [],
+          "childWorkIds": []
+        }
+      ],
+      "runs": [],
+      "evidence": [
+        {
+          "id": "ev-c1d2e3f4a5b6",
+          "kind": "command",
+          "stepId": "st-c1d2e3f4a5b6",
+          "at": "2026-10-28T04:09:30.000Z",
+          "result": "ok",
+          "summary": "go test ./internal/work/..."
+        }
+      ]
+    }
+  }
+}
