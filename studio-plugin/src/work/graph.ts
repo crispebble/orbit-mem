@@ -81,7 +81,10 @@ function node(step: Step, work: Pick<Work, 'runs'>, now: number): FlowGraphNode 
     const ms = since(step.startedAt, now);
     if (ms !== undefined) meta = `${spanText(ms)}째`;
   } else if (step.status === 'blocked' && step.block) {
-    description = blockText(step.block);
+    // 상태 칩이 이미 사유를 말하면(사용자 확인 기다림·실패) 자세한 글만 덧붙인다
+    const head = blockText({...step.block, detail: undefined});
+    const same = head === view.label || (step.block.reason === 'run_failed' && view.label === '실패');
+    description = same ? step.block.detail : blockText(step.block);
     const ms = since(step.block.since, now);
     if (ms !== undefined) meta = `${spanText(ms)} 전부터`;
   }

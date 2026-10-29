@@ -72,14 +72,20 @@ describe('toFlowGraph', () => {
     assert.equal(toFlowGraph(w, NOW).nodes.find(n => n.id === 'u')?.status.label, '알 수 없음');
   });
 
-  it('진행 중이면 진행 문구와 경과, 막힘이면 사유와 언제부터', () => {
+  it('진행 중이면 진행 문구와 경과, 막힘이면 사유와 언제부터(칩과 같은 사유는 되풀이하지 않는다)', () => {
     const w = work([
       step({id: 'p', status: 'in_progress', activeTitle: '시험 고치는 중', startedAt: '2026-10-28T06:01:00.000Z'}),
       step({id: 'b', status: 'blocked', block: {reason: 'waiting_user', detail: 'Bash 권한 요청', since: '2026-10-28T06:38:00.000Z'}}),
     ]);
     const [p, b] = toFlowGraph(w, NOW).nodes;
     assert.deepEqual([p.description, p.meta], ['시험 고치는 중', '40분째']);
-    assert.deepEqual([b.description, b.meta], ['사용자 확인 기다림: Bash 권한 요청', '3분 전부터']);
+    assert.deepEqual([b.description, b.meta], ['Bash 권한 요청', '3분 전부터']);
+    const [lost, failed] = toFlowGraph(work([
+      step({id: 'l', status: 'blocked', block: {reason: 'run_lost', detail: '세션이 끊겼습니다', since: '2026-10-28T06:38:00.000Z'}}),
+      step({id: 'f', status: 'blocked', block: {reason: 'run_failed', detail: '시험 실패', since: '2026-10-28T06:38:00.000Z'}}),
+    ]), NOW).nodes;
+    assert.deepEqual([lost.status.label, lost.description], ['막힘', '실행 끊김: 세션이 끊겼습니다']);
+    assert.deepEqual([failed.status.label, failed.description], ['실패', '시험 실패']);
   });
 
   it('검증은 상태를 바꾸지 않고 배지로, 하위 작업은 보조 배지로', () => {
