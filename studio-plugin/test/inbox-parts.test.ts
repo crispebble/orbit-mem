@@ -24,3 +24,34 @@ describe('받은 일 갈래 합치기', () => {
     assert.deepEqual(sets, [['w1'], ['w1', 'p1'], ['p1']]);
   });
 });
+
+describe('작업 확인 기다림 → 받은 일', () => {
+  it('받은 일 id에서 작업·단계 id를 되찾는다, 다른 id는 undefined', async () => {
+    const {parseWaitingId, waitingInboxItems} = await import('../src/work/inbox.ts');
+    const {parseGet} = await import('../src/work/contract.ts');
+    const {example} = await import('./work-fake.ts');
+    const task = parseGet(example('work_get.claude-task').result).work;
+    const [item] = waitingInboxItems([task]);
+    assert.deepEqual(parseWaitingId(item.id), {workId: task.id, stepId: 'st-4d5e6f708192'});
+    assert.equal(parseWaitingId('p-123'), undefined);
+    assert.equal(parseWaitingId('work-waiting:only'), undefined);
+  });
+
+  it('store가 바뀔 때마다 읽은 작업의 확인 기다림을 waiting 갈래로 넣고, 끊으면 갈래를 지운다', async () => {
+    const {syncWaitingInbox} = await import('../src/work/inbox.ts');
+    const {parseGet} = await import('../src/work/contract.ts');
+    const {example} = await import('./work-fake.ts');
+    const task = parseGet(example('work_get.claude-task').result).work;
+    let details: Record<string, typeof task> = {};
+    const listeners = new Set<() => void>();
+    const store = {getState: () => ({details}), subscribe: (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; }};
+    const sets: string[][] = [];
+    const parts = createInboxParts<{id: string}>({set: items => { sets.push(items.map(i => i.id)); }});
+    const off = syncWaitingInbox(store, parts);
+    details = {[task.id]: task};
+    listeners.forEach(l => l());
+    off();
+    assert.deepEqual(sets, [[], [`work-waiting:${task.id}:st-4d5e6f708192`], []]);
+    assert.equal(listeners.size, 0);
+  });
+});
