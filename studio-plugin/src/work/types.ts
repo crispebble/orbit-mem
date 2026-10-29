@@ -27,7 +27,7 @@ export interface WorkHead {
   updatedAt: string;
   closedAt?: string;
   counts: StepCounts;
-  origin?: {host: string; surface: string; sessionId: string};
+  origin?: {host: string; surface: string; sessionId: string; list?: {kind: string; id?: string}};
 }
 
 export interface WorkSummary extends WorkHead {
@@ -66,6 +66,8 @@ export interface Run {
   link: string;
   background?: boolean;
   cwd?: string;
+  repo?: string;
+  branch?: string;
   state: string;
   endReason?: string;
   startedAt: string;
@@ -81,6 +83,10 @@ export interface Evidence {
   at: string;
   result: string;
   summary?: string;
+  /** 커밋이면 repo·sha, 판정이면 대화 기록 위치 */
+  ref?: {repo?: string; sha?: string; transcript?: string};
+  /** 커밋의 바뀐 파일(저장소 기준 경로) */
+  files?: string[];
 }
 
 export interface Work extends WorkHead {
@@ -118,6 +124,7 @@ export interface SessionEvent {
   stepId?: string;
   runId?: string;
   summary?: string;
+  ref?: {transcript?: string; agentTranscript?: string};
 }
 
 export interface ListPage {seq: string; items: WorkSummary[]; nextCursor?: string; limitMax: number}

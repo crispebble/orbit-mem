@@ -18,6 +18,20 @@ const NOW = Date.parse('2026-10-28T06:41:00.000Z');
 const run = (over: Partial<Run>): Run => ({id: 'r', kind: 'subagent', host: 'claude', link: 'owner', state: 'running', startedAt: '2026-10-28T06:00:00.000Z', ...over});
 
 describe('상태 표시 대응', () => {
+  it('색조는 Forma Badge·FlowGraph 톤 이름만 쓴다(info→accent, muted→neutral)', () => {
+    const forma = new Set(['neutral', 'accent', 'success', 'warning', 'danger', 'violet']);
+    const tones = [
+      ...['pending', 'ready', 'in_progress', 'blocked', 'done', 'cancelled', 'x'].map(s => stepStatusView(s).tone),
+      ...['waiting_user', 'run_failed', 'run_lost', 'x'].map(r => stepStatusView('blocked', {reason: r, since: ''}).tone),
+      ...['running', 'waiting_user', 'idle', 'stale', 'ended', 'x'].map(s => sessionStateView(s).tone),
+      ...['running', 'finished', 'failed', 'lost', 'x'].map(s => runStateView(run({state: s, lastSeenAt: '2026-10-28T06:40:00.000Z'}), NOW).tone),
+      workStateView({state: 'open'}, false).tone, workStateView({state: 'done'}, true).tone, workStateView({state: 'done'}, false).tone,
+    ];
+    assert.deepEqual(tones.filter(t => !forma.has(t)), []);
+    assert.equal(stepStatusView('in_progress').tone, 'accent');
+    assert.equal(stepStatusView('pending').tone, 'neutral');
+  });
+
   it('단계 상태 여섯 가지와 모르는 값(설계 「상태 표시 대응」)', () => {
     assert.deepEqual(['pending', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'].map(s => stepStatusView(s).label), ['대기', '준비됨', '진행 중', '막힘', '끝', '취소']);
     assert.equal(stepStatusView('brand_new').label, '알 수 없음');
@@ -78,7 +92,7 @@ describe('검증 배지와 막힘 사유', () => {
 
   it('지난 검증(outdated)은 「오래됨」으로 흐리게 보인다', () => {
     const b = verificationBadge({state: 'fail', outdated: true}, 'done');
-    assert.deepEqual([b?.label, b?.tone, b?.outdated], ['오래됨', 'muted', true]);
+    assert.deepEqual([b?.label, b?.tone, b?.outdated], ['오래됨', 'neutral', true]);
   });
 
   it('예시: done 단계에 fail 검증이 붙어도 단계 상태는 done 그대로', () => {

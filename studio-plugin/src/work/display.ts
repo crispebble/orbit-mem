@@ -1,8 +1,10 @@
 // 작업 그래프·세션 보기의 표시 모델(순수 함수). 계약이 준 값을 다시 계산하지 않고 화면 문구·색조로 옮긴다.
 // 화면 문구에는 「Work」를 쓰지 않는다(「작업」「단계」「세션」).
+import type {FlowGraphTone} from '@onidot-labs/studio-plugin/ai';
 import type {Run, Session, Step, StepBlock, Work, WorkSummary} from './types.ts';
 
-export type Tone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'muted';
+/** Forma `Badge`·`FlowGraph`의 톤 이름 그대로 쓴다 */
+export type Tone = FlowGraphTone;
 
 export interface StatusView {
   label: string;
@@ -11,7 +13,7 @@ export interface StatusView {
   known: boolean;
 }
 
-const UNKNOWN: StatusView = {label: '알 수 없음', tone: 'muted', known: false};
+const UNKNOWN: StatusView = {label: '알 수 없음', tone: 'neutral', known: false};
 
 /**
  * 실행이 「지금 수행 중」이려면 `lastSeenAt`이 이 시간 안이어야 한다.
@@ -23,12 +25,12 @@ export const RUN_FRESH_MS = 5 * 60_000;
 // ---- 단계 ----
 // 문구는 Studio 2차 설계 「상태 표시 대응」을 따른다.
 const STEP: Record<string, StatusView> = {
-  pending: {label: '대기', tone: 'muted', known: true},
-  ready: {label: '준비됨', tone: 'info', known: true},
-  in_progress: {label: '진행 중', tone: 'info', known: true},
+  pending: {label: '대기', tone: 'neutral', known: true},
+  ready: {label: '준비됨', tone: 'accent', known: true},
+  in_progress: {label: '진행 중', tone: 'accent', known: true},
   blocked: {label: '막힘', tone: 'warning', known: true},
   done: {label: '끝', tone: 'success', known: true},
-  cancelled: {label: '취소', tone: 'muted', known: true},
+  cancelled: {label: '취소', tone: 'neutral', known: true},
 };
 /** 막힌 단계는 사유로 가른다. 사용자가 풀 몫은 `waiting_user`뿐이고, 「실패」는 `run_failed`만 가리킨다. */
 const BLOCKED: Record<string, StatusView> = {
@@ -49,11 +51,11 @@ export function layoutStatus(status: string): string {
 
 // ---- 세션 ----
 const SESSION: Record<string, StatusView> = {
-  running: {label: '도는 중', tone: 'info', known: true},
+  running: {label: '도는 중', tone: 'accent', known: true},
   waiting_user: {label: '사용자 확인 기다림', tone: 'warning', known: true},
   idle: {label: '쉬는 중', tone: 'neutral', known: true},
   stale: {label: '관측 오래됨', tone: 'warning', known: true},
-  ended: {label: '끝남', tone: 'muted', known: true},
+  ended: {label: '끝남', tone: 'neutral', known: true},
 };
 
 export function sessionStateView(state: string): StatusView {
@@ -62,8 +64,8 @@ export function sessionStateView(state: string): StatusView {
 
 // ---- 실행 ----
 const RUN: Record<string, StatusView> = {
-  running: {label: '도는 중', tone: 'info', known: true},
-  finished: {label: '끝남', tone: 'muted', known: true},
+  running: {label: '도는 중', tone: 'accent', known: true},
+  finished: {label: '끝남', tone: 'neutral', known: true},
   failed: {label: '실패', tone: 'danger', known: true},
   lost: {label: '연결 끊김', tone: 'warning', known: true},
 };
@@ -119,10 +121,10 @@ export interface BadgeView {
  */
 export function verificationBadge(v: Step['verification'] | undefined, status: string): BadgeView | undefined {
   if (!v || v.state === 'none' || v.state === 'pass') return undefined;
-  if (v.outdated) return {label: '오래됨', tone: 'muted', outdated: true};
+  if (v.outdated) return {label: '오래됨', tone: 'neutral', outdated: true};
   if (v.state === 'fail') return {label: status === 'done' ? '끝남 · 검증 실패' : '검증 실패', tone: 'danger', outdated: false};
   if (v.state === 'needs_user') return {label: '사용자 확인 필요', tone: 'warning', outdated: false};
-  return {label: '알 수 없음', tone: 'muted', outdated: false};
+  return {label: '알 수 없음', tone: 'neutral', outdated: false};
 }
 
 // ---- 막힘 사유 ----
@@ -144,9 +146,9 @@ export function blockText(block: StepBlock): string {
 // ---- 작업 ----
 /** 목록 줄의 상태. pendingReview는 「끝남 · 확인 전」 */
 export function workStateView(w: Pick<WorkSummary, 'state'>, pendingReview: boolean): StatusView {
-  if (w.state === 'open') return {label: '진행', tone: 'info', known: true};
+  if (w.state === 'open') return {label: '진행', tone: 'accent', known: true};
   if (w.state === 'done') {
-    return pendingReview ? {label: '끝남 · 확인 전', tone: 'warning', known: true} : {label: '끝남', tone: 'muted', known: true};
+    return pendingReview ? {label: '끝남 · 확인 전', tone: 'warning', known: true} : {label: '끝남', tone: 'neutral', known: true};
   }
   return UNKNOWN;
 }
