@@ -56,22 +56,23 @@ type Source struct {
 
 // Memory is one remembered thing.
 type Memory struct {
-	ID           string   `json:"id"`
-	Kind         string   `json:"kind"`
-	Scope        string   `json:"scope"`
-	Project      string   `json:"project,omitempty"` // 사람이 읽는 프로젝트 이름(원격 주소나 경로)
-	State        string   `json:"state"`
-	Title        string   `json:"title"`
-	Body         string   `json:"body"`
-	Tags         []string `json:"tags"`
-	Version      int      `json:"version"`
-	CreatedAt    int64    `json:"createdAt"`
-	UpdatedAt    int64    `json:"updatedAt"`
-	SupersededBy string   `json:"supersededBy,omitempty"`
-	StaleReason  string   `json:"staleReason,omitempty"`
-	LegacyID     string   `json:"legacyId,omitempty"`
-	Days         []string `json:"days,omitempty"` // 후보가 나온 날
-	Sources      []Source `json:"sources,omitempty"`
+	ID           string       `json:"id"`
+	Kind         string       `json:"kind"`
+	Scope        string       `json:"scope"`
+	Project      string       `json:"project,omitempty"` // 사람이 읽는 프로젝트 이름(원격 주소나 경로)
+	State        string       `json:"state"`
+	Title        string       `json:"title"`
+	Body         string       `json:"body"`
+	Tags         []string     `json:"tags"`
+	Version      int          `json:"version"`
+	CreatedAt    int64        `json:"createdAt"`
+	UpdatedAt    int64        `json:"updatedAt"`
+	SupersededBy string       `json:"supersededBy,omitempty"`
+	StaleReason  string       `json:"staleReason,omitempty"`
+	LegacyID     string       `json:"legacyId,omitempty"`
+	Days         []string     `json:"days,omitempty"` // 후보가 나온 날
+	Sources      []Source     `json:"sources,omitempty"`
+	Links        []MemoryLink `json:"links,omitempty"` // 살아 있는 명시 연결(읽을 때 붙는다, 판 스냅샷에는 없다)
 }
 
 // Doc returns the searchable view.

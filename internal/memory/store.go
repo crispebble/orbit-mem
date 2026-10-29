@@ -120,7 +120,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema + eventsSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema); err != nil {
 		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}
 	if err := addColumns(tx); err != nil {
@@ -424,7 +424,7 @@ func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 }
 
 func versionTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
-	m.Sources, m.Days = nil, nil
+	m.Sources, m.Days, m.Links = nil, nil, nil
 	snap, _ := json.Marshal(m)
 	_, err := tx.Exec(`INSERT INTO memory_versions(memory_id,version,action,reason,at,snapshot) VALUES(?,?,?,?,?,?)`, m.ID, m.Version, action, reason, now, string(snap))
 	return err
@@ -486,7 +486,17 @@ func (s *Store) Get(id string) (Memory, error) {
 		_ = drows.Scan(&d)
 		m.Days = append(m.Days, d)
 	}
-	return m, rows.Err()
+	if err := rows.Err(); err != nil {
+		return m, err
+	}
+	links, err := s.LinksOf(id)
+	if err != nil {
+		return m, err
+	}
+	if len(links) > 0 {
+		m.Links = links
+	}
+	return m, nil
 }
 
 // UpdateInput changes a memory. Nil fields stay.
