@@ -1,6 +1,6 @@
 // 「기억 그래프」 탭: memory_graph를 Forma 관계망 그래프(NetworkGraph·NetworkPanel)로 그린다.
 // 규칙은 Atlas 「설계 · Orbit 2차 — 기억 그래프」 「Studio 보기」. 부품은 노드·선·클러스터만 알고, 거르기·고른 기억 카드·탭 연결은 여기서 한다.
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {Clock, History, Link2, MessagesSquare} from 'lucide-react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {describeNetwork, NetworkGraph, NetworkPanel, searchNetwork, type NetworkDescription, type NetworkOverlay} from '@onidot-labs/studio-plugin/graph';
@@ -12,6 +12,7 @@ import {
   isExcludedTag, kindLabel, scopeLabel, stateLabel, toMemoryNetwork, type MemoryNetwork, type OverlayIcon,
 } from './network.ts';
 import {onSelectRequest, takePendingSelect} from './open.ts';
+import {resolveRequest} from './select.ts';
 import {createGraphStore, type GraphState, type GraphStore} from './store.ts';
 
 const LABEL = '기억 그래프';
@@ -36,14 +37,16 @@ export function MemoryGraphTab({ctx, tab}: TabProps) {
     return () => { off(); store.dispose(); };
   }, [store]);
 
-  // 제안 목록이 새로 읽히면(60초마다·결정 뒤) 그래프도 다시 읽는다. 「기억」 목록과 같은 신호다
+  // 제안 목록이 새로 읽히면(60초마다·결정 뒤) 그래프도 조용히 다시 읽는다. 「기억」 목록과 같은 신호다.
+  // 멈춤은 사용자가 「다시 확인」할 때까지 둔다
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
-    void store.load();
+    if (store.getState().status !== 'paused') void store.load({quiet: true});
   }, [store, orbit.proposals]);
 
-  return <GraphBody ctx={ctx} store={store} state={state} request={request} onRequestDone={() => setRequest(undefined)} />;
+  const done = useCallback(() => setRequest(undefined), []);
+  return <GraphBody ctx={ctx} store={store} state={state} request={request} onRequestDone={done} />;
 }
 
 export interface SelectedMemoryCardProps {
@@ -76,7 +79,7 @@ export function SelectedMemoryCard({node, info, centered, onOpen, onCenter, onCl
       {tags.length > 0 && <p>{tags.map(t => `#${t}`).join(' ')}</p>}
       <div className="forma-netpanel-card-actions">
         <Button size="sm" variant="primary" onClick={onOpen}>기억 열기</Button>
-        <Button size="sm" variant="secondary" disabled={centered} onClick={onCenter}>주변 보기</Button>
+        <Button size="sm" variant="secondary" aria-pressed={centered} onClick={onCenter}>주변 보기</Button>
         <Button size="sm" variant="ghost" onClick={onClear}>선택 풀기</Button>
       </div>
     </section>
@@ -118,19 +121,38 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   const hitIds = useMemo(() => (query && network ? searchNetwork(network.nodes, query) : null), [network, query]);
   const hits = useMemo(() => (hitIds?.length ? new Set(hitIds) : null), [hitIds]);
 
-  // 고른 기억이 거르기로 사라지면 고름·주변 보기를 푼다
+  // 고른 기억이 거르기로 사라지면 고름·주변 보기를 풀고, 없어진 클러스터는 강조에서 뺀다
   useEffect(() => {
     if (selectedId && !visible.has(selectedId)) setSelectedId(null);
     if (center && !visible.has(center)) setCenter(null);
   }, [visible, selectedId, center]);
-
-  // 「그래프에서 보기」 요청은 그래프가 있을 때 처리한다
   useEffect(() => {
-    if (!request || !network) return;
-    if (visible.has(request)) { setSelectedId(request); setMissing(false); }
-    else setMissing(true);
+    const ids = new Set(network?.clusters.map(c => c.id) ?? []);
+    setFocus(prev => ([...prev].every(id => ids.has(id)) ? prev : new Set([...prev].filter(id => ids.has(id)))));
+  }, [network]);
+  // 다른 기억을 고르거나 그래프를 새로 읽으면 「없음」 안내를 지운다(요청 처리보다 먼저 둔다)
+  useEffect(() => { if (selectedId) setMissing(false); }, [selectedId]);
+  useEffect(() => { setMissing(false); }, [graph]);
+
+  // 「그래프에서 보기」 요청: 있으면 고르고(종류 거르기·주변 보기·강조·찾기를 풀어 보이게), 없으면 한 번 다시 읽어 본다
+  const reloadedFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!request) return;
+    const outcome = resolveRequest(request, {
+      loaded: !!graph, reloading: state.reloading, graphIds: new Set(byId.keys()), visibleIds: visible, reloaded: reloadedFor.current === request,
+    });
+    if (outcome.kind === 'wait') return;
+    if (outcome.kind === 'reload') { reloadedFor.current = request; void store.load(); return; }
+    reloadedFor.current = undefined;
+    if (outcome.kind === 'select') {
+      if (outcome.clearKind) setKind('all');
+      setCenter(null);
+      setFocus(new Set());
+      setQuery('');
+      setSelectedId(request);
+    } else setMissing(true);
     onRequestDone?.();
-  }, [request, network, visible, onRequestDone]);
+  }, [request, graph, state.reloading, byId, visible, store, onRequestDone]);
 
   if (state.status === 'paused' && state.pause) {
     return (

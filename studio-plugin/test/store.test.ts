@@ -206,3 +206,21 @@ it('기본 타이머는 this 없이 불러도 동작한다(브라우저 setInter
     assert.deepEqual(calls, ['set', 'clear']);
   } finally { globalThis.setInterval = realSet; globalThis.clearInterval = realClear; }
 });
+
+describe('store.getMemories', () => {
+  it('함께 부르고, 못 읽은 것은 빼고 순서대로 돌려준다', async () => {
+    let inflight = 0, peak = 0;
+    const f = fakeCtx({
+      memory_get: async args => {
+        inflight++; peak = Math.max(peak, inflight);
+        await new Promise(r => setImmediate(r));
+        inflight--;
+        const id = (args?.ids as string[])[0];
+        return id === 'm-x' ? fail('없음') : ok({items: [{id, title: id}]});
+      },
+    });
+    const got = await createStore(f.ctx).getMemories(['m-1', 'm-x', 'm-2']);
+    assert.deepEqual(got.map(m => m.id), ['m-1', 'm-2']);
+    assert.equal(peak, 3);
+  });
+});

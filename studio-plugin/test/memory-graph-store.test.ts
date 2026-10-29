@@ -132,3 +132,36 @@ describe('기억 그래프 탭 열기', () => {
     assert.equal(takePendingSelect(), undefined);
   });
 });
+
+describe('그래프 상태(검토 반영)', () => {
+  it('조용히 다시 읽기는 오류 화면을 「불러오는 중」으로 바꾸지 않고, 같은 오류는 한 번만 적는다', async () => {
+    const f = fakeWorkCtx({memory_graph: () => err('error.unavailable')});
+    const s = createGraphStore(f.ctx);
+    await s.load();
+    const seen: string[] = [];
+    s.subscribe(() => seen.push(s.getState().status));
+    await s.load({quiet: true});
+    assert.ok(!seen.includes('loading'));
+    assert.equal(s.getState().status, 'error');
+    assert.equal(f.logs.filter(l => l.level === 'error').length, 1);
+  });
+
+  it('숨김 포함으로 다시 읽기가 실패하면 스위치를 앞 그래프의 값으로 되돌린다', async () => {
+    let fail = false;
+    const f = fakeWorkCtx({memory_graph: () => (fail ? err('error.unavailable') : ok('memory_graph.all'))});
+    const s = createGraphStore(f.ctx);
+    await s.load();
+    fail = true;
+    await s.setIncludeHidden(true);
+    assert.deepEqual([s.getState().includeHidden, s.getState().graph?.nodes.length], [false, 8]);
+    assert.match(s.getState().staleError ?? '', /database is locked/);
+  });
+
+  it('dispose 뒤에도 다시 load하면 쓸 수 있다(개발 모드의 다시 마운트)', async () => {
+    const f = fakeWorkCtx({memory_graph: () => ok('memory_graph.all')});
+    const s = createGraphStore(f.ctx);
+    s.dispose();
+    await s.load();
+    assert.equal(s.getState().status, 'ready');
+  });
+});

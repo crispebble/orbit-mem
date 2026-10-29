@@ -43,16 +43,20 @@ export function MemoryPane({ctx, tab}: TabProps) {
           // 대체한 기억을 못 읽어도 id로 보여 준다
         }
       }
-      // 관련 기억(명시 연결)의 제목을 읽는다. 못 읽은 것은 id로 보인다
       const linked = memory.links ?? [];
-      const others = linked.length ? await store.getMemories(linked.map(l => l.memoryId)) : [];
-      const links: MemoryLinkView[] = linked.map(l => {
-        const other = others.find(o => o.id === l.memoryId);
-        return {id: l.id, memoryId: l.memoryId, title: other?.title, kind: other?.kind as MemoryKind | undefined, note: l.note, origin: l.origin};
-      });
+      const links: MemoryLinkView[] = linked.map(l => ({id: l.id, memoryId: l.memoryId, note: l.note, origin: l.origin}));
       setLoaded({memory, history, record: toMemoryDetail(memory, history), related, links});
       setConflict(false);
       ctx.tabs.setTitle('memory', tab.id, memory.title);
+      // 관련 기억(명시 연결)의 제목은 본문을 보인 뒤 채운다. 못 읽은 것은 id로 남는다
+      if (linked.length) {
+        void store.getMemories(linked.map(l => l.memoryId)).then(others => {
+          const byId = new Map(others.map(o => [o.id, o] as const));
+          setLoaded(prev => (prev && prev.memory.id === memory.id && prev.memory.version === memory.version
+            ? {...prev, links: prev.links.map(l => ({...l, title: byId.get(l.memoryId)?.title, kind: byId.get(l.memoryId)?.kind as MemoryKind | undefined}))}
+            : prev));
+        }, (e: unknown) => ctx.log.warn(`관련 기억 제목을 읽지 못했습니다(${id}): ${errorMessage(e)}`));
+      }
     } catch (e) {
       ctx.log.error(`기억을 읽지 못했습니다(${id}): ${errorMessage(e)}`);
       setError(errorMessage(e));
