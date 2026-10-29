@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onidot.dev/schemas/orbit.memory/1/response.schema.json",
+  "title": "orbit.memory 1.0 응답",
+  "description": "oni가 내는 1.0 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
+  "oneOf": [
+    {"$ref": "#/$defs/memory_graph"},
+    {"$ref": "#/$defs/error"}
+  ],
+  "$defs": {
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "id": {"type": "string", "minLength": 1},
+    "ids": {"type": "array", "items": {"$ref": "#/$defs/id"}},
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "major", "minor", "supportedMajors"],
+      "properties": {
+        "name": {"const": "orbit.memory"},
+        "major": {"const": 1},
+        "minor": {"type": "integer", "minimum": 0},
+        "supportedMajors": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1, "contains": {"const": 1}}
+      }
+    },
+    "ignoredArgs": {"type": "array", "items": {"type": "string"}},
+    "memoryKind": {"enum": ["rule", "fact", "decision", "lesson", "journal"]},
+    "memoryState": {"enum": ["candidate", "confirmed", "stale", "hidden"]},
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "state", "scope", "title", "tags", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"$ref": "#/$defs/memoryKind"},
+        "state": {"$ref": "#/$defs/memoryState"},
+        "scope": {"type": "string", "pattern": "^(global|project:.+)$"},
+        "project": {"type": "string", "description": "프로젝트 이름(사람이 읽는 것). 전역이면 없다"},
+        "title": {"type": "string"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "createdAt": {"$ref": "#/$defs/time"},
+        "updatedAt": {"$ref": "#/$defs/time"},
+        "supersededBy": {"$ref": "#/$defs/id"}
+      }
+    },
+    "linkEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "relation", "from", "to", "directed", "origin", "at"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "link"},
+        "relation": {"enum": ["related"]},
+        "from": {"$ref": "#/$defs/id"},
+        "to": {"$ref": "#/$defs/id"},
+        "directed": {"const": false},
+        "note": {"type": "string"},
+        "origin": {"enum": ["ai", "retro", "user"]},
+        "at": {"$ref": "#/$defs/time"}
+      }
+    },
+    "supersedeEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "from", "to", "directed"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"const": "supersede"},
+        "from": {"$ref": "#/$defs/id", "description": "대체된(옛) 기억"},
+        "to": {"$ref": "#/$defs/id", "description": "대신하는(새) 기억"},
+        "directed": {"const": true}
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "key", "label", "members"],
+      "properties": {
+        "kind": {"enum": ["tag", "session", "file"]},
+        "key": {"type": "string", "minLength": 1, "description": "태그, 세션 출처 ref(호스트:세션 id), 파일 절대경로"},
+        "label": {"type": "string"},
+        "host": {"enum": ["claude", "codex"], "description": "세션 묶음만"},
+        "members": {"type": "array", "items": {"$ref": "#/$defs/id"}, "minItems": 2, "uniqueItems": true}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "file"}}}, "then": {"properties": {"key": {"pattern": "^/"}}}},
+        {"if": {"properties": {"kind": {"const": "session"}}}, "then": {"required": ["host"]}},
+        {"if": {"properties": {"kind": {"enum": ["tag", "file"]}}}, "then": {"not": {"required": ["host"]}}}
+      ]
+    },
+    "memory_graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "nodes", "edges", "groups", "total", "truncated", "limitMax", "depthMax"],
+      "properties": {
+        "contract": {"$ref": "#/$defs/contract"},
+        "ignoredArgs": {"$ref": "#/$defs/ignoredArgs"},
+        "focus": {"$ref": "#/$defs/id", "description": "입력 focus를 그대로 돌려준다"},
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+        "edges": {"type": "array", "items": {"oneOf": [{"$ref": "#/$defs/linkEdge"}, {"$ref": "#/$defs/supersedeEdge"}]}},
+        "groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
+        "total": {"type": "integer", "minimum": 0, "description": "거르기를 맞춘 기억 수(limit으로 자르기 전)"},
+        "truncated": {"type": "boolean"},
+        "limitMax": {"type": "integer", "minimum": 1},
+        "depthMax": {"type": "integer", "minimum": 1}
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "error"],
+      "properties": {
+        "contract": {"$ref": "#/$defs/contract"},
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"enum": ["UNSUPPORTED_MAJOR", "INVALID_ARGUMENT", "NOT_FOUND"]},
+            "message": {"type": "string"},
+            "field": {"type": "string"},
+            "supportedMajors": {"type": "array", "items": {"type": "integer", "minimum": 1}}
+          },
+          "allOf": [
+            {"if": {"properties": {"code": {"const": "UNSUPPORTED_MAJOR"}}}, "then": {"required": ["supportedMajors"]}},
+            {"if": {"properties": {"code": {"enum": ["INVALID_ARGUMENT", "NOT_FOUND"]}}}, "then": {"required": ["field"]}}
+          ]
+        }
+      }
+    }
+  }
+}

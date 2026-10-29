@@ -1,0 +1,97 @@
+{
+  "tool": "memory_graph",
+  "args": {
+    "kinds": [
+      "rule"
+    ],
+    "states": [
+      "confirmed",
+      "stale"
+    ],
+    "scopes": [
+      "global"
+    ],
+    "relations": [
+      "supersede",
+      "tag"
+    ],
+    "fliter": "brand"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.memory",
+      "major": 1,
+      "minor": 0,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "ignoredArgs": [
+      "fliter"
+    ],
+    "nodes": [
+      {
+        "id": "m-4e5f60718293",
+        "kind": "rule",
+        "state": "stale",
+        "scope": "global",
+        "title": "파비콘·앱 아이콘은 oni. 워드마크를 쓴다",
+        "tags": [
+          "브랜드"
+        ],
+        "createdAt": "2026-10-05T04:00:00.000Z",
+        "updatedAt": "2026-10-28T06:00:00.000Z",
+        "supersededBy": "m-5f60718293a4"
+      },
+      {
+        "id": "m-5f60718293a4",
+        "kind": "rule",
+        "state": "confirmed",
+        "scope": "global",
+        "title": "제품마다 자기 아이콘을 쓴다",
+        "tags": [
+          "브랜드"
+        ],
+        "createdAt": "2026-10-28T06:00:00.000Z",
+        "updatedAt": "2026-10-28T06:00:00.000Z"
+      },
+      {
+        "id": "m-0a1b2c3d4e5f",
+        "kind": "rule",
+        "state": "confirmed",
+        "scope": "global",
+        "title": "근거 없는 수치를 설계 문서에 확정처럼 넣지 않는다",
+        "tags": [
+          "설계",
+          "원칙"
+        ],
+        "createdAt": "2026-10-20T01:00:00.000Z",
+        "updatedAt": "2026-10-24T03:10:00.000Z"
+      }
+    ],
+    "edges": [
+      {
+        "id": "sup-m-4e5f60718293",
+        "kind": "supersede",
+        "from": "m-4e5f60718293",
+        "to": "m-5f60718293a4",
+        "directed": true
+      }
+    ],
+    "groups": [
+      {
+        "kind": "tag",
+        "key": "브랜드",
+        "label": "브랜드",
+        "members": [
+          "m-4e5f60718293",
+          "m-5f60718293a4"
+        ]
+      }
+    ],
+    "total": 3,
+    "truncated": false,
+    "limitMax": 1000,
+    "depthMax": 3
+  }
+}
