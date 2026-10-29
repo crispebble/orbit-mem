@@ -10,13 +10,7 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM"],
-    "types": ["node"],
-    "baseUrl": ".",
-    "paths": {
-      "@onidot-labs/studio-plugin": ["../../../studio/packages/studio-plugin/src/index.ts"],
-      "@onidot-labs/studio-plugin/ui": ["./node_modules/@onidot-labs/forma-ui/dist/plugin-kit.d.ts"],
-      "@onidot-labs/studio-plugin/ai": ["./node_modules/@onidot-labs/forma-ai/dist/plugin-kit.d.ts"]
-    }
+    "types": ["node"]
   },
   "include": ["src", "test", "scripts"]
 }

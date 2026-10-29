@@ -2,7 +2,7 @@
   "id": "orbit",
   "name": "Orbit",
   "version": "0.1.0",
-  "studioApi": "^0.1.0",
+  "studioApi": "^0.1.7",
   "main": "dist/index.js",
   "styles": ["dist/index.css"],
   "description": "Orbit 기억과 제안을 Studio에서 보고 결정합니다.",
