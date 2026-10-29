@@ -1,7 +1,7 @@
 // memory 탭: 기억 보기, 고치기, 상태 바꾸기
 import {useCallback, useEffect, useState} from 'react';
 import type {TabProps} from '@onidot-labs/studio-plugin';
-import {Button, EmptyState} from '@onidot-labs/studio-plugin/ui';
+import {Button, StateView} from '@onidot-labs/studio-plugin/ui';
 import {MemoryDetail, MemoryForm, type MemoryFormValue, type OrbitMemory} from './parts/index.ts';
 import {errorMessage, OrbitError} from './oni.ts';
 import {toMemoryDetail, toMemoryRecord, type OniMemory, type OniVersion} from './model.ts';
@@ -69,11 +69,11 @@ export function MemoryPane({ctx, tab}: TabProps) {
     return () => { live = false; };
   }, [mode, store, ctx]);
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
   if (error && !loaded) {
-    return <EmptyState title="기억을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={() => void load()}>다시 시도</Button></EmptyState>;
+    return <StateView variant="error" title="기억을 읽지 못했습니다" description={error} onRetry={() => void load()} />;
   }
-  if (!loaded) return <EmptyState title="기억을 불러오는 중입니다" />;
+  if (!loaded) return <StateView variant="loading" title="기억을 불러오는 중입니다" />;
 
   const {memory, record} = loaded;
 

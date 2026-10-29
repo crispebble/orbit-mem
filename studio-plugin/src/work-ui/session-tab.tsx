@@ -3,7 +3,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
-import {Badge, Button, EmptyState, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/studio-plugin/ui';
+import {Badge, Button, StateView, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/studio-plugin/ui';
 import {errorMessage} from '../oni.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {formatTime} from '../work/display.ts';
@@ -136,12 +136,12 @@ export function SessionTab({ctx, tab}: TabProps) {
   const nav = useMemo(() => workNav(ctx, () => {}), [ctx]);
   useLoadWorks(store, loaded?.session.openWorkIds ?? [], now);
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
   if (state.status === 'paused') return <Paused store={store} state={state} title="세션 기록을 읽지 않습니다" />;
-  if (missing) return <EmptyState title="세션을 찾지 못했습니다" description="Orbit 기록에 없는 세션입니다." />;
+  if (missing) return <StateView title="세션을 찾지 못했습니다" description="Orbit 기록에 없는 세션입니다." />;
   if (!loaded) {
-    if (error) return <EmptyState title="세션을 읽지 못했습니다" description={error}><Button variant="secondary" size="sm" onClick={reload}>다시 시도</Button></EmptyState>;
-    return <EmptyState title="세션을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title="세션을 읽지 못했습니다" description={error} onRetry={reload} />;
+    return <StateView variant="loading" title="세션을 불러오는 중입니다" />;
   }
 
   return (

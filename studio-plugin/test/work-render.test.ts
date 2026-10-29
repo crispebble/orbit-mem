@@ -87,6 +87,46 @@ describe('작업 탭', () => {
   });
 });
 
+describe('빈·로딩·오류·멈춤 화면', () => {
+  /** StateView 한 개를 찾아 변형 단서(역할·제목 태그·compact)를 돌려준다 */
+  function stateView(html: string) {
+    const m = html.match(/<div[^>]*class="forma-state-view[^"]*"[^>]*>[\s\S]*?<(h\d|p) class="forma-state-view-title"/);
+    assert.ok(m, `StateView가 없습니다: ${html.slice(0, 300)}`);
+    return {head: m[0], compact: /data-compact/.test(m[0]), level: m[1]};
+  }
+
+  it('사이드바 보기는 Forma StateView를 compact·h3로 그린다', () => {
+    h.useState(state({status: 'loading', works: [], sessions: []}));
+    for (const html of [h.renderWorks(), h.renderSessions()]) {
+      const v = stateView(html);
+      assert.ok(v.compact, v.head);
+      assert.equal(v.level, 'h3');
+      assert.match(v.head, /role="status"/);
+    }
+    h.useState(state({status: 'error', error: '잠김', works: [], sessions: []}));
+    const err = stateView(h.renderWorks());
+    assert.match(err.head, /role="alert"/);
+    assert.match(text(h.renderWorks()), /작업 기록을 읽지 못했습니다/);
+    h.useState(state({works: [], sessions: []}));
+    assert.match(text(h.renderWorks()), /진행 중인 작업이 없습니다/);
+    assert.equal(stateView(h.renderWorks()).level, 'h3');
+  });
+
+  it('멈춤 안내도 StateView이고 「다시 확인」은 동작 자리에 있다', () => {
+    h.useState(state({status: 'paused', pause: {kind: 'oni-newer', message: '올려 주세요'}}));
+    const html = h.renderWorks();
+    stateView(html);
+    assert.match(html, /forma-state-view-actions[\s\S]*다시 확인/);
+  });
+
+  it('작업 탭의 없음·로딩은 탭 본문 크기의 StateView다', () => {
+    h.useState(state({works: [], details: {}}));
+    const v = stateView(h.renderWorkTab('w-없음'));
+    assert.ok(!v.compact);
+    assert.match(v.head, /role="status"/);
+  });
+});
+
 describe('받은 일의 사용자 확인 기다림', () => {
   it('세션으로 가는 길만 있고 확인·거절 동작은 없다', () => {
     h.useState(state());

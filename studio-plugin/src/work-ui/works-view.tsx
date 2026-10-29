@@ -2,7 +2,7 @@
 import {useState, type ReactNode} from 'react';
 import {ListChecks} from 'lucide-react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Badge, Button, EmptyState, InboxItem, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {Badge, Button, StateView, InboxItem, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {groupWorks, progressOf, workStateView, type WorkNode} from '../work/display.ts';
 import {hostLabel} from '../work/graph.ts';
 import type {WorkSummary} from '../work/types.ts';
@@ -16,15 +16,15 @@ export function WorksView({ctx}: ViewProps) {
   const [filter, setFilter] = useState<Filter>('default');
   const [selected, setSelected] = useState<string>();
 
-  if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
+  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" compact headingLevel={3} />;
   if (state.status === 'paused') {
-    return <div className="orbit-side"><Paused store={store} state={state} title="작업 기록을 읽지 않습니다" /></div>;
+    return <div className="orbit-side"><Paused store={store} state={state} title="작업 기록을 읽지 않습니다" compact /></div>;
   }
   if (state.status === 'error' && state.works.length === 0) {
-    return <div className="orbit-side"><EmptyState title="작업 기록을 읽지 못했습니다" description={`${state.error ?? ''} 잠시 뒤 다시 읽습니다.`} /></div>;
+    return <div className="orbit-side"><StateView variant="error" title="작업 기록을 읽지 못했습니다" description={`${state.error ?? ''} 잠시 뒤 다시 읽습니다.`} compact headingLevel={3} /></div>;
   }
   if (state.status === 'idle' || (state.status === 'loading' && state.works.length === 0)) {
-    return <div className="orbit-side"><EmptyState title="작업을 불러오는 중입니다" /></div>;
+    return <div className="orbit-side"><StateView variant="loading" title="작업을 불러오는 중입니다" compact headingLevel={3} /></div>;
   }
 
   const visible = filter === 'default' ? store.visibleWorks() : state.works;
@@ -74,10 +74,9 @@ export function WorksView({ctx}: ViewProps) {
       />
       {state.status === 'error' && <p className="orbit-alert" role="alert">갱신하지 못했습니다. 마지막으로 읽은 목록입니다. {state.error}</p>}
       {tree.length === 0 ? (
-        <EmptyState
+        <StateView
           title={filter === 'default' ? '진행 중인 작업이 없습니다' : '작업이 없습니다'}
-          description={state.scope.kind === 'project' ? `${state.scope.name} 프로젝트 안의 작업만 보입니다.` : 'AI 호스트가 작업 목록을 만들면 여기에 나타납니다.'}
-        />
+          description={state.scope.kind === 'project' ? `${state.scope.name} 프로젝트 안의 작업만 보입니다.` : 'AI 호스트가 작업 목록을 만들면 여기에 나타납니다.'} compact headingLevel={3} />
       ) : (
         <div className="orbit-side-list" role="list" aria-label="작업 목록">{tree.map(n => row(n, 0))}</div>
       )}
