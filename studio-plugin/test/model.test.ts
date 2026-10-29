@@ -161,8 +161,18 @@ describe('제안 변환', () => {
     }
   });
 
+  it('관련 기억 잇기는 이름·안내를 보이고 근거를 설명에 붙이며 고쳐서 승인이 없다', () => {
+    assert.equal(toProposalRow(pending({kind: 'link'}), now).kindLabel, '관련 기억 잇기');
+    const p = toProposal(pending({kind: 'link', body: '같은 결정', payload: {note: '측정 근거'}}), [memory], now);
+    assert.equal(p.kind, 'link');
+    assert.equal(p.explanation, '같은 결정\n\n잇는 근거: 측정 근거');
+    assert.equal(p.body, undefined);
+    assert.equal(p.diff, undefined);
+    assert.equal(toProposal(pending({kind: 'link', body: '', payload: {note: '근거만'}}), [], now).explanation, '잇는 근거: 근거만');
+  });
+
   it('Orbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
-    for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction']) {
+    for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
     }
     assert.equal(toProposal(pending({kind: 'stale', body: ''}), [memory], now).body, undefined);

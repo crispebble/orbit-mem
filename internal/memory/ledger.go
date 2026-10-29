@@ -41,6 +41,7 @@ type LedgerBefore struct {
 	Created  []string       `json:"created,omitempty"`  // 새로 만든 기억
 	File     *FileBefore    `json:"file,omitempty"`
 	After    map[string]int `json:"after,omitempty"` // 바꾼 직후 기억 판본. 되돌릴 때 그 뒤 바뀌었는지 본다
+	Link     string         `json:"link,omitempty"`  // 승인으로 생긴 연결. 되돌릴 때 이 연결만 뗀다
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
@@ -223,6 +224,8 @@ func (s *Store) snapshotFor(p Proposal) (LedgerBefore, error) {
 	var b LedgerBefore
 	ids := p.MemoryIDs
 	switch p.Kind {
+	case ProposalLink:
+		ids = nil // 연결은 기억 판을 바꾸지 않는다
 	case ProposalApplyFile:
 		ids = nil
 		b.File = fileBefore(p.Payload.Path)
@@ -290,6 +293,22 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 		memIDs = append(memIDs, id)
 		if m, err := getTx(s.db, id); err == nil {
 			fmt.Fprintf(&change, "새 기억 %s\n%s", id, LineDiff("", memoryText(m), 0))
+		}
+	}
+	if res.Link != "" {
+		if l, err := s.linkByID(res.Link); err == nil {
+			verb := "연결 추가"
+			if p.Kind == ProposalRevert {
+				verb = "연결 뗌"
+			} else {
+				before.Link = l.ID
+			}
+			fmt.Fprintf(&change, "%s %s: %s — %s", verb, l.ID, l.A, l.B)
+			if l.Note != "" {
+				change.WriteString(" (" + l.Note + ")")
+			}
+			change.WriteString("\n")
+			memIDs = append(memIDs, l.A, l.B)
 		}
 	}
 	memIDs = uniq(memIDs)
@@ -429,7 +448,17 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		}
 		res.File = f.Path
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// 연결은 그 연결 id만 뗀다. 사용자가 이미 뗐으면 할 일이 없고, 그 뒤 다시 이은 연결은 건드리지 않는다.
+	if e.Before.Link != "" {
+		if _, err := s.UnlinkID(e.Before.Link, LinkOriginRetroRevert, "되돌림 "+p.ID); err != nil {
+			return err
+		}
+		res.Link = e.Before.Link
+	}
+	return nil
 }
 
 // SetLedgerLesson links the lesson a retrospective drew from a judged change.

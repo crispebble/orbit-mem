@@ -62,11 +62,11 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기, 관련 기억 잇기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기는 고쳐서 승인할 수 없다). 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID}
 		}))

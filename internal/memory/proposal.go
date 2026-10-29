@@ -23,6 +23,7 @@ const (
 	ProposalDirection  = "direction"  // 방향 제안(주간 회고)
 	ProposalEdit       = "edit"       // 기억 하나의 제목·본문·태그·범위 고치기
 	ProposalRevert     = "revert"     // 원장 한 줄의 변경 되돌리기
+	ProposalLink       = "link"       // 관련 기억 둘 잇기
 )
 
 // Proposal statuses.
@@ -33,7 +34,7 @@ const (
 	StatusSettled  = "settled" // 다른 길로 이미 이뤄져 닫힘
 )
 
-var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert}
+var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink}
 
 var (
 	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
@@ -55,6 +56,7 @@ type Payload struct {
 	Tags        []string `json:"tags,omitempty"`        // edit: 새 태그
 	Project     string   `json:"project,omitempty"`     // edit: 새 범위가 프로젝트면 그 이름
 	LedgerID    string   `json:"ledgerId,omitempty"`    // revert: 되돌릴 원장 줄
+	Note        string   `json:"note,omitempty"`        // link: 잇는 근거(연결에 남는다)
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -171,6 +173,17 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
 		}
 		in.Body = strings.TrimSpace(in.Body + "\n\n```diff\n" + diff + "```")
+	case ProposalLink:
+		if len(in.MemoryIDs) != 2 || in.MemoryIDs[0] == in.MemoryIDs[1] {
+			return Proposal{}, fmt.Errorf("%w: 이을 서로 다른 기억 둘이 필요합니다", ErrInvalid)
+		}
+		if linked, err := s.linked(in.MemoryIDs[0], in.MemoryIDs[1]); err != nil || linked {
+			if err != nil {
+				return Proposal{}, err
+			}
+			return Proposal{}, fmt.Errorf("%w: 이미 이어진 기억입니다", ErrInvalid)
+		}
+		in.Payload.Note = ClipRunes(MaskSecrets(strings.TrimSpace(in.Payload.Note)), 300)
 	case ProposalRevert:
 		e, err := s.LedgerEntry(in.Payload.LedgerID)
 		if err != nil {
@@ -278,6 +291,7 @@ type DecideResult struct {
 	Created  string   `json:"created,omitempty"`  // 새로 만든 기억 id
 	File     string   `json:"file,omitempty"`     // 바꾼 파일
 	LedgerID string   `json:"ledgerId,omitempty"` // 승인한 변경의 원장 줄
+	Link     string   `json:"link,omitempty"`     // 이은 연결(link), 뗀 연결(link 되돌리기)
 }
 
 // Decide approves or rejects a proposal and applies it.
@@ -430,6 +444,17 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			return fmt.Errorf("%w: 되돌리기는 고쳐서 승인할 수 없습니다", ErrInvalid)
 		}
 		return s.revert(p, res)
+	case ProposalLink:
+		if given(in.Title) || given(in.Body) {
+			return fmt.Errorf("%w: 연결 제안은 고쳐서 승인할 수 없습니다. 승인한 뒤 memory_update로 근거를 고쳐 주세요", ErrInvalid)
+		}
+		l, created, err := s.Link(LinkInput{From: p.MemoryIDs[0], To: p.MemoryIDs[1], Note: p.Payload.Note, Origin: LinkOriginRetro, OriginRef: p.ID})
+		if err != nil {
+			return err
+		}
+		if created { // 그 사이 다른 길로 이어졌으면 그 연결은 이 승인의 것이 아니다
+			res.Link = l.ID
+		}
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
 			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
@@ -450,7 +475,8 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 }
 
 // CloseSettled closes confirm proposals whose memories are no longer candidates
-// (confirmed by repetition, edited by hand or gone stale) and returns how many.
+// (confirmed by repetition, edited by hand or gone stale) and link proposals
+// whose memories got linked another way, and returns how many.
 func (s *Store) CloseSettled() (int, error) {
 	pending, err := s.Proposals(StatusPending)
 	if err != nil {
@@ -458,6 +484,17 @@ func (s *Store) CloseSettled() (int, error) {
 	}
 	n := 0
 	for _, p := range pending {
+		if p.Kind == ProposalLink && len(p.MemoryIDs) == 2 {
+			if linked, err := s.linked(p.MemoryIDs[0], p.MemoryIDs[1]); err != nil {
+				return n, err
+			} else if linked {
+				if err := s.finish(&p, StatusSettled, "이미 이어짐"); err != nil {
+					return n, err
+				}
+				n++
+			}
+			continue
+		}
 		if p.Kind != ProposalConfirm {
 			continue
 		}

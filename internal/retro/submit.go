@@ -38,7 +38,7 @@ type MemoryIn struct {
 
 // ProposalIn is a proposal from the retrospective.
 type ProposalIn struct {
-	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction·edit·revert"`
+	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction·edit·revert·link"`
 	Title       string   `json:"title"`
 	Body        string   `json:"body,omitempty" jsonschema:"왜 제안하는지"`
 	MemoryIDs   []string `json:"memoryIds,omitempty"`
@@ -53,6 +53,7 @@ type ProposalIn struct {
 	NewScope    string   `json:"newScope,omitempty" jsonschema:"edit: 새 범위 global 또는 project"`
 	Project     string   `json:"project,omitempty" jsonschema:"edit: 새 범위가 project면 그 작업 디렉터리"`
 	LedgerID    string   `json:"ledgerId,omitempty" jsonschema:"revert: 되돌릴 원장 id"`
+	Note        string   `json:"note,omitempty" jsonschema:"link: 두 기억을 잇는 근거 한 줄(memoryIds에 이을 기억 둘)"`
 }
 
 // UsageIn is the session-end retrospective's verdict on one memory put into the session.
@@ -292,7 +293,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	for _, in := range sub.Proposals {
 		pi := memory.ProposalInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, RetroID: id,
 			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content,
-				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID}}
+				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID, Note: in.Note}}
 		switch in.Kind {
 		case memory.ProposalEdit:
 			switch in.NewScope {

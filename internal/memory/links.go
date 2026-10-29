@@ -154,6 +154,23 @@ func (s *Store) UnlinkID(id, origin, reason string) (bool, error) {
 	return true, nil
 }
 
+// linked says whether two memories have a live link.
+func (s *Store) linked(x, y string) (bool, error) {
+	a, b := pair(x, y)
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM memory_links WHERE a=? AND b=? AND removed_at=0`, a, b).Scan(&n)
+	return n > 0, err
+}
+
+// linkByID reads a link, live or removed.
+func (s *Store) linkByID(id string) (Link, error) {
+	l, err := scanLink(s.db.QueryRow(`SELECT `+linkCols+` FROM memory_links WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return l, ErrNotFound
+	}
+	return l, err
+}
+
 // LinksOf returns the live links of one memory, oldest first.
 func (s *Store) LinksOf(id string) ([]MemoryLink, error) {
 	rows, err := s.db.Query(`SELECT `+linkCols+` FROM memory_links WHERE (a=? OR b=?) AND removed_at=0 ORDER BY created_at, id`, id, id)
