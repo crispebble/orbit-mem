@@ -2,7 +2,7 @@
   "id": "orbit",
   "name": "Orbit",
   "version": "0.1.0",
-  "studioApi": "^0.1.7",
+  "studioApi": "^0.1.9",
   "main": "dist/index.js",
   "styles": ["dist/index.css"],
   "description": "Orbit 기억·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
