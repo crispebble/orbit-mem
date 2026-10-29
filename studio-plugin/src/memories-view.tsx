@@ -2,6 +2,7 @@
 import {useEffect, useRef, useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {Button} from '@onidot-labs/studio-plugin/ui';
+import {openMemoryGraph} from './memory-graph/open.ts';
 import {MemoryList, type MemoryKind, type MemoryListState, type OrbitMemory} from './parts/index.ts';
 import {errorMessage} from './oni.ts';
 import {useOrbit} from './runtime.ts';
@@ -46,6 +47,9 @@ export function MemoriesView({ctx}: ViewProps) {
 
   return (
     <div className="orbit-side">
+      <div className="orbit-row">
+        <Button variant="secondary" size="sm" onClick={() => openMemoryGraph(ctx)}>그래프로 보기</Button>
+      </div>
       <MemoryList
         memories={memories}
         filterMode="server"

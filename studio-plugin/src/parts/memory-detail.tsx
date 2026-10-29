@@ -1,11 +1,11 @@
-// 기억 상세: 머리줄, 본문, 태그, 출처, 버전 이력, 대체 관계.
+// 기억 상세: 머리줄, 본문, 태그, 출처, 버전 이력, 대체 관계, 관련 기억(명시 연결).
 import type {ReactNode} from 'react';
-import {Archive, Brain, FileText, History, Link, Merge, MessageSquareQuote, Pencil, Quote, Sparkles, Terminal, TriangleAlert} from 'lucide-react';
+import {Archive, Brain, FileText, History, Link, Link2, Merge, MessageSquareQuote, Pencil, Quote, Sparkles, Terminal, TriangleAlert} from 'lucide-react';
 import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
 import {ActionFeedback, Frame, useAction} from './shared.tsx';
 import {Block, KindPill, KindTile, StateMark} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
-import {kindOf, memorySourceLabels, scopeOf, stateOf, type MemorySource, type MemorySourceKind, type OrbitMemory} from './vocabulary.ts';
+import {kindOf, memorySourceLabels, scopeOf, stateOf, type MemoryKind, type MemorySource, type MemorySourceKind, type OrbitMemory} from './vocabulary.ts';
 
 const sourceIcon: Record<MemorySourceKind, typeof FileText> = {
   quote: MessageSquareQuote,
@@ -33,15 +33,31 @@ function SourceRow({source}: {source: MemorySource}) {
   );
 }
 
+/** 관련 기억 한 줄: 명시 연결 하나와 상대 기억 */
+export interface MemoryLinkView {
+  id: string;
+  memoryId: string;
+  /** 상대 기억 제목. 못 읽었으면 없다(id를 보인다) */
+  title?: string;
+  kind?: MemoryKind;
+  note?: string;
+  origin?: string;
+}
+
+const linkOriginLabels: Record<string, string> = {ai: 'AI가 이음', retro: '회고가 이음', user: '사용자가 이음'};
+
 export interface MemoryDetailProps extends OrbitProps {
   memory: OrbitMemory;
   related?: readonly OrbitMemory[];
+  /** 함께 읽을 관련 기억(memory_get의 links) */
+  links?: readonly MemoryLinkView[];
+  onOpenMemory?: (id: string) => void;
   usedIn?: ReactNode;
   onEdit?: (id: string) => void | Promise<void>;
   onCopyId?: (id: string) => void | Promise<void>;
 }
 
-export function MemoryDetail({memory, related = [], usedIn, onEdit, onCopyId, className = '', surface = 'plain'}: MemoryDetailProps) {
+export function MemoryDetail({memory, related = [], links = [], onOpenMemory, usedIn, onEdit, onCopyId, className = '', surface = 'plain'}: MemoryDetailProps) {
   const action = useAction();
   const kind = kindOf(memory);
   const find = (id: string) => related.find(item => item.id === id);
@@ -114,6 +130,23 @@ export function MemoryDetail({memory, related = [], usedIn, onEdit, onCopyId, cl
                 </li>
               );
             })()}
+          </ul>
+        </Block>
+      ) : null}
+      {links.length ? (
+        <Block icon={<Link2 size={14} aria-hidden="true" />} title="관련 기억" count={links.length}>
+          <ul className="orbit-list">
+            {links.map(link => (
+              <li className="orbit-out-row" key={link.id}>
+                <KindTile kind={link.kind ?? 'fact'} />
+                <div className="orbit-copy">
+                  {onOpenMemory
+                    ? <button type="button" className="orbit-link-button" onClick={() => onOpenMemory(link.memoryId)}>{link.title ?? link.memoryId}</button>
+                    : <div>{link.title ?? link.memoryId}</div>}
+                  {(link.note || link.origin) && <div className="orbit-meta">{[link.note, link.origin ? linkOriginLabels[link.origin] ?? link.origin : undefined].filter(Boolean).join(' · ')}</div>}
+                </div>
+              </li>
+            ))}
           </ul>
         </Block>
       ) : null}

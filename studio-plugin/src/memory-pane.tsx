@@ -2,7 +2,8 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {TabProps} from '@onidot-labs/studio-plugin';
 import {Button, StateView} from '@onidot-labs/studio-plugin/ui';
-import {MemoryDetail, MemoryForm, type MemoryFormValue, type OrbitMemory} from './parts/index.ts';
+import {openMemoryGraph} from './memory-graph/open.ts';
+import {MemoryDetail, MemoryForm, type MemoryFormValue, type MemoryKind, type MemoryLinkView, type OrbitMemory} from './parts/index.ts';
 import {errorMessage, OrbitError} from './oni.ts';
 import {toMemoryDetail, toMemoryRecord, type OniMemory, type OniVersion} from './model.ts';
 import {memoryUpdateSteps, statusArgs, type UpdateArgs} from './requests.ts';
@@ -13,6 +14,7 @@ interface Loaded {
   history: OniVersion[];
   record: OrbitMemory;
   related: OrbitMemory[];
+  links: MemoryLinkView[];
 }
 
 const CONFLICT_HINT = '다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요.';
@@ -41,9 +43,20 @@ export function MemoryPane({ctx, tab}: TabProps) {
           // 대체한 기억을 못 읽어도 id로 보여 준다
         }
       }
-      setLoaded({memory, history, record: toMemoryDetail(memory, history), related});
+      const linked = memory.links ?? [];
+      const links: MemoryLinkView[] = linked.map(l => ({id: l.id, memoryId: l.memoryId, note: l.note, origin: l.origin}));
+      setLoaded({memory, history, record: toMemoryDetail(memory, history), related, links});
       setConflict(false);
       ctx.tabs.setTitle('memory', tab.id, memory.title);
+      // 관련 기억(명시 연결)의 제목은 본문을 보인 뒤 채운다. 못 읽은 것은 id로 남는다
+      if (linked.length) {
+        void store.getMemories(linked.map(l => l.memoryId)).then(others => {
+          const byId = new Map(others.map(o => [o.id, o] as const));
+          setLoaded(prev => (prev && prev.memory.id === memory.id && prev.memory.version === memory.version
+            ? {...prev, links: prev.links.map(l => ({...l, title: byId.get(l.memoryId)?.title, kind: byId.get(l.memoryId)?.kind as MemoryKind | undefined}))}
+            : prev));
+        }, (e: unknown) => ctx.log.warn(`관련 기억 제목을 읽지 못했습니다(${id}): ${errorMessage(e)}`));
+      }
     } catch (e) {
       ctx.log.error(`기억을 읽지 못했습니다(${id}): ${errorMessage(e)}`);
       setError(errorMessage(e));
@@ -139,6 +152,7 @@ export function MemoryPane({ctx, tab}: TabProps) {
         {state === 'candidate' && <Button variant="secondary" size="sm" disabled={busy} onClick={() => void changeState(statusArgs(memory, 'confirm'), '확정했습니다.')}>확정</Button>}
         {state !== 'stale' && state !== 'hidden' && <Button variant="secondary" size="sm" disabled={busy} onClick={() => void changeState(statusArgs(memory, 'stale'), '낡음으로 표시했습니다.')}>낡음으로 표시</Button>}
         {(state === 'stale' || state === 'hidden') && <Button variant="secondary" size="sm" disabled={busy} onClick={() => void changeState(statusArgs(memory, 'restore'), '후보로 되돌렸습니다.')}>후보로 되돌리기</Button>}
+        <Button variant="ghost" size="sm" onClick={() => openMemoryGraph(ctx, memory.id)}>그래프에서 보기</Button>
       </div>
       {error && (
         <div className="orbit-row">
@@ -150,6 +164,11 @@ export function MemoryPane({ctx, tab}: TabProps) {
       <MemoryDetail
         memory={record}
         related={loaded.related}
+        links={loaded.links}
+        onOpenMemory={mid => {
+          const title = loaded.links.find(l => l.memoryId === mid)?.title ?? mid;
+          ctx.tabs.open({type: 'memory', id: mid, title, params: {id: mid}});
+        }}
         onEdit={() => { setNotice(undefined); setMode('edit'); }}
         onCopyId={async mid => { await navigator.clipboard.writeText(mid); ctx.notify({title: 'id를 복사했습니다', body: mid, tone: 'info'}); }}
       />

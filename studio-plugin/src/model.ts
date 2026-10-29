@@ -52,6 +52,18 @@ export interface OniMemory {
   staleReason?: string;
   days?: string[] | null;
   sources?: OniSource[] | null;
+  links?: OniLink[] | null;
+}
+
+/** memory_get의 살아 있는 명시 연결(orbit 0.3.6~) */
+export interface OniLink {
+  id: string;
+  /** 상대 기억 */
+  memoryId: string;
+  kind?: string;
+  note?: string;
+  origin?: string;
+  at?: number;
 }
 
 export interface OniVersion {

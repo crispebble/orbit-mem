@@ -2,10 +2,10 @@
   "id": "orbit",
   "name": "Orbit",
   "version": "0.1.0",
-  "studioApi": "^0.1.10",
+  "studioApi": "^0.1.12",
   "main": "dist/index.js",
   "styles": ["dist/index.css"],
-  "description": "Orbit 기억·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
+  "description": "Orbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
   "apps": [
     {
       "id": "orbit",
@@ -25,10 +25,12 @@
     {"id": "proposal", "app": "orbit"},
     {"id": "memory", "app": "orbit"},
     {"id": "work", "app": "orbit"},
-    {"id": "session", "app": "orbit"}
+    {"id": "session", "app": "orbit"},
+    {"id": "memory-graph", "app": "orbit"}
   ],
   "commands": [
     {"id": "orbit.find", "title": "기억 찾기"},
+    {"id": "orbit.memory-graph", "title": "기억 그래프 보기"},
     {"id": "orbit.proposals", "title": "제안 보기"},
     {"id": "orbit.works", "title": "작업 보기"},
     {"id": "orbit.sessions", "title": "세션 보기"}

@@ -1,0 +1,22 @@
+{
+  "tool": "memory_graph",
+  "args": {
+    "depth": "two"
+  },
+  "isError": true,
+  "result": {
+    "contract": {
+      "name": "orbit.memory",
+      "major": 1,
+      "minor": 1,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "error": {
+      "code": "INVALID_ARGUMENT",
+      "message": "depth는 1 이상의 정수여야 합니다.",
+      "field": "depth"
+    }
+  }
+}

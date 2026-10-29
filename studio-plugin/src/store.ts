@@ -109,18 +109,17 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     return {memory, history: out.history?.[id] ?? []};
   }
 
-  /** 제안 근거용. 일부가 없어도 있는 것만 돌려준다. */
+  /** 제안 근거·관련 기억용(20개까지). 함께 부르고, 일부가 없어도 있는 것만 순서대로 돌려준다. */
   async function getMemories(ids: readonly string[]): Promise<OniMemory[]> {
-    const found: OniMemory[] = [];
-    for (const id of ids.slice(0, 20)) {
+    const each = await Promise.all(ids.slice(0, 20).map(async id => {
       try {
-        const out = await callOni<unknown>(ctx, 'memory_get', {ids: [id]});
-        found.push(...itemsOf<OniMemory>(out, 'memory_get'));
+        return itemsOf<OniMemory>(await callOni<unknown>(ctx, 'memory_get', {ids: [id]}), 'memory_get');
       } catch (e) {
-        ctx.log.warn(`근거 기억을 읽지 못했습니다(${id}): ${errorMessage(e)}`);
+        ctx.log.warn(`기억을 읽지 못했습니다(${id}): ${errorMessage(e)}`);
+        return [];
       }
-    }
-    return found;
+    }));
+    return each.flat();
   }
 
   /** 단계를 차례로 부른다. 앞 호출의 결과 판본을 expectedVersion이 비어 있는 다음 단계에 채운다. */

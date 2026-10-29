@@ -215,3 +215,4 @@ textarea.orbit-input{resize:vertical;min-height:88px;line-height:1.55}
 @media(pointer:coarse){.orbit-button,.orbit-input{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.orbit-part *,.orbit-part *::before,.orbit-part *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 [data-reduced-motion=true] .orbit-part *,[data-reduced-motion=true] .orbit-part *::before,[data-reduced-motion=true] .orbit-part *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+.orbit-link-button{padding:0;border:0;background:none;color:var(--forma-accent-strong);font:inherit;text-align:left;cursor:pointer;overflow-wrap:anywhere}.orbit-link-button:hover{text-decoration:underline}.orbit-link-button:focus-visible{outline:2px solid var(--forma-accent);outline-offset:2px;border-radius:2px}
