@@ -95,7 +95,8 @@ func (r *Runner) DrainSessions(ctx context.Context) ([]Result, error) {
 	return results, nil
 }
 
-// drain runs the queue until it is empty. Callers hold the lock.
+// drain runs the queue until it is empty, or stops at a host that is not
+// signed in, leaving the rest queued. Callers hold the lock.
 func (r *Runner) drain(ctx context.Context) ([]Result, error) {
 	var results []Result
 	var errs []error
@@ -121,6 +122,9 @@ func (r *Runner) drain(ctx context.Context) ([]Result, error) {
 		results = append(results, res)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s:%s: %w", next.Host, next.Session, err))
+		}
+		if errors.Is(err, ErrHostSignedOut) { // 남은 세션도 같은 이유로 실패한다: 다음 실행에 맡긴다
+			return results, errors.Join(errs...)
 		}
 	}
 }
@@ -170,7 +174,9 @@ func (r *Runner) RunSession(ctx context.Context, e SessionEnd) (Result, error) {
 	}
 	mat.Session = key
 	res, err = r.launch(ctx, mat, r.Cfg.SessionModel())
-	markEnd(r.Store, e, res.ID)
+	if !errors.Is(err, ErrHostSignedOut) { // 로그인되지 않았으면 대기열에 남겨 다음 실행이 다시 돌린다
+		markEnd(r.Store, e, res.ID)
+	}
 	return res, err
 }
 

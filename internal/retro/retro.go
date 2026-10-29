@@ -39,6 +39,11 @@ const (
 // ErrBusy means another retrospective is running on this PC.
 var ErrBusy = errors.New("다른 회고가 이미 돌고 있습니다")
 
+// ErrHostSignedOut means the headless host found no sign-in: it never
+// reached the model. macOS logout is one cause (the keychain goes away while
+// the session-end hooks still run), so the run is retried later.
+var ErrHostSignedOut = errors.New("호스트가 로그인되어 있지 않습니다")
+
 const (
 	maxCatchUpDays = 7
 	runTimeout     = 30 * time.Minute
@@ -231,10 +236,41 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 		}
 		msg += "\n" + tail
 	}
+	signedOut := hostSignedOut(out)
+	if signedOut {
+		msg += "\n로그인된 뒤 다음 실행에서 다시 돕니다"
+	}
 	res.Status, res.Error = StatusFailed, msg
 	_, _ = r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=?`, StatusFailed, r.now().UnixMilli(), msg, res.ID)
+	if signedOut {
+		return res, signedOutError(msg)
+	}
 	return res, errors.New(msg)
 }
+
+// hostSignedOut says whether the host failed for want of a sign-in before
+// it reached the model. Claude prints its JSON result with no cost or tokens
+// (keychain unreadable, no /login); codex exec ends on a 401 line (no
+// auth.json). A run that reached the model is never one, whatever its answer
+// says.
+func hostSignedOut(out string) bool {
+	if h := parseHostOutput(out); h.Known {
+		return h.CostUSD == 0 && h.InputTokens == 0 && h.OutputTokens == 0 &&
+			(strings.Contains(h.Text, "Not logged in") || strings.Contains(h.Text, "Please run /login"))
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "ERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication") {
+			return true
+		}
+	}
+	return false
+}
+
+// signedOutError is a failed run that matches ErrHostSignedOut.
+type signedOutError string
+
+func (e signedOutError) Error() string        { return string(e) }
+func (e signedOutError) Is(target error) bool { return target == ErrHostSignedOut }
 
 // HostOutput is what a headless host printed: Claude's JSON result carries
 // the cost and tokens; anything else is kept as text.
