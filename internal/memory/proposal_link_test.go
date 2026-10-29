@@ -128,6 +128,10 @@ func TestRevertLink(t *testing.T) {
 	if orig, _ := s.LedgerEntry(res.LedgerID); orig.RevertedBy != rr.LedgerID {
 		t.Errorf("원래 줄: %+v", orig)
 	}
+	// 연결을 뗀 되돌림 줄은 되돌릴 것이 없다
+	if _, err := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌림 되돌리기", Payload: Payload{LedgerID: rr.LedgerID}}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("되돌림의 되돌리기: %v", err)
+	}
 }
 
 // 끝 기준: 사용자가 이미 뗀 연결을 되돌려도 실패하지 않는다. 그 사이 AI가 다시 이은 연결은 떼지 않는다.
@@ -148,6 +152,37 @@ func TestRevertLink_이미_뗀_연결(t *testing.T) {
 	}
 	if ls, _ := s.LinksOf(a.ID); len(ls) != 1 || ls[0].ID != again.ID {
 		t.Errorf("AI가 다시 이은 연결: %+v", ls)
+	}
+	var origin string
+	_ = s.db.QueryRow(`SELECT removed_origin FROM memory_links WHERE id=?`, res.Link).Scan(&origin)
+	if origin != LinkOriginUser {
+		t.Errorf("사용자가 뗀 연결의 뗀 쪽이 바뀌었습니다: %q", origin)
+	}
+	ledger, _ := s.Ledger(LedgerFilter{})
+	for _, e := range ledger {
+		if e.RevertOf == res.LedgerID && strings.Contains(e.Change, "연결 뗌") {
+			t.Errorf("떼지 않은 연결을 뗐다고 적었습니다: %s", e.Change)
+		}
+	}
+}
+
+// 끝 기준: 승인할 때 이미 다른 길로 이어져 있으면 제안은 정리되고 빈 원장 줄을 만들지 않는다.
+func TestDecideLink_이미_이어짐(t *testing.T) {
+	s, _ := newTestStore(t)
+	a, b := saved(t, s, "A 기억"), saved(t, s, "B 기억")
+	p := proposeLink(t, s, a, b)
+	if _, _, err := s.Link(LinkInput{From: a.ID, To: b.ID, Origin: LinkOriginAI}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Proposal.Status != StatusSettled || res.LedgerID != "" || res.Link != "" {
+		t.Errorf("결과: %+v", res)
+	}
+	if ledger, _ := s.Ledger(LedgerFilter{}); len(ledger) != 0 {
+		t.Errorf("원장 줄: %+v", ledger)
 	}
 }
 

@@ -408,6 +408,9 @@ func printProposal(w io.Writer, s *memory.Store, p memory.Proposal, full bool) {
 			fmt.Fprintf(w, "    대상 %s %s·%s %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
 		}
 	}
+	if p.Payload.Note != "" {
+		fmt.Fprintln(w, "    잇는 근거: "+p.Payload.Note)
+	}
 	if full && p.Body != "" {
 		fmt.Fprintln(w, "    "+strings.ReplaceAll(p.Body, "\n", "\n    "))
 	}
@@ -495,8 +498,18 @@ func cmdProposals(a *app, args []string) error {
 }
 
 func (a *app) reportDecision(res memory.DecideResult) error {
-	word := map[string]string{memory.StatusApproved: "승인", memory.StatusRejected: "거절"}[res.Proposal.Status]
+	word := map[string]string{memory.StatusApproved: "승인", memory.StatusRejected: "거절", memory.StatusSettled: "정리"}[res.Proposal.Status]
 	fmt.Fprintf(a.stdout, "%s %s했습니다.", res.Proposal.ID, word)
+	if res.Proposal.Status == memory.StatusSettled {
+		fmt.Fprintf(a.stdout, " %s.", res.Proposal.Note)
+	}
+	if res.Link != "" {
+		verb := "이은"
+		if res.Proposal.Kind == memory.ProposalRevert {
+			verb = "뗀"
+		}
+		fmt.Fprintf(a.stdout, " %s 연결 %s.", verb, res.Link)
+	}
 	if res.Created != "" {
 		fmt.Fprintf(a.stdout, " 새 기억 %s.", res.Created)
 	}

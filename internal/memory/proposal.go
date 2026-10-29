@@ -40,6 +40,8 @@ var (
 	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
 	ErrFileChanged       = errors.New("제안을 만든 뒤 파일이 바뀌었습니다. 회고가 다시 제안하게 두거나 직접 고쳐 주세요")
 	ErrDecided           = errors.New("이미 결정한 제안입니다")
+	// errAlreadyLinked: 연결 제안을 승인할 때 그 쌍이 이미 다른 길로 이어져 있다. 제안은 정리(settled)로 닫는다.
+	errAlreadyLinked = errors.New("이미 이어진 기억입니다")
 )
 
 // Payload carries what a proposal needs beyond memory ids.
@@ -192,6 +194,9 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 		if e.RevertedBy != "" {
 			return Proposal{}, fmt.Errorf("%w: 이미 되돌린 변경입니다(%s)", ErrInvalid, e.RevertedBy)
 		}
+		if b := e.Before; len(b.Memories) == 0 && len(b.Created) == 0 && b.File == nil && b.Link == "" {
+			return Proposal{}, fmt.Errorf("%w: 이 변경은 되돌릴 것이 없습니다(%s)", ErrInvalid, e.ID)
+		}
 		if e.TargetKind == TargetMemory {
 			in.MemoryIDs = e.Targets
 		}
@@ -328,7 +333,13 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		if err != nil {
 			return res, err
 		}
-		if err := s.apply(p, in, &res); err != nil {
+		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) {
+			if err := s.finish(&p, StatusSettled, "이미 이어짐"); err != nil {
+				return res, err
+			}
+			res.Proposal = p
+			return res, nil
+		} else if err != nil {
 			return res, err
 		}
 		if err := s.finish(&p, StatusApproved, in.Note); err != nil {
@@ -452,9 +463,10 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if err != nil {
 			return err
 		}
-		if created { // 그 사이 다른 길로 이어졌으면 그 연결은 이 승인의 것이 아니다
-			res.Link = l.ID
+		if !created { // 그 사이 다른 길로 이어졌다. 그 연결은 이 승인의 것이 아니다
+			return errAlreadyLinked
 		}
+		res.Link = l.ID
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
 			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)

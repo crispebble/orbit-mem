@@ -453,10 +453,13 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 	}
 	// 연결은 그 연결 id만 뗀다. 사용자가 이미 뗐으면 할 일이 없고, 그 뒤 다시 이은 연결은 건드리지 않는다.
 	if e.Before.Link != "" {
-		if _, err := s.UnlinkID(e.Before.Link, LinkOriginRetroRevert, "되돌림 "+p.ID); err != nil {
+		removed, err := s.UnlinkID(e.Before.Link, LinkOriginRetroRevert, "되돌림 "+p.ID)
+		if err != nil {
 			return err
 		}
-		res.Link = e.Before.Link
+		if removed {
+			res.Link = e.Before.Link
+		}
 	}
 	return nil
 }

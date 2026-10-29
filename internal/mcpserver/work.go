@@ -33,7 +33,7 @@ const readerInstructions = `Orbit 기록을 읽는다. 작업 기록(orbit.work 
 // four work tools and memory_graph. It has no memory write tools and no
 // work_title. memDB is opened on the first memory_graph call.
 func NewReader(wo WorkOptions, memDB, version string) *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-reader", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
+	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
 	addWorkTools(srv, newWorkTools(wo, true))
 	addMemoryGraphTool(srv, &memoryGraphTool{path: memDB})
 	return srv

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onidot.dev/schemas/orbit.memory/1/inputs.schema.json",
-  "title": "orbit.memory 1.0 도구 입력",
+  "title": "orbit.memory 1.1 도구 입력",
   "description": "모든 칸은 선택이다. 모르는 칸은 받아들이고 응답 ignoredArgs에 이름이 나온다. 형이 틀린 칸은 INVALID_ARGUMENT다.",
   "$defs": {
     "major": {"type": "integer", "minimum": 1, "description": "읽는 쪽이 읽을 수 있는 주판. 기본 1"},

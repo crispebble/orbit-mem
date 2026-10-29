@@ -194,8 +194,11 @@ func TestGraph_거르기와_relations(t *testing.T) {
 	}
 	a, _ := g.s.Get(g.ids["a"])
 	c, _ := g.s.Get(g.ids["c"])
-	gr = g.graph(t, GraphInput{UpdatedFrom: a.UpdatedAt, UpdatedTo: c.UpdatedAt})
+	gr = g.graph(t, GraphInput{UpdatedFrom: &a.UpdatedAt, UpdatedTo: &c.UpdatedAt})
 	eq(t, "기간(양 끝 포함)", g.nodeNames(gr), []string{"a", "b", "c"})
+	epoch := int64(0)
+	gr = g.graph(t, GraphInput{UpdatedTo: &epoch})
+	eq(t, "1970-01-01까지", g.nodeNames(gr), []string(nil))
 }
 
 // 끝 기준: focus는 via로 depth 단계까지 따라간다. 기본 via는 tag를 뺀다. depth는 depthMax에서 멈춘다.

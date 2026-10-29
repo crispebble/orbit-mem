@@ -38,7 +38,7 @@ type GraphInput struct {
 	Via                    []string
 	Kinds, States, Scopes  []string
 	Tags                   []string
-	UpdatedFrom, UpdatedTo int64 // 밀리초, 0이면 없음
+	UpdatedFrom, UpdatedTo *int64 // 밀리초, nil이면 없음
 	Relations              []string
 	Limit                  int
 }
@@ -291,7 +291,7 @@ func graphFilter(in GraphInput) func(Memory) bool {
 		if len(scopes) > 0 && !scopes[m.Scope] {
 			return false
 		}
-		if in.UpdatedFrom > 0 && m.UpdatedAt < in.UpdatedFrom || in.UpdatedTo > 0 && m.UpdatedAt > in.UpdatedTo {
+		if in.UpdatedFrom != nil && m.UpdatedAt < *in.UpdatedFrom || in.UpdatedTo != nil && m.UpdatedAt > *in.UpdatedTo {
 			return false
 		}
 		if len(tags) > 0 {

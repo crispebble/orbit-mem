@@ -152,7 +152,7 @@ func TestExamplesCoverContract(t *testing.T) {
 		"state=candidate", "state=confirmed", "state=stale", "state=hidden", "scope=global", "scope=project",
 		"kind=link", "kind=supersede", "kind=tag", "kind=session", "kind=file", "relation=related",
 		"origin=ai", "origin=retro", "origin=user", "truncated=true", "ignoredArgs",
-		"error:UNSUPPORTED_MAJOR", "error:INVALID_ARGUMENT", "error:NOT_FOUND",
+		"error:UNSUPPORTED_MAJOR", "error:INVALID_ARGUMENT", "error:NOT_FOUND", "error:UNAVAILABLE",
 		"arg:focus", "arg:depth", "arg:via", "arg:kinds", "arg:states", "arg:scopes", "arg:tags",
 		"arg:updatedFrom", "arg:updatedTo", "arg:relations", "arg:limit", "arg:major",
 	}

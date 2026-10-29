@@ -13,10 +13,11 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
+- 1.1은 오류 코드 `UNAVAILABLE`을 더했다. 1.0과 나머지는 같다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 기억 종류·상태, 선·묶음 종류, 연결 종류(`relation`), 만든 쪽(`origin`)은 「알 수 없음」으로 보인다.
-- `response.schema.json`은 oni가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
+- `response.schema.json`은 oni가 내는 1.1 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
 - 예시 값의 모양(id 글자)에는 뜻이 없다. 예시끼리는 같은 시점의 한 기록을 보이도록 맞췄다(같은 기억은 예시마다 같은 모양). `memory_graph.filtered`의 `fliter`는 `ignoredArgs`를 보이려고 일부러 틀린 칸 이름이다.
 
 ## 도구
@@ -73,6 +74,7 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | `UNSUPPORTED_MAJOR` | `major`가 지원 판이 아님 | `supportedMajors` |
 | `INVALID_ARGUMENT` | 칸의 형이 틀림 | `field` |
 | `NOT_FOUND` | 없는 `focus` | `field` |
+| `UNAVAILABLE`(1.1) | 기억 기록을 열거나 읽지 못함(잠금이 오래 걸림, 깨진 파일). 인자 탓이 아니므로 다시 부를 수 있다 | 없음 |
 
 ## oni가 정한 값
 

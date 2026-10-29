@@ -14,6 +14,12 @@ import (
 
 var memoryContract = contractInfo{Name: memcontract.Name, Major: memcontract.Major, Minor: memcontract.Minor, Supported: memcontract.SupportedMajors}
 
+// unavailable is orbit.memory 1.1's UNAVAILABLE: the memory store could not be
+// opened or read (a lock held too long, a broken file). 인자 탓이 아니므로 다시 부를 수 있다.
+func unavailable(err error) *callError {
+	return &callError{Code: "UNAVAILABLE", Message: "기억 기록을 읽지 못했습니다: " + err.Error()}
+}
+
 // memoryGraphTool is the reader's memory_graph (orbit.memory 1판). It opens the
 // memory store on the first call so a reader that only reads work never
 // touches memory.db.
@@ -59,23 +65,27 @@ func (g *memoryGraphTool) graph(_ context.Context, a args) (any, error) {
 	}
 	for _, f := range []struct {
 		name string
-		to   *int64
+		to   **int64
 	}{{"updatedFrom", &in.UpdatedFrom}, {"updatedTo", &in.UpdatedTo}} {
 		if v := a.str(f.name); v != "" {
 			t, err := time.Parse(time.RFC3339Nano, v)
 			if err != nil {
 				return nil, invalid(f.name, f.name+"는 RFC 3339 시각이어야 합니다.")
 			}
-			*f.to = t.UnixMilli()
+			ms := t.UnixMilli()
+			*f.to = &ms
 		}
 	}
 	s, err := g.store()
 	if err != nil {
-		return nil, err
+		return nil, unavailable(err)
 	}
 	out, err := s.Graph(in)
 	if errors.Is(err, memory.ErrNotFound) {
 		return nil, &callError{Code: "NOT_FOUND", Message: "focus 기억이 없습니다.", Field: "focus"}
 	}
-	return out, err
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	return out, nil
 }
