@@ -13,7 +13,7 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni mcp` | 호스트가 띄우는 MCP 서버. 도구 6개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide` |
 | `oni hook session-start\|prompt\|session-end` | 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 순위대로(작업 회상), 세션이 끝나면 세션 끝 회고 대기열에 넣고 `oni retro sessions`를 뒤에서 띄운다 |
 | `oni retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
-| `oni retro sessions` | 세션 끝 회고 대기열을 비운다(세션 종료 훅이 부른다). 다른 회고가 돌고 있으면 바로 끝난다 |
+| `oni retro sessions` | 세션 끝 회고 대기열을 비운다(세션 종료 훅이 부른다). 다른 회고가 돌고 있으면 바로 끝난다. 호스트가 로그인되어 있지 않으면(macOS 로그아웃·재시동 중 등) 남은 세션을 대기열에 두고 멈추며, 다음 세션 끝이나 예약 회고가 다시 돌린다 |
 | `oni proposals` | 회고 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `oni memory find\|show` | 기억 찾기·읽기 |
 | `oni migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |

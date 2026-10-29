@@ -442,3 +442,88 @@ func TestSession_훅이_준_경로가_틀리면_세션_id로_찾는다(t *testin
 		t.Fatalf("pending=%v rows=%d", p, n)
 	}
 }
+
+func TestDrainSessions_호스트가_로그인되지_않았으면_대기열을_남기고_다음에_다시_돈다(t *testing.T) {
+	// 2026-10-29 macOS 재시동: 로그아웃 중 앱이 닫히며 세션 끝 훅이 회고를 띄웠고,
+	// 키체인을 못 읽은 claude -p가 아래 출력으로 끝났다(2.1.303 실제 출력에서 줄임).
+	claudeOut := `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"terminal_reason":"api_error","is_error":true,"result":"Not logged in · Please run /login","type":"result"}` + "\n"
+	codexOut := "ERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses\n"
+	for _, tc := range []struct{ host, out string }{{"claude", claudeOut}, {"codex", codexOut}} {
+		t.Run(tc.host, func(t *testing.T) {
+			e := setup(t, time.Date(2026, 10, 29, 9, 10, 45, 0, kst))
+			e.r.Cfg.RetroHost = tc.host
+			p1 := e.session(t, "s-1", claudeTurn("2026-10-29", "09:00", "user", "첫 세션"))
+			p2 := e.session(t, "s-2", claudeTurn("2026-10-29", "09:05", "user", "둘째 세션"))
+			Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "s-1", Transcript: p1})
+			Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "s-2", Transcript: p2})
+			calls := 0
+			e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
+				calls++
+				return tc.out, errors.New("exit status 1")
+			}
+			results, err := e.r.DrainSessions(context.Background())
+			if !errors.Is(err, ErrHostSignedOut) || calls != 1 || len(results) != 1 || results[0].Status != StatusFailed {
+				t.Fatalf("signed out drain = %+v calls = %d err = %v", results, calls, err)
+			}
+			if p, _ := Pending(e.s); len(p) != 2 {
+				t.Fatalf("signed-out sessions left the queue: %+v", p)
+			}
+			// 다시 로그인된 뒤(재시동 뒤 다음 세션 끝이나 04시 예약 회고)에는 남은 세션이 돈다.
+			e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
+				calls++
+				id := ""
+				for _, kv := range c.Env {
+					if strings.HasPrefix(kv, "ORBIT_RETRO_ID=") {
+						id = strings.TrimPrefix(kv, "ORBIT_RETRO_ID=")
+					}
+				}
+				_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "세션"})
+				return "", err
+			}
+			results, err = e.r.DrainSessions(context.Background())
+			if err != nil || len(results) != 2 || results[0].Status != StatusDone || results[1].Status != StatusDone {
+				t.Fatalf("retry drain = %+v err = %v", results, err)
+			}
+			if p, _ := Pending(e.s); len(p) != 0 {
+				t.Fatalf("pending after retry: %+v", p)
+			}
+		})
+	}
+}
+
+func TestDrainSessions_다른_실패는_대기열을_닫고_하루_회고에_맡긴다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 29, 9, 0, 0, 0, kst))
+	p1 := e.session(t, "s-1", claudeTurn("2026-10-29", "08:00", "user", "첫 세션"))
+	p2 := e.session(t, "s-2", claudeTurn("2026-10-29", "08:30", "user", "둘째 세션"))
+	Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "s-1", Transcript: p1})
+	Enqueue(e.s, e.r.Paths, SessionEnd{Host: "claude", Session: "s-2", Transcript: p2})
+	calls := 0
+	e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
+		calls++
+		return "모델이 제출하지 않고 끝남", errors.New("exit status 1")
+	}
+	results, err := e.r.DrainSessions(context.Background())
+	if err == nil || errors.Is(err, ErrHostSignedOut) || calls != 2 || len(results) != 2 {
+		t.Fatalf("drain = %+v calls = %d err = %v", results, calls, err)
+	}
+	if p, _ := Pending(e.s); len(p) != 0 {
+		t.Fatalf("failed sessions stay pending: %+v", p)
+	}
+}
+
+func TestHostSignedOut_모델에_닿은_실행은_로그인_실패로_보지_않는다(t *testing.T) {
+	for _, tc := range []struct {
+		name, out string
+		want      bool
+	}{
+		{"claude 미로그인", `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"is_error":true,"result":"Not logged in · Please run /login","type":"result"}`, true},
+		{"claude 답에 문구가 든 실행", `{"total_cost_usd":0.02,"usage":{"input_tokens":5000,"output_tokens":300},"is_error":false,"result":"세션 요약: Not logged in · Please run /login 결함을 고쳤다","type":"result"}`, false},
+		{"codex 미로그인", "ERROR: Reconnecting... 5/5\nERROR: unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses\n", true},
+		{"codex 답에 문구가 든 실행", "codex\n결함: Missing bearer or basic authentication 이 나던 일을 고쳤다\ntokens used\n1,234\n", false},
+		{"다른 실패", "모델이 제출하지 않고 끝남", false},
+	} {
+		if got := hostSignedOut(tc.out); got != tc.want {
+			t.Errorf("%s: hostSignedOut = %v", tc.name, got)
+		}
+	}
+}
