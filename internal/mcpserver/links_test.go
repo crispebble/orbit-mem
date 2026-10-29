@@ -70,3 +70,14 @@ func TestLinks_잘못된_연결은_아무것도_바꾸지_않고_거절(t *testi
 		t.Error("거절했는데 고치기가 들어갔습니다")
 	}
 }
+
+// 끝 기준 4: AI 호스트의 안내가 저장할 때 관련 기억을 잇고 memory_get의 links를 따라가라고 말한다.
+func TestLinks_안내(t *testing.T) {
+	cs, _ := connect(t)
+	ins := cs.InitializeResult().Instructions
+	for _, want := range []string{"links로 잇는다", "memory_get의 links"} {
+		if !strings.Contains(ins, want) {
+			t.Errorf("안내에 %q가 없습니다:\n%s", want, ins)
+		}
+	}
+}
