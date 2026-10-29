@@ -65,7 +65,8 @@ func TestHarnessSentencesForWorkGraph(t *testing.T) {
 		return string(b)
 	}
 	plan, delegate, verify := read("plan"), read("delegate"), read("verify")
-	for _, want := range []string{"addBlockedBy", "owner", "실행 순서대로", "work_title"} {
+	// 밝힌 막힘(declared)은 Task의 metadata.blocked에서 읽는다(ONID-10 사용자 결정)
+	for _, want := range []string{"addBlockedBy", "owner", "실행 순서대로", "work_title", "metadata.blocked", "`null`로 지운다"} {
 		if !strings.Contains(plan, want) {
 			t.Errorf("plan에 %q가 없습니다", want)
 		}
