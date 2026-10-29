@@ -2,7 +2,7 @@
 // 기본 보기는 선행 관계를 그리는 그래프이고, 이 보기는 누가 무엇을 맡았는지만 보인다(설계 S4-2).
 import type {AgentWorker} from '@onidot-labs/studio-plugin/ai';
 import {blockText} from './display.ts';
-import {assigneeText} from './graph.ts';
+import {hostLabel} from './graph.ts';
 import type {Step} from './types.ts';
 
 type RunStatus = AgentWorker['status'];
@@ -27,6 +27,14 @@ function groupStatus(statuses: RunStatus[]): RunStatus {
   return statuses.every(s => s === 'cancelled') ? 'cancelled' : 'succeeded';
 }
 
+/** 담당 묶음 이름. 역할은 역할 칩(role)으로, 호스트는 호스트 칩(host)으로 따로 보이므로 이름에 넣지 않는다. */
+function ownerName(a: NonNullable<Step['assignee']>): string {
+  if (a.kind === 'main') return '메인 세션';
+  if (a.kind === 'subagent') return a.role ? '서브에이전트' : '서브에이전트 · 종류 미확인';
+  if (a.kind === 'session') return '별도 세션';
+  return '알 수 없음';
+}
+
 const keyOf = (a: Step['assignee']) => (a ? `${a.kind}|${a.role ?? ''}|${a.host ?? ''}` : '');
 
 export function ownerWorkers(steps: readonly Step[]): AgentWorker[] {
@@ -43,11 +51,10 @@ export function ownerWorkers(steps: readonly Step[]): AgentWorker[] {
     const models = [...new Set(list.map(s => s.assignee?.model).filter((m): m is string => !!m))];
     return {
       id: key || 'unassigned',
-      // 모델은 같은 담당 안에서도 단계마다 다를 수 있어 이름에 넣지 않는다
-      name: a ? assigneeText({...a, model: undefined})! : '담당 정해지지 않음',
+      name: a ? ownerName(a) : '담당 정해지지 않음',
       status: groupStatus(list.map(stepRunStatus)),
       role: a?.kind === 'subagent' ? a.role : undefined,
-      host: a?.host,
+      host: a?.host ? hostLabel(a.host) : undefined,
       model: models.length === 1 ? models[0] : undefined,
       progress: counted.length ? Math.round((done / counted.length) * 100) : 0,
       subtasks: list.map(s => ({id: s.id, label: s.title, status: stepRunStatus(s)})),

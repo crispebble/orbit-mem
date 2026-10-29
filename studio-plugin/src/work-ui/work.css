@@ -20,9 +20,11 @@
 .orbit-work-detail-title { flex: 1; margin: 0; font-size: var(--forma-font-size-lg, 15px); font-weight: 650; overflow-wrap: anywhere; }
 .orbit-work-sec { margin: 0 0 var(--forma-space-2); font-size: var(--forma-font-small); font-weight: 650; }
 .orbit-work-links { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.orbit-work-links button { text-align: start; }
 .orbit-work-runs, .orbit-work-evidence-list, .orbit-work-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-2); }
 .orbit-work-evidence { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--forma-space-2); border-bottom: 1px solid var(--forma-line); }
 .orbit-work-evidence:last-child { border-bottom: 0; }
+.orbit-work-evidence .orbit-work-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .orbit-work-kind { font-size: var(--forma-font-small); font-weight: 600; }
 .orbit-work-waiting { display: flex; flex-direction: column; gap: var(--forma-space-2); padding: var(--forma-space-3); border: 1px solid var(--forma-line); border-radius: var(--forma-radius-panel, 8px); background: var(--forma-warning-soft); }
 .orbit-work-files { display: flex; flex-direction: column; gap: var(--forma-space-1, 4px); }
@@ -33,6 +35,7 @@
 .orbit-work-item[data-depth="2"] { padding-left: calc(var(--forma-space-3) * 2); }
 .orbit-work-item[data-depth="3"] { padding-left: calc(var(--forma-space-3) * 3); }
 .orbit-work-row-title { display: flex; align-items: center; gap: var(--forma-space-2); min-width: 0; }
+.orbit-work-row-title > :not(.orbit-work-row-text) { flex: none; }
 .orbit-work-row-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 세션 */

@@ -13,7 +13,7 @@ import {hostLabel} from '../work/graph.ts';
 import type {WorkState} from '../work/store.ts';
 import type {Evidence, Run, Session, SessionEvent} from '../work/types.ts';
 import {VerificationItem, type StageNav} from './stage-detail.tsx';
-import {stepTitleMap, useNow, useWork} from './runtime.ts';
+import {stepTitleMap, useLoadWorks, useNow, useWork} from './runtime.ts';
 import {workNav} from './work-tab.tsx';
 
 export interface Page {
@@ -114,6 +114,7 @@ export function SessionTab({ctx, tab}: TabProps) {
 
   const titles = useMemo(() => stepTitleMap(state), [state.details]);
   const nav = useMemo(() => workNav(ctx, () => {}), [ctx]);
+  useLoadWorks(store, loaded?.session.openWorkIds ?? [], state.details);
 
   if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
   if (state.status === 'paused') return <EmptyState title="세션 기록을 읽지 않습니다" description={state.pause?.message} />;

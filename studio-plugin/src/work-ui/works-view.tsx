@@ -1,7 +1,8 @@
 // 사이드바 「작업」 보기: 한 줄에 제목·진행·상태 칩·시작한 호스트. 기본은 열린 작업과 「끝남 · 확인 전」, 하위 작업은 상위 아래에 묶는다.
 import {useState, type ReactNode} from 'react';
+import {ListChecks} from 'lucide-react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Badge, Button, EmptyState, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {Badge, Button, EmptyState, InboxItem, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {groupWorks, progressOf, workStateView, type WorkNode} from '../work/display.ts';
 import {hostLabel} from '../work/graph.ts';
 import type {WorkSummary} from '../work/types.ts';
@@ -40,7 +41,7 @@ export function WorksView({ctx}: ViewProps) {
     return (
       <div role="listitem" key={w.id} className="orbit-work-item" data-depth={depth > 0 ? Math.min(depth, 3) : undefined}>
         <InboxItem
-          icon={<Mark size="sm">{(w.origin?.host ?? '?').slice(0, 1).toUpperCase()}</Mark>}
+          icon={<ListChecks size={14} aria-hidden="true" />}
           title={<span className="orbit-work-row-title"><span className="orbit-work-row-text">{w.title}</span><Badge tone={status.tone}>{status.label}</Badge></span>}
           subtitle={[
             p.total > 0 ? `${p.done}/${p.total}` : '단계 없음',

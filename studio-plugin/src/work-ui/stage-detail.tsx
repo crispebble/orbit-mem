@@ -58,7 +58,7 @@ export function VerificationItem({ctx, evidence, run, now, nav}: {ctx: PluginCon
         <Badge tone={result.tone}>{result.label}</Badge>
         <span className="orbit-meta" title={formatTime(evidence.at)}>{agoText(evidence.at, now)}</span>
       </div>
-      {evidence.summary && <p className="orbit-work-text">{evidence.summary}</p>}
+      {evidence.summary && <p className="orbit-work-text" title={evidence.summary}>{evidence.summary}</p>}
       <div className="orbit-row orbit-meta">
         {run && (run.sessionId
           ? <TextLink tone="muted" onClick={() => nav.openSession(run.sessionId!, runLabelOf(run))}>{runLabelOf(run)}</TextLink>

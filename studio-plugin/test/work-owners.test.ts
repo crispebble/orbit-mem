@@ -17,8 +17,21 @@ describe('ownerWorkers', () => {
     const workers = ownerWorkers(task.steps);
     const total = workers.reduce((n, w) => n + (w.subtasks?.length ?? 0), 0);
     assert.equal(total, task.steps.length);
-    const names = workers.map(w => w.name);
-    assert.equal(new Set(names).size, names.length);
+    const ids = workers.map(w => w.id);
+    assert.equal(new Set(ids).size, ids.length);
+  });
+
+  it('이름은 담당 종류, 역할·호스트는 칩으로(이름에 겹쳐 쓰지 않는다)', () => {
+    const workers = ownerWorkers([
+      step({id: 'm', assignee: {kind: 'main', host: 'claude'}}),
+      step({id: 's', assignee: {kind: 'subagent', role: 'orbit:reviewer', host: 'claude'}}),
+      step({id: 'x', assignee: {kind: 'subagent'}}),
+      step({id: 'c', assignee: {kind: 'session', host: 'codex'}}),
+    ]);
+    assert.deepEqual(workers.map(w => [w.name, w.role, w.host]), [
+      ['메인 세션', undefined, 'Claude Code'], ['서브에이전트', 'orbit:reviewer', 'Claude Code'],
+      ['서브에이전트 · 종류 미확인', undefined, undefined], ['별도 세션', undefined, 'Codex'],
+    ]);
   });
 
   it('진행률은 끝난 단계 / 취소 뺀 단계', () => {

@@ -4,7 +4,7 @@ import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {SessionRow} from '@onidot-labs/studio-plugin/ai';
 import {EmptyState, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {sessionRowProps} from '../work/session-view.ts';
-import {stepTitleMap, useNow, useWork} from './runtime.ts';
+import {stepTitleMap, useLoadWorks, useNow, useWork} from './runtime.ts';
 
 type Filter = 'live' | 'all';
 
@@ -24,6 +24,7 @@ export function SessionsView({ctx}: ViewProps) {
   const [filter, setFilter] = useState<Filter>('live');
   const [selected, setSelected] = useState<string>();
   const titles = useMemo(() => stepTitleMap(state), [state.details]);
+  useLoadWorks(store, state.sessions.filter(s => s.state !== 'ended' && s.activeStepIds.length > 0).flatMap(s => s.openWorkIds), state.details);
 
   if (!store) return <EmptyState title="Orbit을 켜는 중입니다" />;
   if (state.status === 'paused') {
