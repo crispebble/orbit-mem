@@ -181,3 +181,23 @@ func TestRetag_이미_이뤄졌으면_정리로_닫는다(t *testing.T) {
 		t.Errorf("상태: %s", got.Status)
 	}
 }
+
+// 같은 태그를 이미 다른 대기 묶기가 빼고 있으면 뺄 태그 구성만 달리한 묶기를 다시 받지 않는다
+// (첫 실행 실측: 「교정」 묶기가 뺄 태그를 조금 달리해 두 번 나왔다).
+func TestRetag_뺄_태그가_겹치는_대기_묶기는_다시_받지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	taggedMemory(t, s, "A 기억", "교정", "correction")
+	taggedMemory(t, s, "B 기억", "user-correction")
+	if _, err := s.Propose(ProposalInput{Kind: ProposalRetag, Title: "교정 묶기", Payload: Payload{FromTags: []string{"교정", "correction", "user-correction"}, ToTags: []string{"사용자교정"}}}); err != nil {
+		t.Fatal(err)
+	}
+	again := ProposalInput{Kind: ProposalRetag, Title: "교정 묶기 다시", Payload: Payload{FromTags: []string{"Correction", "교정"}, ToTags: []string{"사용자교정"}}}
+	if _, err := s.Propose(again); !errors.Is(err, ErrDuplicateProposal) {
+		t.Errorf("겹치는 묶기: %v", err)
+	}
+	// 겹치지 않는 묶기와 태그 달기는 받는다.
+	taggedMemory(t, s, "C 기억", "hooks")
+	if _, err := s.Propose(ProposalInput{Kind: ProposalRetag, Title: "훅 묶기", Payload: Payload{FromTags: []string{"hooks"}, ToTags: []string{"훅"}}}); err != nil {
+		t.Errorf("다른 묶기: %v", err)
+	}
+}

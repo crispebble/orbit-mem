@@ -207,6 +207,12 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 		if err := s.prepareRetag(&in); err != nil {
 			return Proposal{}, err
 		}
+		if busy, err := s.retagBusy(in.Payload.FromTags); err != nil || busy != "" {
+			if err != nil {
+				return Proposal{}, err
+			}
+			return Proposal{}, fmt.Errorf("%w (대기 중인 %s가 같은 태그를 묶습니다)", ErrDuplicateProposal, busy)
+		}
 	case ProposalRevert:
 		e, err := s.LedgerEntry(in.Payload.LedgerID)
 		if err != nil {
@@ -787,4 +793,23 @@ func sortedKeys(tags []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// retagBusy is the pending retag proposal that already takes out one of the
+// tags from (any spelling), or "".
+func (s *Store) retagBusy(from []string) (string, error) {
+	if len(from) == 0 {
+		return "", nil
+	}
+	pending, err := s.Proposals(StatusPending)
+	if err != nil {
+		return "", err
+	}
+	keys := sortedKeys(from)
+	for _, p := range pending {
+		if p.Kind == ProposalRetag && slices.ContainsFunc(sortedKeys(p.Payload.FromTags), func(k string) bool { return slices.Contains(keys, k) }) {
+			return p.ID, nil
+		}
+	}
+	return "", nil
 }

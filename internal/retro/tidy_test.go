@@ -174,6 +174,9 @@ func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusEmpty || len(e.calls) != 0 {
 		t.Fatalf("대화 없는 하루 회고 %+v %v calls=%d", res, err, len(e.calls))
 	}
+	if _, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalRetag, Title: "studio 묶기", Payload: memory.Payload{FromTags: []string{"studio"}, ToTags: []string{"onidot-studio"}}}); err != nil {
+		t.Fatal(err)
+	}
 	var text string
 	e.ai = func(id string) error {
 		text = readAll(t, e, id)
@@ -185,14 +188,14 @@ func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 	if err != nil || res.Status != StatusDone || res.Kind != KindTidy || len(e.calls) != 1 {
 		t.Fatalf("정리 %+v %v calls=%d", res, err, len(e.calls))
 	}
-	if !strings.Contains(text, "## 그래프 정리") || strings.Contains(text, "## 이미 있는 기억") {
+	if !strings.Contains(text, "## 그래프 정리") || strings.Contains(text, "## 이미 있는 기억") || !strings.Contains(section(text, "## 주제 태그 목록"), "대기 중인 묶기: studio → onidot-studio") {
 		t.Errorf("정리 재료:\n%s", text)
 	}
 	if !strings.Contains(e.calls[0].Stdin+strings.Join(e.calls[0].Args, " "), "그래프 정리") {
 		t.Errorf("정리 지시문이어야 합니다: %+v", e.calls[0])
 	}
 	retags := pendingOf(t, e, memory.ProposalRetag)
-	if len(retags) != 1 || len(retags[0].MemoryIDs) != 3 {
+	if len(retags) != 2 || len(retags[1].MemoryIDs) != 3 {
 		t.Fatalf("retag: %+v", retags)
 	}
 	_ = ms

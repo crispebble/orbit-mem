@@ -42,7 +42,8 @@ type Tidy struct {
 	Links    [][2]string       `json:"links,omitempty"` // 묶음 안의 이미 있는 연결
 	Untagged []TidyMemory      `json:"untagged,omitempty"`
 	Tags     []memory.TagCount `json:"tags,omitempty"`
-	Max      int               `json:"max,omitempty"` // 회당 정리 제안 상한, 0은 없음
+	Merging  []string          `json:"merging,omitempty"` // 대기 중인 태그 묶기("뺄 → 넣을")
+	Max      int               `json:"max,omitempty"`     // 회당 정리 제안 상한, 0은 없음
 }
 
 func (t *Tidy) empty() bool { return t == nil || len(t.Memories) < 2 && len(t.Untagged) == 0 }
@@ -139,6 +140,15 @@ func (r *Runner) tidyMaterial() (*Tidy, error) {
 				}
 			}
 			t.Tags = memory.TopicTagCounts(live)
+			pending, err := r.Store.Proposals(memory.StatusPending)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range pending {
+				if p.Kind == memory.ProposalRetag && len(p.Payload.FromTags) > 0 {
+					t.Merging = append(t.Merging, strings.Join(p.Payload.FromTags, ", ")+" → "+strings.Join(p.Payload.ToTags, ", "))
+				}
+			}
 		}
 	}
 	if u > 0 {
@@ -243,6 +253,9 @@ func renderTidy(b *strings.Builder, t *Tidy) {
 		b.WriteString("대소문자·공백·-와 _만 다른 표기는 이미 같은 태그로 읽으므로 묶지 않는다. 넓은 주제와 좁은 주제처럼 뜻이 다르면 묶지 않는다.\n\n")
 		for _, tc := range t.Tags {
 			fmt.Fprintf(b, "- %s (%d)\n", tc.Label, tc.Count)
+		}
+		for _, m := range t.Merging {
+			fmt.Fprintf(b, "- 대기 중인 묶기: %s (다시 내지 않는다)\n", m)
 		}
 		b.WriteString("\n")
 	}
