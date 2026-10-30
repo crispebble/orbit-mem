@@ -214,3 +214,58 @@ func TestProposal_파일_반영에는_본문_덮어쓰기를_받지_않는다(t 
 		t.Fatal("body override accepted for apply_file")
 	}
 }
+
+// 설계 · Orbit 3차 O3-3: 합친 기억은 합치는 기억들의 태그를 잇되 옛 표식(imported:*)은 뺀다. 합친 제목이 합치는 기억 하나의
+// 제목과 같으면 그 기억에 합친 본문·태그를 새 판으로 쌓고, 원장 되돌리기로 옛 판으로 돌아온다.
+func TestProposal_합치기는_태그를_잇고_같은_제목이면_그_기억에_쌓는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	save := func(title string, tags ...string) Memory {
+		m, err := s.Save(SaveInput{Kind: KindRule, Title: title, Body: title + " 본문", Tags: tags, Scope: ScopeGlobal, State: StateConfirmed,
+			Source: Source{Kind: SourceSession, Ref: "x"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	cur := save("커밋은 경로를 명시한다", "git")
+	old := save("커밋할 때 경로를 쓴다", "Git", "커밋", "imported:server-knowledge", "space:onidot")
+	other := save("화면은 키트로 만든다", "studio")
+	older := save("화면은 옛 부품으로 만든다", "studio", "imported:claude-memory")
+
+	p, _ := s.Propose(ProposalInput{Kind: ProposalMerge, Title: "새 제목으로 합치기", MemoryIDs: []string{other.ID, older.ID},
+		Payload: Payload{MergedTitle: "화면은 Studio 키트로 만든다", MergedBody: "합친 본문"}})
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(res.Created); strings.Join(m.Tags, ",") != "studio" {
+		t.Errorf("새로 만든 합친 기억 태그 %v", m.Tags)
+	}
+
+	p, _ = s.Propose(ProposalInput{Kind: ProposalMerge, Title: "같은 제목으로 합치기", MemoryIDs: []string{cur.ID, old.ID},
+		Payload: Payload{MergedTitle: "커밋은 경로를 명시한다", MergedBody: "git add -A 금지"}})
+	res, err = s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := s.Get(cur.ID)
+	if res.Created != "" || m.Body != "git add -A 금지" || strings.Join(m.Tags, ",") != "git,커밋,space:onidot" || m.State != StateConfirmed {
+		t.Fatalf("같은 제목 합치기 created=%q %+v", res.Created, m)
+	}
+	if o, _ := s.Get(old.ID); o.State != StateStale || o.SupersededBy != cur.ID {
+		t.Fatalf("합쳐진 옛 기억 %+v", o)
+	}
+	rv, err := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌리기", Payload: Payload{LedgerID: res.LedgerID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Decide(DecideInput{ID: rv.ID, Decision: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(cur.ID); m.Body != cur.Body || strings.Join(m.Tags, ",") != "git" {
+		t.Errorf("되돌린 지금 기억 %+v", m)
+	}
+	if o, _ := s.Get(old.ID); o.State != StateConfirmed || o.SupersededBy != "" {
+		t.Errorf("되돌린 옛 기억 %+v", o)
+	}
+}

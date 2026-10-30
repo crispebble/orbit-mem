@@ -37,7 +37,7 @@ func commands() []command {
 		{"hook", "oni hook session-start|prompt|session-end|work --host claude|codex [--skip-lists]   # 호스트 훅(stdin JSON)", cmdHook},
 		{"memory", "oni memory find [질의] [--kind K] [--all] [--json] | show <id> [--history]", cmdMemory},
 		{"proposals", "oni proposals [list|review|show <id>|approve <id> [--title T] [--body B|--body-file F] [--note N]|reject <id> [--note N]] [--all]", cmdProposals},
-		{"retro", "oni retro run [--day YYYY-MM-DD|--week YYYY-MM-DD] | sessions | tidy | status [--n N] | material --day YYYY-MM-DD   # tidy: 기억 그래프 정리만 지금 한 번", cmdRetro},
+		{"retro", "oni retro run [--day YYYY-MM-DD|--week YYYY-MM-DD] | sessions | tidy | legacy | status [--n N] | material --day YYYY-MM-DD   # tidy: 기억 그래프 정리만 지금 한 번, legacy: 옛 기억 한 묶음 판정", cmdRetro},
 		{"migrate", "oni migrate --from <knowledge-auto-*.sqlite 사본> [--dry-run] [--json]", cmdMigrate},
 		{"plugin", "oni plugin build <원본> [--out D] [--check] [--var k=v]... | install <빌드한 마켓 디렉터리>", cmdPlugin},
 		{"config", "oni config [show | set <키> <값>]", cmdConfig},

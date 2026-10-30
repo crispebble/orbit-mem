@@ -387,6 +387,12 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	if err != nil {
 		errs = append(errs, fmt.Errorf("주간 %s: %w", week, err))
 	}
+	// 옛 기억 판정은 하루 회고·주간 회고 뒤에 하루 묶음 수까지 돈다(설계 · Orbit 3차 O3-3).
+	lres, err := r.legacyDaily(ctx)
+	results = append(results, lres...)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	if _, err := r.Store.CloseSettled(); err != nil {
 		errs = append(errs, err)
 	}

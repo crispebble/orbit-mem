@@ -140,6 +140,16 @@ func fingerprint(in ProposalInput) string {
 	return hex.EncodeToString(h[:16])
 }
 
+// SameProposal finds the pending or rejected proposal that stops in from
+// being proposed again (Propose's ErrDuplicateProposal), if there is one.
+func (s *Store) SameProposal(in ProposalInput) (Proposal, bool) {
+	fp := fingerprint(in)
+	row := s.db.QueryRow(`SELECT `+proposalCols+` FROM proposals WHERE fingerprint=? AND status IN ('pending','rejected')
+		ORDER BY status='pending' DESC LIMIT 1`, fp)
+	p, err := scanProposal(row)
+	return p, err == nil
+}
+
 // Propose stores a pending proposal. The same proposal is not stacked while
 // pending, and one the user rejected does not come back.
 func (s *Store) Propose(in ProposalInput) (Proposal, error) {
@@ -397,6 +407,30 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 	return res, nil
 }
 
+// mergedTags is what a merged memory carries: the tags of the memories it
+// merges, in their order and each once as reads compare them, without the
+// import marks (imported:*). The merged memory is a new judged memory, not an
+// import, and it should stay in its graph clusters.
+func mergedTags(s *Store, ids []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, id := range ids {
+		m, err := getTx(s.db, id)
+		if err != nil {
+			continue
+		}
+		for _, t := range m.Tags {
+			k := TagKey(t)
+			if k == "" || seen[k] || strings.HasPrefix(k, ImportedPrefix) {
+				continue
+			}
+			seen[k] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // given is a field the user actually filled in to edit before approving.
 func given(p *string) bool { return p != nil && strings.TrimSpace(*p) != "" }
 
@@ -454,17 +488,34 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 				}
 			}
 		}
-		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Scope: scope, State: StateConfirmed,
+		tags := p.Payload.Tags
+		if p.Kind == ProposalMerge && len(tags) == 0 {
+			tags = mergedTags(s, p.MemoryIDs)
+		}
+		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: StateConfirmed,
 			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}})
 		if err != nil {
 			return err
+		}
+		if slices.Contains(p.MemoryIDs, m.ID) {
+			// 합친 제목이 합치는 기억 하나의 제목과 같으면 Save는 그 기억을 돌려준다. 새로 만들지 않고 그 기억에
+			// 합친 본문·태그를 새 판으로 쌓는다(옛 판은 원장으로 되돌린다).
+			u := UpdateInput{ID: m.ID, Body: &body, Reason: "합침 " + p.ID, Action: "merge"}
+			if p.Kind == ProposalMerge {
+				u.Tags = &tags
+			}
+			if m, err = s.Update(u); err != nil {
+				return err
+			}
+			res.Changed = append(res.Changed, m.ID)
+		} else {
+			res.Created = m.ID
 		}
 		if m.State != StateConfirmed {
 			if m, err = s.SetState(m.ID, StateConfirmed, "제안 승인 "+p.ID); err != nil {
 				return err
 			}
 		}
-		res.Created = m.ID
 		for _, id := range p.MemoryIDs {
 			if id == m.ID {
 				continue

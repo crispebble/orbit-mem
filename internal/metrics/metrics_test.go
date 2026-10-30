@@ -259,3 +259,43 @@ func TestCompute_기억_그래프_지표(t *testing.T) {
 		t.Fatal(Render(rep))
 	}
 }
+
+// 설계 · Orbit 3차 O3-3 끝 기준 1·3: 옮겨 온 옛 기억 중 판정한 수·판정별 수·남은 수와 상태별 기억 수를 보인다.
+func TestCompute_옛_기억_정리_지표(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 31, 12, 0, 0, 0, time.Local))
+	save := func(title string, tags ...string) memory.Memory {
+		m, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: title, Tags: tags, Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	a := save("A", "imported:server-knowledge")
+	b := save("B", "imported:claude-memory")
+	save("C", "imported:claude-memory")
+	save("D", "orbit")
+	for id, verdict := range map[string]string{a.ID: "keep", b.ID: "stale"} {
+		if err := s.RecordEvent(memory.Event{Kind: memory.EventLegacyJudged}, map[string]any{"memoryId": id, "verdict": verdict}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.SetState(b.ID, memory.StateStale, "제안 승인"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Compute(s, "2026-10-25", "2026-10-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := rep.Legacy; l.Total != 3 || l.Judged != 2 || l.Left != 1 || l.By["keep"] != 1 || l.By["stale"] != 1 {
+		t.Fatalf("옛 기억 지표: %+v", l)
+	}
+	if rep.States["candidate"] != 3 || rep.States["stale"] != 1 {
+		t.Fatalf("상태별 기억 수: %+v", rep.States)
+	}
+	out := Render(rep)
+	for _, want := range []string{"옛 기억 정리: 대상 3개 중 판정 2개(그대로 둠 1 · 낡음 1), 남음 1개", "기억 상태: 후보 3 · 확정 0 · 낡음 1 · 숨김 0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q가 없습니다:\n%s", want, out)
+		}
+	}
+}

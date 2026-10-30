@@ -758,6 +758,25 @@ func (s *Store) Count() (int, error) {
 	return n, err
 }
 
+// StateCounts is how many memories there are in each state.
+func (s *Store) StateCounts() (map[string]int, error) {
+	out := map[string]int{}
+	rows, err := s.db.Query(`SELECT state, COUNT(*) FROM memories GROUP BY state`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st string
+		var n int
+		if err := rows.Scan(&st, &n); err != nil {
+			return nil, err
+		}
+		out[st] = n
+	}
+	return out, rows.Err()
+}
+
 // Meta reads a stored setting of the database.
 func (s *Store) Meta(key string) string {
 	var v string

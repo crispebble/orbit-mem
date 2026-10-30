@@ -13,6 +13,20 @@ func TagKey(tag string) string {
 	return strings.ReplaceAll(Normalize(strings.TrimSpace(tag)), "_", "-")
 }
 
+// ImportedPrefix starts the tag that marks a memory moved from the old
+// Knowledge or Claude memory (imported:server-knowledge, imported:claude-memory).
+const ImportedPrefix = "imported:"
+
+// IsImported says whether a memory was moved from an old store.
+func IsImported(m Memory) bool {
+	for _, t := range m.Tags {
+		if strings.HasPrefix(TagKey(t), ImportedPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // markerTag is a mark the old Knowledge and Claude memory imports left, and
 // kindTags are kind names: neither says what a memory is about (설계 · Orbit
 // 2차 — 기억 그래프 「제외 태그」, the same rule as the Studio graph view).

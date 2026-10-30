@@ -151,6 +151,8 @@ type Report struct {
 	Ledger       memory.LedgerSummary `json:"ledger"`
 	Writes       Writes               `json:"writes"`
 	Graph        Graph                `json:"graph"`
+	States       map[string]int       `json:"states"` // 지금 기억 수(상태별)
+	Legacy       memory.LegacyCount   `json:"legacy"` // 옮겨 온 옛 기억 판정(설계 · Orbit 3차 O3-3)
 }
 
 // Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
@@ -399,6 +401,12 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if r.Graph, err = graphNow(s); err != nil {
 		return r, err
 	}
+	if r.States, err = s.StateCounts(); err != nil {
+		return r, err
+	}
+	if r.Legacy, err = s.CountLegacy(); err != nil {
+		return r, err
+	}
 	jc, err := s.JudgmentCounts(startMs, endMs)
 	if err != nil {
 		return r, err
@@ -467,7 +475,7 @@ func titled(cs []Count) string {
 	return strings.Join(parts, ", ")
 }
 
-var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}, {"tidy", "그래프 정리"}}
+var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}, {"tidy", "그래프 정리"}, {"legacy", "옛 기억 판정"}}
 
 // Render is the report as short Korean text for the terminal and the weekly retrospective.
 func Render(r Report) string {
@@ -529,5 +537,20 @@ func Render(r Report) string {
 	g := r.Graph
 	fmt.Fprintf(&b, "- 기억 그래프: 기억 %d개, 클러스터 %d개, 그 밖 %d개(%s), 주제 태그 없음 %d개, 연결 %d개, 주제 태그 %d종\n",
 		g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags)
+	fmt.Fprintf(&b, "- 기억 상태: 후보 %d · 확정 %d · 낡음 %d · 숨김 %d\n", r.States[memory.StateCandidate], r.States[memory.StateConfirmed],
+		r.States[memory.StateStale], r.States[memory.StateHidden])
+	if l := r.Legacy; l.Total > 0 {
+		var by []string
+		for _, v := range []struct{ key, name string }{{"keep", "그대로 둠"}, {"confirm", "확정"}, {"merge", "합치기"}, {"stale", "낡음"}} {
+			if n := l.By[v.key]; n > 0 {
+				by = append(by, fmt.Sprintf("%s %d", v.name, n))
+			}
+		}
+		fmt.Fprintf(&b, "- 옛 기억 정리: 대상 %d개 중 판정 %d개", l.Total, l.Judged)
+		if len(by) > 0 {
+			b.WriteString("(" + strings.Join(by, " · ") + ")")
+		}
+		fmt.Fprintf(&b, ", 남음 %d개\n", l.Left)
+	}
 	return b.String()
 }

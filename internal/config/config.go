@@ -46,6 +46,12 @@ type Config struct {
 	GraphTidyMemories  int `json:"graphTidyMemories"`  // 회당 연결 후보를 볼 클러스터 기억 수
 	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
+
+	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. 예약 회고가 하루에
+	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(oni retro legacy는 그래도 돈다).
+	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
+	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
+	RetiredNames   []string `json:"retiredNames,omitempty"` // 보관한 저장소·옛 제품 이름(낡음 판정의 근거로 보인다)
 }
 
 // Work recording switch values.
@@ -85,7 +91,8 @@ func (c Config) SessionModel() string {
 // Default is the starting configuration.
 func Default() Config {
 	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
-		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20}
+		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
+		LegacyMemories: 30}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -118,6 +125,9 @@ func (c Config) Validate() error {
 	}
 	if c.GraphTidyMemories < 0 || c.GraphTidyMemories > 200 || c.GraphTidyUntagged < 0 || c.GraphTidyUntagged > 200 || c.GraphTidyProposals < 0 || c.GraphTidyProposals > 20 {
 		return errors.New("graphTidyMemories·graphTidyUntagged(0-200)·graphTidyProposals(0-20)를 확인해 주세요")
+	}
+	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
+		return errors.New("legacyMemories(1-100)·legacyBatches(0-20)를 확인해 주세요")
 	}
 	return nil
 }
