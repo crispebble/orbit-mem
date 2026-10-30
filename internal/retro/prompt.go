@@ -13,6 +13,7 @@ const dailyPrompt = `너는 이 PC의 Orbit 하루 회고를 맡았다. 회고 i
      - 특정 프로젝트에만 맞는 것은 scope=project, project에 그 세션의 작업 디렉터리를 쓴다.
      - 호스트 기억 변경이 있으면 그 내용도 같은 기준으로 후보로 옮긴다.
      - 비밀값·토큰·비밀번호·개인 식별 정보는 남기지 않는다.
+     - 분야 지식(그 분야 실무자가 아는 사실·규칙)은 tags에 "분야:<이름>"을 단다. 그 사안에만 해당하는 사실은 분야 지식으로 남기지 않는다.
      - 기억마다 verdict를 단다: keep(다시 쓸 것, 확정 제안), hold(아직 모름, 후보로만), reject(남기지 않음, reason 필수).
        「최근 거절」에 있는 것과 같은 종류의 후보는 내지 않거나 reject로 낸다.
    - 「세션 끝 회고 결과」에 있는 세션은 대화를 다시 싣지 않았다. 그 요약도 일지에 넣는다.
@@ -21,7 +22,8 @@ const dailyPrompt = `너는 이 PC의 Orbit 하루 회고를 맡았다. 회고 i
      같은 내용의 기존 기억(규칙·결정·교훈)이 있으면 memoryId에 그 id를 쓴다. 없으면 비우고, 다시 쓸 만하면 memories에도 낸다.
    - 짚을 점(flags): 잘못 가는 방향, 반복된 실수. 없으면 비운다.
    - 제안(proposals): 낡은 기억 정리(stale), 겹치는 기억 합치기(merge), 옛 ISSUE·NOTE 재분류(reclassify, newKind),
-     확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에),
+     확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에. 플러그인 원본의
+     스킬·역할·분야 묶음 변경은 하네스 실험실을 거친 뒤 사용자에게 간다. 반복된 교정·절차를 근거로 body에 쓴다),
      함께 읽어야 하지만 합칠 것은 아닌 기존 기억 둘 잇기(link: memoryIds에 둘, relation에 basis(같은 결정의 근거)·
      sequence(앞뒤 절차)·exception(예외) 중 하나, note에 잇는 근거 한 줄).
      같은 태그·같은 세션이라는 것만으로는 잇지 않는다(그건 그래프가 따로 보인다). 이미 이어진 기억은 memory_get의 links에 있다.

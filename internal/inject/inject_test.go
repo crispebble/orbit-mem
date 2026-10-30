@@ -203,3 +203,37 @@ func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶�
 		t.Fatalf("budget: %d chars, %d memories\n%s", inj.Chars, len(inj.MemoryIDs), inj.Text)
 	}
 }
+
+// 명세 · O3-5 「PC 기억 분야 묶음」(수용 기준 8): 분야 표식(분야:<이름>) 기억은 세션 시작 묶음과 작업 회상에 본문으로 들어가지 않는다.
+// 요청이 한 분야 기억과 강하게 맞으면 그 분야의 신호(제목과 id)만 모두 넣고, 맞지 않는 분야는 넣지 않는다.
+func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
+	s := store(t)
+	domain := func(kind, title, body, name string) memory.Memory {
+		m, err := s.Save(memory.SaveInput{Kind: kind, Title: title, Body: body, Tags: []string{"분야:" + name}, Scope: memory.ScopeGlobal,
+			State: memory.StateConfirmed, Source: memory.Source{Kind: memory.SourceQuote, Excerpt: title}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	a := domain(memory.KindFact, "부가세 신고 기한은 분기 다음 달 25일", "1기 확정은 7월 25일까지 신고한다", "세무")
+	b := domain(memory.KindRule, "세금계산서 발행은 공급 시기 다음 달 10일까지", "지연 발행은 가산세", "세무")
+	c := domain(memory.KindFact, "출고 마감은 매일 오후 3시", "그 뒤 주문은 다음 날 출고", "물류")
+	plain := save(t, s, memory.KindLesson, "신고 기한 질문에는 날짜를 먼저 답한다", "근거 조항은 뒤에", memory.ScopeGlobal, false)
+
+	start := SessionStart(s, config.Default(), here)
+	if strings.Contains(start, b.Title) {
+		t.Errorf("분야 규칙은 세션 시작 묶음에 넣지 않습니다:\n%s", start)
+	}
+	inj := PromptInjection(s, config.Default(), here, "부가세 신고 기한 확인해줘")
+	for _, want := range []string{"분야 「세무」", a.Title, a.ID, b.Title, b.ID, plain.Title} {
+		if !strings.Contains(inj.Text, want) {
+			t.Errorf("%q가 없습니다:\n%s", want, inj.Text)
+		}
+	}
+	for _, not := range []string{"1기 확정은", "지연 발행은", c.Title, "물류"} {
+		if strings.Contains(inj.Text, not) {
+			t.Errorf("%q는 들어가면 안 됩니다:\n%s", not, inj.Text)
+		}
+	}
+}
