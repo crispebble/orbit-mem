@@ -467,9 +467,9 @@ type DecideIn struct {
 	ID       string   `json:"id,omitempty" jsonschema:"결정할 제안 하나"`
 	IDs      []string `json:"ids,omitempty" jsonschema:"같은 답으로 한 번에 결정할 제안들(승인·거절만, 고쳐서 승인은 하나씩)"`
 	Decision string   `json:"decision" jsonschema:"approve 또는 reject"`
-	Title    *string `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
-	Body     *string `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
-	Note     string  `json:"note,omitempty" jsonschema:"결정 이유"`
+	Title    *string  `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
+	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
+	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
 }
 
 // DecideOut is proposal_decide's result: one decision, or with ids what was

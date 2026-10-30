@@ -197,3 +197,31 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 		}
 	}
 }
+
+func TestCompute_근거_파일_판정을_감지_수와_제안_수로_보인다(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
+	rec := func(outcome string, n int, proposed bool) {
+		at(s, "2026-10-22", 10)
+		if err := s.RecordEvent(memory.Event{Kind: memory.EventSourceCheck}, map[string]any{"outcome": outcome, "memories": n, "proposed": proposed}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec(memory.SourceKept, 3, false)
+	rec(memory.SourceAbsent, 16, false)
+	rec(memory.SourceGone, 2, true)
+	rec(memory.SourceGone, 1, false) // 같은 제안이 이미 있었다
+	rec(memory.SourceOK, 1, false)
+	rec(memory.SourceEdit, 1, true)
+	rec(memory.SourceStale, 2, true)
+	r, err := Compute(s, "2026-10-21", "2026-10-27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Sources{Detected: 26, Proposals: 3, Kept: 3, Absent: 16, Gone: 3, OK: 1, Edit: 1, Stale: 2}
+	if r.Sources != want {
+		t.Fatalf("sources = %+v", r.Sources)
+	}
+	if out := Render(r); !strings.Contains(out, "근거 파일 변경: 기억 26개 감지 → 제안 3건") {
+		t.Fatalf("render = %s", out)
+	}
+}

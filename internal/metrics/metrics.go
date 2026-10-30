@@ -90,6 +90,19 @@ type Proposals struct {
 	OldestPendingDays int `json:"oldestPendingDays"`
 }
 
+// Sources are the checks of memories whose source file changed: how many
+// memories were caught, how each was settled, and how many proposals came of it.
+type Sources struct {
+	Detected  int `json:"detected"`
+	Proposals int `json:"proposals"`
+	Kept      int `json:"kept"`   // 발췌가 그대로
+	Absent    int `json:"absent"` // 파일이 없어짐
+	Gone      int `json:"gone"`   // 발췌가 사라짐
+	OK        int `json:"ok"`     // 모델 판정: 맞음
+	Edit      int `json:"edit"`   // 모델 판정: 고쳐야 함
+	Stale     int `json:"stale"`  // 모델 판정: 낡음
+}
+
 // Retros are the retrospectives started in the period.
 type Retros struct {
 	Runs       int                  `json:"runs"`
@@ -130,6 +143,7 @@ type Report struct {
 	Saves        Saves                `json:"saves"`
 	SessionStart SessionStart         `json:"sessionStart"`
 	Proposals    Proposals            `json:"proposals"`
+	Sources      Sources              `json:"sources"`
 	Retros       Retros               `json:"retros"`
 	Tools        map[string]int       `json:"tools"`
 	Usage        Usage                `json:"usage"`
@@ -198,6 +212,9 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			CostUSD    float64  `json:"costUsd"`
 			Input      int      `json:"inputTokens"`
 			Output     int      `json:"outputTokens"`
+			Outcome    string   `json:"outcome"`
+			Memories   int      `json:"memories"`
+			Proposed   bool     `json:"proposed"`
 		}
 		_ = json.Unmarshal(e.Data, &d)
 		ok := d.OK == nil || *d.OK
@@ -262,6 +279,26 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 				} else {
 					r.Saves.Other++
 				}
+			}
+		case e.Kind == memory.EventSourceCheck:
+			src := &r.Sources
+			src.Detected += d.Memories
+			if d.Proposed {
+				src.Proposals++
+			}
+			switch d.Outcome {
+			case memory.SourceKept:
+				src.Kept += d.Memories
+			case memory.SourceAbsent:
+				src.Absent += d.Memories
+			case memory.SourceGone:
+				src.Gone += d.Memories
+			case memory.SourceOK:
+				src.OK += d.Memories
+			case memory.SourceEdit:
+				src.Edit += d.Memories
+			case memory.SourceStale:
+				src.Stale += d.Memories
 			}
 		case e.Kind == memory.EventProposalDecided:
 			switch d.Decision {
@@ -425,6 +462,9 @@ func Render(r Report) string {
 	fmt.Fprintf(&b, "- 세션 %d개(시작 훅 %d번), 평균 %d자, 제목만 넣은 규칙 최대 %d개\n", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax)
 	p := r.Proposals
 	fmt.Fprintf(&b, "- 제안: 새로 %d건, 승인 %d · 고쳐서 승인 %d · 거절 %d, 지금 대기 %d건(가장 오래된 것 %d일)\n", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays)
+	sc := r.Sources
+	fmt.Fprintf(&b, "- 근거 파일 변경: 기억 %d개 감지 → 제안 %d건 (발췌 그대로 %d · 파일 없어짐 %d · 발췌 사라짐 %d · 판정 맞음 %d · 고칠 것 %d · 낡음 %d)\n",
+		sc.Detected, sc.Proposals, sc.Kept, sc.Absent, sc.Gone, sc.OK, sc.Edit, sc.Stale)
 	w := r.Writes
 	fmt.Fprintf(&b, "- 쓰기 판정: 유지 %d · 보류 %d · 거절 %d, 사용자 거절 %d · 고쳐서 승인 %d\n", w.Keep, w.Hold, w.Reject, w.UserRejected, w.UserEdited)
 	l := r.Ledger

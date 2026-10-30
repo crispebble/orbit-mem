@@ -59,6 +59,7 @@ type Material struct {
 	Pairs          [][2]Brief      `json:"pairs,omitempty"`          // 주간: 겹칠 수 있는 기억 짝
 	Usage          []UsageLine     `json:"usage,omitempty"`          // 주간: 사용 판정이 고칠 거리인 기억
 	Effects        []EffectLine    `json:"effects,omitempty"`        // 주간: 판정된 변경
+	SourceChecks   []SourceCheck   `json:"sourceChecks,omitempty"`   // 하루: 발췌 없이 근거 파일이 바뀐 기억(모델 판정 대상)
 }
 
 // Rejection is a recent rejected candidate or proposal and why.
@@ -95,7 +96,8 @@ func (m Material) empty() bool {
 	case KindSession:
 		return len(m.Sessions) == 0
 	}
-	return len(m.Sessions) == 0 && len(m.Summaries) == 0 && len(m.HostMemory) == 0 && len(m.Reclassify) == 0 && len(m.SessionResults) == 0
+	return len(m.Sessions) == 0 && len(m.Summaries) == 0 && len(m.HostMemory) == 0 && len(m.Reclassify) == 0 && len(m.SessionResults) == 0 &&
+		len(m.SourceChecks) == 0
 }
 
 const (
@@ -371,6 +373,20 @@ func render(mat Material, loc *time.Location) string {
 		}
 		b.WriteString("\n")
 	}
+	if len(mat.SourceChecks) > 0 {
+		b.WriteString("## 근거 파일이 바뀐 기억 (판정 대상)\n\n")
+		b.WriteString("근거 파일이 바뀌었고 비교할 발췌가 없는 기억이다. retro_read_file로 파일의 지금 내용을 읽고 기억마다 sources에 판정을 낸다.\n\n")
+		for _, c := range mat.SourceChecks {
+			fmt.Fprintf(&b, "### %s\n", c.Path)
+			for _, m := range c.Memories {
+				fmt.Fprintf(&b, "- %s [%s/%s/%s] %s\n", m.ID, m.Kind, m.State, shortScope(m.Scope), m.Title)
+				if body := strings.TrimSpace(m.Body); body != "" {
+					fmt.Fprintf(&b, "  %s\n", strings.ReplaceAll(clipBytes(body, 600), "\n", "\n  "))
+				}
+			}
+			b.WriteString("\n")
+		}
+	}
 	renderCleanup(&b, mat)
 	if len(mat.Rejections) > 0 {
 		b.WriteString("## 최근 거절 (같은 종류의 후보·제안을 다시 내지 않는다)\n\n")
@@ -435,14 +451,15 @@ func ReadPage(s *memory.Store, p config.Paths, id string, n int) (string, int, e
 	return fmt.Sprintf("(%d/%d쪽)\n", n, len(pages)) + pages[n-1], len(pages), nil
 }
 
-// ReadTarget reads a file the retrospective may propose changes to.
+// ReadTarget reads a file the retrospective may propose changes to, or a
+// changed source file it judges.
 func ReadTarget(p config.Paths, id, path string) (string, error) {
 	mat, err := loadMaterial(p, id)
 	if err != nil {
 		return "", err
 	}
-	if !allowedTarget(mat.Targets, path) {
-		return "", fmt.Errorf("반영 대상이 아닌 파일입니다: %s", path)
+	if _, judged := mat.sourceCheck(path); !judged && !allowedTarget(mat.Targets, path) {
+		return "", fmt.Errorf("반영 대상이나 판정 대상이 아닌 파일입니다: %s", path)
 	}
 	b, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

@@ -165,13 +165,15 @@ func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 		res.Status = StatusSkipped
 		return res, nil
 	}
+	var checks []SourceCheck
 	if kind == KindDaily {
-		r.proposeChangedFiles()
+		checks = r.checkSources()
 	}
 	mat, err := r.material(kind, period)
 	if err != nil {
 		return res, err
 	}
+	mat.SourceChecks = checks
 	return r.launch(ctx, mat, r.Cfg.RetroModel)
 }
 
@@ -217,7 +219,8 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 	}
 	os.RemoveAll(dir) // 재료(대화 발췌)는 남기지 않는다. 다시 돌 때 새로 만든다
 	host := parseHostOutput(out)
-	run := map[string]any{"retroId": res.ID, "retroKind": mat.Kind, "model": model, "ok": status == StatusDone, "costKnown": host.Known}
+	run := map[string]any{"retroId": res.ID, "retroKind": mat.Kind, "model": model, "ok": status == StatusDone, "costKnown": host.Known,
+		"sourceChecks": len(mat.SourceChecks)}
 	if host.Known {
 		run["costUsd"], run["inputTokens"], run["outputTokens"] = host.CostUSD, host.InputTokens, host.OutputTokens
 	}
@@ -405,29 +408,6 @@ func lastWeekStart(now time.Time) string {
 	offset := (int(now.Weekday()) + 6) % 7 // 월요일=0
 	thisMonday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -offset)
 	return dayOf(thisMonday.AddDate(0, 0, -7))
-}
-
-// proposeChangedFiles proposes cleaning up memories whose source file changed.
-func (r *Runner) proposeChangedFiles() {
-	rows, err := r.Store.DB().Query(`SELECT s.memory_id, s.ref, s.hash, m.title FROM sources s JOIN memories m ON m.id=s.memory_id
-		WHERE s.kind='file' AND s.hash<>'' AND m.state IN ('candidate','confirmed')`)
-	if err != nil {
-		return
-	}
-	type hit struct{ id, ref, title string }
-	var hits []hit
-	for rows.Next() {
-		var h hit
-		var hash string
-		if rows.Scan(&h.id, &h.ref, &hash, &h.title) == nil && filepath.IsAbs(h.ref) && memory.FileHash(h.ref) != hash {
-			hits = append(hits, h)
-		}
-	}
-	rows.Close()
-	for _, h := range hits {
-		_, _ = r.Store.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "출처 파일이 바뀜: " + h.title,
-			Body: "근거 파일 " + h.ref + " 이 기억을 만든 뒤 바뀌었습니다. 내용이 아직 맞는지 보고 낡음으로 정리할지 정해 주세요.", MemoryIDs: []string{h.id}})
-	}
 }
 
 // hostCommand builds the headless host run. The prompt goes through stdin

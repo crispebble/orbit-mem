@@ -82,15 +82,16 @@ type CorrectionIn struct {
 
 // Submission is what the retrospective hands back once.
 type Submission struct {
-	Summary     string         `json:"summary" jsonschema:"회고 결과 한 줄"`
-	Journal     *JournalIn     `json:"journal,omitempty" jsonschema:"하루 회고는 필수"`
-	Memories    []MemoryIn     `json:"memories,omitempty"`
-	Corrections []CorrectionIn `json:"corrections,omitempty" jsonschema:"하루 회고: 사용자가 AI를 고치거나 지적한 순간 모두"`
-	Flags       []string       `json:"flags,omitempty" jsonschema:"짚을 점: 잘못 가는 방향, 반복된 실수"`
-	Patterns    []string       `json:"patterns,omitempty" jsonschema:"주간: 반복 패턴"`
-	Proposals   []ProposalIn   `json:"proposals,omitempty"`
-	Usage       []UsageIn      `json:"usage,omitempty" jsonschema:"세션 끝: 이 세션에 넣은 기억마다 사용 판정"`
-	Lessons     []LessonIn     `json:"lessons,omitempty" jsonschema:"주간: 효과 판정에서 얻은 교훈"`
+	Summary     string            `json:"summary" jsonschema:"회고 결과 한 줄"`
+	Journal     *JournalIn        `json:"journal,omitempty" jsonschema:"하루 회고는 필수"`
+	Memories    []MemoryIn        `json:"memories,omitempty"`
+	Corrections []CorrectionIn    `json:"corrections,omitempty" jsonschema:"하루 회고: 사용자가 AI를 고치거나 지적한 순간 모두"`
+	Flags       []string          `json:"flags,omitempty" jsonschema:"짚을 점: 잘못 가는 방향, 반복된 실수"`
+	Patterns    []string          `json:"patterns,omitempty" jsonschema:"주간: 반복 패턴"`
+	Proposals   []ProposalIn      `json:"proposals,omitempty"`
+	Usage       []UsageIn         `json:"usage,omitempty" jsonschema:"세션 끝: 이 세션에 넣은 기억마다 사용 판정"`
+	Lessons     []LessonIn        `json:"lessons,omitempty" jsonschema:"주간: 효과 판정에서 얻은 교훈"`
+	Sources     []SourceVerdictIn `json:"sources,omitempty" jsonschema:"하루: 「근거 파일이 바뀐 기억」마다 판정"`
 }
 
 const (
@@ -148,7 +149,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if strings.TrimSpace(sub.Summary) == "" {
 		return "", errors.New("summary(한 줄)가 필요합니다")
 	}
-	if mat.Kind == KindDaily && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
+	if mat.Kind == KindDaily && !mat.onlySources() && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
 		return "", errors.New("하루 회고는 journal(title, body)이 필요합니다")
 	}
 	if mat.Kind == KindSession {
@@ -331,6 +332,11 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		proposed++
+	}
+	if len(sub.Sources) > 0 {
+		n, snotes := applySources(s, mat, func(path string) string { return readHash(p, id, path) }, sub.Sources, id)
+		proposed += n
+		notes = append(notes, snotes...)
 	}
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	flags := append(append([]string{}, sub.Flags...), sub.Patterns...)
