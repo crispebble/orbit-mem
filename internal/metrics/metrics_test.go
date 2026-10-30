@@ -221,7 +221,7 @@ func TestCompute_근거_파일_판정을_감지_수와_제안_수로_보인다(t
 	if r.Sources != want {
 		t.Fatalf("sources = %+v", r.Sources)
 	}
-	if out := Render(r); !strings.Contains(out, "근거 파일 변경: 기억 26개 감지 → 제안 3건") {
+	if out := Render(r); !strings.Contains(out, "근거 파일 변경: 기억 26건 감지 → 제안 3건") {
 		t.Fatalf("render = %s", out)
 	}
 }

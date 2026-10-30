@@ -91,7 +91,8 @@ type Proposals struct {
 }
 
 // Sources are the checks of memories whose source file changed: how many
-// memories were caught, how each was settled, and how many proposals came of it.
+// memory and file pairs were caught, how each was settled, and how many
+// proposals came of it.
 type Sources struct {
 	Detected  int `json:"detected"`
 	Proposals int `json:"proposals"`
@@ -463,7 +464,7 @@ func Render(r Report) string {
 	p := r.Proposals
 	fmt.Fprintf(&b, "- 제안: 새로 %d건, 승인 %d · 고쳐서 승인 %d · 거절 %d, 지금 대기 %d건(가장 오래된 것 %d일)\n", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays)
 	sc := r.Sources
-	fmt.Fprintf(&b, "- 근거 파일 변경: 기억 %d개 감지 → 제안 %d건 (발췌 그대로 %d · 파일 없어짐 %d · 발췌 사라짐 %d · 판정 맞음 %d · 고칠 것 %d · 낡음 %d)\n",
+	fmt.Fprintf(&b, "- 근거 파일 변경: 기억 %d건 감지 → 제안 %d건 (발췌 그대로 %d · 파일 없어짐 %d · 발췌 사라짐 %d · 판정 맞음 %d · 고칠 것 %d · 낡음 %d)\n",
 		sc.Detected, sc.Proposals, sc.Kept, sc.Absent, sc.Gone, sc.OK, sc.Edit, sc.Stale)
 	w := r.Writes
 	fmt.Fprintf(&b, "- 쓰기 판정: 유지 %d · 보류 %d · 거절 %d, 사용자 거절 %d · 고쳐서 승인 %d\n", w.Keep, w.Hold, w.Reject, w.UserRejected, w.UserEdited)
