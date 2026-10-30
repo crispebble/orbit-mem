@@ -3,6 +3,7 @@ package retro
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -255,5 +256,150 @@ func TestLegacy_예약_회고는_하루_묶음_수까지_돈다(t *testing.T) {
 	}
 	if n := legacyRuns(); n != 2 {
 		t.Fatalf("legacyBatches 0이면 돌지 않습니다: %d번", n)
+	}
+}
+
+// 검토 지적 2·3·5: 같은 지금 기억에 합치는 합치기는 하나만 대기한다(뒤 것이 앞 것의 합친 본문을 덮지 않게).
+// 합친 본문이 없는 합치기, 다른 합치기의 with에 든 기억에 따로 낸 판정은 받지 않는다(다음 묶음에 다시 나온다).
+func TestLegacy_겹치는_합치기와_빈_본문은_받지_않는다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, ms := legacyEnv(t, now)
+	cur := ms["커밋은 경로를 명시해서 스테이징한다"]
+	dup, cand := ms["커밋할 때 경로를 명시해서 스테이징한다 git add 금지"], ms["회고는 새벽 네 시에 돈다"]
+	old, other := ms["onidot-orbit-plugin 저장소에서 스킬을 고친다"], ms["회고 결과는 제안으로만 반영한다"]
+	_, report, _ := runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
+		{MemoryID: dup.ID, Verdict: "merge", With: []string{cur.ID}, MergedTitle: "커밋은 경로를 명시해서 스테이징한다", MergedBody: "git add -A 금지", Reason: "같은 말"},
+		{MemoryID: cand.ID, Verdict: "merge", With: []string{cur.ID}, MergedTitle: "커밋 규칙", MergedBody: "다른 합친 본문", Reason: "같은 기억에 또"},
+		{MemoryID: old.ID, Verdict: "merge", With: []string{other.ID}, MergedTitle: "회고 결과", Reason: "본문 없음"},
+		{MemoryID: other.ID, Verdict: "stale", With: nil, Reason: "합치기에 든 기억"},
+	}})
+	if merges := pendingOf(t, e, memory.ProposalMerge); len(merges) != 1 || merges[0].MemoryIDs[1] != dup.ID {
+		t.Fatalf("합치기 %+v (%s)", merges, report)
+	}
+	for _, want := range []string{cand.ID + ": 합칠 기억 " + cur.ID + "는 이미 다른 합치기", old.ID + ": 합치기는 합칠 기억(with)과 합친 제목(mergedTitle)·본문(mergedBody)이 필요합니다"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("보고에 %q가 없습니다:\n%s", want, report)
+		}
+	}
+	if ev := legacyEvents(t, e); len(ev) != 2 || ev[other.ID]["verdict"] != "stale" {
+		t.Errorf("판정 사건 %+v", ev)
+	}
+
+	// 다음 묶음에서: 앞 합치기가 대기 중이면 같은 지금 기억에 또 합치지 않는다.
+	_, report, _ = runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
+		{MemoryID: cand.ID, Verdict: "merge", With: []string{cur.ID}, MergedTitle: "커밋 규칙", MergedBody: "본문", Reason: "다시"}}})
+	if n := len(pendingOf(t, e, memory.ProposalMerge)); n != 1 || !strings.Contains(report, "대기 중인 합치기") {
+		t.Fatalf("합치기 %d건 (%s)", n, report)
+	}
+}
+
+// 검토 지적 5: 같은 제출에서 합치기의 with에 든 옛 기억에 다른 판정(keep 말고)을 내면 그 판정은 받지 않는다.
+func TestLegacy_합치기에_든_기억의_다른_판정(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, ms := legacyEnv(t, now)
+	a, b := ms["회고는 새벽 네 시에 돈다"], ms["회고 결과는 제안으로만 반영한다"]
+	_, report, _ := runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
+		{MemoryID: b.ID, Verdict: "stale", Reason: "낡음"},
+		{MemoryID: a.ID, Verdict: "merge", With: []string{b.ID}, MergedTitle: "회고", MergedBody: "합친 본문", Reason: "같은 회고 이야기"},
+	}})
+	if len(pendingOf(t, e, memory.ProposalStale)) != 0 || len(pendingOf(t, e, memory.ProposalMerge)) != 1 {
+		t.Fatalf("낡음 %d, 합치기 %d (%s)", len(pendingOf(t, e, memory.ProposalStale)), len(pendingOf(t, e, memory.ProposalMerge)), report)
+	}
+	if !strings.Contains(report, b.ID+": 다른 합치기("+a.ID+")에 든 기억이라 keep만 받습니다") {
+		t.Errorf("보고:\n%s", report)
+	}
+}
+
+// 검토 지적 7: 이미 판정한 기억에 다시 낸 판정(실패한 제출을 다시 받을 때)은 새로 남기지 않는다.
+func TestLegacy_이미_판정한_기억은_다시_남기지_않는다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, ms := legacyEnv(t, now)
+	a := ms["회고는 새벽 네 시에 돈다"]
+	if err := e.s.RecordEvent(memory.Event{Kind: memory.EventLegacyJudged}, map[string]any{"memoryId": a.ID, "verdict": "keep"}); err != nil {
+		t.Fatal(err)
+	}
+	mat := Material{Kind: KindLegacy, Period: "2026-10-31", Legacy: &Legacy{Groups: []LegacyGroup{{Memories: []LegacyMemory{{TidyMemory: TidyMemory{ID: a.ID}}}}}}}
+	n, p, notes := applyLegacy(e.s, mat, "r-x", []LegacyVerdictIn{{MemoryID: a.ID, Verdict: "stale", Reason: "다시"}})
+	if n != 0 || p != 0 || len(pendingOf(t, e, memory.ProposalStale)) != 0 {
+		t.Fatalf("다시 판정 %d·%d %v", n, p, notes)
+	}
+	if v, _ := e.s.LegacyJudged(); v[a.ID] != "keep" {
+		t.Errorf("판정 %v", v)
+	}
+}
+
+// 검토 지적 1(끝 기준 3): 첫 묶음을 돌리기 전 상태별 기억 수를 한 번 남기고, 그 뒤 묶음은 바꾸지 않는다.
+func TestLegacy_정리_시작_때_상태별_수를_남긴다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, _ := legacyEnv(t, now)
+	runLegacyOnce(t, e, Submission{})
+	base, ok := e.s.LegacyBaseline()
+	if !ok || base.Day != "2026-10-31" || base.States[memory.StateConfirmed] != 4 || base.States[memory.StateCandidate] != 3 {
+		t.Fatalf("시작 수 %+v %v", base, ok)
+	}
+	e.s.SetState(ms0(t, e), memory.StateStale, "x")
+	runLegacyOnce(t, e, Submission{})
+	if again, _ := e.s.LegacyBaseline(); again.States[memory.StateStale] != 0 {
+		t.Fatalf("시작 수는 한 번만 남깁니다: %+v", again)
+	}
+}
+
+func ms0(t *testing.T, e *env) string {
+	t.Helper()
+	all, _ := e.s.List(memory.StateCandidate)
+	return all[0].ID
+}
+
+// 검토 지적 8: 호스트가 로그인되어 있지 않아 실패한 실행은 그날 몫에서 빼고 다시 돈다.
+func TestLegacy_로그인되지_않아_실패한_실행은_몫에서_뺀다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, _ := legacyEnv(t, now)
+	signedOut := true
+	e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
+		e.calls = append(e.calls, c)
+		if signedOut {
+			return `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"is_error":true,"result":"Not logged in · Please run /login","type":"result"}`, errors.New("exit 1")
+		}
+		return "", nil
+	}
+	if _, err := e.r.legacyDaily(context.Background()); !errors.Is(err, ErrHostSignedOut) {
+		t.Fatalf("로그아웃 실패여야 합니다: %v", err)
+	}
+	signedOut = false
+	calls := len(e.calls)
+	e.r.legacyDaily(context.Background())
+	if len(e.calls) != calls+1 {
+		t.Fatalf("로그인 뒤 같은 날 다시 돌아야 합니다: %d → %d", calls, len(e.calls))
+	}
+	e.r.legacyDaily(context.Background())
+	if len(e.calls) != calls+1 {
+		t.Fatalf("로그인 뒤 실패(제출 없음)는 몫을 씁니다: %d", len(e.calls))
+	}
+}
+
+// 끝 기준 2: 승인한 옛 기억 확정·낡음도 원장에 남고 되돌리면 옛 상태로 돌아온다.
+func TestLegacy_승인한_확정과_낡음도_되돌린다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, ms := legacyEnv(t, now)
+	cand, old := ms["회고는 새벽 네 시에 돈다"], ms["onidot-orbit-plugin 저장소에서 스킬을 고친다"]
+	runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
+		{MemoryID: cand.ID, Verdict: "confirm", Reason: "맞다"}, {MemoryID: old.ID, Verdict: "stale", Reason: "보관한 저장소"}}})
+	for _, p := range append(pendingOf(t, e, memory.ProposalConfirm), pendingOf(t, e, memory.ProposalStale)...) {
+		res, err := e.s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
+		if err != nil || res.LedgerID == "" {
+			t.Fatalf("승인 %+v %v", res, err)
+		}
+		rv, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalRevert, Title: "되돌리기", Payload: memory.Payload{LedgerID: res.LedgerID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.s.Decide(memory.DecideInput{ID: rv.ID, Decision: "approve"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{cand.ID, old.ID} {
+		if m, _ := e.s.Get(id); m.State != memory.StateCandidate {
+			t.Errorf("되돌린 뒤 %s %s", id, m.State)
+		}
 	}
 }

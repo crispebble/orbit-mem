@@ -153,6 +153,8 @@ type Report struct {
 	Graph        Graph                `json:"graph"`
 	States       map[string]int       `json:"states"` // 지금 기억 수(상태별)
 	Legacy       memory.LegacyCount   `json:"legacy"` // 옮겨 온 옛 기억 판정(설계 · Orbit 3차 O3-3)
+	// 옛 기억 정리를 시작하기 전 상태별 기억 수(끝 기준 3의 「전」). 시작하지 않았으면 nil
+	LegacyBaseline *memory.LegacyBaseline `json:"legacyBaseline,omitempty"`
 }
 
 // Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
@@ -407,6 +409,9 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if r.Legacy, err = s.CountLegacy(); err != nil {
 		return r, err
 	}
+	if b, ok := s.LegacyBaseline(); ok {
+		r.LegacyBaseline = &b
+	}
 	jc, err := s.JudgmentCounts(startMs, endMs)
 	if err != nil {
 		return r, err
@@ -537,8 +542,14 @@ func Render(r Report) string {
 	g := r.Graph
 	fmt.Fprintf(&b, "- 기억 그래프: 기억 %d개, 클러스터 %d개, 그 밖 %d개(%s), 주제 태그 없음 %d개, 연결 %d개, 주제 태그 %d종\n",
 		g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags)
-	fmt.Fprintf(&b, "- 기억 상태: 후보 %d · 확정 %d · 낡음 %d · 숨김 %d\n", r.States[memory.StateCandidate], r.States[memory.StateConfirmed],
-		r.States[memory.StateStale], r.States[memory.StateHidden])
+	states := func(m map[string]int) string {
+		return fmt.Sprintf("후보 %d · 확정 %d · 낡음 %d · 숨김 %d", m[memory.StateCandidate], m[memory.StateConfirmed], m[memory.StateStale], m[memory.StateHidden])
+	}
+	b.WriteString("- 기억 상태: " + states(r.States))
+	if lb := r.LegacyBaseline; lb != nil {
+		fmt.Fprintf(&b, " (옛 기억 정리 시작 %s: %s)", lb.Day, states(lb.States))
+	}
+	b.WriteString("\n")
 	if l := r.Legacy; l.Total > 0 {
 		var by []string
 		for _, v := range []struct{ key, name string }{{"keep", "그대로 둠"}, {"confirm", "확정"}, {"merge", "합치기"}, {"stale", "낡음"}} {

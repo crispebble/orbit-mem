@@ -269,3 +269,36 @@ func TestProposal_합치기는_태그를_잇고_같은_제목이면_그_기억�
 		t.Errorf("되돌린 옛 기억 %+v", o)
 	}
 }
+
+// 검토 지적 2·3: 합칠 기억이 이미 정리됐으면(낡음·대체) 합치기를 반영하지 않고 정리(settled)로 닫는다.
+// 같은 제목 합치기에 합친 본문이 없으면 지금 본문을 지우지 않는다.
+func TestProposal_합칠_기억이_이미_정리됐거나_본문이_없을_때(t *testing.T) {
+	s, _ := newTestStore(t)
+	save := func(title string) Memory {
+		m, err := s.Save(SaveInput{Kind: KindRule, Title: title, Body: title + " 본문", Tags: []string{"git"}, Scope: ScopeGlobal, State: StateConfirmed,
+			Source: Source{Kind: SourceSession, Ref: "x"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	a, b, c := save("가"), save("나"), save("다")
+	p, _ := s.Propose(ProposalInput{Kind: ProposalMerge, Title: "가나", MemoryIDs: []string{a.ID, b.ID}, Payload: Payload{MergedTitle: "가나", MergedBody: "합친"}})
+	if _, err := s.SetState(b.ID, StateStale, "다른 길로 정리"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil || res.Proposal.Status != StatusSettled || res.Created != "" {
+		t.Fatalf("이미 정리된 합치기 %+v %v", res, err)
+	}
+	if m, _ := s.Get(a.ID); m.State != StateConfirmed {
+		t.Fatalf("반영하지 않아야 합니다: %+v", m)
+	}
+	p, _ = s.Propose(ProposalInput{Kind: ProposalMerge, Title: "가다", MemoryIDs: []string{a.ID, c.ID}, Payload: Payload{MergedTitle: "가"}})
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.Get(a.ID); m.Body != a.Body {
+		t.Fatalf("본문 없는 합치기가 본문을 지웠습니다: %+v", m)
+	}
+}

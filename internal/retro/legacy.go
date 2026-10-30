@@ -24,7 +24,7 @@ const (
 )
 
 const (
-	legacyBodyBytes  = 800 // 옛 기억 본문을 재료에 싣는 길이
+	legacyBodyBytes  = 800 // 옛 기억·겹칠 수 있는 지금 기억 본문을 재료에 싣는 길이(넘으면 「…(잘림)」)
 	legacyRelated    = 3   // 옛 기억마다 싣는 겹칠 수 있는 지금 기억 수
 	legacyRelatedMax = 90
 )
@@ -174,6 +174,7 @@ func (r *Runner) legacyMaterial() (*Legacy, error) {
 			}
 			seen[d.ID] = true
 			cm := tidyMemory(current[d.ID])
+			cm.Body = clipBytes(memory.MaskSecrets(current[d.ID].Body), legacyBodyBytes)
 			l.Related = append(l.Related, cm)
 		}
 	}
@@ -190,6 +191,10 @@ func (r *Runner) RunLegacy(ctx context.Context) (Result, error) {
 		return Result{Kind: KindLegacy, Period: mat.Period, Status: StatusEmpty}, err
 	}
 	mat.Legacy = l
+	// 끝 기준 3(정리 전후 수): 첫 묶음을 돌리기 전에 상태별 기억 수를 한 번 남긴다.
+	if err := r.Store.KeepLegacyBaseline(); err != nil {
+		return Result{Kind: KindLegacy, Period: mat.Period}, err
+	}
 	if err := r.commonMaterial(&mat); err != nil {
 		return Result{Kind: KindLegacy, Period: mat.Period}, err
 	}
@@ -209,11 +214,14 @@ func (r *Runner) RunLegacyOne(ctx context.Context) (Result, error) {
 
 // legacyDaily runs the day's old-memory batches up to legacyBatches, counting
 // the runs already made today (a failed run counts: it is not retried the
-// same day). It stops when nothing is left or a run fails.
+// same day, unless the host was signed out). It stops when nothing is left or
+// a run fails.
 func (r *Runner) legacyDaily(ctx context.Context) ([]Result, error) {
 	today := dayOf(r.now())
 	var ran int
-	if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=?`, KindLegacy, today).Scan(&ran); err != nil {
+	// 호스트가 로그인되어 있지 않아 모델에 닿지 못한 실행은 몫으로 세지 않는다(로그인 뒤 같은 날 다시 돈다).
+	if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=? AND NOT (status=? AND error LIKE ?)`,
+		KindLegacy, today, StatusFailed, "%"+signedOutNote+"%").Scan(&ran); err != nil {
 		return nil, err
 	}
 	var results []Result
@@ -232,8 +240,36 @@ func (r *Runner) legacyDaily(ctx context.Context) ([]Result, error) {
 
 // applyLegacy turns the judgments on the batch into proposals and keeps each
 // as an event. A judgment it cannot take leaves the memory for a later batch.
+// A memory is judged once: a memory already judged (a resubmission) is left
+// as it is. One memory is in at most one pending merge, so a later merge never
+// overwrites the merged body an earlier one would write; an old memory another
+// merge of the same submission takes in gets keep only.
 func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdictIn) (judged, proposed int, notes []string) {
 	l := mat.Legacy
+	already, err := s.LegacyJudged()
+	if err != nil {
+		return 0, 0, []string{"판정 기록을 읽지 못했습니다: " + err.Error()}
+	}
+	merging := map[string]string{} // 기억 id → 그 기억이 든 대기 중인 합치기
+	if pending, err := s.Proposals(memory.StatusPending); err == nil {
+		for _, p := range pending {
+			if p.Kind == memory.ProposalMerge {
+				for _, id := range p.MemoryIDs {
+					merging[id] = p.ID
+				}
+			}
+		}
+	}
+	takenBy := map[string]string{} // 이 제출에서 다른 옛 기억의 합치기 with에 든 기억 → 그 옛 기억
+	for _, v := range in {
+		if strings.TrimSpace(v.Verdict) == LegacyMerge && strings.TrimSpace(v.MergedTitle) != "" && strings.TrimSpace(v.MergedBody) != "" {
+			for _, w := range v.With {
+				if w = strings.TrimSpace(w); w != "" && w != v.MemoryID && takenBy[w] == "" {
+					takenBy[w] = strings.TrimSpace(v.MemoryID)
+				}
+			}
+		}
+	}
 	done := map[string]bool{}
 	for _, v := range in {
 		id := strings.TrimSpace(v.MemoryID)
@@ -241,7 +277,7 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 			notes = append(notes, id+": 이번 묶음의 옛 기억이 아닙니다")
 			continue
 		}
-		if done[id] {
+		if _, ok := already[id]; ok || done[id] {
 			continue
 		}
 		reason := strings.TrimSpace(v.Reason)
@@ -255,6 +291,10 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 			continue
 		}
 		verdict := strings.TrimSpace(v.Verdict)
+		if owner := takenBy[id]; owner != "" && verdict != LegacyKeep {
+			notes = append(notes, fmt.Sprintf("%s: 다른 합치기(%s)에 든 기억이라 keep만 받습니다", id, owner))
+			continue
+		}
 		var p memory.ProposalInput
 		switch verdict {
 		case LegacyConfirm:
@@ -270,16 +310,24 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 					with = append(with, w)
 				}
 			}
-			if len(with) == 0 || strings.TrimSpace(v.MergedTitle) == "" {
-				notes = append(notes, id+": 합치기는 합칠 기억(with)과 합친 제목(mergedTitle)이 필요합니다")
+			if len(with) == 0 || strings.TrimSpace(v.MergedTitle) == "" || strings.TrimSpace(v.MergedBody) == "" {
+				notes = append(notes, id+": 합치기는 합칠 기억(with)과 합친 제목(mergedTitle)·본문(mergedBody)이 필요합니다")
 				continue
 			}
-			bad := ""
-			for _, w := range with {
+			bad, busy := "", ""
+			for _, w := range append([]string{id}, with...) {
 				if o, err := s.Get(w); err != nil || o.State != memory.StateCandidate && o.State != memory.StateConfirmed {
 					bad = w
 					break
 				}
+				if pid := merging[w]; pid != "" {
+					bad, busy = w, pid
+					break
+				}
+			}
+			if busy != "" {
+				notes = append(notes, fmt.Sprintf("%s: 합칠 기억 %s는 이미 다른 합치기(대기 중인 합치기 %s)에 들어 있습니다. 그 합치기가 결정된 뒤 다시 판정합니다", id, bad, busy))
+				continue
 			}
 			if bad != "" {
 				notes = append(notes, fmt.Sprintf("%s: 합칠 기억 %s가 없거나 후보·확정 기억이 아닙니다", id, bad))
@@ -295,9 +343,10 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 			notes = append(notes, id+": verdict는 confirm·merge·stale·keep입니다")
 			continue
 		}
+		clipped := memory.ClipRunes(memory.MaskSecrets(reason), 300)
 		proposalID := ""
 		if p.Kind != "" {
-			p.Body, p.RetroID = "옛 기억 판정 근거: "+reason, retroID
+			p.Body, p.RetroID = "옛 기억 판정 근거: "+clipped, retroID
 			got, err := s.Propose(p)
 			switch {
 			case err == nil:
@@ -311,10 +360,14 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 				notes = append(notes, fmt.Sprintf("%s: %v", id, err))
 				continue
 			}
+			if p.Kind == memory.ProposalMerge && proposalID != "" {
+				for _, mid := range p.MemoryIDs {
+					merging[mid] = proposalID
+				}
+			}
 		}
 		if err := s.RecordEvent(memory.Event{Kind: memory.EventLegacyJudged, Day: mat.Period}, map[string]any{
-			"memoryId": id, "verdict": verdict, "reason": memory.ClipRunes(memory.MaskSecrets(reason), 300),
-			"proposalId": proposalID, "retroId": retroID}); err != nil {
+			"memoryId": id, "verdict": verdict, "reason": clipped, "proposalId": proposalID, "retroId": retroID}); err != nil {
 			notes = append(notes, "판정 기록 실패: "+err.Error())
 			continue
 		}

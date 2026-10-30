@@ -241,7 +241,7 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 	}
 	signedOut := hostSignedOut(out)
 	if signedOut {
-		msg += "\n로그인된 뒤 다음 실행에서 다시 돕니다"
+		msg += "\n" + signedOutNote
 	}
 	res.Status, res.Error = StatusFailed, msg
 	_, _ = r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=?`, StatusFailed, r.now().UnixMilli(), msg, res.ID)
@@ -268,6 +268,9 @@ func hostSignedOut(out string) bool {
 	}
 	return false
 }
+
+// signedOutNote ends the error of a run the host was not signed in for.
+const signedOutNote = "로그인된 뒤 다음 실행에서 다시 돕니다"
 
 // signedOutError is a failed run that matches ErrHostSignedOut.
 type signedOutError string

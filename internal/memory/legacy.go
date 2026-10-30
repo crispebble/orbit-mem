@@ -4,7 +4,7 @@ import "encoding/json"
 
 // LegacyJudged is the old memories judged so far and each one's verdict.
 func (s *Store) LegacyJudged() (map[string]string, error) {
-	rows, err := s.db.Query(`SELECT data FROM events WHERE kind=?`, EventLegacyJudged)
+	rows, err := s.db.Query(`SELECT data FROM events WHERE kind=? ORDER BY id`, EventLegacyJudged)
 	if err != nil {
 		return nil, err
 	}
@@ -16,8 +16,11 @@ func (s *Store) LegacyJudged() (map[string]string, error) {
 			return nil, err
 		}
 		var d struct{ MemoryID, Verdict string }
-		if json.Unmarshal([]byte(data), &d) == nil && d.MemoryID != "" {
-			out[d.MemoryID] = d.Verdict
+		if json.Unmarshal([]byte(data), &d) != nil || d.MemoryID == "" {
+			continue
+		}
+		if _, seen := out[d.MemoryID]; !seen {
+			out[d.MemoryID] = d.Verdict // 판정은 한 번만 센다: 먼저 남은 것
 		}
 	}
 	return out, rows.Err()
@@ -65,4 +68,36 @@ func (s *Store) CountLegacy() (LegacyCount, error) {
 	c.Judged, c.Left = len(judged), len(left)
 	c.Total = c.Judged + c.Left
 	return c, nil
+}
+
+const legacyBaselineMeta = "legacy_baseline"
+
+// LegacyBaseline is the memory count by state when the old-memory judgment
+// began (설계 · Orbit 3차 O3-3 끝 기준 3: 정리 전후 수).
+type LegacyBaseline struct {
+	Day    string         `json:"day"`
+	States map[string]int `json:"states"`
+}
+
+// LegacyBaseline reads the counts kept before the first batch.
+func (s *Store) LegacyBaseline() (LegacyBaseline, bool) {
+	var b LegacyBaseline
+	if json.Unmarshal([]byte(s.Meta(legacyBaselineMeta)), &b) != nil || b.Day == "" {
+		return b, false
+	}
+	return b, true
+}
+
+// KeepLegacyBaseline keeps the counts by state now, once: later calls leave
+// the first one.
+func (s *Store) KeepLegacyBaseline() error {
+	if _, ok := s.LegacyBaseline(); ok {
+		return nil
+	}
+	states, err := s.StateCounts()
+	if err != nil {
+		return err
+	}
+	b, _ := json.Marshal(LegacyBaseline{Day: Day(s.Now()), States: states})
+	return s.SetMeta(legacyBaselineMeta, string(b))
 }

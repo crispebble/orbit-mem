@@ -279,6 +279,9 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := s.KeepLegacyBaseline(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.SetState(b.ID, memory.StateStale, "제안 승인"); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +296,7 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 		t.Fatalf("상태별 기억 수: %+v", rep.States)
 	}
 	out := Render(rep)
-	for _, want := range []string{"옛 기억 정리: 대상 3개 중 판정 2개(그대로 둠 1 · 낡음 1), 남음 1개", "기억 상태: 후보 3 · 확정 0 · 낡음 1 · 숨김 0"} {
+	for _, want := range []string{"옛 기억 정리: 대상 3개 중 판정 2개(그대로 둠 1 · 낡음 1), 남음 1개", "기억 상태: 후보 3 · 확정 0 · 낡음 1 · 숨김 0 (옛 기억 정리 시작 2026-10-31: 후보 4 · 확정 0 · 낡음 0 · 숨김 0)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("%q가 없습니다:\n%s", want, out)
 		}

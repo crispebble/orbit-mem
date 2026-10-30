@@ -133,3 +133,19 @@ func TestDefault_그래프_정리(t *testing.T) {
 		t.Error("정리 제안 상한은 회고 제출 상한(20)을 넘지 않는다")
 	}
 }
+
+// 옛 기억 정리 기본값: 한 묶음 30개, 예약 회고는 하루 1묶음(2026-10-30 사용자 결정). 범위 밖 값은 거절한다.
+func TestDefault_옛_기억_정리(t *testing.T) {
+	c := Default()
+	if c.LegacyMemories != 30 || c.LegacyBatches != 1 || len(c.RetiredNames) != 0 {
+		t.Fatalf("기본값: %+v", c)
+	}
+	for _, bad := range []func(*Config){func(c *Config) { c.LegacyMemories = 0 }, func(c *Config) { c.LegacyMemories = 101 },
+		func(c *Config) { c.LegacyBatches = -1 }, func(c *Config) { c.LegacyBatches = 21 }} {
+		c := Default()
+		bad(&c)
+		if c.Validate() == nil {
+			t.Errorf("받으면 안 됩니다: %+v", c)
+		}
+	}
+}

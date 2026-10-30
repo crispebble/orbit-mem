@@ -46,6 +46,8 @@ var (
 	errAlreadyLinked = errors.New("이미 이어진 기억입니다")
 	// errAlreadyRetagged: 태그 제안을 승인할 때 바꿀 기억이 남지 않았다(다른 길로 이미 바뀜). 정리(settled)로 닫는다.
 	errAlreadyRetagged = errors.New("이미 태그가 바뀐 기억입니다")
+	// errMergeGone means a memory to merge was already settled another way (stale, merged): the merge would lose it.
+	errMergeGone = errors.New("합칠 기억이 이미 정리됐습니다")
 )
 
 // Payload carries what a proposal needs beyond memory ids.
@@ -371,10 +373,12 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		if err != nil {
 			return res, err
 		}
-		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) {
+		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) || errors.Is(err, errMergeGone) {
 			note := "이미 이어짐"
 			if errors.Is(err, errAlreadyRetagged) {
 				note = "이미 태그가 바뀜"
+			} else if errors.Is(err, errMergeGone) {
+				note = "합칠 기억이 이미 정리됨"
 			}
 			if err := s.finish(&p, StatusSettled, note); err != nil {
 				return res, err
@@ -488,6 +492,13 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 				}
 			}
 		}
+		if p.Kind == ProposalMerge {
+			for _, id := range p.MemoryIDs {
+				if m, err := getTx(s.db, id); err != nil || m.State != StateCandidate && m.State != StateConfirmed {
+					return errMergeGone
+				}
+			}
+		}
 		tags := p.Payload.Tags
 		if p.Kind == ProposalMerge && len(tags) == 0 {
 			tags = mergedTags(s, p.MemoryIDs)
@@ -500,7 +511,10 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if slices.Contains(p.MemoryIDs, m.ID) {
 			// 합친 제목이 합치는 기억 하나의 제목과 같으면 Save는 그 기억을 돌려준다. 새로 만들지 않고 그 기억에
 			// 합친 본문·태그를 새 판으로 쌓는다(옛 판은 원장으로 되돌린다).
-			u := UpdateInput{ID: m.ID, Body: &body, Reason: "합침 " + p.ID, Action: "merge"}
+			u := UpdateInput{ID: m.ID, Reason: "합침 " + p.ID, Action: "merge"}
+			if strings.TrimSpace(body) != "" { // 합친 본문이 없으면 지금 본문을 지우지 않는다
+				u.Body = &body
+			}
 			if p.Kind == ProposalMerge {
 				u.Tags = &tags
 			}
