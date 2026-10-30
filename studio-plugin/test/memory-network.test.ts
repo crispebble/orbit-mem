@@ -83,6 +83,14 @@ describe('대표 태그(클러스터)', () => {
     assert.ok(nodes.every(n => clusterOf.get(n.id) === 'ui'));
   });
 
+  it('앞뒤 공백·-와 _·전각 차이도 같은 태그다(oni TagKey와 같은 규칙)', () => {
+    const nodes = [node(['claude_code']), node(['Claude-Code ']), node(['ＣＬＡＵＤＥ-code'])];
+    const {clusters, clusterOf} = clusterByRepresentativeTag(nodes);
+    assert.deepEqual(clusters.map(c => c.id), ['claude-code']);
+    assert.equal(clusters[0].label, 'claude_code');
+    assert.ok(nodes.every(n => clusterOf.get(n.id) === 'claude-code'));
+  });
+
   it('7개까지 고르고 나머지는 그 밖(other 칸), 색 칸은 고른 순서대로 c1~c7', () => {
     const nodes: GraphNode[] = [];
     for (let t = 0; t < 10; t++) for (let k = 0; k < 10 - t; k++) nodes.push(node([`t${t}`]));

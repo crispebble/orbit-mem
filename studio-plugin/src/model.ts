@@ -84,6 +84,10 @@ export interface OniPayload {
   scope?: string;
   /** link: 잇는 근거 */
   note?: string;
+  /** retag: 뺄 태그(표기 차이 무시) */
+  fromTags?: string[];
+  /** retag: 넣을 태그 */
+  toTags?: string[];
 }
 
 export interface OniProposal {
@@ -113,11 +117,11 @@ const sourceLabels: Record<MemorySourceKind, string> = {
 
 const proposalKindLabels: Record<string, string> = {
   confirm: '후보 확정', stale: '낡은 기억 정리', merge: '기억 합치기', reclassify: '종류 다시 분류', apply_file: '파일 반영', direction: '방향 제안',
-  edit: '기억 고치기', revert: '변경 되돌리기', link: '관련 기억 잇기',
+  edit: '기억 고치기', revert: '변경 되돌리기', link: '관련 기억 잇기', retag: '태그 정리',
 };
 
 const actionLabels: Record<string, string> = {
-  create: '', seen: '다시 나옴', confirm: '확정', update: '고침', edit: '고침', stale: '낡음으로 표시', restore: '후보로 되돌림', supersede: '대체됨', reclassify: '종류 바꿈',
+  create: '', seen: '다시 나옴', confirm: '확정', update: '고침', edit: '고침', stale: '낡음으로 표시', restore: '후보로 되돌림', supersede: '대체됨', reclassify: '종류 바꿈', retag: '태그 바꿈', revert: '되돌림',
 };
 
 export const proposalStatusLabels: Record<string, string> = {pending: '대기', approved: '승인함', rejected: '거절함', settled: '다른 길로 처리됨'};
@@ -245,11 +249,11 @@ export function groupProposalRows(rows: readonly ProposalRow[]): ProposalGroup[]
 const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link'];
 
 /**
- * Forma 0.9.0에 없는 Orbit 종류: 기억 고치기·변경 되돌리기는 가장 가까운 「기억 정리」로 그리고
- * 바뀔 내용(diff)은 설명으로 보인다. 그 밖에 모르는 종류는 확정으로 본다.
+ * Forma 0.9.0에 없는 Orbit 종류: 기억 고치기·변경 되돌리기·태그 정리는 가장 가까운 「기억 정리」로 그리고
+ * 바뀔 내용(diff, 바뀔 태그)은 설명으로 보인다. 그 밖에 모르는 종류는 확정으로 본다.
  */
 const asProposalKind = (kind: string): ProposalKind => {
-  if (kind === 'edit' || kind === 'revert') return 'cleanup';
+  if (kind === 'edit' || kind === 'revert' || kind === 'retag') return 'cleanup';
   return (PROPOSAL_KINDS as readonly string[]).includes(kind) ? (kind as ProposalKind) : 'confirm';
 };
 

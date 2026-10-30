@@ -51,7 +51,8 @@ const MARKER_TAG = /^(imported|space|since|type|옛|superseded-by):/;
 /** 종류 이름 태그. 종류는 배지로 보이므로 클러스터 기준에서 뺀다(제안) */
 const KIND_TAGS = new Set(['규칙', '사실', '결정', '교훈', '일지', '회고', 'rule', 'fact', 'decision', 'lesson', 'journal']);
 
-const tagKey = (tag: string) => tag.trim().toLowerCase();
+/** 태그 열쇠: 전각·대소문자·앞뒤 공백·-와 _ 차이를 맞춘다(oni TagKey, orbit.memory 1.2와 같은 규칙) */
+const tagKey = (tag: string) => tag.normalize('NFKC').trim().toLowerCase().replace(/_/g, '-');
 
 /** 클러스터 기준과 「같은 태그」 선에서 빼는 태그 */
 export function isExcludedTag(tag: string): boolean {
