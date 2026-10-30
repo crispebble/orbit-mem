@@ -146,6 +146,42 @@ func TestProposals_보기와_결정(t *testing.T) {
 	}
 }
 
+func TestProposalDecide_ids로_여럿을_결정하고_실패한_것은_이유와_돌려준다(t *testing.T) {
+	cs, s := connect(t)
+	var ids []string
+	for _, title := range []string{"가", "나", "다"} {
+		m, _ := s.Save(memory.SaveInput{Kind: "fact", Title: title, Scope: "global", Source: memory.Source{Kind: "session"}})
+		p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: title + " 확정", MemoryIDs: []string{m.ID}})
+		ids = append(ids, p.ID)
+	}
+	s.Decide(memory.DecideInput{ID: ids[1], Decision: "reject"})
+
+	var dec DecideOut
+	res := call(t, cs, "proposal_decide", map[string]any{"ids": append(ids, "p-없음"), "decision": "approve", "note": "묶음"}, &dec)
+	if res.IsError {
+		t.Fatalf("batch must not be a tool error: %s", text(res))
+	}
+	if len(dec.Decided) != 2 || len(dec.Failed) != 2 || dec.Proposal.ID != "" {
+		t.Fatalf("dec = %+v", dec)
+	}
+	if !strings.Contains(text(res), "2건 결정") || !strings.Contains(text(res), "2건 실패") {
+		t.Fatalf("text = %s", text(res))
+	}
+	pending, _ := s.Proposals(memory.StatusPending)
+	if len(pending) != 0 {
+		t.Fatalf("pending = %+v", pending)
+	}
+
+	res = call(t, cs, "proposal_decide", map[string]any{"ids": []string{ids[0]}, "decision": "approve", "title": "고침"}, nil)
+	if !res.IsError || !strings.Contains(text(res), "하나씩") {
+		t.Fatalf("editing in a batch must fail: %s", text(res))
+	}
+	res = call(t, cs, "proposal_decide", map[string]any{"decision": "approve"}, nil)
+	if !res.IsError {
+		t.Fatalf("no id must fail: %s", text(res))
+	}
+}
+
 func toolEvents(t *testing.T, s *memory.Store) map[string][]map[string]any {
 	t.Helper()
 	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31", KindPrefix: "tool."})

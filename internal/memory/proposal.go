@@ -291,7 +291,7 @@ type DecideInput struct {
 
 // DecideResult says what changed.
 type DecideResult struct {
-	Proposal Proposal `json:"proposal"`
+	Proposal Proposal `json:"proposal,omitzero"`
 	Changed  []string `json:"changed,omitempty"`  // 바뀐 기억 id
 	Created  string   `json:"created,omitempty"`  // 새로 만든 기억 id
 	File     string   `json:"file,omitempty"`     // 바꾼 파일
