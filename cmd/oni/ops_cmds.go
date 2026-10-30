@@ -604,7 +604,7 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.RetroHost, cfg.RetroModel, cfg.RetroHour, cfg.Inject, yes(rep.Schedule)))
-	sessionRetro := onOff(false)
+	sessionRetro := i18n.T("cli.doctor.session_retro_off")
 	if cfg.SessionRetro {
 		sessionRetro = i18n.T("cli.doctor.on_model", cfg.SessionModel())
 	}

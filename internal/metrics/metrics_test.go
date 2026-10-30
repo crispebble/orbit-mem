@@ -112,7 +112,7 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	}
 
 	text := Render(rep)
-	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "Repeated corrections: 3", "injected but broken 1", "답은 존댓말 (m-r) 2 times", "Empty searches 2/3", "배포 순서", "failed 1"} {
+	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "Repeated corrections: 3", "injected but violated 1", "답은 존댓말 (m-r) 2 times", "Empty searches 2/3", "배포 순서", "failed 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
@@ -193,7 +193,7 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 	}
 	text := Render(rep)
 	for _, want := range []string{"Usage verdicts: followed 2 · violated 2 · irrelevant 1", "고친 교훈", "Effect ledger: 1 changes", "observing now 1", "Write verdicts: keep 1 · hold 1 · reject 1", "rejected by user 1",
-		"average injected prompt 400 chars", "session end 2", "$0.7500", "cost unknown 1"} {
+		"average injected prompt 400 chars", "session end ×2", "$0.7500", "cost unknown 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}

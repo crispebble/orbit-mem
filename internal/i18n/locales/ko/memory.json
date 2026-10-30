@@ -53,5 +53,8 @@
   "memory.err.scope_is": "%w: 범위는 global 또는 project:<키>입니다",
   "memory.err.source_kind": "%w: 출처 종류는 %s 중 하나입니다",
   "memory.err.verdict_title": "%w: 판정은 %s, 제목이 필요합니다",
-  "memory.err.version_conflict": "다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요"
+  "memory.err.version_conflict": "다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요",
+  "memory.settled.already_linked": "이미 이어짐",
+  "memory.settled.already_retagged": "이미 태그가 바뀜",
+  "memory.settled.merge_gone": "합칠 기억이 이미 정리됨"
 }

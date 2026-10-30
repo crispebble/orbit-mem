@@ -13,5 +13,5 @@
   "retro.err.weekly_monday": "a weekly retrospective runs with the Monday of a finished week: %s",
   "retro.host_no_result": "the host did not submit a result",
   "retro.no_material": "no material",
-  "retro.signed_out_note": "It runs again once you are signed in"
+  "retro.signed_out_note": "It runs again on the next run once you are signed in"
 }

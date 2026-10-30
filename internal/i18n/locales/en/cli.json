@@ -20,6 +20,7 @@
   "cli.doctor.on_model": "on (%s)",
   "cli.doctor.retro": "Retrospectives: %s %s, daily at %02d:00, injection %s · schedule %s",
   "cli.doctor.session_retro": "Session-end retrospective: %s · %d queued · work recall %d chars",
+  "cli.doctor.session_retro_off": "off",
   "cli.doctor.work": "Work records: %s · %d open · %d total · %d spooled",
   "cli.doctor.yes": "yes",
   "cli.err.usage": "wrong usage",

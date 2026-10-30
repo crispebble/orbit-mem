@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/onidot-labs/orbit/internal/i18n"
@@ -110,7 +109,7 @@ func Default() Config {
 
 // Validate checks values a person may have typed by hand.
 func (c Config) Validate() error {
-	if c.Language != "" && !slices.Contains(i18n.Langs, i18n.Lang(c.Language)) {
+	if _, ok := i18n.Parse(c.Language); c.Language != "" && !ok {
 		return i18n.Errorf("config.err.language", c.Language)
 	}
 	if c.RetroHost != "claude" && c.RetroHost != "codex" {
@@ -203,6 +202,9 @@ func Load(path string) (Config, error) {
 	}
 	if err := json.Unmarshal(b, &c); err != nil {
 		return c, i18n.Errorf("config.err.read", path, err)
+	}
+	if l, ok := i18n.Parse(c.Language); ok {
+		c.Language = string(l) // 손으로 쓴 "KO"·"ko_KR"도 받는다
 	}
 	return c, c.Validate()
 }

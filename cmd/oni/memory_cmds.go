@@ -514,7 +514,13 @@ func (a *app) reportDecision(res memory.DecideResult) error {
 	case memory.StatusRejected:
 		fmt.Fprint(a.stdout, i18n.T("decision.rejected", res.Proposal.ID))
 	case memory.StatusSettled:
-		fmt.Fprint(a.stdout, i18n.T("decision.settled", res.Proposal.ID, res.Proposal.Note))
+		note := res.Proposal.Note
+		for _, k := range memory.SettledNoteKeys {
+			if note == i18n.TIn(i18n.KO, k) {
+				note = i18n.T(k)
+			}
+		}
+		fmt.Fprint(a.stdout, i18n.T("decision.settled", res.Proposal.ID, note))
 	default:
 		fmt.Fprint(a.stdout, res.Proposal.ID+" "+res.Proposal.Status+".")
 	}

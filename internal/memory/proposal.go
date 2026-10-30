@@ -41,6 +41,10 @@ const (
 
 var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag}
 
+// SettledNoteKeys are the catalog keys of the reasons a proposal is settled
+// with, stored in Korean (see Decide).
+var SettledNoteKeys = []string{"memory.settled.already_linked", "memory.settled.already_retagged", "memory.settled.merge_gone"}
+
 var (
 	ErrDuplicateProposal = i18n.Err("memory.err.duplicate_proposal")
 	ErrFileChanged       = i18n.Err("memory.err.file_changed")
@@ -383,11 +387,12 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 			return res, err
 		}
 		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) || errors.Is(err, errMergeGone) {
-			note := "이미 이어짐"
+			// 정리 사유는 제안에 남는 기록이라 한국어로 남긴다. 화면은 SettledNoteKeys로 그 언어로 바꿔 보인다.
+			note := i18n.TIn(i18n.KO, "memory.settled.already_linked")
 			if errors.Is(err, errAlreadyRetagged) {
-				note = "이미 태그가 바뀜"
+				note = i18n.TIn(i18n.KO, "memory.settled.already_retagged")
 			} else if errors.Is(err, errMergeGone) {
-				note = "합칠 기억이 이미 정리됨"
+				note = i18n.TIn(i18n.KO, "memory.settled.merge_gone")
 			}
 			if err := s.finish(&p, StatusSettled, note); err != nil {
 				return res, err

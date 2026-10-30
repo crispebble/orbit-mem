@@ -20,6 +20,7 @@
   "cli.doctor.on_model": "켬(%s)",
   "cli.doctor.retro": "회고: %s %s, 매일 %02d시, 주입 %s · 예약 %s",
   "cli.doctor.session_retro": "세션 끝 회고: %s · 대기 %d개 · 작업 회상 %d자",
+  "cli.doctor.session_retro_off": "끔",
   "cli.doctor.work": "작업 기록: %s · 열린 작업 %d · 전체 %d · 스풀 %d",
   "cli.doctor.yes": "있음",
   "cli.err.usage": "사용법이 맞지 않습니다",

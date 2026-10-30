@@ -171,14 +171,14 @@ func TestLanguage_기본은_영어이고_en_ko만_받는다(t *testing.T) {
 	if Default().Language != "en" {
 		t.Fatalf("default %q", Default().Language)
 	}
-	for _, ok := range []string{"", "en", "ko"} {
+	for _, ok := range []string{"", "en", "ko", "KO", "ko-KR"} {
 		c := Default()
 		c.Language = ok
 		if err := c.Validate(); err != nil {
 			t.Errorf("%q: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"ja", "KO", "ko-KR"} {
+	for _, bad := range []string{"ja", "korean"} {
 		c := Default()
 		c.Language = bad
 		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "language is en or ko") {
@@ -198,5 +198,14 @@ func TestLanguage_검증에_실패한_설정에서도_언어를_읽는다(t *tes
 	}
 	if Language(path) != "ko" {
 		t.Fatalf("%q", Language(path))
+	}
+}
+
+func TestLanguage_손으로_쓴_언어도_읽고_맞춰_둔다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(path, []byte(`{"language":"KO"}`), 0o600)
+	c, err := Load(path)
+	if err != nil || c.Language != "ko" {
+		t.Fatalf("%+v %v", c.Language, err)
 	}
 }

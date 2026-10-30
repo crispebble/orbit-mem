@@ -26,7 +26,7 @@
   "memory.err.link_self": "%w: a memory cannot be linked to itself",
   "memory.err.memory_changed": "the memory changed again after the change to revert; check the history and fix it by hand",
   "memory.err.memory_changed_at": "%w: %s (version %d, now %d)",
-  "memory.err.merge_gone": "the memory to merge is already gone",
+  "memory.err.merge_gone": "the memory to merge was already settled another way",
   "memory.err.merge_needs": "%w: at least two memories to merge and a merged title are required",
   "memory.err.need_ids_or_from": "%w: memory ids to tag or tags to remove (fromTags) are required",
   "memory.err.need_new_kind": "%w: a new kind is required",
@@ -53,5 +53,8 @@
   "memory.err.scope_is": "%w: the scope is global or project:<key>",
   "memory.err.source_kind": "%w: the source kind is one of %s",
   "memory.err.verdict_title": "%w: a verdict (%s) and a title are required",
-  "memory.err.version_conflict": "it was changed elsewhere first; read it again and retry"
+  "memory.err.version_conflict": "it was changed elsewhere first; read it again and retry",
+  "memory.settled.already_linked": "already linked",
+  "memory.settled.already_retagged": "tags already changed",
+  "memory.settled.merge_gone": "the memory to merge was already settled another way"
 }

@@ -142,3 +142,24 @@ func TestLang_명령_코드에_한글_문자열이_없다(t *testing.T) {
 		})
 	}
 }
+
+func TestLang_정리_사유는_보는_언어로_보인다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	a, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "가", Source: memory.Source{Kind: "session"}})
+	b, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "나", Source: memory.Source{Kind: "session"}})
+	p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalLink, Title: "잇기", MemoryIDs: []string{a.ID, b.ID}, Payload: memory.Payload{Note: "근거"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Link(memory.LinkInput{From: a.ID, To: b.ID, Origin: "user"}); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "proposals", "approve", p.ID)
+	if code != 0 || !strings.Contains(out, "settled. already linked.") || hasHangul(out) {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+	if got, _ := s.GetProposal(p.ID); got.Note != "이미 이어짐" {
+		t.Fatalf("저장되는 사유는 한국어로 남는다: %q", got.Note)
+	}
+}
