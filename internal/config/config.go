@@ -42,6 +42,7 @@ type Config struct {
 	LedgerWindowDays     int    `json:"ledgerWindowDays"`            // 변경 효과를 보는 변경 전·후 기간(일)
 
 	// 기억 그래프 정리(설계 · Orbit 3차 O3-2). 하루 회고에 붙는다. 0이면 그 부분을 끈다.
+	// 기본값은 첫 실행 실측(기억 40+20개를 보면 제안 18~20건, $0.28~0.38)을 보고 사용자가 정했다(2026-10-30, 회당 20건).
 	GraphTidyMemories  int `json:"graphTidyMemories"`  // 회당 연결 후보를 볼 클러스터 기억 수
 	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
@@ -84,7 +85,7 @@ func (c Config) SessionModel() string {
 // Default is the starting configuration.
 func Default() Config {
 	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
-		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7}
+		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20}
 }
 
 // Validate checks values a person may have typed by hand.
