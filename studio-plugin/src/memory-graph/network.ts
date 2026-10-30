@@ -73,7 +73,7 @@ export function topicKeys(tags: readonly string[]): Set<string> {
 export interface Clustering {
   /** 기억 id → 클러스터 id(태그 키 또는 other) */
   clusterOf: Map<string, string>;
-  /** 고른 순서. tone은 c1~c7, 그 밖은 other */
+  /** 고른 순서. tone은 c1, c2, …(상한 없음, Studio 키트 0.2.0), 그 밖은 other */
   clusters: NetworkCluster[];
 }
 
