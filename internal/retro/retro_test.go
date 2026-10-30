@@ -240,20 +240,6 @@ func TestDaily_호스트_기억_변경은_한번만_재료가_된다(t *testing.
 	}
 }
 
-func TestDaily_출처_파일이_바뀐_기억은_정리_제안이_된다(t *testing.T) {
-	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
-	f := filepath.Join(t.TempDir(), "rule.md")
-	w(t, f, "v1")
-	m, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "파일 근거", Scope: memory.ScopeGlobal,
-		Source: memory.Source{Kind: memory.SourceFile, Ref: f, Hash: memory.FileHash(f)}, State: memory.StateConfirmed})
-	w(t, f, "v2")
-	e.r.Run(context.Background(), KindDaily, "2026-10-26")
-	pending, _ := e.s.Proposals(memory.StatusPending)
-	if len(pending) != 1 || pending[0].Kind != memory.ProposalStale || pending[0].MemoryIDs[0] != m.ID {
-		t.Fatalf("pending = %+v", pending)
-	}
-}
-
 func TestCatchUp_밀린_날을_따라잡고_주간도_돈다(t *testing.T) {
 	// 2026-10-27은 화요일. 지난주(10-19~10-25)의 주간 회고가 돌아야 한다.
 	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))

@@ -224,6 +224,24 @@ export function toProposalRow(p: OniProposal, now: Date = new Date()): ProposalR
   return {id: p.id, title: p.title, kind: p.kind, kindLabel: proposalKindLabel(p.kind), date: formatDate(p.createdAt, now), status: p.status, pending: p.status === 'pending'};
 }
 
+export interface ProposalGroup {
+  kind: string;
+  label: string;
+  rows: ProposalRow[];
+}
+
+/** 제안을 종류별로 묶는다. 건수가 많은 묶음부터, 같으면 목록에 먼저 나온 종류부터. 묶음 안은 받은 순서 그대로. */
+export function groupProposalRows(rows: readonly ProposalRow[]): ProposalGroup[] {
+  const groups = new Map<string, ProposalGroup>();
+  for (const r of rows) {
+    let g = groups.get(r.kind);
+    if (!g) groups.set(r.kind, g = {kind: r.kind, label: r.kindLabel, rows: []});
+    g.rows.push(r);
+  }
+  const order = [...groups.values()];
+  return order.map((g, i) => ({g, i})).sort((a, b) => b.g.rows.length - a.g.rows.length || a.i - b.i).map(x => x.g);
+}
+
 const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link'];
 
 /**

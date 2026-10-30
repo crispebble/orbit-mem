@@ -3,12 +3,13 @@ import type {InboxItem, McpResult, PluginContext} from '@onidot-labs/studio-plug
 export interface Call {tool: string; args?: Record<string, unknown>}
 
 /** 시험용 가짜 ctx. mcp 응답은 도구 이름별 함수로 정한다. */
-export function fakeCtx(handlers: Record<string, (args?: Record<string, unknown>) => McpResult | Promise<McpResult>>) {
+export function fakeCtx(handlers: Record<string, (args?: Record<string, unknown>) => McpResult | Promise<McpResult>>, opts: {ask?: string | null} = {}) {
   const calls: Call[] = [];
   const badges: (number | string | null)[] = [];
   const inbox: InboxItem[][] = [];
   const notices: {title: string; body?: string; tone?: string}[] = [];
   const logs: {level: string; message: string}[] = [];
+  const asks: {title: string; body?: string; actions: {id: string; label: string}[]}[] = [];
   let actionHandler: ((item: InboxItem, actionId: string) => void | Promise<void>) | undefined;
   let actionDisposed = false;
   const ctx = {
@@ -27,6 +28,7 @@ export function fakeCtx(handlers: Record<string, (args?: Record<string, unknown>
       },
     },
     notify: (n: {title: string; body?: string; tone?: string}) => void notices.push(n),
+    ui: {ask: async (o: (typeof asks)[number]) => { asks.push(o); return opts.ask ?? null; }},
     mcp: {
       async call(_id: string, tool: string, args?: Record<string, unknown>) {
         calls.push({tool, args});
@@ -42,7 +44,7 @@ export function fakeCtx(handlers: Record<string, (args?: Record<string, unknown>
     },
   } as unknown as PluginContext;
   return {
-    ctx, calls, badges, inbox, notices, logs,
+    ctx, calls, badges, inbox, notices, logs, asks,
     fireAction: (item: InboxItem, id: string) => actionHandler?.(item, id),
     get actionDisposed() { return actionDisposed; },
   };

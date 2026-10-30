@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -67,9 +68,9 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기는 고쳐서 승인할 수 없다). 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기는 고쳐서 승인할 수 없다). ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
-			return map[string]any{"decision": in.Decision, "proposalId": in.ID}
+			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
 	if o.Work != nil {
 		addWorkTools(srv, newWorkTools(*o.Work, false))
@@ -464,23 +465,55 @@ func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in Propos
 
 // DecideIn is proposal_decide's input.
 type DecideIn struct {
-	ID       string  `json:"id"`
-	Decision string  `json:"decision" jsonschema:"approve 또는 reject"`
-	Title    *string `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
-	Body     *string `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
-	Note     string  `json:"note,omitempty" jsonschema:"결정 이유"`
+	ID       string   `json:"id,omitempty" jsonschema:"결정할 제안 하나"`
+	IDs      []string `json:"ids,omitempty" jsonschema:"같은 답으로 한 번에 결정할 제안들(승인·거절만, 고쳐서 승인은 하나씩)"`
+	Decision string   `json:"decision" jsonschema:"approve 또는 reject"`
+	Title    *string  `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
+	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
+	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
 }
 
-// DecideOut is proposal_decide's result.
+// DecideOut is proposal_decide's result: one decision, or with ids what was
+// decided and what failed with its reason.
 type DecideOut struct {
 	memory.DecideResult
+	Decided []memory.DecideResult `json:"decided,omitempty"`
+	Failed  []memory.BatchFailure `json:"failed,omitempty"`
 }
 
 func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn) (*mcp.CallToolResult, DecideOut, error) {
+	if len(in.IDs) > 0 {
+		if in.Title != nil || in.Body != nil {
+			r, _ := toolError(fmt.Errorf("%w: 고쳐서 승인은 하나씩 id로 합니다", memory.ErrInvalid))
+			return r, DecideOut{}, nil
+		}
+		if in.Decision != "approve" && in.Decision != "reject" {
+			r, _ := toolError(fmt.Errorf("%w: decision은 approve 또는 reject", memory.ErrInvalid))
+			return r, DecideOut{}, nil
+		}
+		ids := in.IDs
+		if in.ID != "" {
+			ids = append([]string{in.ID}, ids...)
+		}
+		if !slices.ContainsFunc(ids, func(id string) bool { return strings.TrimSpace(id) != "" }) {
+			r, _ := toolError(fmt.Errorf("%w: 결정할 제안 id가 비었습니다", memory.ErrInvalid))
+			return r, DecideOut{}, nil
+		}
+		b := h.s.DecideMany(ids, in.Decision, in.Note)
+		msg := fmt.Sprintf("%d건 결정, %d건 실패", len(b.Decided), len(b.Failed))
+		for _, f := range b.Failed {
+			msg += "\n- " + f.ID + ": " + f.Error
+		}
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: msg}}}, DecideOut{Decided: b.Decided, Failed: b.Failed}, nil
+	}
+	if in.ID == "" {
+		r, _ := toolError(fmt.Errorf("%w: id나 ids가 필요합니다", memory.ErrInvalid))
+		return r, DecideOut{}, nil
+	}
 	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note})
 	if err != nil {
 		r, _ := toolError(err)
 		return r, DecideOut{}, nil
 	}
-	return nil, DecideOut{res}, nil
+	return nil, DecideOut{DecideResult: res}, nil
 }

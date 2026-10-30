@@ -12,8 +12,9 @@ const (
 	EventToolPrefix         = "tool."
 	EventProposalDecided    = "proposal.decided"
 	EventCorrection         = "correction"
-	EventMemoryUsed         = "memory.used" // 세션 끝 회고가 넣은 기억마다 낸 사용 판정
-	EventRetroRun           = "retro.run"   // 회고 실행 하나의 비용·토큰
+	EventMemoryUsed         = "memory.used"  // 세션 끝 회고가 넣은 기억마다 낸 사용 판정
+	EventRetroRun           = "retro.run"    // 회고 실행 하나의 비용·토큰
+	EventSourceCheck        = "source.check" // 근거 파일이 바뀐 기억의 판정(제안하지 않은 것 포함)
 )
 
 // Usage verdicts of a memory put into a session.

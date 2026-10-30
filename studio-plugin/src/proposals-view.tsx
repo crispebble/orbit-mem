@@ -1,8 +1,10 @@
-// 사이드바 「제안」 보기
-import {useState} from 'react';
+// 사이드바 「제안」 보기: 대기 제안은 종류별 묶음과 묶음 승인·거절, 전체는 최근 것부터 한 줄씩.
+import {useRef, useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {Button, StateView, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
-import {toProposalRow} from './model.ts';
+import {groupProposalRows, toProposalRow, type ProposalGroup} from './model.ts';
+import {decideGroup} from './group-decision.ts';
+import {ProposalGroupList} from './parts/index.ts';
 import {useOrbit} from './runtime.ts';
 
 type Filter = 'pending' | 'all';
@@ -11,6 +13,8 @@ export function ProposalsView({ctx}: ViewProps) {
   const {store, state} = useOrbit();
   const [filter, setFilter] = useState<Filter>('pending');
   const [selected, setSelected] = useState<string>();
+  const [busyKind, setBusyKind] = useState<string>();
+  const deciding = useRef(false);
 
   if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" compact headingLevel={3} />;
 
@@ -24,8 +28,27 @@ export function ProposalsView({ctx}: ViewProps) {
 
   const now = new Date();
   const all = [...state.proposals].sort((a, b) => b.createdAt - a.createdAt).map(p => toProposalRow(p, now));
-  const pendingCount = all.filter(r => r.pending).length;
-  const rows = filter === 'pending' ? all.filter(r => r.pending) : all;
+  const pending = all.filter(r => r.pending);
+  const rows = filter === 'pending' ? pending : all;
+  const groups = groupProposalRows(pending);
+
+  const open = (id: string, title: string) => {
+    setSelected(id);
+    ctx.tabs.open({type: 'proposal', id, title, params: {id}});
+  };
+
+  // 확인 창이 떠 있는 동안에도 다른 묶음 결정을 받지 않는다(state는 다음 그리기까지 늦다)
+  async function runGroup(g: ProposalGroup, decision: 'approve' | 'reject') {
+    if (!store || deciding.current) return;
+    deciding.current = true;
+    setBusyKind(g.kind);
+    try {
+      await decideGroup(ctx, store, g, decision);
+    } finally {
+      deciding.current = false;
+      setBusyKind(undefined);
+    }
+  }
 
   return (
     <div className="orbit-side">
@@ -33,7 +56,7 @@ export function ProposalsView({ctx}: ViewProps) {
         label="제안 보기"
         value={filter}
         onChange={v => setFilter(v === 'all' ? 'all' : 'pending')}
-        options={[{value: 'pending', label: `대기 ${pendingCount}`}, {value: 'all', label: '전체'}]}
+        options={[{value: 'pending', label: `대기 ${pending.length}`}, {value: 'all', label: '전체'}]}
       />
       {state.status === 'error' && (
         <div className="orbit-row">
@@ -43,6 +66,18 @@ export function ProposalsView({ctx}: ViewProps) {
       )}
       {rows.length === 0 ? (
         <StateView title={filter === 'pending' ? '대기 중인 제안이 없습니다' : '제안이 없습니다'} description="회고가 새 제안을 만들면 여기에 나타납니다." compact headingLevel={3} />
+      ) : filter === 'pending' ? (
+        <ProposalGroupList
+          groups={groups.map(g => ({kind: g.kind, label: g.label, items: g.rows.map(r => ({id: r.id, title: r.title, subtitle: r.date, unread: true}))}))}
+          selectedId={selected}
+          busyKind={busyKind}
+          decidable={state.status !== 'error'}
+          onOpen={id => open(id, pending.find(r => r.id === id)?.title ?? id)}
+          onDecideGroup={(kind, decision) => {
+            const g = groups.find(x => x.kind === kind);
+            if (g) void runGroup(g, decision);
+          }}
+        />
       ) : (
         <div className="orbit-side-list" role="list" aria-label="제안 목록">
           {rows.map(r => (
@@ -53,10 +88,7 @@ export function ProposalsView({ctx}: ViewProps) {
                 subtitle={`${r.kindLabel} · ${r.date}${r.pending ? '' : ` · ${r.status === 'approved' ? '승인함' : r.status === 'rejected' ? '거절함' : '처리됨'}`}`}
                 unread={r.pending}
                 current={selected === r.id}
-                onOpen={() => {
-                  setSelected(r.id);
-                  ctx.tabs.open({type: 'proposal', id: r.id, title: r.title, params: {id: r.id}});
-                }}
+                onOpen={() => open(r.id, r.title)}
               />
             </div>
           ))}

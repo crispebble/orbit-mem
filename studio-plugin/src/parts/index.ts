@@ -13,6 +13,7 @@ export {
   type ProposalEvidence,
   type ProposalOption,
 } from './proposal-detail.tsx';
+export {ProposalGroupList, type ProposalGroupItem, type ProposalGroupListProps, type ProposalGroupView} from './proposal-groups.tsx';
 export {RetroDay, type RetroDayData, type RetroDayProps, type RetroFlag, type RetroMaterial, type RetroOutput} from './retro-day.tsx';
 export {
   GLOBAL_SCOPE,

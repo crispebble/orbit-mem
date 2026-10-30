@@ -12,14 +12,14 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni doctor` | 기억 수, 대기 제안, 호스트 등록, 예약, 최근 회고·백업 |
 | `oni mcp [--reader]` | 호스트가 띄우는 MCP 서버. 기억 도구 6개 `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`(`memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다)와 작업 도구 `work_list`, `work_get`, `work_title`. `--reader`는 Studio 같은 읽는 쪽 전용으로 `work_list`·`work_get`·`work_sessions`·`work_changes`와 기억 그래프 `memory_graph`만 연다(계약 `internal/work/contract/v1`, `internal/memory/contract/v1`) |
 | `oni hook session-start\|prompt\|session-end` | 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 순위대로(작업 회상), 세션이 끝나면 세션 끝 회고 대기열에 넣고 `oni retro sessions`를 뒤에서 띄운다 |
-| `oni retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
+| `oni retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일, 근거 파일이 바뀐 기억 판정 포함), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
 | `oni retro sessions` | 세션 끝 회고 대기열을 비운다(세션 종료 훅이 부른다). 다른 회고가 돌고 있으면 바로 끝난다. 호스트가 로그인되어 있지 않으면(macOS 로그아웃·재시동 중 등) 남은 세션을 대기열에 두고 멈추며, 다음 세션 끝이나 예약 회고가 다시 돌린다 |
 | `oni proposals` | 회고 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `oni memory find\|show` | 기억 찾기·읽기 |
 | `oni migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `oni plugin build <원본>` | 공통 원본에서 Claude·Codex 플러그인과 마켓 파일을 만든다 |
 | `oni plugin install <마켓>` | 빌드한 마켓을 두 호스트에 등록하고 Codex 역할 파일을 복사한다 |
-| `oni stats [--days N \| --week 월요일] [--json]` | 지표: 반복 교정(넣었는데 어김·넣지 못함), 요청 적중과 평균 글자 수, 사용 판정(따름·어김·상관없음), 빈 검색, 저장, 쓰기 판정, 제안 결정, 효과 원장, 회고 종류별 수와 비용 |
+| `oni stats [--days N \| --week 월요일] [--json]` | 지표: 반복 교정(넣었는데 어김·넣지 못함), 요청 적중과 평균 글자 수, 사용 판정(따름·어김·상관없음), 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정(감지 수·제안으로 이어진 수), 효과 원장, 회고 종류별 수와 비용 |
 | `oni ledger [--all] [--json]` | 승인한 기억·하네스·지침 변경과 효과 판정(도움됨·해로움·효과 없음·섞임) |
 | `oni config`, `oni backup`, `oni uninstall` | 설정, 즉시 백업, 등록·예약 해제(데이터는 남김) |
 
