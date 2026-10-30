@@ -30,6 +30,11 @@ type SourceVerdictIn struct {
 	NewBody  string `json:"newBody,omitempty" jsonschema:"edit: 새 본문"`
 }
 
+// maxSourceJudgments caps the memories one daily retrospective judges, like
+// maxReclassify caps old memories to reclassify; the rest wait for the next
+// retrospective, so every run makes progress on a bounded material.
+const maxSourceJudgments = maxReclassify
+
 type sourceRow struct {
 	id, memoryID, title, excerpt string
 }
@@ -75,8 +80,9 @@ func (r *Runner) checkSources() []SourceCheck {
 	}
 	rows.Close()
 	var checks []SourceCheck
+	budget := maxSourceJudgments
 	for _, path := range paths {
-		if c, ok := r.checkFile(path, hashes[path], byPath[path]); ok {
+		if c, ok := r.checkFile(path, hashes[path], byPath[path], &budget); ok {
 			checks = append(checks, c)
 		}
 	}
@@ -84,8 +90,8 @@ func (r *Runner) checkSources() []SourceCheck {
 }
 
 // checkFile settles one changed file and says whether the model must judge
-// some of its memories.
-func (r *Runner) checkFile(path, cur string, rows []sourceRow) (SourceCheck, bool) {
+// some of its memories, taking them out of budget.
+func (r *Runner) checkFile(path, cur string, rows []sourceRow, budget *int) (SourceCheck, bool) {
 	setHash := func(memoryIDs map[string]bool) {
 		for _, row := range rows {
 			if memoryIDs[row.memoryID] {
@@ -144,21 +150,25 @@ func (r *Runner) checkFile(path, cur string, rows []sourceRow) (SourceCheck, boo
 			}
 		}
 		_, err := r.Store.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 발췌가 사라짐", path, ids, titles),
-			Body: strings.TrimRight(body.String(), "\n"), MemoryIDs: ids})
+			Body: strings.TrimRight(body.String(), "\n"), MemoryIDs: ids, Payload: memory.Payload{Path: path}})
 		if err == nil || errors.Is(err, memory.ErrDuplicateProposal) {
 			set := map[string]bool{}
 			for _, id := range ids {
 				set[id] = true
 			}
 			setHash(set)
-		}
-		recordCheck(r.Store, memory.SourceGone, len(ids), err == nil)
+			recordCheck(r.Store, memory.SourceGone, len(ids), err == nil)
+		} // 그 밖의 실패는 해시를 두어 다음 회고가 다시 본다
 	}
-	if len(judge) == 0 {
+	if len(judge) == 0 || *budget <= 0 {
 		return SourceCheck{}, false
 	}
 	c := SourceCheck{Path: path}
 	for _, id := range sortedKeys(judge) {
+		if *budget <= 0 {
+			break // 나머지는 해시를 두어 다음 회고가 판정한다
+		}
+		*budget--
 		if m, err := r.Store.Get(id); err == nil {
 			c.Memories = append(c.Memories, brief(m, true))
 		}
@@ -201,7 +211,7 @@ func (m Material) onlySources() bool {
 // counts only for a file and memory in the material and a file the model read
 // that has not changed since; the rest come back as notes and stay for the
 // next retrospective. Stale verdicts on one file make one proposal.
-func applySources(s *memory.Store, mat Material, readHashOf func(string) string, in []SourceVerdictIn, retroID string) (int, []string) {
+func applySources(s *memory.Store, mat Material, readOf func(string) (hash string, full bool), in []SourceVerdictIn, retroID string) (int, []string) {
 	var notes []string
 	proposed := 0
 	done := map[string]bool{}
@@ -242,9 +252,13 @@ func applySources(s *memory.Store, mat Material, readHashOf func(string) string,
 		if done[key] {
 			continue
 		}
-		read := readHashOf(v.Path)
+		read, full := readOf(v.Path)
 		if read == "" {
 			notes = append(notes, fmt.Sprintf("%s · %s: 파일을 읽지 않고 판정해 뺐습니다", v.Path, v.MemoryID))
+			continue
+		}
+		if !full {
+			notes = append(notes, fmt.Sprintf("%s · %s: 파일을 다 읽지 않고 판정해 뺐습니다. 모든 쪽을 읽어 주세요", v.Path, v.MemoryID))
 			continue
 		}
 		if read != memory.FileHash(v.Path) {
@@ -262,7 +276,13 @@ func applySources(s *memory.Store, mat Material, readHashOf func(string) string,
 				body += "\n판정 근거: " + reason
 			}
 			_, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "근거 파일이 바뀌어 고칠 기억: " + target.Title, Body: body,
-				MemoryIDs: []string{v.MemoryID}, RetroID: retroID, Payload: memory.Payload{Title: strings.TrimSpace(v.NewTitle), Body: v.NewBody}})
+				MemoryIDs: []string{v.MemoryID}, RetroID: retroID,
+				Payload: memory.Payload{Title: memory.MaskSecrets(strings.TrimSpace(v.NewTitle)), Body: memory.MaskSecrets(v.NewBody)}})
+			if errors.Is(err, memory.ErrInvalid) { // 고칠 것이 없다: 아직 맞음과 같다
+				setHash(v.Path, v.MemoryID, read)
+				recordCheck(s, memory.SourceOK, 1, false)
+				break
+			}
 			if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) {
 				notes = append(notes, fmt.Sprintf("%s: %v", target.Title, err))
 				continue
@@ -299,7 +319,7 @@ func applySources(s *memory.Store, mat Material, readHashOf func(string) string,
 		}
 		sort.Strings(ids)
 		_, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 파일이 바뀌어 낡음", path, ids, titles),
-			Body: body.String(), MemoryIDs: ids, RetroID: retroID})
+			Body: body.String(), MemoryIDs: ids, RetroID: retroID, Payload: memory.Payload{Path: path}})
 		if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) {
 			notes = append(notes, fmt.Sprintf("%s: %v", path, err))
 			continue
@@ -307,7 +327,7 @@ func applySources(s *memory.Store, mat Material, readHashOf func(string) string,
 		if err == nil {
 			proposed++
 		}
-		read := readHashOf(path)
+		read, _ := readOf(path)
 		for _, id := range ids {
 			setHash(path, id, read)
 		}

@@ -334,7 +334,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		proposed++
 	}
 	if len(sub.Sources) > 0 {
-		n, snotes := applySources(s, mat, func(path string) string { return readHash(p, id, path) }, sub.Sources, id)
+		n, snotes := applySources(s, mat, func(path string) (string, bool) { return judgedHash(p, id, path) }, sub.Sources, id)
 		proposed += n
 		notes = append(notes, snotes...)
 	}

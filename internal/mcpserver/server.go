@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -486,9 +487,17 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 			r, _ := toolError(fmt.Errorf("%w: 고쳐서 승인은 하나씩 id로 합니다", memory.ErrInvalid))
 			return r, DecideOut{}, nil
 		}
+		if in.Decision != "approve" && in.Decision != "reject" {
+			r, _ := toolError(fmt.Errorf("%w: decision은 approve 또는 reject", memory.ErrInvalid))
+			return r, DecideOut{}, nil
+		}
 		ids := in.IDs
 		if in.ID != "" {
 			ids = append([]string{in.ID}, ids...)
+		}
+		if !slices.ContainsFunc(ids, func(id string) bool { return strings.TrimSpace(id) != "" }) {
+			r, _ := toolError(fmt.Errorf("%w: 결정할 제안 id가 비었습니다", memory.ErrInvalid))
+			return r, DecideOut{}, nil
 		}
 		b := h.s.DecideMany(ids, in.Decision, in.Note)
 		msg := fmt.Sprintf("%d건 결정, %d건 실패", len(b.Decided), len(b.Failed))

@@ -37,7 +37,7 @@ func NewRetro(s *memory.Store, paths config.Paths, id, version string) *mcp.Serv
 		})
 	mcp.AddTool(srv, &mcp.Tool{Name: "retro_read_file", Description: "반영 대상 파일(apply_file 제안을 만들 때)이나 판정 대상 근거 파일의 현재 내용을 읽는다.", Annotations: readHints()},
 		func(_ context.Context, _ *mcp.CallToolRequest, in FileIn) (*mcp.CallToolResult, any, error) {
-			text, err := retro.ReadTarget(paths, id, in.Path)
+			text, err := retro.ReadTarget(paths, id, in.Path, in.Page)
 			if err != nil {
 				r, _ := toolError(err)
 				return r, nil, nil
@@ -65,6 +65,7 @@ type PageIn struct {
 // FileIn is retro_read_file's input.
 type FileIn struct {
 	Path string `json:"path" jsonschema:"반영 대상이나 판정 대상 파일 절대경로"`
+	Page int    `json:"page,omitempty" jsonschema:"판정 대상 파일의 쪽(1부터). 여러 쪽이면 모두 읽는다"`
 }
 
 func textResult(s string) *mcp.CallToolResult {

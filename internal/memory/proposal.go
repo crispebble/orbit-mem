@@ -49,7 +49,7 @@ type Payload struct {
 	Kind        string   `json:"kind,omitempty"`        // reclassify: 새 종류, merge: 합친 기억 종류
 	MergedTitle string   `json:"mergedTitle,omitempty"` // merge
 	MergedBody  string   `json:"mergedBody,omitempty"`  // merge
-	Path        string   `json:"path,omitempty"`        // apply_file: 절대경로
+	Path        string   `json:"path,omitempty"`        // apply_file: 절대경로, stale: 근거 파일 판정의 그 파일
 	BaseHash    string   `json:"baseHash,omitempty"`    // apply_file: 제안 때 파일 hash(없던 파일이면 "absent")
 	Content     string   `json:"content,omitempty"`     // apply_file: 새 내용 전체
 	Scope       string   `json:"scope,omitempty"`       // direction·merge로 만들 기억 범위, edit의 새 범위
@@ -117,6 +117,10 @@ func fingerprint(in ProposalInput) string {
 		parts = append(parts, in.Payload.Title, in.Payload.Body, strings.Join(in.Payload.Tags, ","), in.Payload.Scope)
 	case ProposalRevert:
 		parts = append(parts, in.Payload.LedgerID)
+	case ProposalStale:
+		if in.Payload.Path != "" { // 근거 파일 판정: 파일마다 다른 제안이다
+			parts = append(parts, in.Payload.Path)
+		}
 	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(h[:16])

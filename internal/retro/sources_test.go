@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,7 +177,7 @@ func TestSources_발췌가_없으면_회고_모델이_파일을_읽고_판정한
 	e.ai = func(id string) error {
 		page, _, _ = ReadPage(e.s, e.r.Paths, id, 1)
 		var text string
-		text, readErr = ReadTarget(e.r.Paths, id, f)
+		text, readErr = ReadTarget(e.r.Paths, id, f, 1)
 		if !strings.Contains(text, marker) {
 			t.Errorf("read = %q", text)
 		}
@@ -265,10 +266,10 @@ func TestSources_판정_대상이_아닌_파일과_기억은_받지_않는다(t 
 	stranger := fileMemory(t, e, "나", filepath.Join(t.TempDir(), "never.md"), "")
 	w(t, f, "v2")
 	e.ai = func(id string) error {
-		if _, err := ReadTarget(e.r.Paths, id, "/etc/hosts"); err == nil {
+		if _, err := ReadTarget(e.r.Paths, id, "/etc/hosts", 1); err == nil {
 			t.Error("a file outside the material must not be readable")
 		}
-		ReadTarget(e.r.Paths, id, f)
+		ReadTarget(e.r.Paths, id, f, 1)
 		report, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Sources: []SourceVerdictIn{
 			{Path: f, MemoryID: stranger.ID, Verdict: "stale"},
 			{Path: f, MemoryID: m.ID, Verdict: "maybe"},
@@ -335,6 +336,140 @@ func TestSources_옛_출처_파일이_바뀜_제안은_새_판정으로_대체�
 		if p.ID != other.ID && (p.MemoryIDs[0] != gone.ID || !strings.Contains(p.Body, "나 규칙")) {
 			t.Fatalf("the vanished excerpt comes back as a new proposal: %+v", p)
 		}
+	}
+}
+
+func TestSources_거절한_옛_제안이_새_판정을_막지_않는다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	f := filepath.Join(t.TempDir(), "rules.md")
+	w(t, f, "가 규칙")
+	m := fileMemory(t, e, "가", f, "가 규칙")
+	old, _ := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "출처 파일이 바뀜: 가", MemoryIDs: []string{m.ID}})
+	e.s.Decide(memory.DecideInput{ID: old.ID, Decision: "reject", Note: "아직 맞음"})
+	w(t, f, "다른 규칙")
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 1 || pending[0].Payload.Path != f {
+		t.Fatalf("a vanished excerpt must come back despite an old rejection: %+v", pending)
+	}
+}
+
+func TestSources_대화가_있는_날은_판정만_내도_일지가_필요하다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	f := filepath.Join(t.TempDir(), "a.md")
+	w(t, f, "v1")
+	m := fileMemory(t, e, "가", f, "")
+	w(t, f, "v2")
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "안녕"))
+	var first error
+	e.ai = func(id string) error {
+		ReadTarget(e.r.Paths, id, f, 1)
+		_, first = Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Sources: []SourceVerdictIn{{Path: f, MemoryID: m.ID, Verdict: "ok"}}})
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Journal: &JournalIn{Title: "인사", Body: "-"}, Sources: []SourceVerdictIn{{Path: f, MemoryID: m.ID, Verdict: "ok"}}})
+		return err
+	}
+	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if first == nil || !strings.Contains(first.Error(), "journal") {
+		t.Fatalf("first = %v", first)
+	}
+}
+
+func TestSources_판정_파일은_비밀값을_가리고_쪽으로_나눠_다_읽어야_판정이_선다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	f := filepath.Join(t.TempDir(), "big.md")
+	w(t, f, "v1")
+	m := fileMemory(t, e, "가", f, "")
+	big := "password: hunter2hunter2\n" + strings.Repeat("설정 줄입니다.\n", 6000) + "끝 줄\n"
+	w(t, f, big)
+	var pages []string
+	var report string
+	e.ai = func(id string) error {
+		p1, err := ReadTarget(e.r.Paths, id, f, 1)
+		if err != nil {
+			return err
+		}
+		pages = append(pages, p1)
+		// 첫 쪽만 읽고 낸 판정은 서지 않는다
+		report, _ = Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Sources: []SourceVerdictIn{{Path: f, MemoryID: m.ID, Verdict: "ok"}}})
+		return nil
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if strings.Contains(pages[0], "hunter2") || !strings.Contains(pages[0], "(1/") {
+		t.Fatalf("page 1 = %.200s", pages[0])
+	}
+	if !strings.Contains(report, "다 읽지 않고") || sourceHash(t, e, m.ID) == memory.FileHash(f) {
+		t.Fatalf("a verdict on part of the file must not count: %s", report)
+	}
+
+	e.r.Now = func() time.Time { return time.Date(2026, 10, 28, 4, 0, 0, 0, kst) }
+	e.ai = func(id string) error {
+		for n := 1; ; n++ {
+			text, err := ReadTarget(e.r.Paths, id, f, n)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(text, "끝 줄") {
+				break
+			}
+		}
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Sources: []SourceVerdictIn{{Path: f, MemoryID: m.ID, Verdict: "ok"}}})
+		return err
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-27")
+	if sourceHash(t, e, m.ID) != memory.FileHash(f) {
+		t.Fatal("a verdict after reading every page counts")
+	}
+}
+
+func TestSources_고칠_것이_없는_edit_판정은_맞음으로_보고_비밀값을_가린다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	f := filepath.Join(t.TempDir(), "a.md")
+	w(t, f, "v1")
+	same := fileMemory(t, e, "가", f, "")
+	fix := fileMemory(t, e, "나", f, "")
+	w(t, f, "v2")
+	e.ai = func(id string) error {
+		ReadTarget(e.r.Paths, id, f, 1)
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x", Sources: []SourceVerdictIn{
+			{Path: f, MemoryID: same.ID, Verdict: "edit"},
+			{Path: f, MemoryID: fix.ID, Verdict: "edit", NewBody: "토큰은 sk-abcdefghijklmnopqrstuvwxyz0123 이다"},
+		}})
+		return err
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if sourceHash(t, e, same.ID) != memory.FileHash(f) {
+		t.Fatal("an edit with nothing to change must settle like ok")
+	}
+	pending, _ := e.s.Proposals(memory.StatusPending)
+	if len(pending) != 1 || strings.Contains(pending[0].Payload.Body, "sk-abc") {
+		t.Fatalf("pending = %+v", pending)
+	}
+	counts := map[string]int{}
+	for _, ev := range sourceEvents(t, e) {
+		counts[ev.Outcome] += ev.Memories
+	}
+	if counts[memory.SourceOK] != 1 || counts[memory.SourceEdit] != 1 {
+		t.Fatalf("events = %v", counts)
+	}
+}
+
+func TestSources_한_번에_판정할_기억_수에_상한을_두고_나머지는_다음_회고가_본다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	dir := t.TempDir()
+	for i := 0; i < maxSourceJudgments+3; i++ {
+		f := filepath.Join(dir, fmt.Sprintf("f%02d.md", i))
+		w(t, f, "v1")
+		fileMemory(t, e, fmt.Sprintf("기억 %d", i), f, "")
+		w(t, f, "v2")
+	}
+	checks := e.r.checkSources()
+	n := 0
+	for _, c := range checks {
+		n += len(c.Memories)
+	}
+	if n != maxSourceJudgments {
+		t.Fatalf("judged = %d", n)
 	}
 }
 

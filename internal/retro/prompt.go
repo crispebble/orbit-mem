@@ -24,7 +24,7 @@ const dailyPrompt = `너는 이 PC의 Orbit 하루 회고를 맡았다. 회고 i
      확정 규칙을 반영 대상 파일에 넣는 변경(apply_file: retro_read_file로 현재 내용을 읽고 새 내용 전체를 content에),
      서로 관련 있지만 합칠 것은 아닌 기존 기억 둘 잇기(link: memoryIds에 둘, note에 잇는 근거 한 줄).
      같은 태그·같은 세션이라는 것만으로는 잇지 않는다(그건 그래프가 따로 보인다). 이미 이어진 기억은 memory_get의 links에 있다.
-   - 근거 파일 판정(sources): 「근거 파일이 바뀐 기억」이 있으면 파일마다 retro_read_file로 지금 내용을 읽고, 그 기억마다
+   - 근거 파일 판정(sources): 「근거 파일이 바뀐 기억」이 있으면 파일마다 retro_read_file로 지금 내용을 모든 쪽(page) 읽고, 그 기억마다
      verdict를 하나 낸다: ok(아직 맞음), edit(고쳐야 함: newTitle·newBody에 고친 제목·본문), stale(낡음).
      reason에 근거 한 줄을 쓰되 파일 내용을 옮겨 적지 않는다. 읽지 않은 파일은 판정하지 않는다.
      재료가 이것뿐이면 journal은 비워도 된다.

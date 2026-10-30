@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -451,14 +452,17 @@ func ReadPage(s *memory.Store, p config.Paths, id string, n int) (string, int, e
 	return fmt.Sprintf("(%d/%d쪽)\n", n, len(pages)) + pages[n-1], len(pages), nil
 }
 
-// ReadTarget reads a file the retrospective may propose changes to, or a
-// changed source file it judges.
-func ReadTarget(p config.Paths, id, path string) (string, error) {
+// ReadTarget reads a file the retrospective may propose changes to, or page
+// n (from 1) of a changed source file it judges. A judged file comes with
+// secrets masked, page by page; a verdict on it counts only once every page
+// of that content was read.
+func ReadTarget(p config.Paths, id, path string, page int) (string, error) {
 	mat, err := loadMaterial(p, id)
 	if err != nil {
 		return "", err
 	}
-	if _, judged := mat.sourceCheck(path); !judged && !allowedTarget(mat.Targets, path) {
+	_, judged := mat.sourceCheck(path)
+	if !judged && !allowedTarget(mat.Targets, path) {
 		return "", fmt.Errorf("반영 대상이나 판정 대상이 아닌 파일입니다: %s", path)
 	}
 	b, err := os.ReadFile(path)
@@ -469,8 +473,56 @@ func ReadTarget(p config.Paths, id, path string) (string, error) {
 		return "", err
 	}
 	// 읽은 시점의 내용을 기억해 두었다가, 제출 때 그사이 바뀌었으면 제안을 빼낸다.
-	_ = os.WriteFile(filepath.Join(p.RetroDir(), id, "read-"+sha([]byte(path))[:16]), []byte(sha(b)), 0o600)
-	return clipBytes(string(b), 64<<10), nil
+	key := filepath.Join(p.RetroDir(), id, "read-"+sha([]byte(path))[:16])
+	_ = os.WriteFile(key, []byte(sha(b)), 0o600)
+	if !judged {
+		return clipBytes(string(b), 64<<10), nil
+	}
+	pages := paginate(memory.MaskSecrets(string(b)))
+	if page < 1 {
+		page = 1
+	}
+	if page > len(pages) {
+		return "", fmt.Errorf("page는 1~%d입니다", len(pages))
+	}
+	var st judgedRead
+	if raw, err := os.ReadFile(key + ".pages"); err == nil {
+		_ = json.Unmarshal(raw, &st)
+	}
+	if st.Hash != sha(b) || st.Total != len(pages) {
+		st = judgedRead{Hash: sha(b), Total: len(pages)}
+	}
+	if !slices.Contains(st.Pages, page) {
+		st.Pages = append(st.Pages, page)
+	}
+	raw, _ := json.Marshal(st)
+	_ = os.WriteFile(key+".pages", raw, 0o600)
+	if len(pages) == 1 {
+		return pages[0], nil
+	}
+	return fmt.Sprintf("(%d/%d쪽, 모든 쪽을 읽어야 판정이 선다)\n", page, len(pages)) + pages[page-1], nil
+}
+
+// judgedRead is which pages of a judged file the retrospective read, and of
+// which content.
+type judgedRead struct {
+	Hash  string `json:"hash"`
+	Total int    `json:"total"`
+	Pages []int  `json:"pages"`
+}
+
+// judgedHash is the hash of the judged file the retrospective read, and
+// whether it read every page of it.
+func judgedHash(p config.Paths, id, path string) (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(p.RetroDir(), id, "read-"+sha([]byte(path))[:16]+".pages"))
+	if err != nil {
+		return "", false
+	}
+	var st judgedRead
+	if json.Unmarshal(raw, &st) != nil {
+		return "", false
+	}
+	return st.Hash, st.Total > 0 && len(st.Pages) == st.Total
 }
 
 func readHash(p config.Paths, id, path string) string {

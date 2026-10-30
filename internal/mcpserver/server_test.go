@@ -180,6 +180,14 @@ func TestProposalDecide_ids로_여럿을_결정하고_실패한_것은_이유와
 	if !res.IsError {
 		t.Fatalf("no id must fail: %s", text(res))
 	}
+	res = call(t, cs, "proposal_decide", map[string]any{"ids": []string{" ", ""}, "decision": "approve"}, nil)
+	if !res.IsError {
+		t.Fatalf("blank ids must fail: %s", text(res))
+	}
+	res = call(t, cs, "proposal_decide", map[string]any{"ids": []string{ids[2]}, "decision": "maybe"}, nil)
+	if !res.IsError || !strings.Contains(text(res), "approve 또는 reject") {
+		t.Fatalf("a bad decision must fail as a whole: %s", text(res))
+	}
 }
 
 func toolEvents(t *testing.T, s *memory.Store) map[string][]map[string]any {
