@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 명세 · O3-5 「스킬 제안과 승인 흐름」: 실험실 대기 제안은 대기 목록에 없고 결정할 수 없다. 같은 제안은 다시 쌓이지 않는다.
@@ -95,5 +96,34 @@ func TestLab_실험_기록과_원장_줄(t *testing.T) {
 	}
 	if l, _ := s.LedgerEntry(id); l.Verdict != VerdictHelped {
 		t.Fatalf("실험 판정은 관찰 판정으로 바뀌지 않습니다: %+v", l)
+	}
+}
+
+// 검토 지적 6: 실험 줄은 실제로 승인한 변경이 아니다. 원장 요약 수에 세지 않고, 같은 파일을 승인한 변경의 판정을 섞임으로 만들지 않는다.
+func TestLab_실험_줄은_승인한_변경과_섞이지_않는다(t *testing.T) {
+	s, c := newTestStore(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "skills", "plain-writing", "SKILL.md")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	os.WriteFile(path, []byte("옛\n"), 0o644)
+	p, _ := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "스킬", Payload: Payload{Path: path, Content: "새\n"}})
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(time.Hour)
+	if _, err := s.RecordLabLedger(LabLedgerInput{ExperimentID: "x-9", Targets: []string{path}, Change: "d", Basis: "b", Verdict: VerdictHelped}); err != nil {
+		t.Fatal(err)
+	}
+	sum, _ := s.SummarizeLedger(0, 1<<62)
+	if sum.Changes != 1 || sum.Judged[VerdictHelped] != 0 {
+		t.Fatalf("원장 요약 %+v", sum)
+	}
+	c.t = c.t.AddDate(0, 0, 30)
+	if _, err := s.JudgeLedger(7); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := s.LedgerEntry(res.LedgerID); l.Verdict == VerdictMixed || len(l.Observation.MixedWith) != 0 {
+		t.Fatalf("실험 줄 때문에 섞임이 되면 안 됩니다: %+v", l)
 	}
 }

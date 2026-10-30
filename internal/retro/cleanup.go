@@ -63,7 +63,8 @@ func (r *Runner) cleanupMaterial(mat *Material, active []memory.Memory, from, to
 		return err
 	}
 	for _, e := range judged {
-		if e.RevertedBy != "" || e.RevertOf != "" || len(mat.Effects) >= maxEffects {
+		// 실험 줄은 되돌릴 것도 교훈 받을 승인 변경도 아니다(실험실 판정은 실험실 지표가 보인다).
+		if e.RevertedBy != "" || e.RevertOf != "" || e.ProposalKind == memory.LedgerKindLab || len(mat.Effects) >= maxEffects {
 			continue
 		}
 		lesson := e.Evidence && e.LessonID == "" && e.Verdict != memory.VerdictNoEffect

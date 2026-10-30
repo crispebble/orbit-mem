@@ -1,6 +1,7 @@
 package inject
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -235,5 +236,22 @@ func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 		if strings.Contains(inj.Text, not) {
 			t.Errorf("%q는 들어가면 안 됩니다:\n%s", not, inj.Text)
 		}
+	}
+}
+
+// 검토 지적 10: 분야 신호가 글자 수를 넘으면 보인 수와 전체 수를 알린다.
+func TestPrompt_분야_신호가_넘치면_알린다(t *testing.T) {
+	s := store(t)
+	for i := 0; i < 30; i++ {
+		if _, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: fmt.Sprintf("부가세 신고 항목 %02d번은 이렇게 적는다", i), Tags: []string{"분야:세무"},
+			Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession, Ref: "x"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Default()
+	cfg.RecallChars = 300
+	inj := PromptInjection(s, cfg, here, "부가세 신고 항목 적는 법")
+	if !strings.Contains(inj.Text, "신호 30개 중") || len(inj.MemoryIDs) >= 30 {
+		t.Fatalf("넘친 신호 알림:\n%s", inj.Text)
 	}
 }

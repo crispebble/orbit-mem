@@ -59,6 +59,7 @@ func cmdLab(a *app, args []string) error {
 	task := fs.String("task", "", "과제 id")
 	change := fs.String("change", "", "바꿀 파일을 원본과 같은 상대 경로로 둔 폴더")
 	proposal := fs.String("proposal", "", "실험실 대기 중인 파일 반영 제안 id")
+	note := fs.String("note", "", "닫는 이유")
 	asJSON := fs.Bool("json", false, "JSON")
 	rest, err := parse(fs, args[1:])
 	if err != nil {
@@ -117,6 +118,18 @@ func cmdLab(a *app, args []string) error {
 			fmt.Fprintf(a.stdout, "%s %s · %s\n", p.ID, p.Title, p.Payload.Path)
 		}
 		fmt.Fprintf(a.stdout, "실험실 대기 %d건. 실험: oni lab run --task <과제> --proposal <id>\n", len(ps))
+	case "drop":
+		if len(rest) != 1 {
+			return errUsage
+		}
+		reason := "사용자가 실험 없이 닫음"
+		if strings.TrimSpace(*note) != "" {
+			reason += ": " + strings.TrimSpace(*note)
+		}
+		if err := s.CloseLabProposal(rest[0], reason); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.stdout, "실험실 대기 제안 %s를 닫았습니다.\n", rest[0])
 	case "run":
 		ctx, cancel := signalContext()
 		defer cancel()

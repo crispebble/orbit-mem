@@ -365,4 +365,22 @@ func TestLab_과제_명령과_설정(t *testing.T) {
 	if out, _, _ := run(t, "", "lab", "candidates"); !strings.Contains(out, "실험실 대기 0건") {
 		t.Fatalf("후보 %s", out)
 	}
+	// 검토 지적 4: 실험하지 않을 실험실 대기 제안은 사용자가 닫을 수 있다.
+	s, _ := openStore()
+	skill := filepath.Join(src, "skills", "x", "SKILL.md")
+	os.MkdirAll(filepath.Dir(skill), 0o755)
+	os.WriteFile(skill, []byte("옛"), 0o644)
+	p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: "스킬", Lab: true, Payload: memory.Payload{Path: skill, Content: "새"}})
+	s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, errOut, code := run(t, "", "lab", "drop", p.ID, "--note", "필요 없음"); code != 0 || !strings.Contains(out, "닫았습니다") {
+		t.Fatalf("닫기 %d %s %s", code, out, errOut)
+	}
+	s, _ = openStore()
+	defer s.Close()
+	if got, _ := s.GetProposal(p.ID); got.Status != memory.StatusRejected || !strings.Contains(got.Note, "필요 없음") {
+		t.Fatalf("닫은 제안 %+v", got)
+	}
 }

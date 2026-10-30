@@ -63,6 +63,7 @@ type Material struct {
 	SourceChecks   []SourceCheck   `json:"sourceChecks,omitempty"`   // 하루: 발췌 없이 근거 파일이 바뀐 기억(모델 판정 대상)
 	Tidy           *Tidy           `json:"tidy,omitempty"`           // 하루·정리: 기억 그래프 정리 한 묶음
 	Legacy         *Legacy         `json:"legacy,omitempty"`         // 옛 기억 판정: 옛 기억 한 묶음
+	PluginSource   string          `json:"pluginSource,omitempty"`   // 이 PC가 쓰는 플러그인 원본(그 안 파일 반영은 실험실을 거친다)
 }
 
 // Rejection is a recent rejected candidate or proposal and why.
@@ -186,7 +187,7 @@ func clipBytes(s string, n int) string {
 }
 
 func (r *Runner) material(kind, period string) (Material, error) {
-	mat := Material{Kind: kind, Period: period, Targets: r.Cfg.ApplyTargets}
+	mat := Material{Kind: kind, Period: period, Targets: r.Cfg.ApplyTargets, PluginSource: r.Cfg.PluginSource}
 	active, err := r.Store.List(memory.StateCandidate, memory.StateConfirmed)
 	if err != nil {
 		return mat, err

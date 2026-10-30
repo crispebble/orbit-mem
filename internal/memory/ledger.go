@@ -180,13 +180,14 @@ type LedgerSummary struct {
 // SummarizeLedger is the ledger part of the metrics.
 func (s *Store) SummarizeLedger(fromMs, toMs int64) (LedgerSummary, error) {
 	sum := LedgerSummary{Judged: map[string]int{}}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ledger WHERE at>=? AND at<?`, fromMs, toMs).Scan(&sum.Changes); err != nil {
+	// 실험 줄(lab)은 승인한 변경이 아니다. 실험실 지표가 따로 센다.
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ledger WHERE at>=? AND at<? AND proposal_kind<>?`, fromMs, toMs, LedgerKindLab).Scan(&sum.Changes); err != nil {
 		return sum, err
 	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ledger WHERE verdict=?`, VerdictPending).Scan(&sum.Pending); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ledger WHERE verdict=? AND proposal_kind<>?`, VerdictPending, LedgerKindLab).Scan(&sum.Pending); err != nil {
 		return sum, err
 	}
-	rows, err := s.db.Query(`SELECT verdict, evidence FROM ledger WHERE judged_at>=? AND judged_at<?`, fromMs, toMs)
+	rows, err := s.db.Query(`SELECT verdict, evidence FROM ledger WHERE judged_at>=? AND judged_at<? AND proposal_kind<>?`, fromMs, toMs, LedgerKindLab)
 	if err != nil {
 		return sum, err
 	}
@@ -523,7 +524,7 @@ func (s *Store) JudgeLedger(windowDays int) (int, error) {
 		}
 		obs := Observation{From: e.At - w, Split: e.At, To: e.At + w}
 		for _, o := range all {
-			if o.ID == e.ID || o.At <= e.At-w || o.At >= e.At+w {
+			if o.ID == e.ID || o.ProposalKind == LedgerKindLab || o.At <= e.At-w || o.At >= e.At+w {
 				continue
 			}
 			if overlaps(append(append([]string{}, e.Targets...), e.Observe...), append(append([]string{}, o.Targets...), o.Observe...)) {

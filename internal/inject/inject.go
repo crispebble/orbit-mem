@@ -255,7 +255,7 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		used += n
 		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 	}
-	// 분야 지식은 본문 대신 그 분야의 신호(제목·id)를 모두 보이고, AI가 필요한 항목만 연다(설계 · Orbit 개선 3차).
+	// 분야 지식은 본문 대신 그 분야의 신호(제목·id)를 글자 수 안에서 보이고, AI가 필요한 항목만 연다(설계 · Orbit 개선 3차).
 	for _, d := range domains {
 		var members []memory.Memory
 		for _, m := range byID {
@@ -270,6 +270,7 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		}
 		entries.WriteString(sec)
 		used += utf8.RuneCountInString(sec)
+		shownN := 0
 		for _, m := range members {
 			line := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
 			if used+utf8.RuneCountInString(line) > budget {
@@ -278,6 +279,10 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 			entries.WriteString(line)
 			used += utf8.RuneCountInString(line)
 			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+			shownN++
+		}
+		if shownN < len(members) { // 길이 때문에 다 보이지 못하면 그 사실을 알린다(남은 것은 memory_find로)
+			entries.WriteString(fmt.Sprintf("- …신호 %d개 중 %d개만 보임. 나머지는 memory_find로 찾는다\n", len(members), shownN))
 		}
 	}
 	if len(inj.MemoryIDs) == 0 {

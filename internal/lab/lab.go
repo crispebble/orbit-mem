@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -214,6 +215,11 @@ func (l *Lab) change(in RunInput) (change, error) {
 				return fmt.Errorf("일반 파일만 받습니다: %s", p)
 			}
 			rel, _ := filepath.Rel(in.ChangeDir, p)
+			for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+				if strings.HasPrefix(part, ".") { // .DS_Store 같은 숨김 파일은 변경이 아니다
+					return nil
+				}
+			}
 			b, err := os.ReadFile(p)
 			ch[filepath.ToSlash(rel)] = b
 			return err
@@ -232,6 +238,9 @@ func (l *Lab) change(in RunInput) (change, error) {
 		rel, err := l.inSource(p.Payload.Path)
 		if err != nil {
 			return nil, err
+		}
+		if p.Payload.BaseHash != "" && memory.FileHash(p.Payload.Path) != p.Payload.BaseHash {
+			return nil, fmt.Errorf("제안을 만든 뒤 원본 파일이 바뀌었습니다(%s). 지금 원본으로 다시 제안하게 두거나 닫아 주세요(oni lab drop %s)", p.Payload.Path, p.ID)
 		}
 		ch[rel] = []byte(p.Payload.Content)
 	default:
@@ -334,9 +343,13 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 			return memory.LabExperiment{}, err
 		}
 	}
+	// 폴더 이름에 후보를 쓰지 않는다: 실행 모델이 답에 경로를 쓰면 고르는 모델이 어느 쪽인지 알게 된다.
+	// 후보와 폴더의 대응은 slots.json에만 둔다(실행·고르기 어느 쪽도 읽을 수 없는 곳).
+	sl := slots{Plugins: map[string]string{}, Runs: map[string]map[string]string{}}
 	plugins := map[string]string{}
 	for cand, src := range map[string]string{Current: l.Source, Changed: changedSrc} {
-		p, h, err := l.build(src, filepath.Join(dir, "plugin-"+cand))
+		sl.Plugins[cand] = slotName()
+		p, h, err := l.build(src, filepath.Join(dir, sl.Plugins[cand]))
 		if err != nil {
 			return memory.LabExperiment{}, fmt.Errorf("후보 %s를 빌드하지 못했습니다: %w", cand, err)
 		}
@@ -352,6 +365,12 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 	if err := l.Store.SaveLabExperiment(x); err != nil {
 		return x, err
 	}
+	for round := 1; round <= l.Cfg.LabRuns; round++ {
+		sl.Runs[fmt.Sprint(round)] = map[string]string{Current: slotName(), Changed: slotName()}
+	}
+	if err := sl.save(dir); err != nil {
+		return x, err
+	}
 	rng := rand.New(rand.NewPCG(uint64(x.CreatedAt), 7))
 	for round := 1; round <= l.Cfg.LabRuns; round++ {
 		order := []string{Current, Changed}
@@ -360,10 +379,13 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		}
 		outs := map[string]output{}
 		for _, cand := range order {
-			if x.CostUSD >= l.Cfg.LabExperimentUSD {
+			if ctx.Err() != nil {
+				return fail("실험을 중단했습니다", ctx.Err())
+			}
+			if l.Cfg.LabExperimentUSD-x.CostUSD < 0.01 {
 				return fail(fmt.Sprintf("실험 비용 상한 $%.2f에 닿아 멈췄습니다($%.4f)", l.Cfg.LabExperimentUSD, x.CostUSD), errors.New("실험 비용 상한에 닿았습니다"))
 			}
-			o, err := l.runOne(ctx, &x, task, cand, round, plugins[cand], home, dir)
+			o, err := l.runOne(ctx, &x, task, cand, round, plugins[cand], home, filepath.Join(dir, "runs", sl.Runs[fmt.Sprint(round)][cand]))
 			if err != nil {
 				return fail("실행을 준비하지 못했습니다: "+err.Error(), err)
 			}
@@ -372,7 +394,10 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		if !outs[Current].OK || !outs[Changed].OK {
 			continue // 두 후보가 모두 끝난 회차만 고른다
 		}
-		if x.CostUSD >= l.Cfg.LabExperimentUSD {
+		if ctx.Err() != nil {
+			return fail("실험을 중단했습니다", ctx.Err())
+		}
+		if l.Cfg.LabExperimentUSD-x.CostUSD < 0.01 {
 			return fail(fmt.Sprintf("실험 비용 상한 $%.2f에 닿아 멈췄습니다($%.4f)", l.Cfg.LabExperimentUSD, x.CostUSD), errors.New("실험 비용 상한에 닿았습니다"))
 		}
 		changedA := rng.IntN(2) == 0
@@ -387,8 +412,12 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 			x.Picks = append(x.Picks, pick)
 		}
 	}
-	if len(x.Picks) == 0 {
-		return fail("두 후보가 모두 끝나고 고르기가 된 회차가 없습니다", errors.New("고른 회차가 없어 판정하지 못했습니다"))
+	if ctx.Err() != nil {
+		return fail("실험을 중단했습니다", ctx.Err())
+	}
+	if len(x.Picks)*2 <= x.Runs { // 고른 회차가 절반 이하면 판정하지 않는다
+		return fail(fmt.Sprintf("고른 회차가 %d번 중 %d번뿐이라 판정하지 않았습니다(실패한 실행이 많음)", x.Runs, len(x.Picks)),
+			errors.New("고른 회차가 모자라 판정하지 못했습니다"))
 	}
 	x.Verdict = verdict(x.Picks)
 	x.Status, x.FinishedAt = memory.LabDone, l.now().UnixMilli()
@@ -468,17 +497,17 @@ func (l *Lab) diffOf(ch change) string {
 	return b.String()
 }
 
-func (l *Lab) runOne(ctx context.Context, x *memory.LabExperiment, task Task, cand string, round int, plugin, home, dir string) (output, error) {
-	runDir := filepath.Join(dir, "runs", fmt.Sprintf("%s-%d", cand, round))
+func (l *Lab) runOne(ctx context.Context, x *memory.LabExperiment, task Task, cand string, round int, plugin, home, runDir string) (output, error) {
 	work := filepath.Join(runDir, "work")
 	start := filepath.Join(l.taskDir(task.ID), "start")
 	if err := copyTree(start, work); err != nil {
 		return output{}, err
 	}
-	budget := min(l.Cfg.LabRunUSD, l.Cfg.LabExperimentUSD-x.CostUSD)
 	c := retro.Cmd{Name: l.claude(), Dir: work, Env: []string{"ORBIT_HOME=" + home}, Stdin: task.Instruction,
-		Args: []string{"-p", "--model", l.Cfg.LabModel, "--plugin-dir", plugin, "--restricted", "--setting-sources", "project", "--output-format", "json",
-			"--max-budget-usd", fmt.Sprintf("%.2f", budget), "--permission-mode", "acceptEdits", "--allowedTools", runTools, "--no-session-persistence"}}
+		// --strict-mcp-config: 사용자 범위 MCP(연결 서비스)를 싣지 않는다. --add-dir: --restricted가 파일 도구를 작업 폴더로
+		// 가두므로 후보 플러그인의 분야 묶음만 더 읽게 한다.
+		Args: []string{"-p", "--model", l.Cfg.LabModel, "--plugin-dir", plugin, "--add-dir", plugin, "--restricted", "--setting-sources", "project",
+			"--strict-mcp-config", "--output-format", "json", "--max-budget-usd", budgetArg(l.Cfg.LabRunUSD, l.Cfg.LabExperimentUSD-x.CostUSD), "--permission-mode", "acceptEdits", "--allowedTools", runTools, "--no-session-persistence"}}
 	rctx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
 	began := time.Now()
@@ -534,7 +563,7 @@ func treeDiff(start, work string) string {
 		fmt.Fprintf(&b, "파일: %s\n%s", rel, memory.LineDiff(string(before), string(after), 3))
 	}
 	if b.Len() > maxDiff {
-		return b.String()[:maxDiff] + "\n…(잘림)\n"
+		return memory.ClipRunes(b.String(), maxDiff/3) + "\n…(잘림)\n" // 한글이 3바이트라 글자 수로 자른다
 	}
 	return b.String()
 }
@@ -565,12 +594,30 @@ const judgePrompt = `너는 같은 작업을 한 두 결과물 A와 B 중 판정
 판정 기준에 더 맞는 쪽을 고른다. 둘이 기준에서 차이가 없으면 same이다. 다른 말 없이 JSON 한 줄만 답한다:
 {"pick":"A" 또는 "B" 또는 "same","reason":"한두 문장"}`
 
-func shown(o output) string {
+// shown is an output as the judge reads it, with the experiment folder's
+// paths taken out: a path would tell which harness made it.
+func shown(o output, dirs []string) string {
 	diff := strings.TrimSpace(o.Diff)
 	if diff == "" {
 		diff = "(파일 변경 없음)"
 	}
-	return "### 마지막 답\n\n" + o.Answer + "\n\n### 파일 변경\n\n" + diff
+	text := "### 마지막 답\n\n" + o.Answer + "\n\n### 파일 변경\n\n" + diff
+	for _, d := range dirs {
+		text = strings.ReplaceAll(text, d, "…")
+	}
+	return text
+}
+
+// scrubDirs are the spellings of an experiment folder a run may print.
+func scrubDirs(dir string) []string {
+	out := []string{dir}
+	if r, err := filepath.EvalSymlinks(dir); err == nil && r != dir {
+		out = append(out, r)
+	}
+	if t := strings.TrimPrefix(dir, "/private"); t != dir {
+		out = append(out, t)
+	}
+	return out
 }
 
 // judge has the other model pick between the round's outputs shown as A and B only.
@@ -579,15 +626,14 @@ func (l *Lab) judge(ctx context.Context, x *memory.LabExperiment, task Task, rou
 	if changedA {
 		a, b = Changed, Current
 	}
-	jdir := filepath.Join(dir, fmt.Sprintf("judge-%d", round))
+	jdir := filepath.Join(dir, fmt.Sprintf("judge-%d", round)) // 실행이 아닌 고르기 폴더. 후보 이름은 들어가지 않는다
 	if err := os.MkdirAll(jdir, 0o700); err != nil {
 		return memory.LabPick{}, err
 	}
-	budget := min(l.Cfg.LabRunUSD, l.Cfg.LabExperimentUSD-x.CostUSD)
 	c := retro.Cmd{Name: l.claude(), Dir: jdir, Env: []string{"ORBIT_HOME=" + filepath.Join(dir, "home")},
-		Stdin: fmt.Sprintf(judgePrompt, task.Instruction, task.Criteria, shown(outs[a]), shown(outs[b])),
+		Stdin: fmt.Sprintf(judgePrompt, task.Instruction, task.Criteria, shown(outs[a], scrubDirs(dir)), shown(outs[b], scrubDirs(dir))),
 		Args: []string{"-p", "--model", l.Cfg.LabJudgeModel, "--restricted", "--setting-sources", "project", "--strict-mcp-config", "--tools", "",
-			"--output-format", "json", "--max-budget-usd", fmt.Sprintf("%.2f", budget), "--no-session-persistence"}}
+			"--output-format", "json", "--max-budget-usd", budgetArg(l.Cfg.LabRunUSD, l.Cfg.LabExperimentUSD-x.CostUSD), "--no-session-persistence"}}
 	rctx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
 	began := time.Now()
@@ -643,6 +689,7 @@ func (l *Lab) Show(id string) (string, error) {
 		picks[p.Round] = p
 	}
 	names := map[string]string{Current: "지금", Changed: "고침", "same": "같음"}
+	sl, _ := loadSlots(dir)
 	for round := 1; round <= x.Runs; round++ {
 		fmt.Fprintf(&b, "\n## %d회차", round)
 		if p, ok := picks[round]; ok {
@@ -652,9 +699,43 @@ func (l *Lab) Show(id string) (string, error) {
 		}
 		b.WriteString("\n")
 		for _, cand := range []string{Current, Changed} {
-			ans, _ := os.ReadFile(filepath.Join(dir, "runs", fmt.Sprintf("%s-%d", cand, round), "answer.md"))
+			ans, _ := os.ReadFile(filepath.Join(dir, "runs", sl.Runs[fmt.Sprint(round)][cand], "answer.md"))
 			fmt.Fprintf(&b, "\n### %s\n\n%s\n", names[cand], memory.ClipRunes(strings.TrimSpace(string(ans)), 2000))
 		}
 	}
 	return b.String(), nil
+}
+
+// slots maps candidates to the neutral folder names an experiment uses.
+type slots struct {
+	Plugins map[string]string            `json:"plugins"`
+	Runs    map[string]map[string]string `json:"runs"` // 회차 → 후보 → 실행 폴더 이름
+}
+
+func slotName() string {
+	b := make([]byte, 4)
+	for i := range b {
+		b[i] = byte(rand.IntN(256))
+	}
+	return "h-" + hex.EncodeToString(b)
+}
+
+func (s slots) save(dir string) error {
+	b, _ := json.MarshalIndent(s, "", "  ")
+	return os.WriteFile(filepath.Join(dir, "slots.json"), b, 0o600)
+}
+
+func loadSlots(dir string) (slots, error) {
+	var s slots
+	b, err := os.ReadFile(filepath.Join(dir, "slots.json"))
+	if err != nil {
+		return s, err
+	}
+	return s, json.Unmarshal(b, &s)
+}
+
+// budgetArg is a run's --max-budget-usd: the run cap or what is left of the
+// experiment's, rounded down to a cent so the experiment cap is not passed.
+func budgetArg(run, left float64) string {
+	return fmt.Sprintf("%.2f", math.Floor(min(run, left)*100)/100)
 }

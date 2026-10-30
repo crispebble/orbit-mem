@@ -371,7 +371,8 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 				continue
 			}
 			// 하네스(플러그인 원본) 변경은 실험실을 통과해야 사용자에게 간다(설계 · Orbit 개선 3차 「스킬 제안」).
-			pi.Lab = memory.FileTarget(in.Path) == memory.TargetHarness
+			// 실험실은 플러그인 원본 안 파일만 시험할 수 있다. 원본 밖 파일은 지금처럼 바로 대기로 간다.
+			pi.Lab = mat.PluginSource != "" && allowedTarget([]string{mat.PluginSource}, in.Path) && memory.FileTarget(in.Path) == memory.TargetHarness
 		}
 		if _, err := s.Propose(pi); err != nil {
 			if !errors.Is(err, memory.ErrDuplicateProposal) {

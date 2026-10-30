@@ -23,8 +23,9 @@ type env struct {
 	src     string
 	calls   []retro.Cmd
 	cost    float64
-	failRun func(c retro.Cmd, round int) bool
-	better  string // 고르는 가짜 모델이 고르는 답에 든 말
+	failRun func(changed bool, round int) bool
+	cancel  context.CancelFunc // 첫 고르기 뒤에 부르면 실험을 취소한다
+	better  string             // 고르는 가짜 모델이 고르는 답에 든 말
 }
 
 func hostJSON(result string, cost float64, isError bool) string {
@@ -70,15 +71,21 @@ func setup(t *testing.T) *env {
 				} else if strings.Contains(b, e.better) && !strings.Contains(a, e.better) {
 					pick = "B"
 				}
+				if e.cancel != nil {
+					e.cancel()
+				}
 				return hostJSON(`{"pick":"`+pick+`","reason":"기준에 더 맞음"}`, e.cost, false), nil
 			}
 			skill, _ := os.ReadFile(filepath.Join(dir, "skills", "plain-writing", "SKILL.md"))
+			changed := strings.Contains(string(skill), "LABMARK")
 			answer := "작업 기록 정리를 언제 할까요?"
-			if strings.Contains(string(skill), "LABMARK") {
+			if changed {
 				answer = "무엇을 정할지: 작업 기록 정리(원장 크기 줄이기)를 언제 할지 정해 주세요."
 			}
+			// 실행 모델은 흔히 만든 파일의 절대경로를 답에 쓴다.
+			answer += "\n" + filepath.Join(c.Dir, "보고.md") + "를 만들었습니다."
 			rounds[dir]++
-			if e.failRun != nil && e.failRun(c, rounds[dir]) {
+			if e.failRun != nil && e.failRun(changed, rounds[dir]) {
 				return hostJSON("상한을 넘었습니다", e.cost, true), nil
 			}
 			if err := os.WriteFile(filepath.Join(c.Dir, "보고.md"), []byte(answer+"\n"), 0o644); err != nil {
@@ -189,6 +196,14 @@ func TestRun_두_후보를_돌려_익명으로_고르고_원장에_남긴다(t *
 		if _, err := os.Stat(filepath.Join(c.Dir, ".git")); !os.IsNotExist(err) {
 			t.Errorf("작업 폴더에 .git이 없어야 합니다")
 		}
+		if !contains(c.Args, "--strict-mcp-config") || argOf(c.Args, "--add-dir") != argOf(c.Args, "--plugin-dir") {
+			t.Errorf("실행 %d: 사용자 MCP를 싣지 않고 후보 플러그인 폴더(분야 묶음)만 더 읽게 한다: %v", i, c.Args)
+		}
+		for _, leak := range []string{Current, Changed} {
+			if strings.Contains(c.Dir, leak) || strings.Contains(argOf(c.Args, "--plugin-dir"), leak) {
+				t.Errorf("실행 경로에 후보 이름이 보입니다: %s %s", c.Dir, argOf(c.Args, "--plugin-dir"))
+			}
+		}
 	}
 	if cfg, err := config.Load(filepath.Join(labHome, "config.json")); err != nil || cfg.SessionRetro || cfg.WorkOn() {
 		t.Errorf("실험 전용 설정은 세션 끝 회고·작업 기록을 끈다: %+v %v", cfg, err)
@@ -202,7 +217,7 @@ func TestRun_두_후보를_돌려_익명으로_고르고_원장에_남긴다(t *
 		if argOf(j.Args, "--model") != "opus" || !contains(j.Args, "--tools") || argOf(j.Args, "--tools") != "" || !contains(j.Args, "--restricted") {
 			t.Errorf("고르는 모델 %v", j.Args)
 		}
-		for _, leak := range []string{"current", "changed", cur, chg, "지금 하네스", "고친 하네스"} {
+		for _, leak := range []string{"current", "changed", cur, chg, "지금 하네스", "고친 하네스", filepath.Join(e.l.Paths.Home, "lab")} {
 			if strings.Contains(j.Stdin, leak) {
 				t.Errorf("고르는 모델에 %q가 보입니다", leak)
 			}
@@ -271,7 +286,7 @@ func TestRun_실험실_대기_제안(t *testing.T) {
 func TestRun_실패한_회차와_비용_상한(t *testing.T) {
 	e := setup(t)
 	task := e.task(t)
-	e.failRun = func(c retro.Cmd, round int) bool { return round == 2 && strings.Contains(c.Dir, "changed") }
+	e.failRun = func(changed bool, round int) bool { return round == 2 && changed }
 	x, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
 	if err != nil || len(x.Picks) != 2 || x.Verdict != memory.VerdictHelped {
 		t.Fatalf("실패 회차 제외 %+v %v", x, err)
@@ -315,4 +330,38 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// 검토 지적 2: 실험 중에 취소하면 고른 회차가 있어도 판정·원장·제안 없이 실패로 닫는다.
+func TestRun_취소하면_판정하지_않는다(t *testing.T) {
+	e := setup(t)
+	task := e.task(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	e.cancel = cancel
+	x, err := e.l.Run(ctx, RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
+	if err == nil || x.Status != memory.LabFailed || x.LedgerID != "" || !strings.Contains(x.Note, "중단") {
+		t.Fatalf("취소 %+v %v", x, err)
+	}
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
+		t.Error("취소한 실험은 제안을 만들지 않습니다")
+	}
+}
+
+// 검토 지적 3·9: 제안을 만든 뒤 원본 파일이 바뀌었으면 돌리지 않는다. 바꿀 폴더의 숨김 파일은 변경으로 세지 않는다.
+func TestRun_바뀐_원본과_숨김_파일(t *testing.T) {
+	e := setup(t)
+	task := e.task(t)
+	path := filepath.Join(e.src, "skills", "plain-writing", "SKILL.md")
+	b, _ := os.ReadFile(path)
+	p, _ := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: "묻기", Lab: true, Payload: memory.Payload{Path: path, Content: string(b) + mark}})
+	os.WriteFile(path, append(b, []byte("\n다른 사람이 고침\n")...), 0o644)
+	if _, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ProposalID: p.ID}); err == nil || !strings.Contains(err.Error(), "바뀌었") || len(e.calls) != 0 {
+		t.Fatalf("바뀐 원본은 실험하지 않습니다: %v calls=%d", err, len(e.calls))
+	}
+	dir := e.changeDir(t)
+	os.WriteFile(filepath.Join(dir, ".DS_Store"), []byte("x"), 0o644)
+	x, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: dir})
+	if err != nil || len(x.Files) != 1 {
+		t.Fatalf("숨김 파일 %+v %v", x.Files, err)
+	}
 }
