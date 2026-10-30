@@ -88,12 +88,13 @@ type Clustering struct {
 	Untagged int               // 주제 태그가 하나도 없는 기억
 }
 
-// Clusters picks up to max representative tags in covering order: each time,
-// the topic tag most of the not yet covered memories carry (the smaller key
-// on a tie). A memory belongs to the first picked tag it carries, else to
-// "other". max <= 0 covers until every tagged memory has a cluster. The same
-// memories give the same result (설계 · Orbit 2차 — 기억 그래프 「대표 태그」).
-func Clusters(ms []Memory, max int) Clustering {
+// Clusters picks representative tags in covering order: each time, the topic
+// tag most of the not yet covered memories carry (the smaller key on a tie),
+// as long as it newly covers at least minNew memories. A memory belongs to the
+// first picked tag it carries, else to "other". minNew <= 1 covers every
+// tagged memory. The same memories give the same result (설계 · Orbit 2차 —
+// 기억 그래프 「대표 태그」; 개수 상한 대신 새로 묶는 수, 2026-10-30 사용자 결정).
+func Clusters(ms []Memory, minNew int) Clustering {
 	c := Clustering{Of: make(map[string]string, len(ms))}
 	keys := make([][]string, len(ms))
 	var uncovered []int
@@ -105,7 +106,7 @@ func Clusters(ms []Memory, max int) Clustering {
 		}
 		uncovered = append(uncovered, i)
 	}
-	for (max <= 0 || len(c.Picked) < max) && len(uncovered) > 0 {
+	for len(uncovered) > 0 {
 		count := map[string]int{}
 		for _, i := range uncovered {
 			for _, k := range keys[i] {
@@ -117,6 +118,9 @@ func Clusters(ms []Memory, max int) Clustering {
 			if v > n || v == n && k < best {
 				best, n = k, v
 			}
+		}
+		if n < minNew {
+			break
 		}
 		c.Picked = append(c.Picked, best)
 		rest := uncovered[:0]
@@ -145,6 +149,11 @@ func Clusters(ms []Memory, max int) Clustering {
 	}
 	return c
 }
+
+// ClusterMinNew is how many memories a tag must newly cover to become a
+// cluster of the graph: 1% of the memories, at least 2 (2026-10-30 사용자 결정).
+// The count follows each person's memories instead of a fixed number.
+func ClusterMinNew(memories int) int { return max(2, (memories+50)/100) }
 
 // Members lists the memories of one cluster in the order of ms.
 func (c Clustering) Members(ms []Memory, key string) []Memory {

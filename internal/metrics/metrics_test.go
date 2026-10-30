@@ -227,7 +227,7 @@ func TestCompute_근거_파일_판정을_감지_수와_제안_수로_보인다(t
 }
 
 // 설계 · Orbit 3차 O3-2 「클러스터 다시 재기」: 지금 그래프의 「그 밖」 비율·클러스터 수·연결 수를 보인다.
-// 그래프 기본 상태(후보·확정·낡음)의 기억을 대표 태그 7개까지로 나눈다(Studio 보기와 같은 규칙).
+// 그래프 기본 상태(후보·확정·낡음)의 기억을 대표 태그로 나눈다(새로 묶는 기억이 전체의 1% 이상, 최소 2개).
 func TestCompute_기억_그래프_지표(t *testing.T) {
 	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
 	save := func(title string, tags ...string) memory.Memory {

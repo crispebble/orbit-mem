@@ -122,6 +122,7 @@ func TestTopicTags_표식과_종류_이름은_주제가_아니다(t *testing.T) 
 }
 
 // 대표 태그 클러스터: 덮기 순서로 고르고, 주제 태그가 없으면 그 밖이다(Studio 보기 network.ts와 같은 규칙).
+// 다음 태그가 새로 덮는 기억이 minNew보다 적으면 멈춘다(개수 상한 없음, 2026-10-30 사용자 결정).
 func TestClusters_덮기_순서(t *testing.T) {
 	ms := []Memory{
 		{ID: "m1", Tags: []string{"orbit", "ui"}},
@@ -130,7 +131,7 @@ func TestClusters_덮기_순서(t *testing.T) {
 		{ID: "m4", Tags: []string{"studio", "ui"}},
 		{ID: "m5", Tags: []string{"imported:server-knowledge"}},
 	}
-	c := Clusters(ms, 7)
+	c := Clusters(ms, 1)
 	if !reflect.DeepEqual(c.Picked, []string{"ui", "orbit"}) {
 		t.Errorf("고른 순서: %v", c.Picked)
 	}
@@ -141,7 +142,16 @@ func TestClusters_덮기_순서(t *testing.T) {
 	if c.Other != 1 || c.Untagged != 1 {
 		t.Errorf("그 밖 %d, 주제 태그 없음 %d", c.Other, c.Untagged)
 	}
-	if one := Clusters(ms, 1); one.Other != 2 {
-		t.Errorf("하나만 고르면 그 밖은 m2·m5: %d", one.Other)
+	if two := Clusters(ms, 2); !reflect.DeepEqual(two.Picked, []string{"ui"}) || two.Other != 2 {
+		t.Errorf("새로 덮는 기억이 둘 이상인 태그만: %v, 그 밖 %d", two.Picked, two.Other)
+	}
+}
+
+// 클러스터가 되려면 새로 묶는 기억이 전체의 1% 이상(최소 2개)이어야 한다.
+func TestClusterMinNew_전체의_1퍼센트_최소_2(t *testing.T) {
+	for n, want := range map[int]int{0: 2, 10: 2, 249: 2, 250: 3, 558: 6, 1000: 10} {
+		if got := ClusterMinNew(n); got != want {
+			t.Errorf("기억 %d개: %d, 바라는 것 %d", n, got, want)
+		}
 	}
 }

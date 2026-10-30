@@ -154,7 +154,8 @@ type Report struct {
 }
 
 // Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
-// the graph's default states split by up to seven representative tags.
+// the graph's default states split by representative tags, each newly
+// covering at least 1% of them (memory.ClusterMinNew).
 type Graph struct {
 	Memories  int     `json:"memories"`
 	Clusters  int     `json:"clusters"` // 「그 밖」 빼고
@@ -165,9 +166,6 @@ type Graph struct {
 	TopicTags int     `json:"topicTags"`
 }
 
-// graphClusterMax is the Studio graph view's cluster count (Forma 클러스터 팔레트 7색).
-const graphClusterMax = 7
-
 func graphNow(s *memory.Store) (Graph, error) {
 	ms, err := s.List(memory.DefaultGraphStates...)
 	if err != nil {
@@ -177,7 +175,7 @@ func graphNow(s *memory.Store) (Graph, error) {
 	if err != nil {
 		return Graph{}, err
 	}
-	c := memory.Clusters(ms, graphClusterMax)
+	c := memory.Clusters(ms, memory.ClusterMinNew(len(ms)))
 	g := Graph{Memories: len(ms), Clusters: len(c.Picked), Other: c.Other, OtherRate: rate(c.Other, len(ms)), Untagged: c.Untagged,
 		TopicTags: len(memory.TopicTagCounts(ms))}
 	in := make(map[string]bool, len(ms))
