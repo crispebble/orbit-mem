@@ -1,6 +1,6 @@
 // 기억 그래프 탭의 데이터 상태: memory_graph 읽기·다시 읽기·숨김 포함. React에 기대지 않는다(화면은 subscribe/getState로 읽는다).
 import {errorMessage} from '../oni.ts';
-import {PAUSE_MESSAGE, WorkPaused, WorkToolError, type PauseKind} from '../work/contract.ts';
+import {pauseMessage, WorkPaused, WorkToolError, type PauseKind} from '../work/contract.ts';
 import type {WorkCtx} from '../work/types.ts';
 import {memoryGraph} from './client.ts';
 import type {MemoryGraph} from './contract.ts';
@@ -49,11 +49,11 @@ export function createGraphStore(ctx: WorkCtx & {log: {error(m: string): void}})
     } catch (e) {
       if (mine !== seq) return;
       if (e instanceof WorkPaused) {
-        set({status: 'paused', graph: undefined, reloading: false, pause: {kind: e.kind, message: PAUSE_MESSAGE[e.kind]}});
+        set({status: 'paused', graph: undefined, reloading: false, pause: {kind: e.kind, message: pauseMessage(e.kind)}});
         return;
       }
       const message = errorMessage(e);
-      if (message !== lastLogged) ctx.log.error(`기억 그래프를 읽지 못했습니다: ${message}`);
+      if (message !== lastLogged) ctx.log.error(`Could not load the memory graph: ${message}`);
       lastLogged = message;
       const code = e instanceof WorkToolError ? e.code : undefined;
       if (state.graph) set({reloading: false, staleError: message, code, includeHidden: graphHidden});

@@ -2,10 +2,12 @@
   "id": "orbit",
   "name": "Orbit",
   "version": "0.1.0",
-  "studioApi": "^0.1.18",
+  "studioApi": "^0.1.20",
   "main": "dist/index.js",
-  "styles": ["dist/index.css"],
-  "description": "Orbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
+  "styles": [
+    "dist/index.css"
+  ],
+  "description": "View Orbit memories, the memory graph, proposals, and AI work graphs and sessions in Studio.",
   "apps": [
     {
       "id": "orbit",
@@ -14,32 +16,109 @@
       "tabs": true,
       "split": true,
       "views": [
-        {"id": "proposals", "title": "제안"},
-        {"id": "memories", "title": "기억"},
-        {"id": "works", "title": "작업"},
-        {"id": "sessions", "title": "세션"}
+        {
+          "id": "proposals",
+          "title": "Proposals"
+        },
+        {
+          "id": "memories",
+          "title": "Memories"
+        },
+        {
+          "id": "works",
+          "title": "Work"
+        },
+        {
+          "id": "sessions",
+          "title": "Sessions"
+        }
       ]
     }
   ],
   "tabTypes": [
-    {"id": "proposal", "app": "orbit"},
-    {"id": "memory", "app": "orbit"},
-    {"id": "work", "app": "orbit"},
-    {"id": "session", "app": "orbit"},
-    {"id": "memory-graph", "app": "orbit"}
+    {
+      "id": "proposal",
+      "app": "orbit"
+    },
+    {
+      "id": "memory",
+      "app": "orbit"
+    },
+    {
+      "id": "work",
+      "app": "orbit"
+    },
+    {
+      "id": "session",
+      "app": "orbit"
+    },
+    {
+      "id": "memory-graph",
+      "app": "orbit"
+    }
   ],
   "commands": [
-    {"id": "orbit.find", "title": "기억 찾기"},
-    {"id": "orbit.memory-graph", "title": "기억 그래프 보기"},
-    {"id": "orbit.proposals", "title": "제안 보기"},
-    {"id": "orbit.works", "title": "작업 보기"},
-    {"id": "orbit.sessions", "title": "세션 보기"}
+    {
+      "id": "orbit.find",
+      "title": "Find memories"
+    },
+    {
+      "id": "orbit.memory-graph",
+      "title": "Show memory graph"
+    },
+    {
+      "id": "orbit.proposals",
+      "title": "Show proposals"
+    },
+    {
+      "id": "orbit.works",
+      "title": "Show work"
+    },
+    {
+      "id": "orbit.sessions",
+      "title": "Show sessions"
+    }
   ],
   "inbox": true,
   "connections": {
     "mcp": [
-      {"id": "oni", "command": "oni", "args": ["mcp"]},
-      {"id": "work", "command": "oni", "args": ["mcp", "--reader"]}
+      {
+        "id": "oni",
+        "command": "oni",
+        "args": [
+          "mcp"
+        ]
+      },
+      {
+        "id": "work",
+        "command": "oni",
+        "args": [
+          "mcp",
+          "--reader"
+        ]
+      }
     ]
+  },
+  "locales": {
+    "ko": {
+      "description": "Orbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
+      "apps": {
+        "orbit": {
+          "views": {
+            "proposals": "제안",
+            "memories": "기억",
+            "works": "작업",
+            "sessions": "세션"
+          }
+        }
+      },
+      "commands": {
+        "orbit.find": "기억 찾기",
+        "orbit.memory-graph": "기억 그래프 보기",
+        "orbit.proposals": "제안 보기",
+        "orbit.works": "작업 보기",
+        "orbit.sessions": "세션 보기"
+      }
+    }
   }
 }

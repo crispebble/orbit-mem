@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
@@ -110,7 +112,7 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	}
 
 	text := Render(rep)
-	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "반복 교정 3건", "넣었는데 어김 1", "답은 존댓말 (m-r) 2회", "빈 검색 2/3", "배포 순서", "실패 1"} {
+	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "Repeated corrections: 3", "injected but violated 1", "답은 존댓말 (m-r) 2 times", "Empty searches 2/3", "배포 순서", "failed 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
@@ -126,7 +128,7 @@ func TestCompute_사건이_없어도_빈_보고를_낸다(t *testing.T) {
 	if rep.Prompts.HitRate != 0 || rep.Find.EmptyRate != 0 {
 		t.Fatalf("rates must be 0: %+v", rep)
 	}
-	if !strings.Contains(Render(rep), "반복 교정 0건") {
+	if !strings.Contains(Render(rep), "Repeated corrections: 0") {
 		t.Fatal(Render(rep))
 	}
 }
@@ -190,8 +192,8 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 		t.Errorf("cost = %+v", c)
 	}
 	text := Render(rep)
-	for _, want := range []string{"사용 판정: 따름 2 · 어김 2 · 상관없음 1", "고친 교훈", "효과 원장: 변경 1건", "관찰 중 1", "쓰기 판정: 유지 1 · 보류 1 · 거절 1", "사용자 거절 1",
-		"평균 400자", "세션 끝 2번", "$0.7500", "모름 1"} {
+	for _, want := range []string{"Usage verdicts: followed 2 · violated 2 · irrelevant 1", "고친 교훈", "Effect ledger: 1 changes", "observing now 1", "Write verdicts: keep 1 · hold 1 · reject 1", "rejected by user 1",
+		"average injected prompt 400 chars", "session end ×2", "$0.7500", "cost unknown 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
@@ -221,7 +223,7 @@ func TestCompute_근거_파일_판정을_감지_수와_제안_수로_보인다(t
 	if r.Sources != want {
 		t.Fatalf("sources = %+v", r.Sources)
 	}
-	if out := Render(r); !strings.Contains(out, "근거 파일 변경: 기억 26건 감지 → 제안 3건") {
+	if out := Render(r); !strings.Contains(out, "Source file changes: 26 memories detected → 3 proposals") {
 		t.Fatalf("render = %s", out)
 	}
 }
@@ -255,7 +257,7 @@ func TestCompute_기억_그래프_지표(t *testing.T) {
 	if g.Memories != 3 || g.Clusters != 1 || g.Other != 1 || g.Untagged != 1 || g.Links != 1 || g.TopicTags != 2 {
 		t.Fatalf("그래프 지표: %+v", g)
 	}
-	if !strings.Contains(Render(rep), "기억 그래프: 기억 3개, 클러스터 1개, 그 밖 1개(33%), 주제 태그 없음 1개, 연결 1개, 주제 태그 2종") {
+	if !strings.Contains(Render(rep), "Memory graph: 3 memories, 1 clusters, 1 other (33%), 1 without topic tag, 1 links, 2 topic tags") {
 		t.Fatal(Render(rep))
 	}
 }
@@ -296,7 +298,7 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 		t.Fatalf("상태별 기억 수: %+v", rep.States)
 	}
 	out := Render(rep)
-	for _, want := range []string{"옛 기억 정리: 대상 3개 중 판정 2개(그대로 둠 1 · 낡음 1), 남음 1개", "기억 상태: 후보 3 · 확정 0 · 낡음 1 · 숨김 0 (옛 기억 정리 시작 2026-10-31: 후보 4 · 확정 0 · 낡음 0 · 숨김 0)"} {
+	for _, want := range []string{"Legacy cleanup: 3 targets, 2 judged(kept 1 · stale 1), 1 left", "Memory states: candidate 3 · confirmed 0 · stale 1 · hidden 0 (legacy cleanup started 2026-10-31: candidate 4 · confirmed 0 · stale 0 · hidden 0)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("%q가 없습니다:\n%s", want, out)
 		}
@@ -321,7 +323,44 @@ func TestCompute_하네스_실험실_지표(t *testing.T) {
 	if rep.Lab.Experiments != 2 || rep.Lab.Verdicts["helped"] != 1 || rep.Lab.Verdicts["failed"] != 1 {
 		t.Fatalf("실험실 지표 %+v", rep.Lab)
 	}
-	if out := Render(rep); !strings.Contains(out, "하네스 실험실: 실험 2번(도움됨 1 · 해로움 0 · 효과 없음 0 · 실패 1), 비용 $2.0000") {
+	if out := Render(rep); !strings.Contains(out, "Harness lab: 2 experiments (helped 1 · harmful 0 · no effect 0 · failed 1), cost $2.0000") {
 		t.Fatal(out)
+	}
+}
+
+func TestRender_기본은_영어이고_한국어를_고르면_한국어다(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
+	rep, err := Compute(s, "2026-10-21", "2026-10-27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	en := Render(rep)
+	for _, r := range en {
+		if unicode.Is(unicode.Hangul, r) {
+			t.Fatalf("default render has Hangul:\n%s", en)
+		}
+	}
+	if !strings.Contains(en, "Period 2026-10-21 ~ 2026-10-27") {
+		t.Fatal(en)
+	}
+	i18n.Set(i18n.KO)
+	defer i18n.Set(i18n.EN)
+	ko := Render(rep)
+	if !strings.Contains(ko, "기간 2026-10-21 ~ 2026-10-27") || !strings.Contains(ko, "반복 교정 0건") {
+		t.Fatal(ko)
+	}
+}
+
+func TestRenderIn_현재_언어와_상관없이_고른_언어로_그린다(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
+	rep, err := Compute(s, "2026-10-21", "2026-10-27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RenderIn(rep, i18n.KO); !strings.Contains(got, "반복 교정 0건") {
+		t.Fatal(got)
+	}
+	if got := RenderIn(rep, i18n.EN); !strings.Contains(got, "Repeated corrections: 0") {
+		t.Fatal(got)
 	}
 }

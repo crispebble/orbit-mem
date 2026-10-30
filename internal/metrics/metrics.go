@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
@@ -492,69 +493,80 @@ func topMemories(s *memory.Store, counts map[string]int) []Count {
 
 func pct(f float64) string { return fmt.Sprintf("%.0f%%", f*100) }
 
-func titled(cs []Count) string {
+func titled(lg i18n.Lang, cs []Count) string {
 	var parts []string
 	for _, c := range cs {
 		title := c.Title
 		if title == "" {
-			title = "(없는 기억)"
+			title = i18n.TIn(lg, "metrics.no_memory")
 		}
-		parts = append(parts, fmt.Sprintf("%s(%s) %d회", title, c.ID, c.Count))
+		parts = append(parts, i18n.TIn(lg, "metrics.title_count", title, c.ID, c.Count))
 	}
 	return strings.Join(parts, ", ")
 }
 
-var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}, {"tidy", "그래프 정리"}, {"legacy", "옛 기억 판정"}}
+func retroKindNames(lg i18n.Lang) []struct{ kind, name string } {
+	return []struct{ kind, name string }{
+		{"session", i18n.TIn(lg, "metrics.retro_session")},
+		{"daily", i18n.TIn(lg, "metrics.retro_daily")},
+		{"weekly", i18n.TIn(lg, "metrics.retro_weekly")},
+		{"tidy", i18n.TIn(lg, "metrics.retro_tidy")},
+		{"legacy", i18n.TIn(lg, "metrics.retro_legacy")},
+	}
+}
 
-// Render is the report as short Korean text for the terminal and the weekly retrospective.
-func Render(r Report) string {
+// Render is the report as short text in the current language.
+func Render(r Report) string { return RenderIn(r, i18n.Current()) }
+
+// RenderIn is the report in a fixed language, for text the AI reads (the
+// weekly retrospective material stays Korean whatever the user picked).
+func RenderIn(r Report, lg i18n.Lang) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "기간 %s ~ %s\n\n", r.From, r.To)
+	b.WriteString(i18n.TIn(lg, "metrics.period", r.From, r.To) + "\n\n")
 	c := r.Corrections
-	fmt.Fprintf(&b, "- 반복 교정 %d건 (넣었는데 어김 %d · 넣지 못함 %d · 주입 여부 모름 %d), 새 교정 %d건\n", c.Repeated, c.Injected, c.NotInjected, c.Unknown, c.New)
+	b.WriteString(i18n.TIn(lg, "metrics.corrections", c.Repeated, c.Injected, c.NotInjected, c.Unknown, c.New) + "\n")
 	for _, t := range c.Top {
 		title := t.Title
 		if title == "" {
-			title = "(없는 기억)"
+			title = i18n.TIn(lg, "metrics.no_memory")
 		}
-		fmt.Fprintf(&b, "  - %s (%s) %d회\n", title, t.ID, t.Count)
+		b.WriteString("  " + i18n.TIn(lg, "metrics.top_item", title, t.ID, t.Count) + "\n")
 	}
-	fmt.Fprintf(&b, "- 요청 적중 %d/%d (%s), 넣은 요청 평균 %d자\n", r.Prompts.Hits, r.Prompts.Total, pct(r.Prompts.HitRate), r.Prompts.AvgChars)
+	b.WriteString(i18n.TIn(lg, "metrics.prompts", r.Prompts.Hits, r.Prompts.Total, pct(r.Prompts.HitRate), r.Prompts.AvgChars) + "\n")
 	u := r.Usage
-	fmt.Fprintf(&b, "- 사용 판정: 따름 %d · 어김 %d · 상관없음 %d\n", u.Followed, u.Violated, u.Irrelevant)
+	b.WriteString(i18n.TIn(lg, "metrics.usage", u.Followed, u.Violated, u.Irrelevant) + "\n")
 	if len(u.TopViolated) > 0 {
-		fmt.Fprintf(&b, "  - 어김: %s\n", titled(u.TopViolated))
+		b.WriteString("  " + i18n.TIn(lg, "metrics.usage_violated", titled(lg, u.TopViolated)) + "\n")
 	}
 	if len(u.TopIrrelevant) > 0 {
-		fmt.Fprintf(&b, "  - 상관없음: %s\n", titled(u.TopIrrelevant))
+		b.WriteString("  " + i18n.TIn(lg, "metrics.usage_irrelevant", titled(lg, u.TopIrrelevant)) + "\n")
 	}
-	fmt.Fprintf(&b, "- 빈 검색 %d/%d (%s)", r.Find.Empty, r.Find.Total, pct(r.Find.EmptyRate))
+	b.WriteString(i18n.TIn(lg, "metrics.find", r.Find.Empty, r.Find.Total, pct(r.Find.EmptyRate)))
 	if len(r.Find.EmptyQueries) > 0 {
 		var qs []string
 		for _, q := range r.Find.EmptyQueries {
-			qs = append(qs, fmt.Sprintf("%q %d회", q.Query, q.Count))
+			qs = append(qs, i18n.TIn(lg, "metrics.query_count", q.Query, q.Count))
 		}
 		b.WriteString(": " + strings.Join(qs, ", "))
 	}
 	b.WriteString("\n")
-	fmt.Fprintf(&b, "- 저장 %d건 (인용 %d · 그 밖 %d)\n", r.Saves.Total, r.Saves.Quote, r.Saves.Other)
-	fmt.Fprintf(&b, "- 세션 %d개(시작 훅 %d번), 평균 %d자, 제목만 넣은 규칙 최대 %d개\n", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax)
+	b.WriteString(i18n.TIn(lg, "metrics.saves", r.Saves.Total, r.Saves.Quote, r.Saves.Other) + "\n")
+	b.WriteString(i18n.TIn(lg, "metrics.session_start", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax) + "\n")
 	p := r.Proposals
-	fmt.Fprintf(&b, "- 제안: 새로 %d건, 승인 %d · 고쳐서 승인 %d · 거절 %d, 지금 대기 %d건(가장 오래된 것 %d일)\n", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays)
+	b.WriteString(i18n.TIn(lg, "metrics.proposals", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays) + "\n")
 	sc := r.Sources
-	fmt.Fprintf(&b, "- 근거 파일 변경: 기억 %d건 감지 → 제안 %d건 (발췌 그대로 %d · 파일 없어짐 %d · 발췌 사라짐 %d · 판정 맞음 %d · 고칠 것 %d · 낡음 %d)\n",
-		sc.Detected, sc.Proposals, sc.Kept, sc.Absent, sc.Gone, sc.OK, sc.Edit, sc.Stale)
+	b.WriteString(i18n.TIn(lg, "metrics.sources", sc.Detected, sc.Proposals, sc.Kept, sc.Absent, sc.Gone, sc.OK, sc.Edit, sc.Stale) + "\n")
 	w := r.Writes
-	fmt.Fprintf(&b, "- 쓰기 판정: 유지 %d · 보류 %d · 거절 %d, 사용자 거절 %d · 고쳐서 승인 %d\n", w.Keep, w.Hold, w.Reject, w.UserRejected, w.UserEdited)
+	b.WriteString(i18n.TIn(lg, "metrics.writes", w.Keep, w.Hold, w.Reject, w.UserRejected, w.UserEdited) + "\n")
 	l := r.Ledger
-	fmt.Fprintf(&b, "- 효과 원장: 변경 %d건, 판정 도움됨 %d · 해로움 %d · 효과 없음 %d · 섞임 %d(증거 있음 %d), 지금 관찰 중 %d\n", l.Changes,
-		l.Judged[memory.VerdictHelped], l.Judged[memory.VerdictHarmful], l.Judged[memory.VerdictNoEffect], l.Judged[memory.VerdictMixed], l.Evidence, l.Pending)
+	b.WriteString(i18n.TIn(lg, "metrics.ledger", l.Changes,
+		l.Judged[memory.VerdictHelped], l.Judged[memory.VerdictHarmful], l.Judged[memory.VerdictNoEffect], l.Judged[memory.VerdictMixed], l.Evidence, l.Pending) + "\n")
 	t := r.Retros
-	fmt.Fprintf(&b, "- 회고 %d번: 완료 %d · 빈 회고 %d · 실패 %d, 평균 %d초", t.Runs, t.Done, t.Empty, t.Failed, t.AvgSeconds)
+	b.WriteString(i18n.TIn(lg, "metrics.retros", t.Runs, t.Done, t.Empty, t.Failed, t.AvgSeconds))
 	var kinds []string
-	for _, k := range retroKindNames {
+	for _, k := range retroKindNames(lg) {
 		if c, ok := t.Kinds[k.kind]; ok && c.Runs > 0 {
-			kinds = append(kinds, fmt.Sprintf("%s %d번", k.name, c.Runs))
+			kinds = append(kinds, i18n.TIn(lg, "metrics.retro_kind_runs", k.name, c.Runs))
 		}
 	}
 	if len(kinds) > 0 {
@@ -562,35 +574,36 @@ func Render(r Report) string {
 	}
 	b.WriteString("\n")
 	cost := t.Cost
-	fmt.Fprintf(&b, "- 회고 비용(호스트 추정) $%.4f(세션 끝 $%.4f), 토큰 입력 %d · 출력 %d, 비용 모름 %d번\n", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown)
+	b.WriteString(i18n.TIn(lg, "metrics.retro_cost", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown) + "\n")
 	g := r.Graph
-	fmt.Fprintf(&b, "- 기억 그래프: 기억 %d개, 클러스터 %d개, 그 밖 %d개(%s), 주제 태그 없음 %d개, 연결 %d개, 주제 태그 %d종\n",
-		g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags)
+	b.WriteString(i18n.TIn(lg, "metrics.graph", g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags) + "\n")
 	states := func(m map[string]int) string {
-		return fmt.Sprintf("후보 %d · 확정 %d · 낡음 %d · 숨김 %d", m[memory.StateCandidate], m[memory.StateConfirmed], m[memory.StateStale], m[memory.StateHidden])
+		return i18n.TIn(lg, "metrics.states", m[memory.StateCandidate], m[memory.StateConfirmed], m[memory.StateStale], m[memory.StateHidden])
 	}
-	b.WriteString("- 기억 상태: " + states(r.States))
+	b.WriteString(i18n.TIn(lg, "metrics.states_line", states(r.States)))
 	if lb := r.LegacyBaseline; lb != nil {
-		fmt.Fprintf(&b, " (옛 기억 정리 시작 %s: %s)", lb.Day, states(lb.States))
+		b.WriteString(" " + i18n.TIn(lg, "metrics.legacy_baseline", lb.Day, states(lb.States)))
 	}
 	b.WriteString("\n")
 	if lab := r.Lab; lab.Experiments > 0 {
 		v := lab.Verdicts
-		fmt.Fprintf(&b, "- 하네스 실험실: 실험 %d번(도움됨 %d · 해로움 %d · 효과 없음 %d · 실패 %d), 비용 $%.4f\n", lab.Experiments,
-			v[memory.VerdictHelped], v[memory.VerdictHarmful], v[memory.VerdictNoEffect], v[memory.LabFailed], lab.CostUSD)
+		b.WriteString(i18n.TIn(lg, "metrics.lab", lab.Experiments,
+			v[memory.VerdictHelped], v[memory.VerdictHarmful], v[memory.VerdictNoEffect], v[memory.LabFailed], lab.CostUSD) + "\n")
 	}
 	if l := r.Legacy; l.Total > 0 {
 		var by []string
-		for _, v := range []struct{ key, name string }{{"keep", "그대로 둠"}, {"confirm", "확정"}, {"merge", "합치기"}, {"stale", "낡음"}} {
+		for _, v := range []struct{ key, name string }{
+			{"keep", i18n.TIn(lg, "metrics.legacy_keep")}, {"confirm", i18n.TIn(lg, "metrics.legacy_confirm")},
+			{"merge", i18n.TIn(lg, "metrics.legacy_merge")}, {"stale", i18n.TIn(lg, "metrics.legacy_stale")}} {
 			if n := l.By[v.key]; n > 0 {
-				by = append(by, fmt.Sprintf("%s %d", v.name, n))
+				by = append(by, i18n.TIn(lg, "metrics.legacy_by", v.name, n))
 			}
 		}
-		fmt.Fprintf(&b, "- 옛 기억 정리: 대상 %d개 중 판정 %d개", l.Total, l.Judged)
+		b.WriteString(i18n.TIn(lg, "metrics.legacy", l.Total, l.Judged))
 		if len(by) > 0 {
 			b.WriteString("(" + strings.Join(by, " · ") + ")")
 		}
-		fmt.Fprintf(&b, ", 남음 %d개\n", l.Left)
+		b.WriteString(i18n.TIn(lg, "metrics.legacy_left", l.Left) + "\n")
 	}
 	return b.String()
 }

@@ -490,7 +490,7 @@ func TestCatchUp_작업_기록_백업이_실패해도_회고는_돈다(t *testin
 	if len(results) != 2 {
 		t.Fatalf("results = %+v", results)
 	}
-	if err == nil || !strings.Contains(err.Error(), "작업 기록") {
+	if err == nil || !strings.Contains(err.Error(), "work log") {
 		t.Fatalf("err = %v", err)
 	}
 }

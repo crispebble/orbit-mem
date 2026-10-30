@@ -2,6 +2,9 @@
 import {useRef, useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {Button, StateView, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {useMessages} from './i18n/index.ts';
+import {commonText} from './i18n/messages/common.ts';
+import {proposalText} from './i18n/messages/proposals.ts';
 import {groupProposalRows, toProposalRow, type ProposalGroup} from './model.ts';
 import {decideGroup} from './group-decision.ts';
 import {ProposalGroupList} from './parts/index.ts';
@@ -15,15 +18,17 @@ export function ProposalsView({ctx}: ViewProps) {
   const [selected, setSelected] = useState<string>();
   const [busyKind, setBusyKind] = useState<string>();
   const deciding = useRef(false);
+  const t = useMessages(proposalText);
+  const common = useMessages(commonText);
 
-  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" compact headingLevel={3} />;
+  if (!store) return <StateView variant="loading" title={common.startingOrbit} compact headingLevel={3} />;
 
-  const retry = <Button variant="secondary" size="sm" onClick={() => void store.refresh()}>다시 시도</Button>;
+  const retry = <Button variant="secondary" size="sm" onClick={() => void store.refresh()}>{common.retry}</Button>;
   if (state.status === 'error' && state.proposals.length === 0) {
-    return <div className="orbit-side"><StateView variant="error" title="Orbit에 연결하지 못했습니다" description={state.error} onRetry={() => void store.refresh()} compact headingLevel={3} /></div>;
+    return <div className="orbit-side"><StateView variant="error" title={t.view.connectFailed} description={state.error} onRetry={() => void store.refresh()} retryLabel={common.retry} compact headingLevel={3} /></div>;
   }
   if (state.status === 'idle' || (state.status === 'loading' && state.proposals.length === 0)) {
-    return <div className="orbit-side"><StateView variant="loading" title="제안을 불러오는 중입니다" compact headingLevel={3} /></div>;
+    return <div className="orbit-side"><StateView variant="loading" title={t.view.loading} compact headingLevel={3} /></div>;
   }
 
   const now = new Date();
@@ -53,19 +58,19 @@ export function ProposalsView({ctx}: ViewProps) {
   return (
     <div className="orbit-side">
       <SegmentedControl
-        label="제안 보기"
+        label={t.view.filterLabel}
         value={filter}
         onChange={v => setFilter(v === 'all' ? 'all' : 'pending')}
-        options={[{value: 'pending', label: `대기 ${pending.length}`}, {value: 'all', label: '전체'}]}
+        options={[{value: 'pending', label: t.view.pending(pending.length)}, {value: 'all', label: t.view.all}]}
       />
       {state.status === 'error' && (
         <div className="orbit-row">
-          <p className="orbit-alert" role="alert">갱신하지 못했습니다. 마지막으로 불러온 목록입니다. {state.error}</p>
+          <p className="orbit-alert" role="alert">{t.view.refreshFailed} {state.error}</p>
           {retry}
         </div>
       )}
       {rows.length === 0 ? (
-        <StateView title={filter === 'pending' ? '대기 중인 제안이 없습니다' : '제안이 없습니다'} description="회고가 새 제안을 만들면 여기에 나타납니다." compact headingLevel={3} />
+        <StateView title={filter === 'pending' ? t.view.emptyPending : t.view.empty} description={t.view.emptyHint} compact headingLevel={3} />
       ) : filter === 'pending' ? (
         <ProposalGroupList
           groups={groups.map(g => ({kind: g.kind, label: g.label, items: g.rows.map(r => ({id: r.id, title: r.title, subtitle: r.date, unread: true}))}))}
@@ -79,13 +84,13 @@ export function ProposalsView({ctx}: ViewProps) {
           }}
         />
       ) : (
-        <div className="orbit-side-list" role="list" aria-label="제안 목록">
+        <div className="orbit-side-list" role="list" aria-label={t.view.listLabel}>
           {rows.map(r => (
             <div role="listitem" key={r.id}>
               <InboxItem
                 icon={<Mark size="sm">{r.kindLabel.slice(0, 1)}</Mark>}
                 title={r.title}
-                subtitle={`${r.kindLabel} · ${r.date}${r.pending ? '' : ` · ${r.status === 'approved' ? '승인함' : r.status === 'rejected' ? '거절함' : '처리됨'}`}`}
+                subtitle={`${r.kindLabel} · ${r.date}${r.pending ? '' : ` · ${r.status === 'approved' ? t.listStatus.approved : r.status === 'rejected' ? t.listStatus.rejected : t.listStatus.other}`}`}
                 unread={r.pending}
                 current={selected === r.id}
                 onOpen={() => open(r.id, r.title)}

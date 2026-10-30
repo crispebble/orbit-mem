@@ -5,7 +5,11 @@ import {Clock, History, Link2, MessagesSquare} from 'lucide-react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {describeNetwork, NetworkGraph, NetworkPanel, searchNetwork, type NetworkDescription, type NetworkOverlay} from '@onidot-labs/studio-plugin/graph';
 import {Badge, Button, SegmentedControl, StateView, Switch} from '@onidot-labs/studio-plugin/ui';
-import {KINDS, memoryKindLabels} from '../parts/vocabulary.ts';
+import {localeTag, useLocale, useMessages} from '../i18n/index.ts';
+import {graphText} from '../i18n/messages/graph.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
+import {KINDS} from '../parts/vocabulary.ts';
+import {pauseMessage} from '../work/contract.ts';
 import {useOrbit} from '../runtime.ts';
 import type {GraphNode} from './contract.ts';
 import {
@@ -15,11 +19,9 @@ import {onSelectRequest, takePendingSelect} from './open.ts';
 import {resolveRequest} from './select.ts';
 import {createGraphStore, type GraphState, type GraphStore} from './store.ts';
 
-const LABEL = '기억 그래프';
 const OVERLAY_ICONS: Record<OverlayIcon, ReactNode> = {
   chain: <Link2 aria-hidden="true" />, time: <Clock aria-hidden="true" />, retro: <History aria-hidden="true" />, session: <MessagesSquare aria-hidden="true" />,
 };
-const KIND_OPTIONS = [{value: 'all', label: '모두'}, ...KINDS.map(k => ({value: k, label: memoryKindLabels[k]}))];
 
 export function openMemory(ctx: Pick<PluginContext, 'tabs'>, node: Pick<GraphNode, 'id' | 'title'>): void {
   ctx.tabs.open({type: 'memory', id: node.id, title: node.title, params: {id: node.id}});
@@ -61,10 +63,11 @@ export interface SelectedMemoryCardProps {
 
 /** 왼쪽 패널의 고른 기억 카드: 종류·상태 배지, 범위, 클러스터, 연결 수, 주제 태그, 단추 */
 export function SelectedMemoryCard({node, info, centered, onOpen, onCenter, onClear}: SelectedMemoryCardProps) {
+  const t = useMessages(graphText).card;
   const cluster = info.clusterOf(node.id);
   const tags = node.tags.filter(t => !isExcludedTag(t));
   return (
-    <section className="forma-netpanel-card" aria-label="고른 기억">
+    <section className="forma-netpanel-card" aria-label={t.label}>
       <h3>{node.title}</h3>
       <div className="forma-netpanel-card-cluster">
         <Badge>{kindLabel(node.kind)}</Badge>
@@ -74,13 +77,13 @@ export function SelectedMemoryCard({node, info, centered, onOpen, onCenter, onCl
       <div className="forma-netpanel-card-cluster">
         <i className="forma-net-dot" data-tone={info.toneOf(cluster ?? '')} />
         {info.clusters.find(c => c.id === cluster)?.label}
-        <Badge>{`연결 ${info.degreeOf(node.id).toLocaleString('ko-KR')}개`}</Badge>
+        <Badge>{t.links(info.degreeOf(node.id).toLocaleString(localeTag()))}</Badge>
       </div>
       {tags.length > 0 && <p>{tags.map(t => `#${t}`).join(' ')}</p>}
       <div className="forma-netpanel-card-actions">
-        <Button size="sm" variant="primary" onClick={onOpen}>기억 열기</Button>
-        <Button size="sm" variant="secondary" aria-pressed={centered} onClick={onCenter}>주변 보기</Button>
-        <Button size="sm" variant="ghost" onClick={onClear}>선택 풀기</Button>
+        <Button size="sm" variant="primary" onClick={onOpen}>{t.open}</Button>
+        <Button size="sm" variant="secondary" aria-pressed={centered} onClick={onCenter}>{t.center}</Button>
+        <Button size="sm" variant="ghost" onClick={onClear}>{t.clear}</Button>
       </div>
     </section>
   );
@@ -97,6 +100,10 @@ export interface GraphBodyProps {
 
 /** 탭 본문. 데이터 상태를 받아 그린다(렌더 시험이 이것을 그린다) */
 export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBodyProps) {
+  const locale = useLocale();
+  const g = useMessages(graphText);
+  const mem = useMessages(memoryText);
+  const kindOptions = [{value: 'all', label: g.tab.all}, ...KINDS.map(k => ({value: k, label: mem.kinds[k]}))];
   const [kind, setKind] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -112,7 +119,8 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   // nodes·edges 참조를 고정한다(부품이 같은 입력의 배치를 다시 계산하지 않는다)
   const network: MemoryNetwork | undefined = useMemo(
     () => (graph ? toMemoryNetwork(graph, {kinds: kind === 'all' ? undefined : new Set([kind])}) : undefined),
-    [graph, kind],
+    // 이름·설명이 언어를 따르므로 언어가 바뀌면 다시 만든다
+    [graph, kind, locale],
   );
   const info = useMemo(() => (network ? describeNetwork(network) : undefined), [network]);
   const overlays: NetworkOverlay[] = useMemo(() => network?.overlays.map(o => ({...o, icon: OVERLAY_ICONS[o.icon]})) ?? [], [network]);
@@ -157,18 +165,18 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   if (state.status === 'paused' && state.pause) {
     return (
       <div className="orbit-pane">
-        <StateView title="기억 그래프를 멈췄습니다" description={state.pause.message}
-          action={<Button variant="secondary" size="sm" onClick={() => void store.load()}>다시 확인</Button>} />
+        <StateView title={g.tab.pausedTitle} description={pauseMessage(state.pause.kind)}
+          action={<Button variant="secondary" size="sm" onClick={() => void store.load()}>{g.tab.recheck}</Button>} />
       </div>
     );
   }
 
   const selected = selectedId ? byId.get(selectedId) : undefined;
   const notices: string[] = [];
-  if (graph?.truncated) notices.push(`최근에 고친 ${graph.nodes.length.toLocaleString('ko-KR')}개만 보입니다(전체 ${graph.total.toLocaleString('ko-KR')}개).`);
-  if (network?.unknownRelations) notices.push(`이 판이 모르는 관계 ${network.unknownRelations}개는 그리지 않았습니다.`);
-  if (missing) notices.push('지금 그래프에 없는 기억입니다.');
-  if (state.staleError) notices.push(`다시 읽지 못했습니다: ${state.staleError}`);
+  if (graph?.truncated) notices.push(g.tab.truncated(graph.nodes.length.toLocaleString(localeTag(locale)), graph.total.toLocaleString(localeTag(locale))));
+  if (network?.unknownRelations) notices.push(g.tab.unknownRelations(network.unknownRelations));
+  if (missing) notices.push(g.tab.missing);
+  if (state.staleError) notices.push(`${g.tab.reloadFailed} ${state.staleError}`);
 
   const card = selected && info ? (
     <SelectedMemoryCard node={selected} info={info} centered={center === selected.id}
@@ -180,7 +188,7 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   const clusters = network?.clusters ?? [];
   const relations = network?.relations ?? [];
   const side = (
-    <NetworkPanel title={LABEL} nodes={nodes} edges={edges} clusters={clusters} relations={relations} overlays={overlays}
+    <NetworkPanel title={g.tab.label} text={g.panel} nodes={nodes} edges={edges} clusters={clusters} relations={relations} overlays={overlays}
       query={query} onQueryChange={q => { setQuery(q); const found = q && network ? searchNetwork(network.nodes, q) : []; if (found.length === 1) setSelectedId(found[0]); }}
       hitCount={hitIds ? hitIds.length : null}
       focusClusters={focus} onFocusClusters={setFocus} clusterMode={mode} onClusterMode={setMode}
@@ -190,28 +198,28 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   );
   const filters = (
     <div className="orbit-graph-filters">
-      <SegmentedControl label="종류" value={kind} options={KIND_OPTIONS} onChange={setKind} />
-      <Switch label="숨김 포함" checked={state.includeHidden} onCheckedChange={v => void store.setIncludeHidden(v)} />
+      <SegmentedControl label={g.tab.kind} value={kind} options={kindOptions} onChange={setKind} />
+      <Switch label={g.tab.includeHidden} checked={state.includeHidden} onCheckedChange={v => void store.setIncludeHidden(v)} />
     </div>
   );
   const tools = (
     <>
-      <Button size="sm" variant="secondary" disabled={state.reloading || state.status === 'loading'} onClick={() => void store.load()}>{state.reloading ? '읽는 중…' : '다시 읽기'}</Button>
-      <Button size="sm" variant="ghost" onClick={() => ctx.app.show('orbit', 'memories')}>목록으로</Button>
+      <Button size="sm" variant="secondary" disabled={state.reloading || state.status === 'loading'} onClick={() => void store.load()}>{state.reloading ? g.tab.reloading : g.tab.reload}</Button>
+      <Button size="sm" variant="ghost" onClick={() => ctx.app.show('orbit', 'memories')}>{g.tab.toList}</Button>
     </>
   );
   return (
     <div className="orbit-graph">
-      <NetworkGraph label={LABEL} nodes={nodes} edges={edges} clusters={clusters} relations={relations}
+      <NetworkGraph label={g.tab.label} text={g.network} nodes={nodes} edges={edges} clusters={clusters} relations={relations}
         state={state.status === 'loading' ? 'loading' : state.status === 'error' ? 'error' : 'ready'}
-        errorText="기억 그래프를 읽지 못했습니다"
+        errorText={g.tab.errorTitle}
         errorDetail={state.status === 'error' ? <p className="orbit-graph-error">{state.error}{state.code && <> <code>{state.code}</code></>}</p> : undefined}
         onRetry={() => void store.load()}
         selectedId={selectedId} onSelect={setSelectedId}
         focusClusters={focus} clusterMode={mode} hiddenRelations={hiddenRelations} hits={hits}
         overlay={overlays.find(o => o.id === overlayId) ?? null}
         center={center} onCenterChange={id => { setCenter(id); if (id) setSelectedId(id); }} depth={depth} onDepthChange={setDepth}
-        side={side} sideLabel="그래프 도구" tools={tools} filters={filters}
+        side={side} sideLabel={g.tab.sideLabel} tools={tools} filters={filters}
         notice={notices.length ? <span className="orbit-graph-notice">{notices.join(' ')}</span> : undefined} />
     </div>
   );

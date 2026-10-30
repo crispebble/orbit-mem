@@ -1,10 +1,12 @@
 // 기억 고치기·새로 쓰기 폼. 저장은 ⌘S 또는 저장 단추, 아직 저장하지 않은 변경은 onDirtyChange로 알린다.
 import {useEffect, useId, useRef, useState, type KeyboardEvent} from 'react';
 import {Archive} from 'lucide-react';
+import {useMessages} from '../i18n/index.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
 import {ActionFeedback, Frame, useAction} from './shared.tsx';
 import {Block, KindPill, StateMark} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
-import {GLOBAL_SCOPE, KINDS, memoryKindLabels, type MemoryKind, type MemoryState, type OrbitMemory} from './vocabulary.ts';
+import {globalScope, KINDS, type MemoryKind, type MemoryState, type OrbitMemory} from './vocabulary.ts';
 
 export interface MemoryFormValue {
   title: string;
@@ -31,12 +33,13 @@ export interface MemoryFormProps extends OrbitProps {
 }
 
 export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCancel, onDirtyChange, onChange, className = '', surface = 'plain'}: MemoryFormProps) {
+  const t = useMessages(memoryText);
   const ids = useId();
   const action = useAction();
   const [title, setTitle] = useState(memory?.title ?? '');
   const [content, setContent] = useState(memory?.content ?? '');
   const [kind, setKind] = useState<MemoryKind>(memory?.kind ?? 'fact');
-  const [scope, setScope] = useState(memory?.scope || GLOBAL_SCOPE);
+  const [scope, setScope] = useState(memory?.scope || globalScope());
   const initialState: MemoryState =
     memory?.state === 'candidate' || memory?.state === 'confirmed' ? memory.state : memory?.state === 'stale' || memory?.state === 'hidden' ? 'confirmed' : 'candidate';
   const [state, setState] = useState<MemoryState>(initialState);
@@ -45,7 +48,7 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
   const [stale, setStale] = useState(memory?.state === 'stale');
   const [replace, setReplace] = useState(!!memory?.supersededBy);
   const [supersededBy, setSupersededBy] = useState(memory?.supersededBy ?? '');
-  const scopeOptions = [...new Set([GLOBAL_SCOPE, ...scopes, scope])];
+  const scopeOptions = [...new Set([globalScope(), ...scopes, scope])];
   const version = memory?.version ?? 1;
 
   function addTags(raw: string) {
@@ -101,7 +104,7 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
   }
 
   return (
-    <Frame label="기억 고치기" surface={surface} className={`orbit-mem-form ${className}`}>
+    <Frame label={t.form.frame} surface={surface} className={`orbit-mem-form ${className}`}>
       <form className="orbit-mem-detail" onSubmit={event => { event.preventDefault(); save(); }} onKeyDown={onKeyDown}>
         <div className="orbit-mem-head">
           <KindPill kind={kind} />
@@ -109,28 +112,28 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
           <span aria-hidden="true">·</span>
           <span>{scope}</span>
           <span aria-hidden="true">·</span>
-          <span>{memory ? `고치는 중 · v${version} → v${version + 1}` : '새 기억 · v1'}</span>
+          <span>{memory ? t.form.editing(version, version + 1) : t.form.newMemory}</span>
         </div>
         <div className="orbit-fld">
-          <label htmlFor={`${ids}-title`}>제목</label>
+          <label htmlFor={`${ids}-title`}>{t.form.title}</label>
           <input id={`${ids}-title`} className="orbit-input" value={title} onChange={event => setTitle(event.target.value)} disabled={action.pending} />
         </div>
         <div className="orbit-fld">
-          <label htmlFor={`${ids}-body`}>본문</label>
+          <label htmlFor={`${ids}-body`}>{t.form.body}</label>
           <textarea id={`${ids}-body`} className="orbit-input" rows={4} value={content} onChange={event => setContent(event.target.value)} disabled={action.pending} />
-          <span className="orbit-meta">짧게 씁니다. 세션에는 제목과 id만 들어가고, 본문은 AI가 필요할 때 읽습니다.</span>
+          <span className="orbit-meta">{t.form.bodyHint}</span>
         </div>
         <div className="orbit-fgrid">
           <div className="orbit-fld">
-            <label htmlFor={`${ids}-kind`}>종류</label>
+            <label htmlFor={`${ids}-kind`}>{t.form.kind}</label>
             <span className="orbit-pick">
               <select id={`${ids}-kind`} className="orbit-input orbit-select" value={kind} onChange={event => setKind(event.target.value as MemoryKind)} disabled={action.pending}>
-                {KINDS.map(value => <option key={value} value={value}>{memoryKindLabels[value]}</option>)}
+                {KINDS.map(value => <option key={value} value={value}>{t.kinds[value]}</option>)}
               </select>
             </span>
           </div>
           <div className="orbit-fld">
-            <label htmlFor={`${ids}-scope`}>범위</label>
+            <label htmlFor={`${ids}-scope`}>{t.form.scope}</label>
             <span className="orbit-pick">
               <select id={`${ids}-scope`} className="orbit-input orbit-select" value={scope} onChange={event => setScope(event.target.value)} disabled={action.pending}>
                 {scopeOptions.map(value => <option key={value} value={value}>{value}</option>)}
@@ -138,28 +141,28 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
             </span>
           </div>
           <div className="orbit-fld">
-            <label htmlFor={`${ids}-state`}>상태</label>
+            <label htmlFor={`${ids}-state`}>{t.form.state}</label>
             <span className="orbit-pick">
               <select id={`${ids}-state`} className="orbit-input orbit-select" value={state} onChange={event => setState(event.target.value as MemoryState)} disabled={action.pending}>
-                <option value="candidate">후보</option>
-                <option value="confirmed">확정</option>
+                <option value="candidate">{t.states.candidate}</option>
+                <option value="confirmed">{t.states.confirmed}</option>
               </select>
             </span>
           </div>
         </div>
         <div className="orbit-fld">
-          <label htmlFor={`${ids}-tag`}>태그</label>
+          <label htmlFor={`${ids}-tag`}>{t.form.tags}</label>
           <div className="orbit-tag-input">
             {tags.map(tag => (
               <span className="orbit-tag" key={tag}>
                 {tag}
-                <button type="button" aria-label={`태그 ${tag} 제거`} onClick={() => setTags(tags.filter(item => item !== tag))}>×</button>
+                <button type="button" aria-label={t.form.removeTag(tag)} onClick={() => setTags(tags.filter(item => item !== tag))}>×</button>
               </span>
             ))}
             <input
               id={`${ids}-tag`}
-              aria-label="태그 추가"
-              placeholder="태그 추가"
+              aria-label={t.form.addTag}
+              placeholder={t.form.addTag}
               value={tagDraft}
               disabled={action.pending}
               onChange={event => setTagDraft(event.target.value)}
@@ -176,10 +179,10 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
             />
           </div>
         </div>
-        <Block icon={<Archive size={14} aria-hidden="true" />} title="정리">
+        <Block icon={<Archive size={14} aria-hidden="true" />} title={t.form.tidy}>
           <div className="orbit-clean-row">
             <input id={`${ids}-stale`} type="checkbox" checked={stale} onChange={event => setStale(event.target.checked)} disabled={action.pending} />
-            <label htmlFor={`${ids}-stale`}>낡음으로 표시<span className="orbit-meta">다시 주입하지 않고 이력으로만 남깁니다</span></label>
+            <label htmlFor={`${ids}-stale`}>{t.form.markStale}<span className="orbit-meta">{t.form.markStaleHint}</span></label>
           </div>
           <div className="orbit-clean-row">
             <input
@@ -192,10 +195,10 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
               }}
               disabled={action.pending}
             />
-            <label htmlFor={`${ids}-replace`}>다른 기억으로 대체<span className="orbit-meta">대체할 기억을 고르면 이 기억은 낡음이 됩니다</span></label>
+            <label htmlFor={`${ids}-replace`}>{t.form.replace}<span className="orbit-meta">{t.form.replaceHint}</span></label>
             <span className="orbit-pick">
-              <select className="orbit-input orbit-select orbit-clean-pick" aria-label="대체할 기억" value={supersededBy} disabled={!replace || action.pending} onChange={event => setSupersededBy(event.target.value)}>
-                <option value="">기억 고르기</option>
+              <select className="orbit-input orbit-select orbit-clean-pick" aria-label={t.form.replaceLabel} value={supersededBy} disabled={!replace || action.pending} onChange={event => setSupersededBy(event.target.value)}>
+                <option value="">{t.form.pickMemory}</option>
                 {candidates.filter(item => item.id !== memory?.id).map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
               </select>
             </span>
@@ -203,10 +206,10 @@ export function MemoryForm({memory, candidates = [], scopes = [], onSave, onCanc
         </Block>
         <ActionFeedback action={action} />
         <div className="orbit-editbar">
-          <span className="orbit-meta">{memory ? `저장하면 v${version + 1}로 이력에 남습니다` : '저장하면 v1로 이력에 남습니다'}</span>
+          <span className="orbit-meta">{t.form.saveNote(memory ? version + 1 : 1)}</span>
           <span className="orbit-block-sp" />
-          {onCancel && <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={onCancel}>취소</button>}
-          <button type="submit" className="orbit-button" data-variant="primary" disabled={!canSave}>저장<kbd className="orbit-kbd">⌘S</kbd></button>
+          {onCancel && <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={onCancel}>{t.form.cancel}</button>}
+          <button type="submit" className="orbit-button" data-variant="primary" disabled={!canSave}>{t.form.save}<kbd className="orbit-kbd">⌘S</kbd></button>
         </div>
       </form>
     </Frame>

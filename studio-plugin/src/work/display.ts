@@ -1,6 +1,8 @@
 // 작업 그래프·세션 보기의 표시 모델(순수 함수). 계약이 준 값을 다시 계산하지 않고 화면 문구·색조로 옮긴다.
 // 화면 문구에는 「Work」를 쓰지 않는다(「작업」「단계」「세션」).
 import type {FlowGraphTone} from '@onidot-labs/studio-plugin/ai';
+import {localeTag, pick} from '../i18n/index.ts';
+import {workText} from '../i18n/messages/work.ts';
 import type {Run, Session, Step, StepBlock, Work, WorkSummary} from './types.ts';
 
 /** Forma `Badge`·`FlowGraph`의 톤 이름 그대로 쓴다 */
@@ -13,7 +15,7 @@ export interface StatusView {
   known: boolean;
 }
 
-const UNKNOWN: StatusView = {label: '알 수 없음', tone: 'neutral', known: false};
+const unknownView = (): StatusView => ({label: pick(workText).unknown, tone: 'neutral', known: false});
 
 /**
  * 실행이 「지금 수행 중」이려면 `lastSeenAt`이 이 시간 안이어야 한다.
@@ -23,54 +25,61 @@ const UNKNOWN: StatusView = {label: '알 수 없음', tone: 'neutral', known: fa
 export const RUN_FRESH_MS = 5 * 60_000;
 
 // ---- 단계 ----
-// 문구는 Studio 2차 설계 「상태 표시 대응」을 따른다.
-const STEP: Record<string, StatusView> = {
-  pending: {label: '대기', tone: 'neutral', known: true},
-  ready: {label: '준비됨', tone: 'accent', known: true},
-  in_progress: {label: '진행 중', tone: 'accent', known: true},
-  blocked: {label: '막힘', tone: 'warning', known: true},
-  done: {label: '끝', tone: 'success', known: true},
-  cancelled: {label: '취소', tone: 'neutral', known: true},
+// 문구는 Studio 2차 설계 「상태 표시 대응」을 따른다. 글은 부를 때 고르고(언어가 바뀔 수 있다) 여기는 색조만 둔다.
+const STEP_TONE: Record<string, Tone> = {
+  pending: 'neutral', ready: 'accent', in_progress: 'accent', blocked: 'warning', done: 'success', cancelled: 'neutral',
 };
+const STEP_LABEL = (key: string): string => (pick(workText).step as Record<string, string>)[key];
+
+function stepView(key: string): StatusView | undefined {
+  return key in STEP_TONE ? {label: STEP_LABEL(key), tone: STEP_TONE[key], known: true} : undefined;
+}
+
 /** 막힌 단계는 사유로 가른다. 사용자가 풀 몫은 `waiting_user`뿐이고, 「실패」는 `run_failed`만 가리킨다. */
-const BLOCKED: Record<string, StatusView> = {
-  waiting_user: {label: '사용자 확인 기다림', tone: 'warning', known: true},
-  run_failed: {label: '실패', tone: 'danger', known: true},
-  run_lost: STEP.blocked, interrupted: STEP.blocked, stale: STEP.blocked, declared: STEP.blocked,
-};
+function blockedView(reason: string): StatusView | undefined {
+  const m = pick(workText);
+  if (reason === 'waiting_user') return {label: m.waitingUser, tone: 'warning', known: true};
+  if (reason === 'run_failed') return {label: m.failed, tone: 'danger', known: true};
+  if (['run_lost', 'interrupted', 'stale', 'declared'].includes(reason)) return stepView('blocked');
+  return undefined;
+}
 
 export function stepStatusView(status: string, block?: StepBlock): StatusView {
-  if (status === 'blocked' && block) return BLOCKED[block.reason] ?? UNKNOWN;
-  return STEP[status] ?? UNKNOWN;
+  if (status === 'blocked' && block) return blockedView(block.reason) ?? unknownView();
+  return stepView(status) ?? unknownView();
 }
 
 /** 모르는 단계 상태는 배치에서 pending처럼 다룬다 */
 export function layoutStatus(status: string): string {
-  return STEP[status] ? status : 'pending';
+  return status in STEP_TONE ? status : 'pending';
 }
 
 // ---- 세션 ----
-const SESSION: Record<string, StatusView> = {
-  running: {label: '도는 중', tone: 'accent', known: true},
-  waiting_user: {label: '사용자 확인 기다림', tone: 'warning', known: true},
-  idle: {label: '쉬는 중', tone: 'neutral', known: true},
-  stale: {label: '관측 오래됨', tone: 'warning', known: true},
-  ended: {label: '끝남', tone: 'neutral', known: true},
-};
-
 export function sessionStateView(state: string): StatusView {
-  return SESSION[state] ?? UNKNOWN;
+  const m = pick(workText);
+  switch (state) {
+    case 'running': return {label: m.session.running, tone: 'accent', known: true};
+    case 'waiting_user': return {label: m.waitingUser, tone: 'warning', known: true};
+    case 'idle': return {label: m.session.idle, tone: 'neutral', known: true};
+    case 'stale': return {label: m.staleObservation, tone: 'warning', known: true};
+    case 'ended': return {label: m.session.ended, tone: 'neutral', known: true};
+    default: return unknownView();
+  }
 }
 
 // ---- 실행 ----
-const RUN: Record<string, StatusView> = {
-  running: {label: '도는 중', tone: 'accent', known: true},
-  finished: {label: '끝남', tone: 'neutral', known: true},
-  failed: {label: '실패', tone: 'danger', known: true},
-  lost: {label: '연결 끊김', tone: 'warning', known: true},
-};
+function runView(state: string): StatusView {
+  const m = pick(workText);
+  switch (state) {
+    case 'running': return {label: m.run.running, tone: 'accent', known: true};
+    case 'finished': return {label: m.run.finished, tone: 'neutral', known: true};
+    case 'failed': return {label: m.failed, tone: 'danger', known: true};
+    case 'lost': return {label: m.run.lost, tone: 'warning', known: true};
+    default: return unknownView();
+  }
+}
 
-const OBSERVATION_OLD: StatusView = {label: '관측 오래됨', tone: 'warning', known: true};
+const observationOld = (): StatusView => ({label: pick(workText).staleObservation, tone: 'warning', known: true});
 
 function ms(iso: string | undefined): number | undefined {
   if (!iso) return undefined;
@@ -91,8 +100,8 @@ export function isObservationOld(run: Run, now: number): boolean {
 }
 
 export function runStateView(run: Run, now: number): StatusView {
-  if (isObservationOld(run, now)) return OBSERVATION_OLD;
-  return RUN[run.state] ?? UNKNOWN;
+  if (isObservationOld(run, now)) return observationOld();
+  return runView(run.state);
 }
 
 /**
@@ -121,38 +130,32 @@ export interface BadgeView {
  */
 export function verificationBadge(v: Step['verification'] | undefined, status: string): BadgeView | undefined {
   if (!v || v.state === 'none') return undefined;
+  const m = pick(workText);
   // 지난 검증(뒤에 커밋이 있음)은 통과였어도 「오래됨」이다
-  if (v.outdated) return {label: '오래됨', tone: 'neutral', outdated: true};
+  if (v.outdated) return {label: m.verification.outdated, tone: 'neutral', outdated: true};
   if (v.state === 'pass') return undefined;
-  if (v.state === 'fail') return {label: status === 'done' ? '끝남 · 검증 실패' : '검증 실패', tone: 'danger', outdated: false};
-  if (v.state === 'needs_user') return {label: '사용자 확인 필요', tone: 'warning', outdated: false};
-  return {label: '알 수 없음', tone: 'neutral', outdated: false};
+  if (v.state === 'fail') return {label: status === 'done' ? m.verification.doneFail : m.verification.fail, tone: 'danger', outdated: false};
+  if (v.state === 'needs_user') return {label: m.verification.needsUser, tone: 'warning', outdated: false};
+  return {label: m.unknown, tone: 'neutral', outdated: false};
 }
 
 // ---- 막힘 사유 ----
-const BLOCK: Record<string, string> = {
-  waiting_user: '사용자 확인 기다림',
-  run_failed: '진행 중 실패',
-  run_lost: '실행 끊김',
-  interrupted: '중단됨',
-  stale: '오래 멈춤',
-  declared: '막힘 보고',
-};
-
 /** 막힘 사유 문구. 모르는 사유는 「알 수 없음」, 자세한 글이 있으면 덧붙인다. */
 export function blockText(block: StepBlock): string {
-  const head = BLOCK[block.reason] ?? '알 수 없음';
+  const m = pick(workText);
+  const head = block.reason === 'waiting_user' ? m.waitingUser : (m.block as Record<string, string>)[block.reason] ?? m.unknown;
   return block.detail ? `${head}: ${block.detail}` : head;
 }
 
 // ---- 작업 ----
 /** 목록 줄의 상태. pendingReview는 「끝남 · 확인 전」 */
 export function workStateView(w: Pick<WorkSummary, 'state'>, pendingReview: boolean): StatusView {
-  if (w.state === 'open') return {label: '진행', tone: 'accent', known: true};
+  const m = pick(workText).workState;
+  if (w.state === 'open') return {label: m.open, tone: 'accent', known: true};
   if (w.state === 'done') {
-    return pendingReview ? {label: '끝남 · 확인 전', tone: 'warning', known: true} : {label: '끝남', tone: 'neutral', known: true};
+    return pendingReview ? {label: m.doneUnreviewed, tone: 'warning', known: true} : {label: m.done, tone: 'neutral', known: true};
   }
-  return UNKNOWN;
+  return unknownView();
 }
 
 /** 진행 끝난 단계 수 / 전체(취소된 단계는 전체에서 뺀다) */
@@ -203,16 +206,16 @@ function isAncestor<T extends Pick<WorkSummary, 'id' | 'parent' | 'updatedAt'>>(
 
 // ---- 시각 ----
 const timeFormat = (timeZone?: string) =>
-  new Intl.DateTimeFormat('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone});
+  new Intl.DateTimeFormat(localeTag(), {month: localeTag() === 'ko-KR' ? 'numeric' : 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone});
 
-/** UTC 시각 문자열을 PC 시간대의 「10월 28일 14:05」로. timeZone은 시험용(없으면 PC 시간대). 읽을 수 없으면 원문. */
+/** UTC 시각 문자열을 PC 시간대의 「10월 28일 14:05」(영어는 「Oct 28, 14:05」)로. timeZone은 시험용(없으면 PC 시간대). 읽을 수 없으면 원문. */
 export function formatTime(iso: string | undefined, timeZone?: string): string {
   const t = ms(iso);
   if (t === undefined) return iso ?? '';
   const part = Object.fromEntries(timeFormat(timeZone).formatToParts(new Date(t)).map(p => [p.type, p.value]));
   // 시각이 자정이면 hour12:false가 「24」를 낼 수 있어 0으로 바꾼다
   const hour = part.hour === '24' ? '00' : part.hour;
-  return `${part.month}월 ${part.day}일 ${hour}:${part.minute}`;
+  return pick(workText).time.dateTime(part.month, part.day, `${hour}:${part.minute}`);
 }
 
 export function sessionTitle(s: Session): string {

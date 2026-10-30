@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/orbitplugin"
 	"github.com/onidot-labs/orbit/internal/pluginbuild"
@@ -94,13 +95,13 @@ func (l *Lab) NewTask(in TaskInput) (Task, error) {
 	t := Task{ID: memory.NewID("t-"), Title: strings.TrimSpace(in.Title), Instruction: strings.TrimSpace(in.Instruction),
 		Criteria: strings.TrimSpace(in.Criteria), CreatedAt: l.now().UnixMilli()}
 	if t.Title == "" || t.Instruction == "" || t.Criteria == "" {
-		return t, errors.New("과제에는 제목·작업 지시·판정 기준이 필요합니다")
+		return t, i18n.Errorf("lab.err.task_fields")
 	}
 	var quotes []string
 	for _, id := range in.Corrections {
 		var data string
 		if err := l.Store.DB().QueryRow(`SELECT data FROM events WHERE id=? AND kind=?`, id, memory.EventCorrection).Scan(&data); err != nil {
-			return t, fmt.Errorf("교정 사건 %d가 없습니다", id)
+			return t, i18n.Errorf("lab.err.no_correction", id)
 		}
 		var d struct{ Quote string }
 		_ = json.Unmarshal([]byte(data), &d)
@@ -130,11 +131,11 @@ func (l *Lab) NewTask(in TaskInput) (Task, error) {
 func (l *Lab) Task(id string) (Task, error) {
 	var t Task
 	if id == "" || strings.ContainsAny(id, `/\.`) {
-		return t, fmt.Errorf("잘못된 과제 id: %q", id)
+		return t, i18n.Errorf("lab.err.bad_task_id", id)
 	}
 	b, err := os.ReadFile(filepath.Join(l.taskDir(id), "task.json"))
 	if err != nil {
-		return t, fmt.Errorf("과제가 없습니다: %s", id)
+		return t, i18n.Errorf("lab.err.no_task", id)
 	}
 	return t, json.Unmarshal(b, &t)
 }
@@ -173,7 +174,7 @@ func copyTree(from, to string) error {
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("심볼릭 링크는 복사하지 않습니다: %s", p)
+			return i18n.Errorf("lab.err.symlink", p)
 		}
 		dst := filepath.Join(to, rel)
 		if d.IsDir() {
@@ -205,14 +206,14 @@ func (l *Lab) change(in RunInput) (change, error) {
 	ch := change{}
 	switch {
 	case in.ChangeDir != "" && in.ProposalID != "":
-		return nil, errors.New("--change와 --proposal 중 하나만 줍니다")
+		return nil, i18n.Errorf("lab.err.change_or_proposal")
 	case in.ChangeDir != "":
 		err := filepath.WalkDir(in.ChangeDir, func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return err
 			}
 			if !d.Type().IsRegular() {
-				return fmt.Errorf("일반 파일만 받습니다: %s", p)
+				return i18n.Errorf("lab.err.regular_only", p)
 			}
 			rel, _ := filepath.Rel(in.ChangeDir, p)
 			for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
@@ -233,25 +234,25 @@ func (l *Lab) change(in RunInput) (change, error) {
 			return nil, err
 		}
 		if p.Kind != memory.ProposalApplyFile || p.Status != memory.StatusLab {
-			return nil, fmt.Errorf("실험실 대기 중인 파일 반영 제안이 아닙니다: %s(%s, %s)", p.ID, p.Kind, p.Status)
+			return nil, i18n.Errorf("lab.err.not_lab_proposal", p.ID, p.Kind, p.Status)
 		}
 		rel, err := l.inSource(p.Payload.Path)
 		if err != nil {
 			return nil, err
 		}
 		if p.Payload.BaseHash != "" && memory.FileHash(p.Payload.Path) != p.Payload.BaseHash {
-			return nil, fmt.Errorf("제안을 만든 뒤 원본 파일이 바뀌었습니다(%s). 지금 원본으로 다시 제안하게 두거나 닫아 주세요(oni lab drop %s)", p.Payload.Path, p.ID)
+			return nil, i18n.Errorf("lab.err.source_changed", p.Payload.Path, p.ID)
 		}
 		ch[rel] = []byte(p.Payload.Content)
 	default:
-		return nil, errors.New("고칠 내용(--change 또는 --proposal)이 필요합니다")
+		return nil, i18n.Errorf("lab.err.need_change")
 	}
 	if len(ch) == 0 {
-		return nil, errors.New("바꿀 파일이 없습니다")
+		return nil, i18n.Errorf("lab.err.no_files")
 	}
 	for rel := range ch {
 		if rel == "" || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
-			return nil, fmt.Errorf("원본 밖 경로입니다: %s", rel)
+			return nil, i18n.Errorf("lab.err.outside_source_path", rel)
 		}
 	}
 	return ch, nil
@@ -269,7 +270,7 @@ func (l *Lab) inSource(path string) (string, error) {
 	}
 	rel, err := filepath.Rel(src, real)
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("플러그인 원본(%s) 밖 파일은 실험하지 않습니다: %s", l.Source, path)
+		return "", i18n.Errorf("lab.err.outside_plugin_source", l.Source, path)
 	}
 	return filepath.ToSlash(rel), nil
 }
@@ -281,7 +282,7 @@ func (l *Lab) build(source, out string) (string, string, error) {
 	}
 	plugins, err := os.ReadDir(filepath.Join(out, "plugins"))
 	if err != nil || len(plugins) != 1 {
-		return "", "", fmt.Errorf("빌드한 플러그인을 찾지 못했습니다: %s", out)
+		return "", "", i18n.Errorf("lab.err.no_built_plugin", out)
 	}
 	dir := filepath.Join(out, "plugins", plugins[0].Name())
 	h := sha256.New()
@@ -351,7 +352,7 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		sl.Plugins[cand] = slotName()
 		p, h, err := l.build(src, filepath.Join(dir, sl.Plugins[cand]))
 		if err != nil {
-			return memory.LabExperiment{}, fmt.Errorf("후보 %s를 빌드하지 못했습니다: %w", cand, err)
+			return memory.LabExperiment{}, i18n.Errorf("lab.err.build_candidate", cand, err)
 		}
 		plugins[cand], x.Hashes[cand] = p, h
 	}
@@ -380,14 +381,14 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		outs := map[string]output{}
 		for _, cand := range order {
 			if ctx.Err() != nil {
-				return fail("실험을 중단했습니다", ctx.Err())
+				return fail(i18n.T("lab.note.aborted"), ctx.Err())
 			}
 			if l.Cfg.LabExperimentUSD-x.CostUSD < 0.01 {
-				return fail(fmt.Sprintf("실험 비용 상한 $%.2f에 닿아 멈췄습니다($%.4f)", l.Cfg.LabExperimentUSD, x.CostUSD), errors.New("실험 비용 상한에 닿았습니다"))
+				return fail(i18n.T("lab.note.cost_cap", l.Cfg.LabExperimentUSD, x.CostUSD), i18n.Errorf("lab.err.cost_cap"))
 			}
 			o, err := l.runOne(ctx, &x, task, cand, round, plugins[cand], home, filepath.Join(dir, "runs", sl.Runs[fmt.Sprint(round)][cand]))
 			if err != nil {
-				return fail("실행을 준비하지 못했습니다: "+err.Error(), err)
+				return fail(i18n.T("lab.note.run_prepare", err.Error()), err)
 			}
 			outs[cand] = o
 		}
@@ -395,10 +396,10 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 			continue // 두 후보가 모두 끝난 회차만 고른다
 		}
 		if ctx.Err() != nil {
-			return fail("실험을 중단했습니다", ctx.Err())
+			return fail(i18n.T("lab.note.aborted"), ctx.Err())
 		}
 		if l.Cfg.LabExperimentUSD-x.CostUSD < 0.01 {
-			return fail(fmt.Sprintf("실험 비용 상한 $%.2f에 닿아 멈췄습니다($%.4f)", l.Cfg.LabExperimentUSD, x.CostUSD), errors.New("실험 비용 상한에 닿았습니다"))
+			return fail(i18n.T("lab.note.cost_cap", l.Cfg.LabExperimentUSD, x.CostUSD), i18n.Errorf("lab.err.cost_cap"))
 		}
 		changedA := rng.IntN(2) == 0
 		if l.Shuffle != nil {
@@ -406,18 +407,18 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		}
 		pick, err := l.judge(ctx, &x, task, round, outs, changedA, dir)
 		if err != nil {
-			return fail("고르기를 준비하지 못했습니다: "+err.Error(), err)
+			return fail(i18n.T("lab.note.judge_prepare", err.Error()), err)
 		}
 		if pick.Pick != "" {
 			x.Picks = append(x.Picks, pick)
 		}
 	}
 	if ctx.Err() != nil {
-		return fail("실험을 중단했습니다", ctx.Err())
+		return fail(i18n.T("lab.note.aborted"), ctx.Err())
 	}
 	if len(x.Picks)*2 <= x.Runs { // 고른 회차가 절반 이하면 판정하지 않는다
-		return fail(fmt.Sprintf("고른 회차가 %d번 중 %d번뿐이라 판정하지 않았습니다(실패한 실행이 많음)", x.Runs, len(x.Picks)),
-			errors.New("고른 회차가 모자라 판정하지 못했습니다"))
+		return fail(i18n.T("lab.note.few_picks", x.Runs, len(x.Picks)),
+			i18n.Errorf("lab.err.few_picks"))
 	}
 	x.Verdict = verdict(x.Picks)
 	x.Status, x.FinishedAt = memory.LabDone, l.now().UnixMilli()
@@ -440,7 +441,7 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		x.ProposalIDs = []string{in.ProposalID}
 	case x.Verdict == memory.VerdictHelped:
 		for _, rel := range x.Files {
-			p, perr := l.Store.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: "실험실 통과: " + rel,
+			p, perr := l.Store.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: i18n.TIn(i18n.KO, "lab.proposal_title", rel),
 				Body: summary, Payload: memory.Payload{Path: filepath.Join(l.Source, filepath.FromSlash(rel)), Content: string(ch[rel])}})
 			if perr != nil {
 				err = errors.Join(err, fmt.Errorf("%s: %w", rel, perr))
@@ -472,15 +473,26 @@ func verdict(picks []memory.LabPick) string {
 	return memory.VerdictNoEffect
 }
 
-var verdictNames = map[string]string{memory.VerdictHelped: "도움됨", memory.VerdictHarmful: "해로움", memory.VerdictNoEffect: "효과 없음"}
+func verdictName(l i18n.Lang, v string) string {
+	switch v {
+	case memory.VerdictHelped:
+		return i18n.TIn(l, "lab.verdict_helped")
+	case memory.VerdictHarmful:
+		return i18n.TIn(l, "lab.verdict_harmful")
+	case memory.VerdictNoEffect:
+		return i18n.TIn(l, "lab.verdict_no_effect")
+	}
+	return ""
+}
 
 func (l *Lab) summary(x memory.LabExperiment, task Task) string {
 	won := map[string]int{}
 	for _, p := range x.Picks {
 		won[p.Winner]++
 	}
-	return fmt.Sprintf("실험실 %s: %s(고른 회차 %d번 중 고침 %d · 지금 %d · 같음 %d), 비용 $%.4f, 과제 「%s」. 자세히: oni lab show %s",
-		x.ID, verdictNames[x.Verdict], len(x.Picks), won[Changed], won[Current], won["same"], x.CostUSD, task.Title, x.ID)
+	// 원장 근거·제안 본문으로 남는 기록이라 회고가 쓰는 글처럼 한국어로 남긴다(ONID-61 사용자 답).
+	return i18n.TIn(i18n.KO, "lab.summary",
+		x.ID, verdictName(i18n.KO, x.Verdict), len(x.Picks), won[Changed], won[Current], won["same"], x.CostUSD, task.Title, x.ID)
 }
 
 func (l *Lab) diffOf(ch change) string {
@@ -492,7 +504,7 @@ func (l *Lab) diffOf(ch change) string {
 	sort.Strings(rels)
 	for _, rel := range rels {
 		old, _ := os.ReadFile(filepath.Join(l.Source, filepath.FromSlash(rel)))
-		fmt.Fprintf(&b, "파일: %s\n%s", rel, memory.LineDiff(string(old), string(ch[rel]), 3))
+		b.WriteString(i18n.TIn(i18n.KO, "lab.diff_file", rel) + "\n" + memory.LineDiff(string(old), string(ch[rel]), 3))
 	}
 	return b.String()
 }
@@ -670,32 +682,32 @@ func (l *Lab) Show(id string) (string, error) {
 	}
 	task, _ := l.Task(x.TaskID)
 	var b strings.Builder
-	state := verdictNames[x.Verdict]
+	state := verdictName(i18n.Current(), x.Verdict)
 	if x.Status != memory.LabDone {
 		state = x.Status + " " + x.Note
 	}
-	fmt.Fprintf(&b, "실험 %s · %s · 과제 %s 「%s」 · 비용 $%.4f\n", x.ID, state, x.TaskID, task.Title, x.CostUSD)
+	b.WriteString(i18n.T("lab.show_head", x.ID, state, x.TaskID, task.Title, x.CostUSD) + "\n")
 	if x.LedgerID != "" {
-		fmt.Fprintf(&b, "원장 %s", x.LedgerID)
+		b.WriteString(i18n.T("lab.show_ledger", x.LedgerID))
 		if len(x.ProposalIDs) > 0 {
-			fmt.Fprintf(&b, " · 제안 %s", strings.Join(x.ProposalIDs, ", "))
+			b.WriteString(" " + i18n.T("lab.show_proposals", strings.Join(x.ProposalIDs, ", ")))
 		}
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(&b, "\n## 작업 지시\n\n%s\n\n## 판정 기준\n\n%s\n\n## 바꾼 파일\n\n%s\n", task.Instruction, task.Criteria, strings.Join(x.Files, ", "))
+	b.WriteString("\n" + i18n.T("lab.show_body", task.Instruction, task.Criteria, strings.Join(x.Files, ", ")) + "\n")
 	dir := filepath.Join(l.dir(), "experiments", x.ID)
 	picks := map[int]memory.LabPick{}
 	for _, p := range x.Picks {
 		picks[p.Round] = p
 	}
-	names := map[string]string{Current: "지금", Changed: "고침", "same": "같음"}
+	names := map[string]string{Current: i18n.T("lab.name_current"), Changed: i18n.T("lab.name_changed"), "same": i18n.T("lab.name_same")}
 	sl, _ := loadSlots(dir)
 	for round := 1; round <= x.Runs; round++ {
-		fmt.Fprintf(&b, "\n## %d회차", round)
+		b.WriteString("\n" + i18n.T("lab.show_round", round))
 		if p, ok := picks[round]; ok {
-			fmt.Fprintf(&b, " — 고름: %s(%s가 A) · %s", names[p.Winner], names[p.A], p.Reason)
+			b.WriteString(" " + i18n.T("lab.show_pick", names[p.Winner], names[p.A], p.Reason))
 		} else {
-			b.WriteString(" — 고르지 않음(실패한 실행)")
+			b.WriteString(" " + i18n.T("lab.show_no_pick"))
 		}
 		b.WriteString("\n")
 		for _, cand := range []string{Current, Changed} {

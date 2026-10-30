@@ -1,9 +1,10 @@
 package memory
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Outcomes of checking a memory whose source file changed (설계 · Orbit 3차
@@ -37,7 +38,7 @@ func (s *Store) SetSourceHash(sourceID, hash string) error {
 		return err
 	}
 	if n, _ := r.RowsAffected(); n == 0 {
-		return fmt.Errorf("출처가 없습니다: %s", sourceID)
+		return i18n.Errorf("memory.err.no_source", sourceID)
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/transcript"
 )
@@ -359,7 +360,7 @@ func sessionResults(s *memory.Store, period string) []SessionResult {
 func SessionStatus(s *memory.Store, key string) (RetroStatus, error) {
 	st, err := scanStatus(s.DB().QueryRow(`SELECT `+statusCols+` FROM retros WHERE kind=? AND session=? ORDER BY started_at DESC LIMIT 1`, KindSession, key))
 	if errors.Is(err, sql.ErrNoRows) {
-		return st, fmt.Errorf("세션 끝 회고가 없습니다: %s", key)
+		return st, i18n.Errorf("retro.err.no_session_retro", key)
 	}
 	return st, err
 }

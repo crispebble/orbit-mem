@@ -3,6 +3,7 @@ import type {InboxDetailProps, InboxItem, TabProps} from '@onidot-labs/studio-pl
 import './index.css';
 import './parts/parts.css';
 import './work-ui/work.css';
+import {followStudio} from './i18n/index.ts';
 import {createInboxParts} from './inbox-parts.ts';
 import {MemoryGraphTab} from './memory-graph/graph-tab.tsx';
 import {openMemoryGraph} from './memory-graph/open.ts';
@@ -23,6 +24,7 @@ import {WorksView} from './work-ui/works-view.tsx';
 let store: OrbitStore | undefined;
 let workStore: WorkStore | undefined;
 let offWaiting: (() => void) | undefined;
+let offLocale: (() => void) | undefined;
 
 function ProposalTab({ctx, tab}: TabProps) {
   const id = typeof tab.params.id === 'string' ? tab.params.id : tab.id;
@@ -36,6 +38,8 @@ function OrbitInboxDetail({ctx, item}: InboxDetailProps) {
 }
 
 function stop() {
+  offLocale?.();
+  offLocale = undefined;
   offWaiting?.();
   offWaiting = undefined;
   workStore?.dispose();
@@ -49,6 +53,8 @@ function stop() {
 export default definePlugin({
   async activate(ctx) {
     stop();
+    // 보이는 글은 Studio 언어를 따른다(옛 Studio에는 ctx.locale이 없어 영어).
+    offLocale = followStudio(ctx.locale);
     // 제안과 작업의 확인 기다림이 받은 일 전체를 서로 지우지 않게 한 갈래 합치기를 함께 쓴다
     const inbox = createInboxParts<InboxItem>(ctx.inbox);
     store = createStore(ctx, undefined, inbox);

@@ -1,0 +1,16 @@
+{
+  "config.err.language": "language는 en 또는 ko입니다: %q",
+  "config.err.retro_host": "retroHost는 claude 또는 codex입니다: %q",
+  "config.err.retro_hour": "retroHour는 0-23입니다: %d",
+  "config.err.inject": "inject는 full|rules|off입니다: %q",
+  "config.err.work": "work는 on|off입니다: %q",
+  "config.err.work_stale_after": "workStaleAfter는 20m 같은 양의 시간입니다: %q",
+  "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
+  "config.err.recall_chars": "recallChars는 100-%d입니다: %d",
+  "config.err.ledger_session": "ledgerWindowDays(1-90)·sessionRetroDailyMax(0 이상)을 확인해 주세요",
+  "config.err.graph_tidy": "graphTidyMemories·graphTidyUntagged(0-200)·graphTidyProposals(0-20)를 확인해 주세요",
+  "config.err.legacy": "legacyMemories(1-100)·legacyBatches(0-20)를 확인해 주세요",
+  "config.err.lab_budget": "labRuns(1-10)·labRunUSD(0 초과 20 이하)·labExperimentUSD(labRunUSD 이상 200 이하)를 확인해 주세요",
+  "config.err.lab_models": "labModel과 labJudgeModel은 비울 수 없고 서로 달라야 합니다(같은 모델이 자기 결과를 고르지 않게)",
+  "config.err.read": "설정 파일을 읽을 수 없습니다(%s): %w"
+}

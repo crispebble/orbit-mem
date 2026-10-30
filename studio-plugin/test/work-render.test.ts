@@ -47,22 +47,22 @@ describe('작업 탭', () => {
     const t = text(h.renderWorkTab(task.id));
     assert.match(t, new RegExp(task.title));
     for (const s of task.steps) assert.ok(t.includes(s.title), s.title);
-    assert.match(t, /묶음 1/);
-    assert.match(t, /끝 2\/3/);
-    assert.match(t, /사용자 확인 기다림/);
-    assert.match(t, /실패/);
-    assert.match(t, /흐름/);
-    assert.match(t, /담당별/);
+    assert.match(t, /Batch 1/);
+    assert.match(t, /Done 2\/3/);
+    assert.match(t, /Waiting for user confirmation/);
+    assert.match(t, /Failed/);
+    assert.match(t, /Flow/);
+    assert.match(t, /By owner/);
   });
 
   it('고른 단계의 상세가 함께 그려진다(선행·실행·증거)', () => {
     h.useState(state());
     const t = text(h.renderWorkTab(task.id, {step: 'st-2b3c4d5e6f70'}));
-    assert.match(t, /선행/);
-    assert.match(t, /후행/);
-    assert.match(t, /실행 2건/);
-    assert.match(t, /증거 3건/);
-    assert.match(t, /커밋 열기/);
+    assert.match(t, /Before/);
+    assert.match(t, /After/);
+    assert.match(t, /Runs \(2\)/);
+    assert.match(t, /Evidence \(3\)/);
+    assert.match(t, /Open commit/);
   });
 
   it('담당별 보기', () => {
@@ -75,15 +75,15 @@ describe('작업 탭', () => {
     const odd: Work = {...task, steps: task.steps.map((s, i) => i === 0 ? {...s, status: 'brand_new', verification: {state: 'weird', outdated: false}, after: [{stepId: task.steps[1].id, source: 'guess'}]} : s)};
     h.useState(state({}, [odd]));
     const t = text(h.renderWorkTab(odd.id, {step: odd.steps[0].id}));
-    assert.match(t, /알 수 없음/);
+    assert.match(t, /Unknown/);
   });
 
   it('판이 맞지 않으면 작업 화면만 멈추고 안내를 보인다', () => {
     h.useState(state({status: 'paused', pause: {kind: 'oni-newer', message: 'Orbit이 이 Orbit 앱보다 새 판입니다. Orbit 앱을 올려 주세요.'}}));
-    assert.match(text(h.renderWorkTab(task.id)), /Orbit 앱을 올려 주세요/);
-    assert.match(text(h.renderWorks()), /Orbit 앱을 올려 주세요/);
-    assert.match(text(h.renderSessions()), /Orbit 앱을 올려 주세요/);
-    assert.match(text(h.renderWorks()), /다시 확인/);
+    assert.match(text(h.renderWorkTab(task.id)), /Please update the Orbit app/);
+    assert.match(text(h.renderWorks()), /Please update the Orbit app/);
+    assert.match(text(h.renderSessions()), /Please update the Orbit app/);
+    assert.match(text(h.renderWorks()), /Check again/);
   });
 });
 
@@ -106,9 +106,9 @@ describe('빈·로딩·오류·멈춤 화면', () => {
     h.useState(state({status: 'error', error: '잠김', works: [], sessions: []}));
     const err = stateView(h.renderWorks());
     assert.match(err.head, /role="alert"/);
-    assert.match(text(h.renderWorks()), /작업 기록을 읽지 못했습니다/);
+    assert.match(text(h.renderWorks()), /Could not read work history/);
     h.useState(state({works: [], sessions: []}));
-    assert.match(text(h.renderWorks()), /진행 중인 작업이 없습니다/);
+    assert.match(text(h.renderWorks()), /No active work/);
     assert.equal(stateView(h.renderWorks()).level, 'h3');
   });
 
@@ -116,7 +116,7 @@ describe('빈·로딩·오류·멈춤 화면', () => {
     h.useState(state({status: 'paused', pause: {kind: 'oni-newer', message: '올려 주세요'}}));
     const html = h.renderWorks();
     stateView(html);
-    assert.match(html, /forma-state-view-actions[\s\S]*다시 확인/);
+    assert.match(html, /forma-state-view-actions[\s\S]*Check again/);
   });
 
   it('작업 탭의 없음·로딩은 탭 본문 크기의 StateView다', () => {
@@ -132,11 +132,11 @@ describe('받은 일의 사용자 확인 기다림', () => {
     h.useState(state());
     const html = h.renderWaiting(task.id, 'st-4d5e6f708192');
     const t = text(html);
-    assert.match(t, /세션 id 복사/);
-    assert.match(t, /터미널에서 이어 가기/);
+    assert.match(t, /Copy session id/);
+    assert.match(t, /Resume in terminal/);
     assert.ok(t.includes(task.origin!.sessionId));
     assert.ok(t.includes(task.cwd!));
-    assert.doesNotMatch(t, /승인|거절/);
+    assert.doesNotMatch(t, /approve|reject|승인|거절/i);
   });
 });
 
@@ -145,8 +145,8 @@ describe('사이드바 보기', () => {
     const done: Work = {...task, id: 'w-done', title: '끝난 작업', state: 'done'};
     h.useState(state({pendingReview: ['w-done']}, [task, done]));
     const t = text(h.renderWorks());
-    assert.match(t, /끝남 · 확인 전/);
-    assert.match(t, /목록에서 정리/);
+    assert.match(t, /Done · not reviewed/);
+    assert.match(t, /Clear from list/);
     assert.ok(t.includes(task.title));
   });
 
@@ -156,7 +156,7 @@ describe('사이드바 보기', () => {
     for (const s of sessions.filter(x => x.state !== 'ended' && !x.parentSessionId)) {
       if (s.branch) assert.ok(t.includes(s.branch), s.branch);
     }
-    assert.match(t, /도는 중|사용자 확인 기다림|쉬는 중|관측 오래됨/);
+    assert.match(t, /Running|Waiting for user confirmation|Idle|Stale observation/);
   });
 });
 
@@ -165,17 +165,19 @@ describe('세션 탭', () => {
     const page = parseSession(example('work_sessions.session.page1').result);
     const loaded = {session: page.session, runs: page.runs ?? [], evidence: page.evidence ?? [], pages: [{events: page.events, nextCursor: page.nextCursor}]};
     const t = text(h.renderSession(loaded, state(), NOW));
-    assert.match(t, /호출 계보/);
-    assert.match(t, /메인 세션 · Claude Code/);
-    assert.match(t, /사건 기록/);
-    assert.match(t, /세션 시작/);
-    assert.match(t, /세션 종료 · 입력으로 종료/);
-    if (page.nextCursor) assert.match(t, /사건 더 보기/);
+    assert.match(t, /Call lineage/);
+    assert.match(t, /Main session · Claude Code/);
+    assert.match(t, /Event log/);
+    assert.match(t, /Session started/);
+    assert.match(t, /Session ended · Exited by input/);
+    if (page.nextCursor) assert.match(t, /Show more events/);
   });
 });
 
 describe('화면 문구', () => {
-  it('어느 화면에도 「Work」 글자가 없다(데이터 값은 바꿔 두고 화면 문구만 본다)', () => {
+  it('한국어 화면에는 「Work」 글자가 없다(데이터 값은 바꿔 두고 화면 문구만 본다)', () => {
+    h.setLocale('ko');
+    try {
     // 제목·브랜치·파일 이름 같은 데이터 값에는 work가 들어 있으므로 글 값만 바꾼다(칸 이름은 그대로)
     const scrub = <T,>(v: T): T => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'string' ? x.replace(/work/gi, 'job') : x)));
     const w = scrub(task);
@@ -187,5 +189,20 @@ describe('화면 문구', () => {
       h.renderWorks(), h.renderSessions(), h.renderSession(loaded, scrub(state({}, [w])), NOW),
     ].map(text).join(' ');
     assert.doesNotMatch(all, /work/i);
+    } finally {
+      h.setLocale('en');
+    }
+  });
+
+  it('한국어로 바꾸면 화면 글이 한국어로 나온다', () => {
+    h.setLocale('ko');
+    try {
+      h.useState(state());
+      const t = text(h.renderWorkTab(task.id, {step: 'st-2b3c4d5e6f70'}));
+      for (const word of ['묶음 1', '사용자 확인 기다림', '흐름', '담당별', '선행', '실행 2건', '증거 3건', '커밋 열기']) assert.ok(t.includes(word), word);
+      assert.match(text(h.renderWorks()), /진행 \d+/);
+    } finally {
+      h.setLocale('en');
+    }
   });
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {describe, it} from 'node:test';
 import {memoryGraph} from '../src/memory-graph/client.ts';
-import {GRAPH_TAB, onSelectRequest, openMemoryGraph, takePendingSelect} from '../src/memory-graph/open.ts';
+import {graphTab, onSelectRequest, openMemoryGraph, takePendingSelect} from '../src/memory-graph/open.ts';
 import {createGraphStore} from '../src/memory-graph/store.ts';
 import {WorkPaused} from '../src/work/contract.ts';
 import type {McpResultLike} from '../src/work/types.ts';
@@ -53,7 +53,7 @@ describe('그래프 상태', () => {
     const s = createGraphStore(f.ctx);
     await s.load();
     assert.equal(s.getState().status, 'error');
-    assert.match(s.getState().error ?? '', /oni에 연결하지 못했습니다/);
+    assert.match(s.getState().error ?? '', /Could not connect to oni/);
   });
 
   it('Orbit이 새 판이면 멈춤과 문구', async () => {
@@ -62,7 +62,7 @@ describe('그래프 상태', () => {
     const s = createGraphStore(f.ctx);
     await s.load();
     assert.equal(s.getState().status, 'paused');
-    assert.match(s.getState().pause?.message ?? '', /Orbit 앱을 올려 주세요/);
+    assert.match(s.getState().pause?.message ?? '', /Please update the Orbit app/);
   });
 
   it('다시 읽기가 실패해도 앞 그래프를 두고 알린다', async () => {
@@ -117,7 +117,7 @@ describe('기억 그래프 탭 열기', () => {
     openMemoryGraph(ctx);
     assert.equal(takePendingSelect(), undefined);
     openMemoryGraph(ctx, 'm-1');
-    assert.deepEqual(opened, [{...GRAPH_TAB, params: {}}, {...GRAPH_TAB, params: {select: 'm-1'}}]);
+    assert.deepEqual(opened, [{...graphTab(), params: {}}, {...graphTab(), params: {select: 'm-1'}}]);
     assert.equal(takePendingSelect(), 'm-1');
     assert.equal(takePendingSelect(), undefined);
   });

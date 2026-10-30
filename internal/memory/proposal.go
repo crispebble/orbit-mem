@@ -12,6 +12,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Proposal kinds (설계 「제안과 승인」).
@@ -39,16 +41,20 @@ const (
 
 var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag}
 
+// SettledNoteKeys are the catalog keys of the reasons a proposal is settled
+// with, stored in Korean (see Decide).
+var SettledNoteKeys = []string{"memory.settled.already_linked", "memory.settled.already_retagged", "memory.settled.merge_gone"}
+
 var (
-	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
-	ErrFileChanged       = errors.New("제안을 만든 뒤 파일이 바뀌었습니다. 회고가 다시 제안하게 두거나 직접 고쳐 주세요")
-	ErrDecided           = errors.New("이미 결정한 제안입니다")
+	ErrDuplicateProposal = i18n.Err("memory.err.duplicate_proposal")
+	ErrFileChanged       = i18n.Err("memory.err.file_changed")
+	ErrDecided           = i18n.Err("memory.err.decided")
 	// errAlreadyLinked: 연결 제안을 승인할 때 그 쌍이 이미 다른 길로 이어져 있다. 제안은 정리(settled)로 닫는다.
-	errAlreadyLinked = errors.New("이미 이어진 기억입니다")
+	errAlreadyLinked = i18n.Err("memory.err.already_linked_plain")
 	// errAlreadyRetagged: 태그 제안을 승인할 때 바꿀 기억이 남지 않았다(다른 길로 이미 바뀜). 정리(settled)로 닫는다.
-	errAlreadyRetagged = errors.New("이미 태그가 바뀐 기억입니다")
+	errAlreadyRetagged = i18n.Err("memory.err.already_retagged")
 	// errMergeGone means a memory to merge was already settled another way (stale, merged): the merge would lose it.
-	errMergeGone = errors.New("합칠 기억이 이미 정리됐습니다")
+	errMergeGone = i18n.Err("memory.err.merge_gone")
 )
 
 // Payload carries what a proposal needs beyond memory ids.
@@ -161,7 +167,7 @@ func (s *Store) SameProposal(in ProposalInput) (Proposal, bool) {
 func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	if !contains(ProposalKinds, in.Kind) || in.Title == "" {
-		return Proposal{}, fmt.Errorf("%w: 제안 종류(%s)와 제목이 필요합니다", ErrInvalid, strings.Join(ProposalKinds, "|"))
+		return Proposal{}, i18n.Errorf("memory.err.proposal_kind_title", ErrInvalid, strings.Join(ProposalKinds, "|"))
 	}
 	for _, id := range in.MemoryIDs {
 		if _, err := getTx(s.db, id); err != nil {
@@ -171,14 +177,14 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 	switch in.Kind {
 	case ProposalConfirm, ProposalStale, ProposalReclassify:
 		if len(in.MemoryIDs) == 0 {
-			return Proposal{}, fmt.Errorf("%w: 대상 기억 id가 필요합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.need_target_id", ErrInvalid)
 		}
 		if in.Kind == ProposalReclassify && !validKind(in.Payload.Kind) {
-			return Proposal{}, fmt.Errorf("%w: 새 종류가 필요합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.need_new_kind", ErrInvalid)
 		}
 	case ProposalMerge:
 		if len(in.MemoryIDs) < 2 || strings.TrimSpace(in.Payload.MergedTitle) == "" {
-			return Proposal{}, fmt.Errorf("%w: 합칠 기억 두 개 이상과 합친 제목이 필요합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.merge_needs", ErrInvalid)
 		}
 		if in.Payload.Kind == "" {
 			first, _ := getTx(s.db, in.MemoryIDs[0])
@@ -186,38 +192,38 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 		}
 	case ProposalApplyFile:
 		if !filepath.IsAbs(in.Payload.Path) {
-			return Proposal{}, fmt.Errorf("%w: 반영할 파일은 절대경로여야 합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.file_abs_path", ErrInvalid)
 		}
 		old, _ := os.ReadFile(in.Payload.Path)
 		in.Payload.BaseHash = FileHash(in.Payload.Path)
 		diff := LineDiff(string(old), in.Payload.Content, 3)
 		if strings.TrimSpace(diff) == "" {
-			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.no_change", ErrInvalid)
 		}
 		in.Body = strings.TrimSpace(in.Body + "\n\n파일: " + in.Payload.Path + "\n```diff\n" + diff + "```")
 	case ProposalEdit:
 		if len(in.MemoryIDs) != 1 {
-			return Proposal{}, fmt.Errorf("%w: 고칠 기억 하나가 필요합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.need_one_memory", ErrInvalid)
 		}
 		if in.Payload.Scope != "" && !validScope(in.Payload.Scope) {
-			return Proposal{}, fmt.Errorf("%w: 범위는 global 또는 project:<키>입니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.scope_is", ErrInvalid)
 		}
 		old, _ := getTx(s.db, in.MemoryIDs[0])
 		next := editedMemory(old, in.Payload, nil, nil)
 		diff := LineDiff(memoryText(old), memoryText(next), 2)
 		if strings.TrimSpace(diff) == "" {
-			return Proposal{}, fmt.Errorf("%w: 바뀌는 내용이 없습니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.no_change", ErrInvalid)
 		}
 		in.Body = strings.TrimSpace(in.Body + "\n\n```diff\n" + diff + "```")
 	case ProposalLink:
 		if len(in.MemoryIDs) != 2 || in.MemoryIDs[0] == in.MemoryIDs[1] {
-			return Proposal{}, fmt.Errorf("%w: 이을 서로 다른 기억 둘이 필요합니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.need_two_memories", ErrInvalid)
 		}
 		if linked, err := s.linked(in.MemoryIDs[0], in.MemoryIDs[1]); err != nil || linked {
 			if err != nil {
 				return Proposal{}, err
 			}
-			return Proposal{}, fmt.Errorf("%w: 이미 이어진 기억입니다", ErrInvalid)
+			return Proposal{}, i18n.Errorf("memory.err.already_linked", ErrInvalid)
 		}
 		in.Payload.Note = ClipRunes(MaskSecrets(strings.TrimSpace(in.Payload.Note)), 300)
 	case ProposalRetag:
@@ -228,7 +234,7 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 			if err != nil {
 				return Proposal{}, err
 			}
-			return Proposal{}, fmt.Errorf("%w (대기 중인 %s가 같은 태그를 묶습니다)", ErrDuplicateProposal, busy)
+			return Proposal{}, i18n.Errorf("memory.err.duplicate_pending", ErrDuplicateProposal, busy)
 		}
 	case ProposalRevert:
 		e, err := s.LedgerEntry(in.Payload.LedgerID)
@@ -236,10 +242,10 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 			return Proposal{}, err
 		}
 		if e.RevertedBy != "" {
-			return Proposal{}, fmt.Errorf("%w: 이미 되돌린 변경입니다(%s)", ErrInvalid, e.RevertedBy)
+			return Proposal{}, i18n.Errorf("memory.err.already_reverted", ErrInvalid, e.RevertedBy)
 		}
 		if b := e.Before; len(b.Memories) == 0 && len(b.Created) == 0 && b.File == nil && b.Link == "" {
-			return Proposal{}, fmt.Errorf("%w: 이 변경은 되돌릴 것이 없습니다(%s)", ErrInvalid, e.ID)
+			return Proposal{}, i18n.Errorf("memory.err.nothing_to_revert", ErrInvalid, e.ID)
 		}
 		if e.TargetKind == TargetMemory {
 			in.MemoryIDs = e.Targets
@@ -291,7 +297,7 @@ func scanProposal(row interface{ Scan(...any) error }) (Proposal, error) {
 func (s *Store) GetProposal(id string) (Proposal, error) {
 	p, err := scanProposal(s.db.QueryRow(`SELECT `+proposalCols+` FROM proposals WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return p, fmt.Errorf("제안이 없습니다: %s", id)
+		return p, i18n.Errorf("memory.err.no_proposal", id)
 	}
 	return p, err
 }
@@ -381,11 +387,12 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 			return res, err
 		}
 		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) || errors.Is(err, errMergeGone) {
-			note := "이미 이어짐"
+			// 정리 사유는 제안에 남는 기록이라 한국어로 남긴다. 화면은 SettledNoteKeys로 그 언어로 바꿔 보인다.
+			note := i18n.TIn(i18n.KO, "memory.settled.already_linked")
 			if errors.Is(err, errAlreadyRetagged) {
-				note = "이미 태그가 바뀜"
+				note = i18n.TIn(i18n.KO, "memory.settled.already_retagged")
 			} else if errors.Is(err, errMergeGone) {
-				note = "합칠 기억이 이미 정리됨"
+				note = i18n.TIn(i18n.KO, "memory.settled.merge_gone")
 			}
 			if err := s.finish(&p, StatusSettled, note); err != nil {
 				return res, err
@@ -402,15 +409,15 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 			return res, err
 		}
 		if res.LedgerID, err = s.recordLedger(p, before, res); err != nil {
-			return res, fmt.Errorf("변경은 반영했지만 원장에 남기지 못했습니다: %w", err)
+			return res, i18n.Errorf("memory.err.ledger_write", err)
 		}
 	default:
-		return res, fmt.Errorf("%w: decision은 approve 또는 reject", ErrInvalid)
+		return res, i18n.Errorf("memory.err.decision_is", ErrInvalid)
 	}
 	res.Proposal = p
 	if decision != "approve" {
 		if err := s.attachDecision(p, decision, ClipRunes(MaskSecrets(in.Note), 300)); err != nil {
-			return res, fmt.Errorf("결정은 반영했지만 판정 기록에 붙이지 못했습니다: %w", err)
+			return res, i18n.Errorf("memory.err.judgment_attach", err)
 		}
 	}
 	_ = s.RecordEvent(Event{Kind: EventProposalDecided}, map[string]any{"proposalId": p.ID, "proposalKind": p.Kind,
@@ -559,12 +566,12 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		res.Changed = append(res.Changed, m.ID)
 	case ProposalRevert:
 		if given(in.Title) || given(in.Body) {
-			return fmt.Errorf("%w: 되돌리기는 고쳐서 승인할 수 없습니다", ErrInvalid)
+			return i18n.Errorf("memory.err.revert_no_edit", ErrInvalid)
 		}
 		return s.revert(p, res)
 	case ProposalLink:
 		if given(in.Title) || given(in.Body) {
-			return fmt.Errorf("%w: 연결 제안은 고쳐서 승인할 수 없습니다. 승인한 뒤 memory_update로 근거를 고쳐 주세요", ErrInvalid)
+			return i18n.Errorf("memory.err.link_no_edit", ErrInvalid)
 		}
 		l, created, err := s.Link(LinkInput{From: p.MemoryIDs[0], To: p.MemoryIDs[1], Note: p.Payload.Note, Origin: LinkOriginRetro, OriginRef: p.ID})
 		if err != nil {
@@ -576,7 +583,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		res.Link = l.ID
 	case ProposalRetag:
 		if given(in.Title) || given(in.Body) {
-			return fmt.Errorf("%w: 태그 제안은 고쳐서 승인할 수 없습니다. 거절하고 태그를 직접 고쳐 주세요", ErrInvalid)
+			return i18n.Errorf("memory.err.retag_no_edit", ErrInvalid)
 		}
 		// 한 트랜잭션으로 읽고 쓴다: 중간에 실패해도 반쯤 바뀐 채 원장 없이 남지 않고, 읽은 뒤 바뀐 태그를 덮지 않는다.
 		tx, err := s.db.Begin()
@@ -610,7 +617,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		res.Changed = append(res.Changed, changed...)
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
-			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
+			return i18n.Errorf("memory.err.file_no_edit", ErrInvalid)
 		}
 		if FileHash(p.Payload.Path) != p.Payload.BaseHash {
 			return ErrFileChanged
@@ -760,11 +767,11 @@ func editedMemory(m Memory, pl Payload, title, body *string) Memory {
 func (s *Store) prepareRetag(in *ProposalInput) error {
 	in.Payload.FromTags, in.Payload.ToTags = cleanTags(in.Payload.FromTags), cleanTags(in.Payload.ToTags)
 	if len(in.Payload.ToTags) == 0 {
-		return fmt.Errorf("%w: 넣을 태그(toTags)가 필요합니다", ErrInvalid)
+		return i18n.Errorf("memory.err.need_to_tags", ErrInvalid)
 	}
 	for _, t := range append(append([]string{}, in.Payload.FromTags...), in.Payload.ToTags...) {
 		if !IsTopicKey(TagKey(t)) {
-			return fmt.Errorf("%w: %q는 주제 태그가 아닙니다(표식 태그·종류 이름은 고치지 않습니다)", ErrInvalid, t)
+			return i18n.Errorf("memory.err.not_topic_tag", ErrInvalid, t)
 		}
 	}
 	hasFrom := func(m Memory) bool {
@@ -773,7 +780,7 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 	ids := in.MemoryIDs
 	if len(ids) == 0 {
 		if len(in.Payload.FromTags) == 0 {
-			return fmt.Errorf("%w: 태그를 달 기억 id나 뺄 태그(fromTags)가 필요합니다", ErrInvalid)
+			return i18n.Errorf("memory.err.need_ids_or_from", ErrInvalid)
 		}
 		all, err := s.list(DefaultGraphStates)
 		if err != nil {
@@ -801,7 +808,7 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 		lines = append(lines, fmt.Sprintf("- %s %s: %s → %s", id, ClipRunes(m.Title, 60), tagList(m.Tags), tagList(next)))
 	}
 	if len(in.MemoryIDs) == 0 {
-		return fmt.Errorf("%w: 바뀌는 기억이 없습니다", ErrInvalid)
+		return i18n.Errorf("memory.err.no_memory_change", ErrInvalid)
 	}
 	const shown = 30
 	if len(lines) > shown {

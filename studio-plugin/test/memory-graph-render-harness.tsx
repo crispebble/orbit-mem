@@ -8,6 +8,8 @@ import type {GraphNode, MemoryGraph} from '../src/memory-graph/contract.ts';
 import type {GraphState} from '../src/memory-graph/store.ts';
 import {MemoryDetail, type MemoryLinkView} from '../src/parts/index.ts';
 
+export {setLocale} from '../src/i18n/index.ts';
+
 const noop = () => {};
 const ctx = {tabs: {open: noop}, app: {show: noop}, log: {error: noop}} as unknown as PluginContext;
 const store = {load: async () => {}, setIncludeHidden: async () => {}};

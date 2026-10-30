@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/retro"
 )
@@ -249,7 +250,7 @@ func TestRun_두_후보를_돌려_익명으로_고르고_원장에_남긴다(t *
 		t.Errorf("실행 기록 %d", len(runsDB))
 	}
 	out, err := e.l.Show(x.ID)
-	if err != nil || !strings.Contains(out, "도움됨") || !strings.Contains(out, "무엇을 정할지") || !strings.Contains(out, "기준에 더 맞음") {
+	if err != nil || !strings.Contains(out, "helped") || !strings.Contains(out, "무엇을 정할지") || !strings.Contains(out, "기준에 더 맞음") {
 		t.Errorf("보기:\n%s %v", out, err)
 	}
 }
@@ -297,7 +298,7 @@ func TestRun_실패한_회차와_비용_상한(t *testing.T) {
 	e.l.Cfg.LabExperimentUSD = 0.25
 	e.l.Cfg.LabRunUSD = 0.2
 	x, err = e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
-	if err == nil || x.Status != memory.LabFailed || !strings.Contains(x.Note, "상한") || x.LedgerID != "" {
+	if err == nil || x.Status != memory.LabFailed || !strings.Contains(x.Note, "cost cap") || x.LedgerID != "" {
 		t.Fatalf("상한 %+v %v", x, err)
 	}
 	if n := len(e.calls); n != 3 {
@@ -339,7 +340,7 @@ func TestRun_취소하면_판정하지_않는다(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
 	x, err := e.l.Run(ctx, RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
-	if err == nil || x.Status != memory.LabFailed || x.LedgerID != "" || !strings.Contains(x.Note, "중단") {
+	if err == nil || x.Status != memory.LabFailed || x.LedgerID != "" || !strings.Contains(x.Note, "stopped") {
 		t.Fatalf("취소 %+v %v", x, err)
 	}
 	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
@@ -355,7 +356,7 @@ func TestRun_바뀐_원본과_숨김_파일(t *testing.T) {
 	b, _ := os.ReadFile(path)
 	p, _ := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: "묻기", Lab: true, Payload: memory.Payload{Path: path, Content: string(b) + mark}})
 	os.WriteFile(path, append(b, []byte("\n다른 사람이 고침\n")...), 0o644)
-	if _, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ProposalID: p.ID}); err == nil || !strings.Contains(err.Error(), "바뀌었") || len(e.calls) != 0 {
+	if _, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ProposalID: p.ID}); err == nil || !strings.Contains(err.Error(), "changed after") || len(e.calls) != 0 {
 		t.Fatalf("바뀐 원본은 실험하지 않습니다: %v calls=%d", err, len(e.calls))
 	}
 	dir := e.changeDir(t)
@@ -363,5 +364,34 @@ func TestRun_바뀐_원본과_숨김_파일(t *testing.T) {
 	x, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: dir})
 	if err != nil || len(x.Files) != 1 {
 		t.Fatalf("숨김 파일 %+v %v", x.Files, err)
+	}
+}
+
+func TestShow_기본은_영어_라벨이고_한국어를_고르면_한국어_라벨이다(t *testing.T) {
+	e := setup(t)
+	task := e.task(t)
+	x, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	en, err := e.l.Show(x.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Experiment " + x.ID, "## Instruction", "## Criteria", "## Round 1", "helped"} {
+		if !strings.Contains(en, want) {
+			t.Errorf("English show missing %q:\n%s", want, en)
+		}
+	}
+	i18n.Set(i18n.KO)
+	defer i18n.Set(i18n.EN)
+	ko, err := e.l.Show(x.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"실험 " + x.ID, "## 작업 지시", "## 1회차", "도움됨"} {
+		if !strings.Contains(ko, want) {
+			t.Errorf("Korean show missing %q:\n%s", want, ko)
+		}
 	}
 }

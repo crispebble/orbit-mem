@@ -25,6 +25,10 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni ledger [--all] [--json]` | 승인한 기억·하네스·지침 변경과 효과 판정(도움됨·해로움·효과 없음·섞임) |
 | `oni config`, `oni backup`, `oni uninstall` | 설정, 즉시 백업, 등록·예약 해제(데이터는 남김) |
 
+## 언어
+
+`oni`가 사람에게 보이는 출력·오류·도움말은 영어가 기본이고 한국어로 바꿀 수 있다(지원 언어 `en`·`ko`). `oni config set language ko`로 바꾸고, 환경 변수 `ORBIT_LANG=en|ko`가 있으면 설정보다 먼저 따른다. `oni doctor`가 지금 언어를 보인다. JSON 출력(`--json`)과 MCP 응답 구조, AI가 읽는 글(MCP 도구 설명, 세션 주입, 회고 프롬프트·재료, 하네스 스킬·역할)과 기억·제안 본문은 언어 설정과 무관하다. 문구는 `internal/i18n/locales/<언어>/*.json`에 키로 두고, 언어마다 같은 키와 같은 서식 자리를 갖는다(시험으로 확인).
+
 Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고, 훅이 바뀌면 신뢰가 풀린다. 새 판을 `oni install`로 깐 뒤에는 Codex에서 `/hooks`를 열어 Orbit 훅을 다시 신뢰한다. 신뢰가 없으면 기억 문맥과 작업 기록이 Codex에서 돌지 않는다.
 
 ## 데이터
@@ -57,6 +61,7 @@ go build -o dist/oni ./cmd/oni
 | `internal/pluginbuild` | 두 호스트 플러그인 빌드 |
 | `internal/orbitplugin/source` | Orbit 플러그인 원본: MCP·훅, 스킬 15개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`), 분야 묶음(`knowledge/<분야>/`: 한 줄 신호 목록 `SIGNALS.md`와 항목. 에이전트에는 일하는 방법만 두고 분야 사실은 여기에) |
 | `internal/install` | 바이너리·플러그인 등록·Codex 역할 복사·OS 예약 |
+| `internal/i18n` | 사람이 읽는 문구 카탈로그(en·ko)와 언어 고르기(`language` 설정, `ORBIT_LANG`) |
 
 ## 플러그인 원본 고치기
 

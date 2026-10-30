@@ -1,5 +1,7 @@
 // 작업 계약(orbit.work) 응답 검사: 판(contract) 확인과 모양 확인.
 // response.schema.json으로 거르지 않는다(계약 README 「판」). 필요한 칸만 확인하고 모르는 칸은 무시한다.
+import {pick} from '../i18n/index.ts';
+import {workText} from '../i18n/messages/work.ts';
 import type {
   ChangesResult, ContractInfo, GetResult, ListPage, SessionPage, SessionsPage,
 } from './types.ts';
@@ -9,16 +11,16 @@ export const READ_MAJOR = 1;
 /** 이 데이터만 멈추는 이유. 기억·제안은 영향 없다. */
 export type PauseKind = 'oni-newer' | 'orbit-older';
 
-export const PAUSE_MESSAGE: Record<PauseKind, string> = {
-  'oni-newer': 'Orbit이 이 Orbit 앱보다 새 판입니다. Orbit 앱을 올려 주세요.',
-  'orbit-older': 'Orbit을 올려 주세요.',
-};
+export function pauseMessage(kind: PauseKind): string {
+  const e = pick(workText).error;
+  return kind === 'oni-newer' ? e.oniNewer : e.orbitOlder;
+}
 
 /** 판 때문에 읽지 못함 */
 export class WorkPaused extends Error {
   kind: PauseKind;
   constructor(kind: PauseKind) {
-    super(PAUSE_MESSAGE[kind]);
+    super(pauseMessage(kind));
     this.name = 'WorkPaused';
     this.kind = kind;
   }
@@ -39,7 +41,7 @@ export class WorkToolError extends Error {
 /** 응답 모양이 맞지 않음 */
 export class WorkShapeError extends Error {
   constructor(tool: string, why: string) {
-    super(`oni의 ${tool} 응답 모양이 맞지 않습니다(${why}).`);
+    super(pick(workText).error.shape(tool, why));
     this.name = 'WorkShapeError';
   }
 }
@@ -50,7 +52,7 @@ const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInt
 /** 응답 맨 위 contract를 읽는다. 읽을 수 없는 판이면 WorkPaused. */
 export function checkContract(out: unknown, tool: string): ContractInfo {
   const c = isObj(out) ? out.contract : undefined;
-  if (!isObj(c) || !isInt(c.major)) throw new WorkShapeError(tool, 'contract 없음');
+  if (!isObj(c) || !isInt(c.major)) throw new WorkShapeError(tool, pick(workText).error.whyNoContract);
   const supported = Array.isArray(c.supportedMajors) ? c.supportedMajors.filter(isInt) : [];
   const info: ContractInfo = {
     name: typeof c.name === 'string' ? c.name : 'orbit.work',
@@ -62,7 +64,7 @@ export function checkContract(out: unknown, tool: string): ContractInfo {
   if (err?.code === 'UNSUPPORTED_MAJOR') {
     // oni가 우리 판(1)을 받지 못한다 = oni가 더 새 판. 지원 목록이 1을 품으면 이상한 응답이므로 모양 오류로 둔다.
     const list = Array.isArray(err.supportedMajors) ? err.supportedMajors.filter(isInt) : supported;
-    if (list.includes(READ_MAJOR)) throw new WorkShapeError(tool, 'UNSUPPORTED_MAJOR인데 supportedMajors에 1이 있음');
+    if (list.includes(READ_MAJOR)) throw new WorkShapeError(tool, pick(workText).error.whyUnsupportedMajor);
     throw new WorkPaused(info.major < READ_MAJOR ? 'orbit-older' : 'oni-newer');
   }
   if (info.major > READ_MAJOR) {
@@ -79,7 +81,7 @@ export function throwIfError(out: unknown, tool: string): void {
   const e = out.error;
   throw new WorkToolError(
     typeof e.code === 'string' ? e.code : 'UNKNOWN',
-    typeof e.message === 'string' ? e.message : `${tool} 호출이 실패했습니다.`,
+    typeof e.message === 'string' ? e.message : pick(workText).error.callFailed(tool),
     typeof e.field === 'string' ? e.field : undefined,
   );
 }
@@ -93,7 +95,7 @@ function need(cond: boolean, tool: string, why: string): void {
 }
 
 function checkWorkHead(w: unknown, tool: string): void {
-  need(isObj(w) && str(w.id) && str(w.title) && str(w.state) && str(w.updatedAt) && str(w.openedAt) && isObj(w.counts), tool, '작업 칸');
+  need(isObj(w) && str(w.id) && str(w.title) && str(w.state) && str(w.updatedAt) && str(w.openedAt) && isObj(w.counts), tool, pick(workText).error.whyWork);
 }
 
 export function parseList(out: unknown): ListPage {
@@ -119,7 +121,7 @@ function normalizeWork(w: unknown, tool: string): GetResult['work'] {
   const o = w as Record<string, unknown>;
   need(Array.isArray(o.steps), tool, 'steps');
   for (const s of o.steps as unknown[]) {
-    need(isObj(s) && str(s.id) && str(s.title) && str(s.status) && isObj(s.verification), tool, '단계 칸');
+    need(isObj(s) && str(s.id) && str(s.title) && str(s.status) && isObj(s.verification), tool, pick(workText).error.whyStep);
   }
   const children = Array.isArray(o.children) ? o.children.map(c => normalizeWork(c, tool)) : undefined;
   return {
@@ -145,7 +147,7 @@ export function parseGet(out: unknown): GetResult {
 }
 
 function checkSession(s: unknown, tool: string): void {
-  need(isObj(s) && str(s.sessionId) && str(s.state) && str(s.startedAt) && str(s.lastSeenAt), tool, '세션 칸');
+  need(isObj(s) && str(s.sessionId) && str(s.state) && str(s.startedAt) && str(s.lastSeenAt), tool, pick(workText).error.whySession);
 }
 
 function normalizeSession(s: unknown): SessionsPage['sessions'][number] {

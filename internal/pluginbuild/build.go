@@ -28,6 +28,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Manifest is the source plugin.json.
@@ -146,7 +148,7 @@ func (m *Manifest) validate() error {
 		return fmt.Errorf("name %q", m.Name)
 	}
 	if !versionRE.MatchString(m.Version) {
-		return fmt.Errorf("version %q는 x.y.z 형식이어야 합니다", m.Version)
+		return i18n.Errorf("pluginbuild.err.version_format", m.Version)
 	}
 	if strings.TrimSpace(m.Description) == "" || controlRE.MatchString(m.Description) {
 		return errors.New("description")
@@ -179,7 +181,7 @@ func (m *Manifest) validate() error {
 			return fail("claude.maxTurns")
 		}
 		if (c.Tools == nil) == (c.DisallowedTools == nil) {
-			return fail("claude.tools 또는 claude.disallowedTools 중 하나만 씁니다")
+			return fail(i18n.T("pluginbuild.err.tools_exclusive"))
 		}
 		for _, t := range append(append([]string{}, c.Tools...), c.DisallowedTools...) {
 			if !toolRE.MatchString(t) {
@@ -188,16 +190,16 @@ func (m *Manifest) validate() error {
 		}
 		for _, s := range c.Skills {
 			if !seen[s] {
-				return fail("모르는 스킬 " + s)
+				return fail(i18n.T("pluginbuild.err.unknown_skill", s))
 			}
 		}
 		if !has(codexEff, a.Codex.ReasoningEffort) || !has(sandboxes, a.Codex.SandboxMode) {
-			return fail("codex 설정")
+			return fail(i18n.T("pluginbuild.err.codex_settings"))
 		}
 		if a.Codex.SandboxMode == "read-only" {
 			for _, w := range writeTools {
 				if has(c.Tools, w) || (c.DisallowedTools != nil && !has(c.DisallowedTools, w)) {
-					return fail("읽기 전용 역할이 Claude에서 " + w + "를 쓸 수 있습니다")
+					return fail(i18n.T("pluginbuild.err.readonly_writes", w))
 				}
 			}
 		}
@@ -209,7 +211,7 @@ func (m *Manifest) validate() error {
 	}
 	for ev, specs := range m.Hooks {
 		if !has(hookEvents, ev) {
-			return fmt.Errorf("hooks: 모르는 이벤트 %s", ev)
+			return i18n.Errorf("pluginbuild.err.unknown_event", ev)
 		}
 		for _, h := range specs {
 			if h.Command == "" || h.Timeout < 0 || h.Timeout > 600 {
@@ -217,12 +219,12 @@ func (m *Manifest) validate() error {
 			}
 			for _, host := range h.Hosts {
 				if !has(hookHosts, host) {
-					return fmt.Errorf("hooks.%s: 모르는 호스트 %s", ev, host)
+					return i18n.Errorf("pluginbuild.err.unknown_host", ev, host)
 				}
 			}
 			// Codex는 SessionEnd 훅 timeout을 3초로 줄이고 훅을 불러올 때 경고한다.
 			if ev == "SessionEnd" && h.Timeout > codexSessionEndMax && (len(h.Hosts) == 0 || has(h.Hosts, "codex")) {
-				return fmt.Errorf("hooks.SessionEnd: Codex는 timeout을 %d초까지만 받습니다(%d초)", codexSessionEndMax, h.Timeout)
+				return i18n.Errorf("pluginbuild.err.codex_timeout", codexSessionEndMax, h.Timeout)
 			}
 		}
 	}
@@ -274,12 +276,12 @@ func (b *builder) knowledge(base string) error {
 		dir := filepath.Join(root, p.Name())
 		signals, err := readText(filepath.Join(dir, "SIGNALS.md"))
 		if err != nil {
-			return fmt.Errorf("knowledge/%s: 신호 목록 SIGNALS.md가 필요합니다", p.Name())
+			return i18n.Errorf("pluginbuild.err.need_signals", p.Name())
 		}
 		for _, line := range strings.Split(signals, "\n") {
 			if m := signalRE.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 				if _, err := os.Stat(filepath.Join(dir, m[1])); err != nil {
-					return fmt.Errorf("knowledge/%s/SIGNALS.md의 신호가 없는 항목 %s를 가리킵니다", p.Name(), m[1])
+					return i18n.Errorf("pluginbuild.err.signal_missing", p.Name(), m[1])
 				}
 			}
 		}
@@ -319,7 +321,7 @@ func readText(path string) (string, error) {
 	}
 	s := string(b)
 	if strings.Contains(s, "'''") || controlRE.MatchString(s) {
-		return "", fmt.Errorf("%s: ''' 또는 제어 문자가 들어 있습니다", path)
+		return "", i18n.Errorf("pluginbuild.err.bad_chars", path)
 	}
 	return s, nil
 }
@@ -354,7 +356,7 @@ func (b *builder) generate() error {
 			return err
 		}
 		if !strings.Contains(strings.SplitN(body, "\n---", 2)[0], "name: "+s) {
-			return fmt.Errorf("skills/%s/SKILL.md frontmatter의 name이 %s가 아닙니다", s, s)
+			return i18n.Errorf("pluginbuild.err.skill_name", s, s)
 		}
 		b.put(base+"/skills/"+s+"/SKILL.md", []byte(b.subst(body)))
 		refs, _ := os.ReadDir(filepath.Join(dir, "references"))
@@ -387,7 +389,7 @@ func (b *builder) generate() error {
 			return err
 		}
 		if strings.TrimSpace(body) == "" {
-			return fmt.Errorf("agents/%s.md가 비었습니다", a.ID)
+			return i18n.Errorf("pluginbuild.err.agent_empty", a.ID)
 		}
 		text := strings.TrimSpace(body)
 		if common != "" {
@@ -529,11 +531,11 @@ func (b *builder) flush() (Result, error) {
 		for _, p := range paths {
 			cur, err := os.ReadFile(filepath.Join(b.o.Out, filepath.FromSlash(p)))
 			if err != nil || !bytes.Equal(cur, b.outputs[p]) {
-				res.Drift = append(res.Drift, "다시 만들어야 함: "+p)
+				res.Drift = append(res.Drift, i18n.T("pluginbuild.drift_rebuild", p))
 			}
 		}
 		for _, p := range leftovers {
-			res.Drift = append(res.Drift, "남은 생성물: "+p)
+			res.Drift = append(res.Drift, i18n.T("pluginbuild.drift_leftover", p))
 		}
 		return res, nil
 	}

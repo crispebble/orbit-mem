@@ -1,17 +1,22 @@
 // 기억 목록·상세·폼·제안·회고가 함께 쓰는 작은 부품.
 import {useId, type ReactNode} from 'react';
-import {memoryKindLabels, memoryStateLabels, type MemoryKind, type MemoryState} from './vocabulary.ts';
+import {useMessages} from '../i18n/index.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
+import type {MemoryKind, MemoryState} from './vocabulary.ts';
 
 export function KindTile({kind}: {kind: MemoryKind}) {
-  return <span className="orbit-mem-kind" data-kind={kind} aria-hidden="true">{memoryKindLabels[kind][0]}</span>;
+  const t = useMessages(memoryText);
+  return <span className="orbit-mem-kind" data-kind={kind} aria-hidden="true">{t.kinds[kind][0]}</span>;
 }
 
 export function KindPill({kind}: {kind: MemoryKind}) {
-  return <span className="orbit-mem-pill" data-kind={kind}>{memoryKindLabels[kind]}</span>;
+  const t = useMessages(memoryText);
+  return <span className="orbit-mem-pill" data-kind={kind}>{t.kinds[kind]}</span>;
 }
 
 export function StateMark({state}: {state: MemoryState}) {
-  return <span className="orbit-mem-state" data-state={state}><i aria-hidden="true" />{memoryStateLabels[state]}</span>;
+  const t = useMessages(memoryText);
+  return <span className="orbit-mem-state" data-state={state}><i aria-hidden="true" />{t.states[state]}</span>;
 }
 
 export function Block({icon, title, count, actions, children}: {icon: ReactNode; title: string; count?: ReactNode; actions?: ReactNode; children: ReactNode}) {

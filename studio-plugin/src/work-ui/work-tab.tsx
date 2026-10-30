@@ -1,9 +1,11 @@
 // 작업 탭: 머리(제목·상태·진행·프로젝트·마지막 갱신·상위 작업 길)와 본문(그래프 + 단계 상세 / 담당별).
 // 그래프는 forma-ai FlowGraph, 담당별은 forma-ai AgentOrchestrator, 나머지는 forma-ui 부품으로 조립한다.
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, type ComponentProps, useEffect, useMemo, useState} from 'react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {AgentOrchestrator, FlowGraph, type FlowGraphView} from '@onidot-labs/studio-plugin/ai';
 import {Badge, Breadcrumbs, Button, StateView, Progress, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {pick, useMessages} from '../i18n/index.ts';
+import {workKitText, workUiText} from '../i18n/messages/work.ts';
 import {errorMessage} from '../oni.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {progressOf, workStateView} from '../work/display.ts';
@@ -17,11 +19,14 @@ import {Paused} from './paused.tsx';
 
 type Mode = 'flow' | 'owner';
 
+// 부품의 FlowGraphText 타입이 한국어 글자 그대로의 리터럴이라 영어 글을 그대로는 넘길 수 없다(부품 쪽 타입 문제). 값은 부품이 문자열로 쓴다.
+type FlowGraphTextProp = ComponentProps<typeof FlowGraph>['text'];
+
 export function workNav(ctx: PluginContext, selectStep: (id: string) => void): StageNav {
   return {
     selectStep,
-    openWork: (id, title) => ctx.tabs.open({type: 'work', id, title: title ?? '작업', params: {id}}),
-    openSession: (id, title) => ctx.tabs.open({type: 'session', id, title: title ?? '세션', params: {id}, beside: true}),
+    openWork: (id, title) => ctx.tabs.open({type: 'work', id, title: title ?? pick(workUiText).workTab.work, params: {id}}),
+    openSession: (id, title) => ctx.tabs.open({type: 'session', id, title: title ?? pick(workUiText).workTab.session, params: {id}, beside: true}),
   };
 }
 
@@ -55,6 +60,9 @@ function useWorkDetail(id: string): {work?: Work; error?: string; missing: boole
 export function WorkTab({ctx, tab}: TabProps) {
   const id = typeof tab.params.id === 'string' ? tab.params.id : tab.id;
   const {store, state} = useWork();
+  const u = useMessages(workUiText);
+  const t = u.workTab;
+  const kit = useMessages(workKitText);
   const {work, error, missing, reload} = useWorkDetail(id);
   const now = useNow();
   const [selected, setSelected] = useState<string | null>(typeof tab.params.step === 'string' ? tab.params.step : null);
@@ -74,12 +82,12 @@ export function WorkTab({ctx, tab}: TabProps) {
   const nav = useMemo(() => workNav(ctx, select), [ctx, select]);
   const graph = useMemo(() => (work ? toFlowGraph(work, now) : undefined), [work, now]);
 
-  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
-  if (state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
-  if (missing) return <StateView title="작업을 찾지 못했습니다" description="Orbit 기록에서 지워졌거나 다른 PC의 작업입니다." />;
+  if (!store) return <StateView variant="loading" title={u.starting} />;
+  if (state.status === 'paused') return <Paused store={store} state={state} title={u.paused.workTitle} />;
+  if (missing) return <StateView title={t.notFound} description={t.notFoundHint} />;
   if (!work) {
-    if (error) return <StateView variant="error" title="작업을 읽지 못했습니다" description={error} onRetry={reload} />;
-    return <StateView variant="loading" title="작업을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title={t.readFailed} description={error} onRetry={reload} retryLabel={kit.retry} />;
+    return <StateView variant="loading" title={t.loading} />;
   }
 
   const summary = summaryOf(work);
@@ -94,27 +102,27 @@ export function WorkTab({ctx, tab}: TabProps) {
     <div className="orbit-work-tab">
       <header className="orbit-work-head">
         {work.parent && (
-          <Breadcrumbs label="상위 작업 길" items={[
-            {label: parent?.title ?? '상위 작업', onClick: () => nav.openWork(work.parent!.workId, parent?.title)},
+          <Breadcrumbs label={t.parentPath} items={[
+            {label: parent?.title ?? t.parentWork, onClick: () => nav.openWork(work.parent!.workId, parent?.title)},
             {label: work.title},
           ]} />
         )}
         <div className="orbit-row orbit-work-head-row">
           <h2 className="orbit-work-title" title={work.title}>{work.title}</h2>
           <Badge tone={status.tone}>{status.label}</Badge>
-          <Progress label="단계 진행" done={progress.done} total={progress.total} size="sm" />
-          {work.project && <span className="orbit-meta">프로젝트 <b>{work.project.label}</b></span>}
-          <span className="orbit-meta" title={work.updatedAt}>마지막 갱신 {agoText(work.updatedAt, now)}</span>
+          <Progress label={t.stepProgress} done={progress.done} total={progress.total} size="sm" />
+          {work.project && <span className="orbit-meta">{t.project} <b>{work.project.label}</b></span>}
+          <span className="orbit-meta" title={work.updatedAt}>{t.updated(agoText(work.updatedAt, now) ?? '')}</span>
           <span className="orbit-grow" />
-          {pending && <Button variant="secondary" size="sm" onClick={() => void store.dismiss(work.id)}>목록에서 정리</Button>}
-          <SegmentedControl label="보기" value={mode} onChange={v => setMode(v === 'owner' ? 'owner' : 'flow')}
-            options={[{value: 'flow', label: '흐름'}, {value: 'owner', label: '담당별'}]} />
+          {pending && <Button variant="secondary" size="sm" onClick={() => void store.dismiss(work.id)}>{t.dismiss}</Button>}
+          <SegmentedControl label={t.viewLabel} value={mode} onChange={v => setMode(v === 'owner' ? 'owner' : 'flow')}
+            options={[{value: 'flow', label: t.flow}, {value: 'owner', label: t.byOwner}]} />
         </div>
       </header>
       {mode === 'flow' ? (
         <div className="orbit-work-graph">
           <FlowGraph
-            label="작업 흐름"
+            label={t.graphLabel}
             nodes={graph!.nodes}
             edges={graph!.edges}
             columns={graph!.columns}
@@ -123,8 +131,9 @@ export function WorkTab({ctx, tab}: TabProps) {
             onSelect={select}
             view={view}
             onViewChange={setView}
-            notice={noLines ? '선행이 하나도 기록되지 않았습니다. 같은 열은 함께 시작할 수 있는 단계입니다.' : undefined}
-            asideLabel="단계 상세"
+            notice={noLines ? t.noEdges : undefined}
+            asideLabel={t.detailLabel}
+            text={kit.flowGraph as FlowGraphTextProp}
             aside={step ? (
               <StageDetail ctx={ctx} work={work} step={step} now={now} works={state.works} sessions={state.sessions} nav={nav} onClose={() => select(null)} />
             ) : null}
@@ -149,22 +158,25 @@ export function WorkTab({ctx, tab}: TabProps) {
 /** 받은 일에서 「사용자 확인 기다림」 단계를 골랐을 때 메인에 그리는 상세 */
 export function WaitingStepDetail({ctx, workId, stepId}: {ctx: PluginContext; workId: string; stepId: string}) {
   const {store, state} = useWork();
+  const u = useMessages(workUiText);
+  const t = u.workTab;
+  const kit = useMessages(workKitText);
   const {work, error, missing, reload} = useWorkDetail(workId);
   const now = useNow();
-  const nav = useMemo(() => workNav(ctx, sid => ctx.tabs.open({type: 'work', id: workId, title: work?.title ?? '작업', params: {id: workId, step: sid}})), [ctx, workId, work?.title]);
-  if (store && state.status === 'paused') return <Paused store={store} state={state} title="작업 기록을 읽지 않습니다" />;
-  if (missing) return <StateView title="작업을 찾지 못했습니다" />;
+  const nav = useMemo(() => workNav(ctx, sid => ctx.tabs.open({type: 'work', id: workId, title: work?.title ?? t.work, params: {id: workId, step: sid}})), [ctx, workId, work?.title, t.work]);
+  if (store && state.status === 'paused') return <Paused store={store} state={state} title={u.paused.workTitle} />;
+  if (missing) return <StateView title={t.notFound} />;
   if (!work) {
-    if (error) return <StateView variant="error" title="작업을 읽지 못했습니다" description={error} onRetry={reload} />;
-    return <StateView variant="loading" title="작업을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title={t.readFailed} description={error} onRetry={reload} retryLabel={kit.retry} />;
+    return <StateView variant="loading" title={t.loading} />;
   }
   const step = work.steps.find(s => s.id === stepId);
-  if (!step) return <StateView title="단계를 찾지 못했습니다" />;
+  if (!step) return <StateView title={t.stepNotFound} />;
   return (
     <div className="orbit-pane">
       <div className="orbit-row">
         <span className="orbit-meta">{work.title}</span>
-        <Button variant="secondary" size="sm" onClick={() => nav.selectStep(step.id)}>작업 그래프에서 보기</Button>
+        <Button variant="secondary" size="sm" onClick={() => nav.selectStep(step.id)}>{t.showInGraph}</Button>
       </div>
       <StageDetail ctx={ctx} work={work} step={step} now={now} works={state.works} sessions={state.sessions} nav={nav} />
     </div>

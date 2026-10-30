@@ -17,7 +17,7 @@ export async function loadReview(ctx: WorkCtx): Promise<ReviewState> {
     const pending = Array.isArray(saved?.pending) ? saved.pending.filter((x): x is string => typeof x === 'string') : [];
     return {pending};
   } catch (e) {
-    ctx.log.warn(`확인 전 목록을 읽지 못했습니다: ${e instanceof Error ? e.message : String(e)}`);
+    ctx.log.warn(`Could not read the not-reviewed list: ${e instanceof Error ? e.message : String(e)}`);
     return {pending: []};
   }
 }
@@ -26,7 +26,7 @@ export async function saveReview(ctx: WorkCtx, review: ReviewState): Promise<voi
   try {
     await ctx.storage.set(KEY, {pending: review.pending});
   } catch (e) {
-    ctx.log.warn(`확인 전 목록을 저장하지 못했습니다: ${e instanceof Error ? e.message : String(e)}`);
+    ctx.log.warn(`Could not save the not-reviewed list: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

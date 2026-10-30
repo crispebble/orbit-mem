@@ -57,13 +57,31 @@ describe('Orbit 부품은 플러그인 안에 있다', () => {
     assert.deepEqual(bad, []);
   });
 
-  it('Forma 내부 모듈(@onidot-labs/forma-ai, forma-ui)을 직접 가져오지 않는다', () => {
+  // 옛 Forma 0.10.x 여섯 패키지는 더 나오지 않는다(F3-5). Studio 키트(forma-ui-ide)도 studio-plugin을 거쳐 받는다.
+  const OLD_FORMA = /^@onidot-labs\/(forma-(ui|ide|docs|work|ai|site)|forma-ui-ide)(\/|$)/;
+
+  it('옛 Forma 패키지와 Studio 키트를 직접 가져오지 않는다', () => {
     const bad: string[] = [];
     for (const file of files) {
       for (const imp of importsOf(readFileSync(file, 'utf8'))) {
-        if (/^@onidot-labs\/forma-(ai|ui)/.test(imp.from)) bad.push(`${file.slice(srcDir.length + 1)}: ${imp.from}`);
+        if (OLD_FORMA.test(imp.from)) bad.push(`${file.slice(srcDir.length + 1)}: ${imp.from}`);
       }
     }
     assert.deepEqual(bad, []);
+  });
+
+  it('옛 Forma 패키지를 의존으로 두지 않는다', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const deps = Object.keys({...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies});
+    assert.deepEqual(deps.filter(d => OLD_FORMA.test(d)), []);
+  });
+
+  it('여섯 옛 이름을 모두 막는다', () => {
+    for (const name of ['forma-ui', 'forma-ide', 'forma-docs', 'forma-work', 'forma-ai', 'forma-site']) {
+      assert.ok(OLD_FORMA.test(`@onidot-labs/${name}`), name);
+      assert.ok(OLD_FORMA.test(`@onidot-labs/${name}/x`), name);
+    }
+    assert.ok(!OLD_FORMA.test('@onidot-labs/forma-brand'));
+    assert.ok(!OLD_FORMA.test('@onidot-labs/studio-plugin/ui'));
   });
 });

@@ -1,0 +1,9 @@
+{
+  "work.err.apply_event": "%s 사건을 적용하지 못했습니다: %w",
+  "work.err.backup": "작업 기록 백업 실패: %w",
+  "work.err.db_create": "작업 기록 DB를 만들 수 없습니다: %w",
+  "work.err.db_newer": "작업 기록 DB가 이 oni보다 새 판(%d)입니다. oni를 올려 주세요",
+  "work.err.db_open": "작업 기록 DB를 열 수 없습니다: %w",
+  "work.err.db_upgrade": "작업 기록 DB를 새 판으로 올리지 못했습니다: %w",
+  "work.err.reapply_event": "%d번 사건(%s)을 다시 적용하지 못했습니다: %w"
+}

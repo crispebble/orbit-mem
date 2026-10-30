@@ -1,0 +1,17 @@
+{
+  "retro.err.backup": "cannot back up the work log DB: %w",
+  "retro.err.busy": "another retrospective is already running",
+  "retro.err.daily_until_yesterday": "a daily retrospective runs only up to yesterday: %s",
+  "retro.err.date_format": "the date is YYYY-MM-DD: %s",
+  "retro.err.effect": "effect judgment: %w",
+  "retro.err.host_signed_out": "the host is not signed in",
+  "retro.err.kind": "the retrospective kind is daily or weekly",
+  "retro.err.legacy": "old memory judgment: %w",
+  "retro.err.no_retro": "no such retrospective: %s",
+  "retro.err.no_session_retro": "no such session retrospective: %s",
+  "retro.err.weekly": "weekly %s: %w",
+  "retro.err.weekly_monday": "a weekly retrospective runs with the Monday of a finished week: %s",
+  "retro.host_no_result": "the host did not submit a result",
+  "retro.no_material": "no material",
+  "retro.signed_out_note": "It runs again on the next run once you are signed in"
+}

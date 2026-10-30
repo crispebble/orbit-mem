@@ -67,7 +67,7 @@ export function parseMemoryGraph(out: unknown): MemoryGraph {
   need(isObj(out) && Array.isArray(out.nodes) && Array.isArray(out.edges) && Array.isArray(out.groups), 'nodes·edges·groups');
   const o = out as Record<string, unknown>;
   const nodes = (o.nodes as unknown[]).map((n): GraphNode => {
-    need(isObj(n) && str(n.id) && str(n.kind) && str(n.state) && str(n.scope) && str(n.title) && str(n.updatedAt), '기억 칸');
+    need(isObj(n) && str(n.id) && str(n.kind) && str(n.state) && str(n.scope) && str(n.title) && str(n.updatedAt), 'memory fields');
     const m = n as Record<string, unknown>;
     return {
       id: m.id as string, kind: m.kind as string, state: m.state as string, scope: m.scope as string, project: optStr(m.project),
@@ -76,12 +76,12 @@ export function parseMemoryGraph(out: unknown): MemoryGraph {
     };
   });
   const edges = (o.edges as unknown[]).map((e): GraphEdge => {
-    need(isObj(e) && str(e.id) && str(e.kind) && str(e.from) && str(e.to), '선 칸');
+    need(isObj(e) && str(e.id) && str(e.kind) && str(e.from) && str(e.to), 'edge fields');
     const m = e as Record<string, unknown>;
     return {id: m.id as string, kind: m.kind as string, from: m.from as string, to: m.to as string, relation: optStr(m.relation), note: optStr(m.note), origin: optStr(m.origin), at: optStr(m.at)};
   });
   const groups = (o.groups as unknown[]).map((g): GraphGroup => {
-    need(isObj(g) && str(g.kind) && str(g.key) && Array.isArray(g.members), '묶음 칸');
+    need(isObj(g) && str(g.kind) && str(g.key) && Array.isArray(g.members), 'group fields');
     const m = g as Record<string, unknown>;
     return {kind: m.kind as string, key: m.key as string, label: optStr(m.label) ?? (m.key as string), host: optStr(m.host), members: strList(m.members)};
   });

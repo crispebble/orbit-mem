@@ -102,7 +102,7 @@ describe('watchChanges', () => {
     await until(() => f.calls.length >= 3);
     ac.abort();
     await done;
-    assert.ok(r.log.some(l => l.startsWith('error:oni에 연결하지 못했습니다')));
+    assert.ok(r.log.some(l => l.startsWith('error:Could not connect to oni')));
     assert.deepEqual(slept, [RETRY_MS]);
     assert.deepEqual(f.calls.slice(1, 3).map(c => c.args?.after), ['s1', 's1']);
   });

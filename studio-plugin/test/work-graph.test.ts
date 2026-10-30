@@ -33,13 +33,13 @@ describe('toFlowGraph', () => {
     const {edges} = toFlowGraph(w, NOW);
     assert.deepEqual(edges, [
       {from: 'a', to: 'b', variant: 'solid'},
-      {from: 'a', to: 'c', variant: 'dashed', label: '순서로 추정한 선행'},
+      {from: 'a', to: 'c', variant: 'dashed', label: 'Predecessor inferred from order'},
     ]);
   });
 
   it('모르는 선행 출처는 점선에 「알 수 없음」', () => {
     const {edges} = toFlowGraph(work([step({id: 'a'}), step({id: 'b', wave: 1, after: [{stepId: 'a', source: 'guess'}]})]), NOW);
-    assert.deepEqual(edges, [{from: 'a', to: 'b', variant: 'dashed', label: '알 수 없음'}]);
+    assert.deepEqual(edges, [{from: 'a', to: 'b', variant: 'dashed', label: 'Unknown'}]);
   });
 
   it('열 머리는 「묶음 N」과 「끝 a/b」(취소 단계 빼고)', () => {
@@ -48,18 +48,18 @@ describe('toFlowGraph', () => {
       step({id: 'c', wave: 2, status: 'pending'}),
     ]);
     assert.deepEqual(toFlowGraph(w, NOW).columns, [
-      {column: 0, title: '묶음 1', summary: '끝 1/2'},
-      {column: 2, title: '묶음 3', summary: '끝 0/1'},
+      {column: 0, title: 'Batch 1', summary: 'Done 1/2'},
+      {column: 2, title: 'Batch 3', summary: 'Done 0/1'},
     ]);
   });
 
   it('상태는 표시 대응대로 글과 Forma 톤으로', () => {
     const byId = new Map(g.nodes.map(n => [n.id, n]));
     const of = (title: string) => byId.get(task.steps.find(s => s.title === title)!.id)!;
-    assert.deepEqual(of('그래프 계산').status, {label: '진행 중', tone: 'accent'});
-    assert.deepEqual(of('훅 연결').status, {label: '사용자 확인 기다림', tone: 'warning'});
-    assert.deepEqual(of('MCP 도구').status, {label: '실패', tone: 'danger'});
-    assert.deepEqual(of('옛 표식 방식 정리').status, {label: '취소', tone: 'neutral'});
+    assert.deepEqual(of('그래프 계산').status, {label: 'In progress', tone: 'accent'});
+    assert.deepEqual(of('훅 연결').status, {label: 'Waiting for user confirmation', tone: 'warning'});
+    assert.deepEqual(of('MCP 도구').status, {label: 'Failed', tone: 'danger'});
+    assert.deepEqual(of('옛 표식 방식 정리').status, {label: 'Cancelled', tone: 'neutral'});
   });
 
   it('진행 중이면 current, 취소·알 수 없음이면 muted, 그 밖은 강조 없음', () => {
@@ -69,7 +69,7 @@ describe('toFlowGraph', () => {
     ]);
     const e = Object.fromEntries(toFlowGraph(w, NOW).nodes.map(n => [n.id, n.emphasis]));
     assert.deepEqual(e, {p: 'current', c: 'muted', u: 'muted', b: 'muted', d: undefined});
-    assert.equal(toFlowGraph(w, NOW).nodes.find(n => n.id === 'u')?.status.label, '알 수 없음');
+    assert.equal(toFlowGraph(w, NOW).nodes.find(n => n.id === 'u')?.status.label, 'Unknown');
   });
 
   it('진행 중이면 진행 문구와 경과, 막힘이면 사유와 언제부터(칩과 같은 사유는 되풀이하지 않는다)', () => {
@@ -78,14 +78,14 @@ describe('toFlowGraph', () => {
       step({id: 'b', status: 'blocked', block: {reason: 'waiting_user', detail: 'Bash 권한 요청', since: '2026-10-28T06:38:00.000Z'}}),
     ]);
     const [p, b] = toFlowGraph(w, NOW).nodes;
-    assert.deepEqual([p.description, p.meta], ['시험 고치는 중', '40분째']);
-    assert.deepEqual([b.description, b.meta], ['Bash 권한 요청', '3분 전부터']);
+    assert.deepEqual([p.description, p.meta], ['시험 고치는 중', 'for 40 min']);
+    assert.deepEqual([b.description, b.meta], ['Bash 권한 요청', 'since 3 min ago']);
     const [lost, failed] = toFlowGraph(work([
       step({id: 'l', status: 'blocked', block: {reason: 'run_lost', detail: '세션이 끊겼습니다', since: '2026-10-28T06:38:00.000Z'}}),
       step({id: 'f', status: 'blocked', block: {reason: 'run_failed', detail: '시험 실패', since: '2026-10-28T06:38:00.000Z'}}),
     ]), NOW).nodes;
-    assert.deepEqual([lost.status.label, lost.description], ['막힘', '실행 끊김: 세션이 끊겼습니다']);
-    assert.deepEqual([failed.status.label, failed.description], ['실패', '시험 실패']);
+    assert.deepEqual([lost.status.label, lost.description], ['Blocked', 'Run disconnected: 세션이 끊겼습니다']);
+    assert.deepEqual([failed.status.label, failed.description], ['Failed', '시험 실패']);
   });
 
   it('검증은 상태를 바꾸지 않고 배지로, 하위 작업은 보조 배지로', () => {
@@ -94,9 +94,9 @@ describe('toFlowGraph', () => {
       step({id: 'n', status: 'in_progress', verification: {state: 'needs_user', outdated: false}}),
     ]);
     const [d, n] = toFlowGraph(w, NOW).nodes;
-    assert.deepEqual(d.status, {label: '끝', tone: 'success'});
-    assert.deepEqual(d.badges, [{label: '끝남 · 검증 실패', tone: 'danger'}, {label: '하위 작업 2', tone: 'violet'}]);
-    assert.deepEqual(n.badges, [{label: '사용자 확인 필요', tone: 'warning'}]);
+    assert.deepEqual(d.status, {label: 'Done', tone: 'success'});
+    assert.deepEqual(d.badges, [{label: 'Done · verification failed', tone: 'danger'}, {label: 'Sub-work 2', tone: 'violet'}]);
+    assert.deepEqual(n.badges, [{label: 'Needs user confirmation', tone: 'warning'}]);
   });
 
   it('진행 중 단계의 실행이 모두 관측 오래됨이면 배지를 단다(부모 세션 실행은 세지 않는다)', () => {
@@ -112,7 +112,7 @@ describe('toFlowGraph', () => {
       ],
     );
     const [a, b] = toFlowGraph(w, NOW).nodes;
-    assert.deepEqual(a.badges, [{label: '관측 오래됨', tone: 'warning'}]);
+    assert.deepEqual(a.badges, [{label: 'Stale observation', tone: 'warning'}]);
     assert.deepEqual(b.badges, []);
   });
 
@@ -123,7 +123,7 @@ describe('toFlowGraph', () => {
       step({id: 'x', assignee: {kind: 'subagent'}}),
       step({id: 'n'}),
     ]);
-    assert.deepEqual(toFlowGraph(w, NOW).nodes.map(n => n.chips), [['메인 · Claude Code · opus'], ['orbit:worker'], ['서브에이전트 · 종류 미확인'], []]);
+    assert.deepEqual(toFlowGraph(w, NOW).nodes.map(n => n.chips), [['Main · Claude Code · opus'], ['orbit:worker'], ['Subagent · unknown type'], []]);
   });
 
   it('진행 중 열: 진행 중 단계가 있는 첫 열, 없으면 끝나지 않은 단계가 있는 첫 열, 다 끝났으면 없음', () => {
@@ -136,14 +136,14 @@ describe('toFlowGraph', () => {
 
 describe('표시 도움', () => {
   it('경과 글', () => {
-    assert.deepEqual([spanText(0), spanText(59 * 60_000), spanText(60 * 60_000), spanText(89 * 60_000), spanText(26 * 3_600_000)], ['1분 미만', '59분', '1시간', '1시간 29분', '1일 2시간']);
+    assert.deepEqual([spanText(0), spanText(59 * 60_000), spanText(60 * 60_000), spanText(89 * 60_000), spanText(26 * 3_600_000)], ['Under 1 min', '59 min', '1 h', '1 h 29 min', '1 d 2 h']);
   });
   it('호스트 이름: 계약의 claude·codex, 모르는 값은 알 수 없음', () => {
-    assert.deepEqual([hostLabel('claude'), hostLabel('codex'), hostLabel('gemini'), hostLabel(undefined)], ['Claude Code', 'Codex', '알 수 없음', '알 수 없음']);
+    assert.deepEqual([hostLabel('claude'), hostLabel('codex'), hostLabel('gemini'), hostLabel(undefined)], ['Claude Code', 'Codex', 'Unknown', 'Unknown']);
   });
   it('담당 글', () => {
-    assert.equal(assigneeText({kind: 'session', host: 'codex'}), '별도 세션 · Codex');
-    assert.equal(assigneeText({kind: 'robot'}), '알 수 없음');
+    assert.equal(assigneeText({kind: 'session', host: 'codex'}), 'Separate session · Codex');
+    assert.equal(assigneeText({kind: 'robot'}), 'Unknown');
     assert.equal(assigneeText(undefined), undefined);
   });
   it('선행·후행: 선행은 after 순서대로 출처와 함께, 후행은 이 단계를 after로 둔 단계', () => {

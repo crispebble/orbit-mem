@@ -15,6 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/inject"
 	"github.com/onidot-labs/orbit/internal/mcpserver"
 	"github.com/onidot-labs/orbit/internal/memory"
@@ -46,11 +47,13 @@ func sessionProject() project.Project {
 
 func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
-	retroID := fs.String("retro", "", "회고 id(회고 실행 전용 도구만 연다)")
-	reader := fs.Bool("reader", false, "읽는 쪽(Studio 등) 전용: 작업 도구 넷(work_list·work_get·work_sessions·work_changes)과 memory_graph만 연다")
+	retroID := fs.String("retro", "", i18n.T("flag.mcp.retro"))
+	reader := fs.Bool("reader", false, i18n.T("flag.mcp.reader"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
+	// MCP 응답 글은 AI가 읽는다(ONID-61 대상 아님). 공유 오류(기억·제안)도 언어 설정과 무관하게 한국어로 낸다.
+	i18n.Set(i18n.KO)
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -124,14 +127,14 @@ func (a *app) sessionEnd(in hookInput, host string, cfg config.Config) {
 	defer s.Close()
 	queued, err := retro.Enqueue(s, paths(), retro.SessionEnd{Host: host, Session: in.SessionID, Transcript: in.TranscriptPath, Cwd: in.Cwd})
 	if err != nil {
-		fmt.Fprintln(a.stderr, "oni hook: 세션 끝 회고를 대기열에 넣지 못했습니다: "+err.Error())
+		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.enqueue_failed", err))
 		return
 	}
 	if !queued {
 		return
 	}
 	if err := spawnDetached(selfPath(), []string{"retro", "sessions"}, filepath.Join(paths().Logs(), "session-retro.log")); err != nil {
-		fmt.Fprintln(a.stderr, "oni hook: 세션 끝 회고를 띄우지 못했습니다(다음 하루 회고가 읽습니다): "+err.Error())
+		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.spawn_failed", err))
 	}
 }
 
@@ -146,10 +149,10 @@ func cmdHook(a *app, args []string) error {
 	fs := a.flags("hook")
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
-	skipLists := fs.Bool("skip-lists", false, "목록 도구는 동기 훅에 맡기고 기록하지 않는다")
+	skipLists := fs.Bool("skip-lists", false, i18n.T("flag.hook.skip_lists"))
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end" && pos[0] != "work") || (*host != "claude" && *host != "codex") {
-		fmt.Fprintln(a.stderr, "oni hook: 인자를 알 수 없어 넘어갑니다 (oni hook session-start|prompt|session-end|work --host claude|codex)")
+		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
 	}
 	start := time.Now()
@@ -169,7 +172,7 @@ func cmdHook(a *app, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
 			close(recorded)
-			fmt.Fprintln(a.stderr, "oni hook: 설정을 읽지 못해 넘어갑니다: "+err.Error())
+			fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.config_failed", err))
 			done <- ""
 			return
 		}
@@ -211,7 +214,7 @@ func cmdHook(a *app, args []string) error {
 			}
 		}
 	case <-deadline:
-		fmt.Fprintln(a.stderr, "oni hook: 시간이 걸려 넘어갑니다")
+		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.timeout"))
 	}
 	return nil
 }
@@ -311,12 +314,19 @@ func resumeContext(cfg config.Config, scope string, budget int) string {
 	return ws.ResumeContext(scope, budget, work.ReadOptions{StaleAfter: cfg.StaleAfter()})
 }
 
+// kindName and stateName are the names a person reads; an unknown code is shown as is.
 func kindName(k string) string {
-	return map[string]string{"rule": "규칙", "fact": "사실", "decision": "결정", "lesson": "교훈", "journal": "일지"}[k]
+	if !contains(memory.Kinds, k) {
+		return k
+	}
+	return i18n.T("kind." + k)
 }
 
 func stateName(s string) string {
-	return map[string]string{"candidate": "후보", "confirmed": "확정", "stale": "낡음", "hidden": "숨김"}[s]
+	if !contains([]string{memory.StateCandidate, memory.StateConfirmed, memory.StateStale, memory.StateHidden}, s) {
+		return s
+	}
+	return i18n.T("state." + s)
 }
 
 func cmdMemory(a *app, args []string) error {
@@ -332,10 +342,10 @@ func cmdMemory(a *app, args []string) error {
 	case "find":
 		fs := a.flags("memory find")
 		var kinds multiFlag
-		fs.Var(&kinds, "kind", "종류(여러 번)")
-		all := fs.Bool("all", false, "모든 프로젝트")
-		stale := fs.Bool("stale", false, "낡은 기억도")
-		limit := fs.Int("n", 20, "최대 개수")
+		fs.Var(&kinds, "kind", i18n.T("flag.memory.kind"))
+		all := fs.Bool("all", false, i18n.T("flag.memory.all"))
+		stale := fs.Bool("stale", false, i18n.T("flag.memory.stale"))
+		limit := fs.Int("n", 20, i18n.T("flag.max"))
 		asJSON := fs.Bool("json", false, "JSON")
 		pos, err := parse(fs, args[1:])
 		if err != nil {
@@ -356,12 +366,12 @@ func cmdMemory(a *app, args []string) error {
 			fmt.Fprintf(a.stdout, "%s  %s·%s  %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
 		}
 		if len(ms) == 0 {
-			fmt.Fprintln(a.stdout, "찾은 기억이 없습니다.")
+			fmt.Fprintln(a.stdout, i18n.T("cli.memory.none_found"))
 		}
 		return nil
 	case "show":
 		fs := a.flags("memory show")
-		history := fs.Bool("history", false, "버전 이력")
+		history := fs.Bool("history", false, i18n.T("flag.memory.history"))
 		asJSON := fs.Bool("json", false, "JSON")
 		pos, err := parse(fs, args[1:])
 		if err != nil || len(pos) != 1 {
@@ -376,10 +386,10 @@ func cmdMemory(a *app, args []string) error {
 		}
 		fmt.Fprintf(a.stdout, "%s · %s · %s · %s · v%d\n%s\n\n%s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Scope, m.Version, m.Title, m.Body)
 		if len(m.Tags) > 0 {
-			fmt.Fprintln(a.stdout, "\n태그: "+strings.Join(m.Tags, ", "))
+			fmt.Fprintln(a.stdout, "\n"+i18n.T("cli.memory.tags", strings.Join(m.Tags, ", ")))
 		}
 		for _, src := range m.Sources {
-			fmt.Fprintf(a.stdout, "출처 %s %s %s\n", src.Kind, src.Ref, oneLine(src.Excerpt, 80))
+			fmt.Fprintln(a.stdout, i18n.T("cli.memory.source", src.Kind, src.Ref, oneLine(src.Excerpt, 80)))
 		}
 		if *history {
 			h, _ := s.History(m.ID)
@@ -405,11 +415,11 @@ func printProposal(w io.Writer, s *memory.Store, p memory.Proposal, full bool) {
 	fmt.Fprintf(w, "%s  [%s] %s\n", p.ID, p.Kind, p.Title)
 	for _, id := range p.MemoryIDs {
 		if m, err := s.Get(id); err == nil {
-			fmt.Fprintf(w, "    대상 %s %s·%s %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
+			fmt.Fprintln(w, "    "+i18n.T("cli.proposals.target", m.ID, kindName(m.Kind), stateName(m.State), m.Title))
 		}
 	}
 	if p.Payload.Note != "" {
-		fmt.Fprintln(w, "    잇는 근거: "+p.Payload.Note)
+		fmt.Fprintln(w, "    "+i18n.T("cli.proposals.link_note", p.Payload.Note))
 	}
 	if full && p.Body != "" {
 		fmt.Fprintln(w, "    "+strings.ReplaceAll(p.Body, "\n", "\n    "))
@@ -427,11 +437,11 @@ func cmdProposals(a *app, args []string) error {
 		sub, args = args[0], args[1:]
 	}
 	fs := a.flags("proposals " + sub)
-	all := fs.Bool("all", false, "결정한 제안도")
-	title := fs.String("title", "", "고쳐서 승인할 제목")
-	body := fs.String("body", "", "고쳐서 승인할 본문")
-	bodyFile := fs.String("body-file", "", "고쳐서 승인할 본문 파일")
-	note := fs.String("note", "", "결정 이유")
+	all := fs.Bool("all", false, i18n.T("flag.proposals.all"))
+	title := fs.String("title", "", i18n.T("flag.proposals.title"))
+	body := fs.String("body", "", i18n.T("flag.proposals.body"))
+	bodyFile := fs.String("body-file", "", i18n.T("flag.proposals.body_file"))
+	note := fs.String("note", "", i18n.T("flag.proposals.note"))
 	asJSON := fs.Bool("json", false, "JSON")
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -453,7 +463,7 @@ func cmdProposals(a *app, args []string) error {
 		for _, p := range ps {
 			printProposal(a.stdout, s, p, false)
 		}
-		fmt.Fprintf(a.stdout, "대기 %d건. 자세히: oni proposals show <id> · 하나씩 결정: oni proposals review\n", s.PendingCount())
+		fmt.Fprintln(a.stdout, i18n.T("cli.proposals.list_tail", s.PendingCount()))
 		return nil
 	case "show":
 		if len(pos) != 1 {
@@ -498,26 +508,37 @@ func cmdProposals(a *app, args []string) error {
 }
 
 func (a *app) reportDecision(res memory.DecideResult) error {
-	word := map[string]string{memory.StatusApproved: "승인", memory.StatusRejected: "거절", memory.StatusSettled: "정리"}[res.Proposal.Status]
-	fmt.Fprintf(a.stdout, "%s %s했습니다.", res.Proposal.ID, word)
-	if res.Proposal.Status == memory.StatusSettled {
-		fmt.Fprintf(a.stdout, " %s.", res.Proposal.Note)
+	switch res.Proposal.Status {
+	case memory.StatusApproved:
+		fmt.Fprint(a.stdout, i18n.T("decision.approved", res.Proposal.ID))
+	case memory.StatusRejected:
+		fmt.Fprint(a.stdout, i18n.T("decision.rejected", res.Proposal.ID))
+	case memory.StatusSettled:
+		note := res.Proposal.Note
+		for _, k := range memory.SettledNoteKeys {
+			if note == i18n.TIn(i18n.KO, k) {
+				note = i18n.T(k)
+			}
+		}
+		fmt.Fprint(a.stdout, i18n.T("decision.settled", res.Proposal.ID, note))
+	default:
+		fmt.Fprint(a.stdout, res.Proposal.ID+" "+res.Proposal.Status+".")
 	}
 	if res.Link != "" {
-		verb := "이은"
 		if res.Proposal.Kind == memory.ProposalRevert {
-			verb = "뗀"
+			fmt.Fprint(a.stdout, " "+i18n.T("decision.unlinked", res.Link))
+		} else {
+			fmt.Fprint(a.stdout, " "+i18n.T("decision.linked", res.Link))
 		}
-		fmt.Fprintf(a.stdout, " %s 연결 %s.", verb, res.Link)
 	}
 	if res.Created != "" {
-		fmt.Fprintf(a.stdout, " 새 기억 %s.", res.Created)
+		fmt.Fprint(a.stdout, " "+i18n.T("decision.created", res.Created))
 	}
 	if len(res.Changed) > 0 {
-		fmt.Fprintf(a.stdout, " 바뀐 기억 %s.", strings.Join(res.Changed, ", "))
+		fmt.Fprint(a.stdout, " "+i18n.T("decision.changed", strings.Join(res.Changed, ", ")))
 	}
 	if res.File != "" {
-		fmt.Fprintf(a.stdout, " 파일을 바꿨습니다(커밋은 직접): %s", res.File)
+		fmt.Fprint(a.stdout, " "+i18n.T("decision.file", res.File))
 	}
 	fmt.Fprintln(a.stdout)
 	return nil
@@ -530,14 +551,14 @@ func (a *app) review(s *memory.Store) error {
 		return err
 	}
 	if len(ps) == 0 {
-		fmt.Fprintln(a.stdout, "대기 중인 제안이 없습니다.")
+		fmt.Fprintln(a.stdout, i18n.T("cli.proposals.none_waiting"))
 		return nil
 	}
 	in := bufio.NewReader(a.stdin)
 	for i, p := range ps {
 		fmt.Fprintf(a.stdout, "\n(%d/%d) ", i+1, len(ps))
 		printProposal(a.stdout, s, p, true)
-		fmt.Fprint(a.stdout, "승인 a · 거절 r · 넘김 s · 그만 q > ")
+		fmt.Fprint(a.stdout, i18n.T("cli.proposals.review_prompt")+" > ")
 		line, err := in.ReadString('\n')
 		answer := strings.TrimSpace(line)
 		switch answer {
@@ -545,7 +566,7 @@ func (a *app) review(s *memory.Store) error {
 			decision := map[string]string{"a": "approve", "r": "reject"}[answer]
 			res, derr := s.Decide(memory.DecideInput{ID: p.ID, Decision: decision})
 			if derr != nil {
-				fmt.Fprintln(a.stdout, "결정하지 못했습니다: "+derr.Error())
+				fmt.Fprintln(a.stdout, i18n.T("cli.proposals.decide_failed", derr))
 				continue
 			}
 			a.reportDecision(res)
@@ -556,7 +577,7 @@ func (a *app) review(s *memory.Store) error {
 			return nil
 		}
 	}
-	fmt.Fprintf(a.stdout, "\n남은 제안 %d건\n", s.PendingCount())
+	fmt.Fprintln(a.stdout, "\n"+i18n.T("cli.proposals.left", s.PendingCount()))
 	return nil
 }
 
@@ -574,13 +595,13 @@ func cmdBackup(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(a.stdout, "백업했습니다: "+path)
+	fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", path))
 	wpath, err := work.DailyBackup(paths().WorkDB(), paths().Backups(), cfg.BackupKeep, time.Now())
 	if err != nil {
 		return err
 	}
 	if wpath != "" {
-		fmt.Fprintln(a.stdout, "백업했습니다: "+wpath)
+		fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", wpath))
 	}
 	return nil
 }
@@ -599,6 +620,12 @@ func cmdConfig(a *app, args []string) error {
 	}
 	key, val := args[1], args[2]
 	switch key {
+	case "language":
+		l, ok := i18n.Parse(val)
+		if !ok {
+			return i18n.Errorf("config.err.language", val)
+		}
+		cfg.Language, val = string(l), string(l)
 	case "retroHost":
 		cfg.RetroHost = val
 	case "retroModel":
@@ -632,7 +659,7 @@ func cmdConfig(a *app, args []string) error {
 	case "sessionRetro":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
-			return fmt.Errorf("sessionRetro는 true 또는 false입니다: %q", val)
+			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.SessionRetro = b
 	case "sessionRetroModel":
@@ -644,7 +671,7 @@ func cmdConfig(a *app, args []string) error {
 	case "labRunUSD", "labExperimentUSD":
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
-			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
+			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		*map[string]*float64{"labRunUSD": &cfg.LabRunUSD, "labExperimentUSD": &cfg.LabExperimentUSD}[key] = f
 	case "retiredNames":
@@ -657,20 +684,23 @@ func cmdConfig(a *app, args []string) error {
 	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches", "labRuns":
 		n, err := strconv.Atoi(val)
 		if err != nil {
-			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
+			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
 			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns}[key] = n
 	default:
-		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel)", key)
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.stdout, "%s = %s 로 저장했습니다.", key, val)
+	if key == "language" {
+		i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), cfg.Language))
+	}
+	fmt.Fprint(a.stdout, i18n.T("cli.config.saved", key, val))
 	if key == "retroHour" {
-		fmt.Fprint(a.stdout, " 예약 시각을 바꾸려면 oni install --no-hosts 로 예약을 다시 등록하세요.")
+		fmt.Fprint(a.stdout, " "+i18n.T("cli.config.retro_hour_note"))
 	}
 	fmt.Fprintln(a.stdout)
 	return nil

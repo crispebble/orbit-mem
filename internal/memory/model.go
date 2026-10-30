@@ -1,6 +1,6 @@
 package memory
 
-import "errors"
+import "github.com/onidot-labs/orbit/internal/i18n"
 
 // Kinds of memory (설계 「기억 모델」).
 const (
@@ -39,9 +39,9 @@ var (
 )
 
 var (
-	ErrNotFound        = errors.New("기억이 없습니다")
-	ErrVersionConflict = errors.New("다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요")
-	ErrInvalid         = errors.New("입력이 올바르지 않습니다")
+	ErrNotFound        = i18n.Err("memory.err.not_found")
+	ErrVersionConflict = i18n.Err("memory.err.version_conflict")
+	ErrInvalid         = i18n.Err("memory.err.invalid")
 )
 
 // Source is where a memory came from.

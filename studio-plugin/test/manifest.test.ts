@@ -29,3 +29,22 @@ describe('plugin.json', () => {
     for (const c of manifest.commands) assert.ok(index.includes(`'${c.id}':`), c.id);
   });
 });
+
+describe('plugin.json 언어', () => {
+  const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8'));
+  const hangul = /[가-힣]/;
+
+  it('기본 칸은 영어이고 언어 API(0.1.20)를 적는다', () => {
+    const {locales, ...base} = full;
+    assert.equal(full.studioApi, '^0.1.20');
+    assert.ok(!hangul.test(JSON.stringify(base)), JSON.stringify(base));
+    assert.ok(locales?.ko);
+  });
+
+  it('한국어는 보기·명령마다 있다', () => {
+    const ko = full.locales.ko;
+    for (const app of full.apps) for (const v of app.views) assert.ok(hangul.test(ko.apps[app.id].views[v.id]), v.id);
+    for (const c of full.commands) assert.ok(hangul.test(ko.commands[c.id]), c.id);
+    assert.ok(hangul.test(ko.description));
+  });
+});

@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/sqlitedb"
 )
 
@@ -118,14 +119,14 @@ func addColumns(db *sql.Tx) error {
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+		return i18n.Errorf("memory.err.db_open", err)
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema); err != nil {
-		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
-		return fmt.Errorf("기억 DB를 새 판으로 올리지 못했습니다: %w", err)
+		return i18n.Errorf("memory.err.db_upgrade", err)
 	}
 	return tx.Commit()
 }
@@ -134,7 +135,7 @@ func migrate(db *sql.DB) error {
 func Open(path string) (*Store, error) {
 	db, err := sqlitedb.Open(path, 5*time.Second, "foreign_keys(1)", "synchronous(NORMAL)")
 	if err != nil {
-		return nil, fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
+		return nil, i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := migrate(db); err != nil {
 		db.Close()
@@ -212,19 +213,19 @@ func cleanTags(tags []string) []string {
 func (in *SaveInput) validate() error {
 	in.Title = strings.TrimSpace(in.Title)
 	if !validKind(in.Kind) || in.Title == "" || strings.ContainsAny(in.Title, "\r\n") || utf8.RuneCountInString(in.Title) > 200 {
-		return fmt.Errorf("%w: 종류(%s)·제목(한 줄, 200자 이하)을 확인해 주세요", ErrInvalid, strings.Join(Kinds, "|"))
+		return i18n.Errorf("memory.err.check_kind_title", ErrInvalid, strings.Join(Kinds, "|"))
 	}
 	if len(in.Body) > 32<<10 {
-		return fmt.Errorf("%w: 본문은 32KB 이하로 써 주세요", ErrInvalid)
+		return i18n.Errorf("memory.err.body_size", ErrInvalid)
 	}
 	if in.Scope == "" {
 		in.Scope = ScopeGlobal
 	}
 	if !validScope(in.Scope) {
-		return fmt.Errorf("%w: 범위는 global 또는 project:<키>", ErrInvalid)
+		return i18n.Errorf("memory.err.scope_form", ErrInvalid)
 	}
 	if !contains(SourceKinds, in.Source.Kind) {
-		return fmt.Errorf("%w: 출처 종류는 %s 중 하나입니다", ErrInvalid, strings.Join(SourceKinds, "|"))
+		return i18n.Errorf("memory.err.source_kind", ErrInvalid, strings.Join(SourceKinds, "|"))
 	}
 	if in.State != "" && !contains(States, in.State) {
 		return ErrInvalid
@@ -801,7 +802,7 @@ func (s *Store) Backup(dir string, keep int) (string, error) {
 	tmp := dst + ".tmp"
 	_ = os.Remove(tmp)
 	if _, err := s.db.Exec(`VACUUM INTO ?`, tmp); err != nil {
-		return "", fmt.Errorf("백업 실패: %w", err)
+		return "", i18n.Errorf("memory.err.backup", err)
 	}
 	_ = os.Chmod(tmp, 0o600)
 	if err := os.Rename(tmp, dst); err != nil {
@@ -833,7 +834,7 @@ func (s *Store) Snapshot(dir, name string) (string, error) {
 	}
 	dst := filepath.Join(dir, name+"-"+s.Now().Local().Format("20060102T150405")+".sqlite")
 	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
-		return "", fmt.Errorf("사본 실패: %w", err)
+		return "", i18n.Errorf("memory.err.copy", err)
 	}
 	return dst, os.Chmod(dst, 0o600)
 }

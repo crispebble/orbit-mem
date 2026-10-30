@@ -1,11 +1,13 @@
 // 제안 상세: 근거, 바뀔 내용(diff 또는 본문), 고쳐서 승인, 거절 사유. 단축키 A(승인)·⌘↵·Esc.
 import {useEffect, useId, useRef, useState} from 'react';
 import {FileDiff, FileText, Quote, Sparkles, Terminal} from 'lucide-react';
+import {useMessages} from '../i18n/index.ts';
+import {proposalText} from '../i18n/messages/proposals.ts';
 import {AvailabilityNotice, Frame, ActionFeedback, useAction, type Availability} from './shared.tsx';
 import {Block} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
 import {changedLines} from './proposal-text.ts';
-import {proposalApproveHints, proposalKindLabels, type ProposalKind} from './vocabulary.ts';
+import type {ProposalKind} from './vocabulary.ts';
 
 export interface ProposalEvidence {
   id?: string;
@@ -96,6 +98,8 @@ export function ProposalDetail({
   className = '',
   surface = 'plain',
 }: ProposalDetailProps) {
+  const text_ = useMessages(proposalText);
+  const t = text_.detail;
   const ids = useId();
   const action = useAction();
   const diff = proposal.diff;
@@ -173,16 +177,16 @@ export function ProposalDetail({
   }, []);
 
   const message = editing
-    ? `고친 내용으로 승인합니다 · 원래 제안과의 차이 ${changedLines(original, text)}줄${title.trim() && title.trim() !== proposal.title ? ' · 제목 고침' : ''}`
+    ? t.editedMessage(changedLines(original, text), !!title.trim() && title.trim() !== proposal.title)
     : denying
-      ? denyReason === 'required' ? '거절 사유를 적어야 거절합니다.' : '거절 사유는 비워도 됩니다.'
-      : proposalApproveHints[proposal.kind] ?? '승인하면 결정을 기록합니다.';
+      ? denyReason === 'required' ? t.denyRequired : t.denyOptional
+      : text_.approveHints[proposal.kind] ?? text_.defaultHint;
 
   const picks = (targets.length > 0 || scopes.length > 0) && (
     <div className="orbit-scope-row">
       {targets.length > 0 && (
         <>
-          <label htmlFor={`${ids}-target`}>반영 대상</label>
+          <label htmlFor={`${ids}-target`}>{t.target}</label>
           <span className="orbit-pick">
             <select id={`${ids}-target`} className="orbit-input orbit-select" value={target} onChange={event => setTarget(event.target.value)}>
               {targets.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -192,7 +196,7 @@ export function ProposalDetail({
       )}
       {scopes.length > 0 && (
         <>
-          <label htmlFor={`${ids}-scope`}>범위</label>
+          <label htmlFor={`${ids}-scope`}>{t.scope}</label>
           <span className="orbit-pick">
             <select id={`${ids}-scope`} className="orbit-input orbit-select" value={scope} onChange={event => setScope(event.target.value)}>
               {scopes.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -204,7 +208,7 @@ export function ProposalDetail({
   );
 
   return (
-    <Frame label="제안" surface={surface} className={`orbit-prop ${className}`}>
+    <Frame label={t.frame} surface={surface} className={`orbit-prop ${className}`}>
       <div
         onKeyDown={event => {
           if (mode === 'view') return;
@@ -220,17 +224,17 @@ export function ProposalDetail({
       >
         <AvailabilityNotice availability={availability} error={error} />
         <div className="orbit-prop-src">
-          <span className="orbit-prop-source"><Sparkles size={11} aria-hidden="true" />{proposalKindLabels[proposal.kind] ?? proposal.kind}</span>
+          <span className="orbit-prop-source"><Sparkles size={11} aria-hidden="true" />{text_.kinds[proposal.kind] ?? proposal.kind}</span>
           {proposal.source && <span>{proposal.source}</span>}
           <span className="orbit-block-sp" />
-          {editing && <span className="orbit-prop-editing">고치는 중</span>}
+          {editing && <span className="orbit-prop-editing">{t.editing}</span>}
         </div>
         {editing
-          ? <input className="orbit-input orbit-prop-title-input" aria-label="제목 고치기" value={title} onChange={event => setTitle(event.target.value)} disabled={action.pending} />
+          ? <input className="orbit-input orbit-prop-title-input" aria-label={t.titleLabel} value={title} onChange={event => setTitle(event.target.value)} disabled={action.pending} />
           : <h2 className="orbit-title">{proposal.title}</h2>}
         {proposal.explanation && <p className="orbit-prop-sub">{proposal.explanation}</p>}
         {proposal.evidence?.length ? (
-          <Block icon={<Quote size={14} aria-hidden="true" />} title="근거" count={`${proposal.evidence.length}건`}>
+          <Block icon={<Quote size={14} aria-hidden="true" />} title={t.evidence} count={t.count(proposal.evidence.length)}>
             <ul className="orbit-list">
               {proposal.evidence.map((item, index) => (
                 <li className="orbit-evd" key={item.id ?? index}>
@@ -244,12 +248,12 @@ export function ProposalDetail({
         {diff ? (
           <Block
             icon={<FileDiff size={14} aria-hidden="true" />}
-            title="바뀔 내용"
+            title={t.changes}
             count={<span className="orbit-prop-path">{diff.path}</span>}
             actions={(
-              <div className="orbit-seg" role="group" aria-label="보기 방식">
-                <button type="button" aria-pressed={!editing} onClick={cancel}>미리보기</button>
-                <button type="button" aria-pressed={editing} onClick={startEdit}>고치기</button>
+              <div className="orbit-seg" role="group" aria-label={t.viewMode}>
+                <button type="button" aria-pressed={!editing} onClick={cancel}>{t.preview}</button>
+                <button type="button" aria-pressed={editing} onClick={startEdit}>{t.edit}</button>
               </div>
             )}
           >
@@ -262,20 +266,20 @@ export function ProposalDetail({
                 </div>
               ))}
             </div>
-            {editing && <textarea ref={area} className="orbit-edittext" aria-label="바뀔 내용 고치기" value={text} rows={Math.max(1, text.split('\n').length)} onChange={event => setText(event.target.value)} disabled={action.pending} />}
+            {editing && <textarea ref={area} className="orbit-edittext" aria-label={t.editChangesLabel} value={text} rows={Math.max(1, text.split('\n').length)} onChange={event => setText(event.target.value)} disabled={action.pending} />}
             {picks}
           </Block>
         ) : proposal.body !== undefined ? (
-          <Block icon={<FileText size={14} aria-hidden="true" />} title="내용">
+          <Block icon={<FileText size={14} aria-hidden="true" />} title={t.content}>
             {editing
-              ? <textarea ref={area} className="orbit-edittext" aria-label="내용 고치기" value={text} rows={Math.max(2, text.split('\n').length)} onChange={event => setText(event.target.value)} disabled={action.pending} />
+              ? <textarea ref={area} className="orbit-edittext" aria-label={t.editContentLabel} value={text} rows={Math.max(2, text.split('\n').length)} onChange={event => setText(event.target.value)} disabled={action.pending} />
               : <p className="orbit-mem-body">{proposal.body}</p>}
             {picks}
           </Block>
         ) : null}
         {denying && (
           <div className="orbit-fld orbit-prop-deny">
-            <label htmlFor={`${ids}-deny`}>거절 사유{denyReason === 'optional' && <span className="orbit-meta"> · 선택</span>}</label>
+            <label htmlFor={`${ids}-deny`}>{t.denyReason}{denyReason === 'optional' && <span className="orbit-meta">{t.optional}</span>}</label>
             <textarea ref={noteArea} id={`${ids}-deny`} className="orbit-input" rows={2} value={note} onChange={event => setNote(event.target.value)} disabled={action.pending} />
           </div>
         )}
@@ -285,19 +289,19 @@ export function ProposalDetail({
             <span className="orbit-dock-msg">{message}</span>
             {editing ? (
               <>
-                <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={cancel}>취소</button>
-                <button type="button" className="orbit-button" data-variant="primary" disabled={!ready || !onApprove || action.pending} onClick={approve}>고친 대로 승인<kbd className="orbit-kbd">⌘↵</kbd></button>
+                <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={cancel}>{t.cancel}</button>
+                <button type="button" className="orbit-button" data-variant="primary" disabled={!ready || !onApprove || action.pending} onClick={approve}>{t.approveEdited}<kbd className="orbit-kbd">⌘↵</kbd></button>
               </>
             ) : denying ? (
               <>
-                <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={cancel}>취소</button>
-                <button type="button" className="orbit-button" data-variant="danger" disabled={!canDeny} onClick={deny}>거절하기<kbd className="orbit-kbd">⌘↵</kbd></button>
+                <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={cancel}>{t.cancel}</button>
+                <button type="button" className="orbit-button" data-variant="danger" disabled={!canDeny} onClick={deny}>{t.confirmReject}<kbd className="orbit-kbd">⌘↵</kbd></button>
               </>
             ) : (
               <>
-                {onDeny && <button type="button" className="orbit-button" data-variant="ghost" disabled={!ready || action.pending} onClick={deny}>거절</button>}
-                {onApprove && (diff || proposal.body !== undefined) && <button type="button" className="orbit-button" disabled={!ready || action.pending} onClick={startEdit}>고쳐서 승인</button>}
-                {onApprove && <button type="button" className="orbit-button" data-variant="primary" disabled={!ready || action.pending} onClick={approve}>승인<kbd className="orbit-kbd">A</kbd></button>}
+                {onDeny && <button type="button" className="orbit-button" data-variant="ghost" disabled={!ready || action.pending} onClick={deny}>{t.reject}</button>}
+                {onApprove && (diff || proposal.body !== undefined) && <button type="button" className="orbit-button" disabled={!ready || action.pending} onClick={startEdit}>{t.editAndApprove}</button>}
+                {onApprove && <button type="button" className="orbit-button" data-variant="primary" disabled={!ready || action.pending} onClick={approve}>{t.approve}<kbd className="orbit-kbd">A</kbd></button>}
               </>
             )}
           </div>

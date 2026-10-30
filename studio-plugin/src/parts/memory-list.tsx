@@ -2,20 +2,15 @@
 import {useState} from 'react';
 import {Search} from 'lucide-react';
 import {StateView} from '@onidot-labs/studio-plugin/ui';
+import {useMessages} from '../i18n/index.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
 import {AvailabilityNotice, Frame, type Availability} from './shared.tsx';
 import {KindTile, Select, StateMark} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
-import {GLOBAL_SCOPE, KINDS, kindOf, memoryKindLabels, scopeOf, stateOf, type MemoryKind, type OrbitMemory} from './vocabulary.ts';
+import {isGlobalScope, KINDS, kindOf, scopeOf, stateOf, type MemoryKind, type OrbitMemory} from './vocabulary.ts';
 
 export type MemoryListState = 'all' | 'active' | 'candidate' | 'confirmed' | 'stale';
 
-const listStateOptions: readonly {value: MemoryListState; label: string}[] = [
-  {value: 'all', label: '전체'},
-  {value: 'active', label: '낡음 제외'},
-  {value: 'candidate', label: '후보'},
-  {value: 'confirmed', label: '확정'},
-  {value: 'stale', label: '낡음'},
-];
 
 export interface MemoryListProps extends OrbitProps {
   memories: readonly OrbitMemory[];
@@ -40,7 +35,7 @@ export interface MemoryListProps extends OrbitProps {
   scopes?: readonly string[];
   /** 종류 칩에 보일 개수. client 모드에서는 없으면 직접 센다. server 모드에서는 넘긴 것만 보인다. */
   kindCounts?: Partial<Record<MemoryKind | 'all', number>>;
-  /** 결과가 없을 때 문구. 기본은 받은 기억이 하나도 없으면(client) "저장된 기억이 없습니다.", 그 밖에는 "조건에 맞는 기억이 없습니다." */
+  /** 결과가 없을 때 문구. 기본은 받은 기억이 하나도 없으면(client) "저장된 기억이 없습니다."에 해당하는 글, 그 밖에는 "조건에 맞는 기억이 없습니다."에 해당하는 글 */
   emptyText?: string;
   availability?: Availability;
   error?: string;
@@ -80,6 +75,14 @@ export function MemoryList({
   className = '',
   surface = 'plain',
 }: MemoryListProps) {
+  const t = useMessages(memoryText);
+  const listStateOptions: readonly {value: MemoryListState; label: string}[] = [
+    {value: 'all', label: t.list.all},
+    {value: 'active', label: t.list.activeOnly},
+    {value: 'candidate', label: t.states.candidate},
+    {value: 'confirmed', label: t.states.confirmed},
+    {value: 'stale', label: t.states.stale},
+  ];
   const [q, setQ] = useControlled(query, '', onQueryChange);
   const [k, setK] = useControlled(kind, 'all' as MemoryKind | 'all', onKindChange);
   const [sc, setSc] = useControlled(scope, 'all', onScopeChange);
@@ -89,7 +92,7 @@ export function MemoryList({
   const server = filterMode === 'server';
   const scopes = givenScopes
     ? [...givenScopes]
-    : [...new Set(visible.map(scopeOf))].sort((a, b) => (a === GLOBAL_SCOPE ? -1 : b === GLOBAL_SCOPE ? 1 : a.localeCompare(b)));
+    : [...new Set(visible.map(scopeOf))].sort((a, b) => (isGlobalScope(a) ? -1 : isGlobalScope(b) ? 1 : a.localeCompare(b)));
   const base = server
     ? visible
     : visible.filter(memory => {
@@ -103,19 +106,19 @@ export function MemoryList({
     kindCounts?.[value] ?? (server ? undefined : value === 'all' ? base.length : base.filter(memory => kindOf(memory) === value).length);
 
   return (
-    <Frame label="기억 목록" surface={surface} className={`orbit-mem-list ${className}`}>
+    <Frame label={t.list.frame} surface={surface} className={`orbit-mem-list ${className}`}>
       <AvailabilityNotice availability={availability} error={error} />
       {controls && (
         <div className="orbit-mem-filter">
           <div className="orbit-mem-search">
             <Search size={13} aria-hidden="true" />
-            <input type="search" aria-label="기억 검색" placeholder="기억 찾기" value={q} onChange={event => setQ(event.target.value)} />
-            <span className="orbit-meta" role="status">{kindCounts?.all ?? rows.length}건</span>
+            <input type="search" aria-label={t.list.searchLabel} placeholder={t.list.searchPlaceholder} value={q} onChange={event => setQ(event.target.value)} />
+            <span className="orbit-meta" role="status">{t.count(kindCounts?.all ?? rows.length)}</span>
           </div>
-          <div className="orbit-mem-chips" role="group" aria-label="종류">
+          <div className="orbit-mem-chips" role="group" aria-label={t.list.kindGroup}>
             {(['all', ...KINDS] as const).map(value => {
               const n = count(value);
-              const name = value === 'all' ? '전체' : memoryKindLabels[value];
+              const name = value === 'all' ? t.list.all : t.kinds[value];
               return (
                 <button type="button" key={value} className="orbit-chip" aria-pressed={k === value} aria-label={n === undefined ? name : `${name} ${n}`} onClick={() => setK(value)}>
                   {name}
@@ -125,18 +128,18 @@ export function MemoryList({
             })}
           </div>
           <div className="orbit-mem-selects">
-            <Select label="범위" value={sc} onChange={setSc} options={[{value: 'all', label: '전체'}, ...scopes.map(value => ({value, label: value}))]} />
-            <Select label="상태" value={st} onChange={value => setSt(value as MemoryListState)} options={listStateOptions} />
+            <Select label={t.list.scope} value={sc} onChange={setSc} options={[{value: 'all', label: t.list.all}, ...scopes.map(value => ({value, label: value}))]} />
+            <Select label={t.list.state} value={st} onChange={value => setSt(value as MemoryListState)} options={listStateOptions} />
           </div>
         </div>
       )}
       {rows.length === 0 ? (
-        availability === 'ready' ? <StateView title={emptyText ?? (server || visible.length > 0 ? '조건에 맞는 기억이 없습니다.' : '저장된 기억이 없습니다.')} compact headingLevel={3} /> : null
+        availability === 'ready' ? <StateView title={emptyText ?? (server || visible.length > 0 ? t.list.noMatch : t.list.noneSaved)} compact headingLevel={3} /> : null
       ) : (
-        <ul className="orbit-list orbit-mem-rows" aria-label="기억">
+        <ul className="orbit-list orbit-mem-rows" aria-label={t.list.rows}>
           {rows.map(memory => {
             const current = stateOf(memory);
-            const extra = current === 'stale' && memory.supersededBy ? '대체됨' : (memory.version ?? 1) > 1 ? `v${memory.version}` : memory.updatedAt;
+            const extra = current === 'stale' && memory.supersededBy ? t.list.superseded : (memory.version ?? 1) > 1 ? `v${memory.version}` : memory.updatedAt;
             return (
               <li key={memory.id}>
                 <button type="button" className="orbit-mem-row" data-state={current} data-kind={kindOf(memory)} aria-current={selectedId === memory.id ? 'true' : undefined} onClick={() => onSelect?.(memory.id)}>

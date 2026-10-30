@@ -251,8 +251,8 @@ func TestBuild_Codex에_나가는_SessionEnd_훅은_3초를_넘지_않는다(t *
 		if c.ok && err != nil {
 			t.Errorf("%s: rejected: %v", name, err)
 		}
-		if !c.ok && (err == nil || !strings.Contains(err.Error(), "3초")) {
-			t.Errorf("%s: want 3초 error, got %v", name, err)
+		if !c.ok && (err == nil || !strings.Contains(err.Error(), "at most 3 seconds")) {
+			t.Errorf("%s: want 3-second error, got %v", name, err)
 		}
 	}
 }

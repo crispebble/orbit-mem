@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {describe, it} from 'node:test';
 import {parseMemoryGraph, type GraphNode, type MemoryGraph} from '../src/memory-graph/contract.ts';
 import {
-  clusterByRepresentativeTag, clusterMinNew, isExcludedTag, memoryDescription, OTHER_CLUSTER, TAG_GROUP_MAX, toMemoryNetwork, UNKNOWN,
+  clusterByRepresentativeTag, clusterMinNew, isExcludedTag, memoryDescription, OTHER_CLUSTER, TAG_GROUP_MAX, toMemoryNetwork, unknownLabel,
 } from '../src/memory-graph/network.ts';
 import {WorkPaused, WorkShapeError, WorkToolError} from '../src/work/contract.ts';
 
@@ -100,7 +100,7 @@ describe('대표 태그(클러스터)', () => {
     assert.equal(clusters.length, 9 + 1);
     assert.deepEqual(clusters.map(c => c.tone), ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'other']);
     assert.deepEqual(clusters.slice(0, 9).map(c => c.id), ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8']);
-    assert.deepEqual(clusters[9], {id: OTHER_CLUSTER, label: '그 밖', tone: 'other'});
+    assert.deepEqual(clusters[9], {id: OTHER_CLUSTER, label: 'Other', tone: 'other'});
   });
 
   it('1%는 받은 노드가 아니라 응답의 total(잘리기 전 기억 수)로 센다(oni stats와 같은 기준)', () => {
@@ -135,8 +135,8 @@ describe('예시 응답 → 부품 입력', () => {
 
   it('설명은 종류 · 상태 · 범위, 낡음은 흐리게', () => {
     const stale = net.nodes.find(n => n.id === 'm-4e5f60718293');
-    assert.deepEqual([stale?.description, stale?.muted], ['규칙 · 낡음 · 전역', true]);
-    assert.equal(net.nodes.find(n => n.id === 'm-2c3d4e5f6071')?.description, '교훈 · 후보 · 프로젝트 · orbit');
+    assert.deepEqual([stale?.description, stale?.muted], ['Rule · Stale · Global', true]);
+    assert.equal(net.nodes.find(n => n.id === 'm-2c3d4e5f6071')?.description, 'Lesson · Candidate · Project · orbit');
   });
 
   it('선: 연결·회고 연결·대체(화살표)·같은 태그·같은 세션(고친 때 순 사슬)·같은 파일', () => {
@@ -175,7 +175,7 @@ describe('예시 응답 → 부품 입력', () => {
 describe('그 밖의 규칙', () => {
   it('모르는 종류·상태는 「알 수 없음」, 모르는 선·묶음 종류는 그리지 않고 센다', () => {
     const a = node(['x'], {kind: 'memo', state: 'archived'}), b = node(['x']);
-    assert.equal(memoryDescription(a), `${UNKNOWN} · ${UNKNOWN} · 전역`);
+    assert.equal(memoryDescription(a), `${unknownLabel()} · ${unknownLabel()} · Global`);
     const net = toMemoryNetwork(graph([a, b], {
       edges: [{id: 'z-1', kind: 'similar', from: a.id, to: b.id}],
       groups: [{kind: 'project', key: 'p', label: 'p', members: [a.id, b.id]}, {kind: 'tag', key: 'x', label: 'x', members: [a.id, b.id]}],

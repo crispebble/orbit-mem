@@ -2,10 +2,12 @@
 import type {ReactNode} from 'react';
 import {Archive, Brain, FileText, History, Link, Link2, Merge, MessageSquareQuote, Pencil, Quote, Sparkles, Terminal, TriangleAlert} from 'lucide-react';
 import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
+import {useMessages} from '../i18n/index.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
 import {ActionFeedback, Frame, useAction} from './shared.tsx';
 import {Block, KindPill, KindTile, StateMark} from './block.tsx';
 import type {OrbitProps} from './orbit-props.ts';
-import {kindOf, memorySourceLabels, scopeOf, stateOf, type MemoryKind, type MemorySource, type MemorySourceKind, type OrbitMemory} from './vocabulary.ts';
+import {kindOf, scopeOf, stateOf, type MemoryKind, type MemorySource, type MemorySourceKind, type OrbitMemory} from './vocabulary.ts';
 
 const sourceIcon: Record<MemorySourceKind, typeof FileText> = {
   quote: MessageSquareQuote,
@@ -17,16 +19,17 @@ const sourceIcon: Record<MemorySourceKind, typeof FileText> = {
 };
 
 function SourceRow({source}: {source: MemorySource}) {
+  const t = useMessages(memoryText);
   const Icon = sourceIcon[source.kind];
   return (
     <li className="orbit-src-row">
       <span className="orbit-src-ic" data-kind={source.kind}><Icon size={12} aria-hidden="true" /></span>
       <div className="orbit-copy">
-        <span className="orbit-meta">{source.label || memorySourceLabels[source.kind]}{source.at && ` · ${source.at}`}</span>
+        <span className="orbit-meta">{source.label || t.sources[source.kind]}{source.at && ` · ${source.at}`}</span>
         {source.text && <q>{source.text}</q>}
         {source.path && <div className="orbit-src-path">{source.path}</div>}
         {source.changed && (
-          <div className="orbit-src-warn"><TriangleAlert size={12} aria-hidden="true" />출처 파일이 이 기억 뒤에 바뀌었습니다 · 다음 회고에서 확인</div>
+          <div className="orbit-src-warn"><TriangleAlert size={12} aria-hidden="true" />{t.detail.sourceChanged}</div>
         )}
       </div>
     </li>
@@ -44,8 +47,6 @@ export interface MemoryLinkView {
   origin?: string;
 }
 
-const linkOriginLabels: Record<string, string> = {ai: 'AI가 이음', retro: '회고가 이음', user: '사용자가 이음'};
-
 export interface MemoryDetailProps extends OrbitProps {
   memory: OrbitMemory;
   related?: readonly OrbitMemory[];
@@ -58,11 +59,12 @@ export interface MemoryDetailProps extends OrbitProps {
 }
 
 export function MemoryDetail({memory, related = [], links = [], onOpenMemory, usedIn, onEdit, onCopyId, className = '', surface = 'plain'}: MemoryDetailProps) {
+  const t = useMessages(memoryText);
   const action = useAction();
   const kind = kindOf(memory);
   const find = (id: string) => related.find(item => item.id === id);
   return (
-    <Frame label={`기억 ${memory.title}`} surface={surface} className={`orbit-mem-detail ${className}`}>
+    <Frame label={t.detail.frame(memory.title)} surface={surface} className={`orbit-mem-detail ${className}`}>
       <div className="orbit-mem-head">
         <KindPill kind={kind} />
         <StateMark state={stateOf(memory)} />
@@ -73,12 +75,12 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
         <span className="orbit-block-sp" />
         {onCopyId && (
           <button type="button" className="orbit-button" data-variant="ghost" disabled={action.pending} onClick={() => void action.run(() => onCopyId(memory.id))}>
-            <Link size={13} aria-hidden="true" />id 복사
+            <Link size={13} aria-hidden="true" />{t.detail.copyId}
           </button>
         )}
         {onEdit && (
           <button type="button" className="orbit-button" disabled={action.pending} onClick={() => void action.run(() => onEdit(memory.id))}>
-            <Pencil size={13} aria-hidden="true" />고치기
+            <Pencil size={13} aria-hidden="true" />{t.detail.edit}
           </button>
         )}
       </div>
@@ -86,25 +88,25 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
       <p className="orbit-mem-body">{memory.content}</p>
       {(memory.tags?.length || usedIn || memory.lastUsed) && (
         <dl className="orbit-mem-props">
-          {memory.tags?.length ? <><dt>태그</dt><dd>{memory.tags.map(tag => <span className="orbit-tag" key={tag}>{tag}</span>)}</dd></> : null}
-          {usedIn ? <><dt>쓰이는 곳</dt><dd>{usedIn}</dd></> : null}
-          {memory.lastUsed ? <><dt>마지막 사용</dt><dd>{memory.lastUsed}</dd></> : null}
+          {memory.tags?.length ? <><dt>{t.detail.tags}</dt><dd>{memory.tags.map(tag => <span className="orbit-tag" key={tag}>{tag}</span>)}</dd></> : null}
+          {usedIn ? <><dt>{t.detail.usedIn}</dt><dd>{usedIn}</dd></> : null}
+          {memory.lastUsed ? <><dt>{t.detail.lastUsed}</dt><dd>{memory.lastUsed}</dd></> : null}
         </dl>
       )}
       {memory.sources?.length ? (
-        <Block icon={<Quote size={14} aria-hidden="true" />} title="출처" count={`${memory.sources.length}건`}>
+        <Block icon={<Quote size={14} aria-hidden="true" />} title={t.detail.sources} count={t.count(memory.sources.length)}>
           <ul className="orbit-list">
             {memory.sources.map((source, index) => <SourceRow key={`${source.kind}-${index}`} source={source} />)}
           </ul>
         </Block>
       ) : null}
       {memory.history?.length ? (
-        <Block icon={<History size={14} aria-hidden="true" />} title="버전 이력" count={memory.history.length}>
+        <Block icon={<History size={14} aria-hidden="true" />} title={t.detail.history} count={memory.history.length}>
           <AgentTimeline variant="history" title="" history={memory.history} surface="plain" />
         </Block>
       ) : null}
       {memory.supersedes?.length || memory.supersededBy ? (
-        <Block icon={<Merge size={14} aria-hidden="true" />} title="관계">
+        <Block icon={<Merge size={14} aria-hidden="true" />} title={t.detail.relations}>
           <ul className="orbit-list">
             {memory.supersedes?.map(id => {
               const old = find(id);
@@ -113,7 +115,7 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
                   {old ? <KindTile kind={kindOf(old)} /> : <KindTile kind="fact" />}
                   <div className="orbit-copy">
                     <div className="orbit-struck">{old?.title ?? id}</div>
-                    <div className="orbit-meta">이 기억이 대체함 · 낡음</div>
+                    <div className="orbit-meta">{t.detail.replaces}</div>
                   </div>
                 </li>
               );
@@ -125,7 +127,7 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
                   {next ? <KindTile kind={kindOf(next)} /> : <KindTile kind="fact" />}
                   <div className="orbit-copy">
                     <div>{next?.title ?? memory.supersededBy}</div>
-                    <div className="orbit-meta">이 기억을 대체한 기억</div>
+                    <div className="orbit-meta">{t.detail.replacedBy}</div>
                   </div>
                 </li>
               );
@@ -134,7 +136,7 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
         </Block>
       ) : null}
       {links.length ? (
-        <Block icon={<Link2 size={14} aria-hidden="true" />} title="관련 기억" count={links.length}>
+        <Block icon={<Link2 size={14} aria-hidden="true" />} title={t.detail.related} count={links.length}>
           <ul className="orbit-list">
             {links.map(link => (
               <li className="orbit-out-row" key={link.id}>
@@ -143,7 +145,7 @@ export function MemoryDetail({memory, related = [], links = [], onOpenMemory, us
                   {onOpenMemory
                     ? <button type="button" className="orbit-link-button" onClick={() => onOpenMemory(link.memoryId)}>{link.title ?? link.memoryId}</button>
                     : <div>{link.title ?? link.memoryId}</div>}
-                  {(link.note || link.origin) && <div className="orbit-meta">{[link.note, link.origin ? linkOriginLabels[link.origin] ?? link.origin : undefined].filter(Boolean).join(' · ')}</div>}
+                  {(link.note || link.origin) && <div className="orbit-meta">{[link.note, link.origin ? (t.linkOrigins as Record<string, string>)[link.origin] ?? link.origin : undefined].filter(Boolean).join(' · ')}</div>}
                 </div>
               </li>
             ))}

@@ -4,6 +4,8 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
 import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
 import {Badge, Button, StateView, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/studio-plugin/ui';
+import {pick, useMessages} from '../i18n/index.ts';
+import {workKitText, workText, workUiText} from '../i18n/messages/work.ts';
 import {errorMessage} from '../oni.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {formatTime} from '../work/display.ts';
@@ -30,13 +32,13 @@ export interface Loaded {
   pages: Page[];
 }
 
-function lineageNode(item: LineageItem): TreeNode {
+function lineageNode(item: LineageItem, backgroundText: string): TreeNode {
   return {
     id: item.id,
     label: item.label,
     icon: <span className="orbit-lin-dot" data-ended={item.ended || undefined} aria-hidden="true" />,
-    meta: <span className={item.ended ? 'orbit-lin-meta orbit-lin-ended' : 'orbit-lin-meta'}>{item.detail}{item.background ? ' · 뒤에서' : ''}</span>,
-    children: item.children.map(lineageNode),
+    meta: <span className={item.ended ? 'orbit-lin-meta orbit-lin-ended' : 'orbit-lin-meta'}>{item.detail}{item.background ? backgroundText : ''}</span>,
+    children: item.children.map(c => lineageNode(c, backgroundText)),
   };
 }
 
@@ -50,17 +52,21 @@ function findItem(item: LineageItem, id: string): LineageItem | undefined {
 }
 
 async function copy(ctx: PluginContext, text: string) {
+  const t = pick(workUiText).copy;
   try {
     await navigator.clipboard.writeText(text);
-    ctx.notify({title: '대화 기록 위치를 복사했습니다', body: text, tone: 'info'});
+    ctx.notify({title: t.copied(t.transcriptLocation), body: text, tone: 'info'});
   } catch (e) {
-    ctx.notify({title: '복사하지 못했습니다', body: e instanceof Error ? e.message : String(e), tone: 'warning'});
+    ctx.notify({title: t.failed(t.transcriptLocation), body: e instanceof Error ? e.message : String(e), tone: 'warning'});
   }
 }
 
 export function SessionTab({ctx, tab}: TabProps) {
   const id = typeof tab.params.id === 'string' ? tab.params.id : tab.id;
   const {store, state} = useWork();
+  const u = useMessages(workUiText);
+  const t = u.sessionTab;
+  const kit = useMessages(workKitText);
   const now = useNow();
   const [loaded, setLoaded] = useState<Loaded>();
   const [error, setError] = useState<string>();
@@ -136,12 +142,12 @@ export function SessionTab({ctx, tab}: TabProps) {
   const nav = useMemo(() => workNav(ctx, () => {}), [ctx]);
   useLoadWorks(store, loaded?.session.openWorkIds ?? [], now);
 
-  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" />;
-  if (state.status === 'paused') return <Paused store={store} state={state} title="세션 기록을 읽지 않습니다" />;
-  if (missing) return <StateView title="세션을 찾지 못했습니다" description="Orbit 기록에 없는 세션입니다." />;
+  if (!store) return <StateView variant="loading" title={u.starting} />;
+  if (state.status === 'paused') return <Paused store={store} state={state} title={u.paused.sessionTitle} />;
+  if (missing) return <StateView title={t.notFound} description={t.notFoundHint} />;
   if (!loaded) {
-    if (error) return <StateView variant="error" title="세션을 읽지 못했습니다" description={error} onRetry={reload} />;
-    return <StateView variant="loading" title="세션을 불러오는 중입니다" />;
+    if (error) return <StateView variant="error" title={t.readFailed} description={error} onRetry={reload} retryLabel={kit.retry} />;
+    return <StateView variant="loading" title={t.loading} />;
   }
 
   return (
@@ -166,6 +172,9 @@ export interface SessionBodyProps {
 
 /** 세션 탭 본문(읽기와 나눠 둔 그리기) */
 export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, onReload, onMore}: SessionBodyProps) {
+  const u = useMessages(workUiText);
+  const t = u.sessionTab;
+  const unknown = useMessages(workText).unknown;
   const s = loaded.session;
   const row = sessionRowProps(s, titles, now);
   const tree = lineageOf(s, loaded.runs, now);
@@ -186,24 +195,24 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
       </header>
       {error && (
         <div className="orbit-row">
-          <p className="orbit-alert" role="alert">갱신하지 못했습니다. 마지막으로 읽은 내용입니다. {error}</p>
-          <Button variant="secondary" size="sm" onClick={onReload}>다시 읽기</Button>
+          <p className="orbit-alert" role="alert">{t.refreshFailed} {error}</p>
+          <Button variant="secondary" size="sm" onClick={onReload}>{t.reread}</Button>
         </div>
       )}
       <PropertyList items={[
-        {label: row.place.kind === 'repo' ? '레포' : '폴더', value: <span>{row.place.name}{row.place.kind === 'repo' && row.place.branch ? <span className="orbit-mono"> · {row.place.branch}</span> : null}</span>},
-        {label: '디렉토리', value: <span className="orbit-mono orbit-work-break">{s.cwd ?? '알 수 없음'}</span>},
-        {label: '시작', value: formatTime(s.startedAt)},
-        {label: '경과', value: row.elapsed ?? '알 수 없음'},
-        ...(s.model ? [{label: '모델', value: s.model}] : []),
-        {label: '세션 id', value: <span className="orbit-mono orbit-work-break">{s.sessionId}</span>},
+        {label: row.place.kind === 'repo' ? t.repo : t.folder, value: <span>{row.place.name}{row.place.kind === 'repo' && row.place.branch ? <span className="orbit-mono"> · {row.place.branch}</span> : null}</span>},
+        {label: t.directory, value: <span className="orbit-mono orbit-work-break">{s.cwd ?? unknown}</span>},
+        {label: t.started, value: formatTime(s.startedAt)},
+        {label: t.elapsed, value: row.elapsed ?? unknown},
+        ...(s.model ? [{label: t.model, value: s.model}] : []),
+        {label: t.sessionId, value: <span className="orbit-mono orbit-work-break">{s.sessionId}</span>},
       ]} />
 
       <section aria-labelledby="orbit-lin-h">
-        <h3 id="orbit-lin-h" className="orbit-work-sec">호출 계보</h3>
+        <h3 id="orbit-lin-h" className="orbit-work-sec">{t.lineage}</h3>
         <Tree
-          label="호출 계보"
-          nodes={[lineageNode(tree)]}
+          label={t.lineage}
+          nodes={[lineageNode(tree, pick(workText).sessionRow.background)]}
           defaultExpandedIds={[tree.id]}
           autoHeight
           onSelect={nid => {
@@ -214,22 +223,22 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
       </section>
 
       <section aria-labelledby="orbit-links-h">
-        <h3 id="orbit-links-h" className="orbit-work-sec">연결된 작업</h3>
-        {s.openWorkIds.length === 0 ? <p className="orbit-meta">이 세션이 연 작업이 없습니다.</p> : (
+        <h3 id="orbit-links-h" className="orbit-work-sec">{t.linkedWorks}</h3>
+        {s.openWorkIds.length === 0 ? <p className="orbit-meta">{t.noLinkedWorks}</p> : (
           <ul className="orbit-work-runs">
             {s.openWorkIds.map(wid => (
               <li key={wid} className="orbit-row">
-                <TextLink onClick={() => nav.openWork(wid, workTitle(wid))}>{workTitle(wid) ?? '작업 열기'}</TextLink>
+                <TextLink onClick={() => nav.openWork(wid, workTitle(wid))}>{workTitle(wid) ?? t.openWork}</TextLink>
               </li>
             ))}
           </ul>
         )}
-        {row.step && <p className="orbit-meta">지금 하는 단계: {row.step}</p>}
+        {row.step && <p className="orbit-meta">{t.currentStep(row.step)}</p>}
       </section>
 
       <section aria-labelledby="orbit-ev-h">
-        <h3 id="orbit-ev-h" className="orbit-work-sec">증거 {loaded.evidence.length}건</h3>
-        {loaded.evidence.length === 0 ? <p className="orbit-meta">남은 증거가 없습니다.</p> : (
+        <h3 id="orbit-ev-h" className="orbit-work-sec">{t.evidence(loaded.evidence.length)}</h3>
+        {loaded.evidence.length === 0 ? <p className="orbit-meta">{t.noEvidence}</p> : (
           <ul className="orbit-work-evidence-list">
             {loaded.evidence.map(e => <VerificationItem key={e.id} ctx={ctx} evidence={e} run={e.runId ? runById.get(e.runId) : undefined} now={now} nav={nav} />)}
           </ul>
@@ -238,15 +247,15 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
 
       {commits.some(c => c.files.length > 0) && (
         <section aria-labelledby="orbit-files-h">
-          <h3 id="orbit-files-h" className="orbit-work-sec">바뀐 파일</h3>
+          <h3 id="orbit-files-h" className="orbit-work-sec">{t.changedFilesHeading}</h3>
           {commits.filter(c => c.files.length > 0).map(c => (
             <div key={c.id} className="orbit-work-files">
               <div className="orbit-row">
                 <span className="orbit-mono">{c.sha.slice(0, 7)}</span>
                 {c.summary && <span className="orbit-work-text">{c.summary}</span>}
                 <TextLink onClick={() => void ctx.studio.openCommit(c.repo, c.sha).then(ok => {
-                  if (!ok) ctx.notify({title: '커밋을 열지 못했습니다', body: c.repo, tone: 'warning'});
-                })}>diff 열기</TextLink>
+                  if (!ok) ctx.notify({title: u.openCommitFailed, body: c.repo, tone: 'warning'});
+                })}>{t.openDiff}</TextLink>
               </div>
               <ul className="orbit-work-file-list">{c.files.map(f => <li key={f} className="orbit-mono">{f}</li>)}</ul>
             </div>
@@ -256,12 +265,12 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
 
       {transcripts.length > 0 && (
         <section aria-labelledby="orbit-tr-h">
-          <h3 id="orbit-tr-h" className="orbit-work-sec">대화 기록 위치</h3>
+          <h3 id="orbit-tr-h" className="orbit-work-sec">{t.transcripts}</h3>
           <ul className="orbit-work-runs">
-            {transcripts.map(t => (
-              <li key={t} className="orbit-row">
-                <span className="orbit-mono orbit-work-break">{t}</span>
-                <TextLink tone="muted" onClick={() => void copy(ctx, t)}>복사</TextLink>
+            {transcripts.map(path => (
+              <li key={path} className="orbit-row">
+                <span className="orbit-mono orbit-work-break">{path}</span>
+                <TextLink tone="muted" onClick={() => void copy(ctx, path)}>{t.copy}</TextLink>
               </li>
             ))}
           </ul>
@@ -269,9 +278,9 @@ export function SessionBody({ctx, loaded, now, titles, state, nav, busy, error, 
       )}
 
       <section aria-labelledby="orbit-tl-h">
-        <h3 id="orbit-tl-h" className="orbit-work-sec">사건 기록</h3>
-        {events.length === 0 ? <p className="orbit-meta">남은 사건이 없습니다.</p> : <AgentTimeline title="" events={timelineOf(events, titles)} surface="plain" />}
-        {next && <Button variant="secondary" size="sm" disabled={busy} onClick={onMore}>사건 더 보기</Button>}
+        <h3 id="orbit-tl-h" className="orbit-work-sec">{t.timeline}</h3>
+        {events.length === 0 ? <p className="orbit-meta">{t.noEvents}</p> : <AgentTimeline title="" events={timelineOf(events, titles)} surface="plain" />}
+        {next && <Button variant="secondary" size="sm" disabled={busy} onClick={onMore}>{t.moreEvents}</Button>}
       </section>
     </div>
   );

@@ -29,8 +29,8 @@ describe('ownerWorkers', () => {
       step({id: 'c', assignee: {kind: 'session', host: 'codex'}}),
     ]);
     assert.deepEqual(workers.map(w => [w.name, w.role, w.host]), [
-      ['메인 세션', undefined, 'Claude Code'], ['서브에이전트', 'orbit:reviewer', 'Claude Code'],
-      ['서브에이전트 · 종류 미확인', undefined, undefined], ['별도 세션', undefined, 'Codex'],
+      ['Main session', undefined, 'Claude Code'], ['Subagent', 'orbit:reviewer', 'Claude Code'],
+      ['Subagent · unknown type', undefined, undefined], ['Separate session', undefined, 'Codex'],
     ]);
   });
 
@@ -46,13 +46,13 @@ describe('ownerWorkers', () => {
   });
 
   it('담당이 없는 단계는 「담당 정해지지 않음」', () => {
-    assert.equal(ownerWorkers([step({})])[0].name, '담당 정해지지 않음');
+    assert.equal(ownerWorkers([step({})])[0].name, 'No owner assigned');
   });
 
   it('사용자 확인 기다림이 있으면 waiting 상태와 안내(승인·거절 동작 없음)', () => {
     const [w] = ownerWorkers([step({status: 'blocked', block: {reason: 'waiting_user', detail: 'Bash 권한', since: ''}, assignee: {kind: 'main', host: 'claude'}})]);
     assert.equal(w.status, 'waiting');
-    assert.equal(w.waiting?.message, '사용자 확인 기다림: Bash 권한');
+    assert.equal(w.waiting?.message, 'Waiting for user confirmation: Bash 권한');
     assert.equal(w.waiting?.onApprove, undefined);
     assert.equal(w.waiting?.onDeny, undefined);
   });

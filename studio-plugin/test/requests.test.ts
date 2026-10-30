@@ -72,6 +72,10 @@ describe('memoryUpdateSteps', () => {
     const steps = memoryUpdateSteps(mem({scope: 'project:x'}), value({scope: '전역'}));
     assert.equal(steps[0].scope, 'global');
   });
+  it('영어 이름(Global)으로 옮겨도 전역으로 본다', () => {
+    const steps = memoryUpdateSteps(mem({scope: 'project:x'}), value({scope: 'Global'}));
+    assert.equal(steps[0].scope, 'global');
+  });
   it('대체는 편집 뒤 supersede를 한 번 더 부른다(판본은 호출 때 채운다)', () => {
     const steps = memoryUpdateSteps(mem(), value({title: '새', supersededBy: 'm9', stale: true, state: 'stale'}));
     assert.deepEqual(steps.map(s => s.action), ['edit', 'supersede']);

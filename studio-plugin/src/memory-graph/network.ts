@@ -4,6 +4,9 @@
 // 옛 Knowledge 표식 태그는 클러스터·같은 태그 선에서 뺀다, 종류는 모양이 아니라 설명(말풍선)으로, 색은 클러스터.
 // 부품 타입은 Studio 플러그인 API `/graph`(forma-ui `/graph`를 다시 내보냄)에서 받는다. 플러그인은 Forma를 직접 가져오지 않는다.
 import type {NetworkCluster, NetworkEdge, NetworkNode, NetworkOverlay, NetworkRelation} from '@onidot-labs/studio-plugin/graph';
+import {pick} from '../i18n/index.ts';
+import {graphText} from '../i18n/messages/graph.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
 import {memoryKindLabels, memoryStateLabels, type MemoryKind, type MemoryState} from '../parts/vocabulary.ts';
 import type {GraphEdge, GraphGroup, GraphNode, MemoryGraph} from './contract.ts';
 
@@ -22,9 +25,10 @@ export interface MemoryNetwork {
   unknownRelations: number;
 }
 
-export const UNKNOWN = '알 수 없음';
+/** 모르는 종류·상태의 이름(지금 언어) */
+export const unknownLabel = () => pick(memoryText).unknown;
 export const OTHER_CLUSTER = 'other';
-export const OTHER_LABEL = '그 밖';
+export const otherLabel = () => pick(graphText).other;
 /** 클러스터가 되려면 새로 묶는 기억이 전체의 1% 이상, 최소 2개(oni memory.ClusterMinNew). 사람마다 클러스터 수가 다르다 */
 export const clusterMinNew = (memories: number) => Math.max(2, Math.floor((memories + 50) / 100));
 /** 고른 순서대로 색 칸 c1, c2, …. 칸마다 다른 색은 Studio 키트 그래프 부품이 정한다 */
@@ -38,20 +42,24 @@ export const FILE_ALL_PAIRS_MAX = 4;
 export const RECENT_OVERLAY = 14;
 
 /** 관계 종류(범례). 선 모양은 사용자 결정 O19, 색·진하기는 시안 3판 */
-export const MEMORY_RELATIONS: NetworkRelation[] = [
-  {id: 'tag', label: '같은 태그', tone: 'neutral', line: 'solid', emphasis: 0.8},
-  {id: 'link', label: '연결', tone: 'accent', line: 'solid', emphasis: 1.1},
-  {id: 'supersede', label: '대체', tone: 'danger', line: 'solid', arrow: true, emphasis: 2.2},
-  {id: 'retro', label: '회고 연결', tone: 'warning', line: 'solid', emphasis: 1.1},
-  {id: 'session', label: '같은 세션', tone: 'violet', line: 'dashed', emphasis: 0.9},
-  {id: 'file', label: '같은 파일', tone: 'success', line: 'dotted', emphasis: 0.9},
-];
+export const memoryRelations = (): NetworkRelation[] => {
+  const r = pick(graphText).relations;
+  return [
+    {id: 'tag', label: r.tag, tone: 'neutral', line: 'solid', emphasis: 0.8},
+    {id: 'link', label: r.link, tone: 'accent', line: 'solid', emphasis: 1.1},
+    {id: 'supersede', label: r.supersede, tone: 'danger', line: 'solid', arrow: true, emphasis: 2.2},
+    {id: 'retro', label: r.retro, tone: 'warning', line: 'solid', emphasis: 1.1},
+    {id: 'session', label: r.session, tone: 'violet', line: 'dashed', emphasis: 0.9},
+    {id: 'file', label: r.file, tone: 'success', line: 'dotted', emphasis: 0.9},
+  ];
+};
 
 /* ---------- 제외 태그 ---------- */
 /** 옛 Knowledge·Claude 메모리에서 옮길 때 붙은 표식 */
 const MARKER_TAG = /^(imported|space|since|type|옛|superseded-by):/;
 /** 종류 이름 태그. 종류는 배지로 보이므로 클러스터 기준에서 뺀다(제안) */
-const KIND_TAGS = new Set(['규칙', '사실', '결정', '교훈', '일지', '회고', 'rule', 'fact', 'decision', 'lesson', 'journal']);
+// 태그는 사용자 데이터다: 종류 이름을 한국어로 붙인 기존 태그를 알아보는 값
+const KIND_TAGS = new Set(['규칙', '사실', '결정', '교훈', '일지', '회고', 'rule', 'fact', 'decision', 'lesson', 'journal']); // i18n:keep 사용자가 붙인 한국어 태그와 맞춰 보는 데이터
 
 /** 태그 열쇠: 전각·대소문자·앞뒤 공백·-와 _ 차이를 맞춘다(oni TagKey, orbit.memory 1.2와 같은 규칙) */
 const tagKey = (tag: string) => tag.normalize('NFKC').trim().toLowerCase().replace(/_/g, '-');
@@ -107,17 +115,18 @@ export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' 
     if (!k) others++;
   });
   const clusters: NetworkCluster[] = picked.map((k, i) => ({id: k, label: label.get(k) ?? k, tone: clusterTone(i)}));
-  if (others) clusters.push({id: OTHER_CLUSTER, label: OTHER_LABEL, tone: 'other'});
+  if (others) clusters.push({id: OTHER_CLUSTER, label: otherLabel(), tone: 'other'});
   return {clusterOf, clusters};
 }
 
 /* ---------- 글 ---------- */
-export const kindLabel = (kind: string) => memoryKindLabels[kind as MemoryKind] ?? UNKNOWN;
-export const stateLabel = (state: string) => memoryStateLabels[state as MemoryState] ?? UNKNOWN;
+export const kindLabel = (kind: string) => memoryKindLabels()[kind as MemoryKind] ?? unknownLabel();
+export const stateLabel = (state: string) => memoryStateLabels()[state as MemoryState] ?? unknownLabel();
 export function scopeLabel(scope: string, project?: string): string {
-  if (scope === 'global') return '전역';
+  const t = pick(memoryText).scope;
+  if (scope === 'global') return t.global;
   const key = scope.replace(/^project:/, '');
-  return `프로젝트 · ${project || key.split('/').filter(Boolean).pop() || key}`;
+  return t.project(project || key.split('/').filter(Boolean).pop() || key);
 }
 export const memoryDescription = (n: Pick<GraphNode, 'kind' | 'state' | 'scope' | 'project'>) =>
   `${kindLabel(n.kind)} · ${stateLabel(n.state)} · ${scopeLabel(n.scope, n.project)}`;
@@ -186,7 +195,7 @@ export function toMemoryNetwork(graph: MemoryGraph, opts: NetworkOptions = {}): 
       for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) pair(g, members[i], members[j], 'file');
     }
   }
-  return {nodes, edges: dedupe(edges), clusters, relations: MEMORY_RELATIONS, overlays: buildOverlays(visible, graph.edges, graph.groups), unknownRelations};
+  return {nodes, edges: dedupe(edges), clusters, relations: memoryRelations(), overlays: buildOverlays(visible, graph.edges, graph.groups), unknownRelations};
 }
 
 /** 같은 관계·같은 두 기억의 선은 하나(대소문자만 다른 태그 묶음 둘이 같은 짝을 낼 수 있다) */
@@ -223,10 +232,11 @@ function buildOverlays(visible: readonly GraphNode[], edges: readonly GraphEdge[
   const recent = [...visible].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : a.id < b.id ? -1 : 1)).slice(0, RECENT_OVERLAY).reverse().map(n => n.id);
   const retro = edges.filter(e => e.kind === 'link' && e.origin === 'retro' && has(e.from) && has(e.to));
   const sessions = groups.filter(g => g.kind === 'session').map(g => [...new Set(g.members.filter(has))].sort(byUpdated(byId))).filter(s => s.length >= 2);
+  const o = pick(graphText).overlays;
   return [
-    {id: 'chain', label: '대체 사슬', icon: 'chain', description: '옛 기억이 새 기억으로 이어지는 순서를 따라 겹쳐 그립니다.', count: chains.length, paths: chains},
-    {id: 'time', label: '시간순(고친 때)', icon: 'time', description: `최근에 고친 기억 ${recent.length}개를 고친 때 순서대로 이어 번호를 붙입니다.`, count: recent.length, paths: recent.length >= 2 ? [recent] : [], numbered: true},
-    {id: 'retro', label: '회고 연결', icon: 'retro', description: '회고가 이어 둔 연결을 짝으로 겹쳐 그립니다.', count: retro.length, paths: retro.map(e => [e.from, e.to]), highlight: [...new Set(retro.flatMap(e => [e.from, e.to]))]},
-    {id: 'session', label: '같은 세션', icon: 'session', description: '한 작업 세션에서 만든 기억을 고친 때 순서대로 이어 그립니다.', count: sessions.length, paths: sessions},
+    {id: 'chain', label: o.chain.label, icon: 'chain', description: o.chain.description, count: chains.length, paths: chains},
+    {id: 'time', label: o.time.label, icon: 'time', description: o.time.description(recent.length), count: recent.length, paths: recent.length >= 2 ? [recent] : [], numbered: true},
+    {id: 'retro', label: o.retro.label, icon: 'retro', description: o.retro.description, count: retro.length, paths: retro.map(e => [e.from, e.to]), highlight: [...new Set(retro.flatMap(e => [e.from, e.to]))]},
+    {id: 'session', label: o.session.label, icon: 'session', description: o.session.description, count: sessions.length, paths: sessions},
   ];
 }

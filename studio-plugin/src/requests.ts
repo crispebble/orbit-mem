@@ -1,6 +1,7 @@
 // 도구 호출 인자를 만드는 순수 함수들.
 import type {MemoryFormValue, MemoryKind, MemoryListState, ProposalApproval} from './parts/index.ts';
 import type {OniMemory, OniProposal} from './model.ts';
+import {isGlobalScope} from './parts/vocabulary.ts';
 
 export interface FindParams {
   query: string;
@@ -96,7 +97,7 @@ export function memoryUpdateSteps(m: OniMemory, v: MemoryFormValue): UpdateArgs[
   if (v.content !== m.body) { step.body = v.content; changed = true; }
   if (v.kind !== m.kind) { step.kind = v.kind; changed = true; }
   if (!sameTags(v.tags, m.tags ?? [])) { step.tags = v.tags; changed = true; }
-  if (v.scope === '전역' && m.scope !== 'global') { step.scope = 'global'; changed = true; }
+  if (isGlobalScope(v.scope) && m.scope !== 'global') { step.scope = 'global'; changed = true; }
 
   const target = v.supersededBy ? m.state : v.stale ? 'stale' : v.state;
   if (target !== m.state) {

@@ -1,19 +1,19 @@
 // 단계 상세의 증거·실행 표시와 사용자 확인 기다림 때 이어 갈 세션 찾기(순수 함수).
 import type {FlowGraphTone} from '@onidot-labs/studio-plugin/ai';
+import {pick} from '../i18n/index.ts';
+import {workText} from '../i18n/messages/work.ts';
 import {hostLabel} from './graph.ts';
 import type {Evidence, Run, Session, Work} from './types.ts';
 
-const KIND: Record<string, string> = {command: '명령', commit: '커밋', verdict: '판정'};
-export const evidenceKindLabel = (kind: string) => KIND[kind] ?? '알 수 없음';
+const KINDS = ['command', 'commit', 'verdict'];
+export const evidenceKindLabel = (kind: string): string =>
+  KINDS.includes(kind) ? (pick(workText).evidence as Record<string, string>)[kind] : pick(workText).unknown;
 
-const RESULT: Record<string, {label: string; tone: FlowGraphTone}> = {
-  ok: {label: '성공', tone: 'success'},
-  fail: {label: '실패', tone: 'danger'},
-  pass: {label: '통과', tone: 'success'},
-  needs_fix: {label: '수정 요구', tone: 'danger'},
-  needs_user: {label: '사용자 확인 필요', tone: 'warning'},
-};
-export const evidenceResultView = (result: string) => RESULT[result] ?? {label: '알 수 없음', tone: 'neutral' as const};
+const RESULT_TONE: Record<string, FlowGraphTone> = {ok: 'success', fail: 'danger', pass: 'success', needs_fix: 'danger', needs_user: 'warning'};
+export const evidenceResultView = (result: string): {label: string; tone: FlowGraphTone} =>
+  result in RESULT_TONE
+    ? {label: (pick(workText).evidence as Record<string, string>)[result], tone: RESULT_TONE[result]}
+    : {label: pick(workText).unknown, tone: 'neutral'};
 
 /** 그 단계에 묶인 증거(시각 순) */
 export function evidenceOfStep(work: Pick<Work, 'evidence'>, stepId: string): Evidence[] {
@@ -36,9 +36,10 @@ export function commitsOf(evidence: readonly Evidence[]): CommitRef[] {
 }
 
 export function runLabelOf(run: Run): string {
-  if (run.kind === 'subagent') return run.role || '서브에이전트 · 종류 미확인';
-  if (run.kind === 'session') return `별도 세션 · ${hostLabel(run.host)}`;
-  return '알 수 없음';
+  const m = pick(workText);
+  if (run.kind === 'subagent') return run.role || m.who.subagentUnknown;
+  if (run.kind === 'session') return m.who.separateSession(hostLabel(run.host));
+  return m.unknown;
 }
 
 export interface WaitingSession {

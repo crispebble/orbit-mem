@@ -2,6 +2,9 @@
 import {useEffect, useRef, useState} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {Button} from '@onidot-labs/studio-plugin/ui';
+import {useLocale, useMessages} from './i18n/index.ts';
+import {commonText} from './i18n/messages/common.ts';
+import {memoryText} from './i18n/messages/memory.ts';
 import {openMemoryGraph} from './memory-graph/open.ts';
 import {MemoryList, type MemoryKind, type MemoryListState, type OrbitMemory} from './parts/index.ts';
 import {errorMessage} from './oni.ts';
@@ -11,6 +14,9 @@ const DEBOUNCE_MS = 250;
 
 export function MemoriesView({ctx}: ViewProps) {
   const {store, state} = useOrbit();
+  const t = useMessages(memoryText);
+  const common = useMessages(commonText);
+  const locale = useLocale();
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<MemoryKind | 'all'>('all');
   const [filterState, setFilterState] = useState<MemoryListState>('all');
@@ -36,24 +42,25 @@ export function MemoriesView({ctx}: ViewProps) {
         },
         (e: unknown) => {
           if (mine !== seq.current) return;
-          ctx.log.error(`기억을 찾지 못했습니다: ${errorMessage(e)}`);
+          ctx.log.error(`Could not find memories: ${errorMessage(e)}`);
           setStatus('error');
           setError(errorMessage(e));
         },
       );
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [store, ctx, query, kind, filterState, reload, proposalsVersion]);
+  // 날짜·범위 이름이 언어를 따르므로 언어가 바뀌면 다시 읽는다
+  }, [store, ctx, query, kind, filterState, reload, proposalsVersion, locale]);
 
   return (
     <div className="orbit-side">
       <div className="orbit-row">
-        <Button variant="secondary" size="sm" onClick={() => openMemoryGraph(ctx)}>그래프로 보기</Button>
+        <Button variant="secondary" size="sm" onClick={() => openMemoryGraph(ctx)}>{t.list.showGraph}</Button>
       </div>
       <MemoryList
         memories={memories}
         filterMode="server"
-        emptyText={query.trim() ? '조건에 맞는 기억이 없습니다.' : '아직 기억이 없습니다.'}
+        emptyText={query.trim() ? t.list.noMatch : t.list.noneYet}
         selectedId={selected}
         onSelect={id => {
           setSelected(id);
@@ -69,7 +76,7 @@ export function MemoriesView({ctx}: ViewProps) {
         availability={!store ? 'loading' : status === 'error' ? (memories.length ? 'offline' : 'error') : status === 'loading' && memories.length === 0 ? 'loading' : 'ready'}
         error={error}
       />
-      {status === 'error' && <div className="orbit-row"><Button variant="secondary" size="sm" onClick={() => { setStatus('loading'); setReload(n => n + 1); }}>다시 시도</Button></div>}
+      {status === 'error' && <div className="orbit-row"><Button variant="secondary" size="sm" onClick={() => { setStatus('loading'); setReload(n => n + 1); }}>{common.retry}</Button></div>}
     </div>
   );
 }
