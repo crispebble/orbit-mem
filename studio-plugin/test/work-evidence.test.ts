@@ -11,10 +11,10 @@ const id = (title: string) => task.steps.find(s => s.title === title)!.id;
 
 describe('증거', () => {
   it('종류·결과 글과 톤, 모르는 값은 알 수 없음', () => {
-    assert.deepEqual(['command', 'commit', 'verdict', 'x'].map(evidenceKindLabel), ['명령', '커밋', '판정', '알 수 없음']);
+    assert.deepEqual(['command', 'commit', 'verdict', 'x'].map(evidenceKindLabel), ['Command', 'Commit', 'Verdict', 'Unknown']);
     assert.deepEqual(['ok', 'fail', 'pass', 'needs_fix', 'needs_user', 'x'].map(evidenceResultView), [
-      {label: '성공', tone: 'success'}, {label: '실패', tone: 'danger'}, {label: '통과', tone: 'success'},
-      {label: '수정 요구', tone: 'danger'}, {label: '사용자 확인 필요', tone: 'warning'}, {label: '알 수 없음', tone: 'neutral'},
+      {label: 'Succeeded', tone: 'success'}, {label: 'Failed', tone: 'danger'}, {label: 'Passed', tone: 'success'},
+      {label: 'Needs fix', tone: 'danger'}, {label: 'Needs user confirmation', tone: 'warning'}, {label: 'Unknown', tone: 'neutral'},
     ]);
   });
 
@@ -31,8 +31,8 @@ describe('증거', () => {
 
   it('실행 이름: 역할·별도 세션·종류 미확인', () => {
     assert.equal(runLabelOf(task.runs[0]), 'orbit:gate');
-    assert.equal(runLabelOf(task.runs.at(-1)!), '별도 세션 · Codex');
-    assert.equal(runLabelOf({...task.runs[0], role: undefined}), '서브에이전트 · 종류 미확인');
+    assert.equal(runLabelOf(task.runs.at(-1)!), 'Separate session · Codex');
+    assert.equal(runLabelOf({...task.runs[0], role: undefined}), 'Subagent · unknown type');
   });
 });
 

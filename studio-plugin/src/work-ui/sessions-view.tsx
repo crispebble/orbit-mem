@@ -3,6 +3,8 @@ import {useMemo, useState, type KeyboardEvent} from 'react';
 import type {ViewProps} from '@onidot-labs/studio-plugin';
 import {SessionRow} from '@onidot-labs/studio-plugin/ai';
 import {StateView, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import {useMessages} from '../i18n/index.ts';
+import {workUiText} from '../i18n/messages/work.ts';
 import {sessionRowProps} from '../work/session-view.ts';
 import {stepTitleMap, useLoadWorks, useNow, useWork} from './runtime.ts';
 import {Paused} from './paused.tsx';
@@ -21,21 +23,23 @@ function moveFocus(e: KeyboardEvent<HTMLUListElement>) {
 
 export function SessionsView({ctx}: ViewProps) {
   const {store, state} = useWork();
+  const u = useMessages(workUiText);
+  const t = u.sessionsView;
   const now = useNow();
   const [filter, setFilter] = useState<Filter>('live');
   const [selected, setSelected] = useState<string>();
   const titles = useMemo(() => stepTitleMap(state), [state.details]);
   useLoadWorks(store, state.sessions.filter(s => s.state !== 'ended' && s.activeStepIds.length > 0).flatMap(s => s.openWorkIds), now);
 
-  if (!store) return <StateView variant="loading" title="Orbit을 켜는 중입니다" compact headingLevel={3} />;
+  if (!store) return <StateView variant="loading" title={u.starting} compact headingLevel={3} />;
   if (state.status === 'paused') {
-    return <div className="orbit-side"><Paused store={store} state={state} title="세션 기록을 읽지 않습니다" compact /></div>;
+    return <div className="orbit-side"><Paused store={store} state={state} title={u.paused.sessionTitle} compact /></div>;
   }
   if (state.status === 'error' && state.sessions.length === 0) {
-    return <div className="orbit-side"><StateView variant="error" title="세션 기록을 읽지 못했습니다" description={`${state.error ?? ''} 잠시 뒤 다시 읽습니다.`} compact headingLevel={3} /></div>;
+    return <div className="orbit-side"><StateView variant="error" title={t.readFailed} description={`${state.error ?? ''} ${t.retrySoon}`} compact headingLevel={3} /></div>;
   }
   if (state.status === 'idle' || (state.status === 'loading' && state.sessions.length === 0)) {
-    return <div className="orbit-side"><StateView variant="loading" title="세션을 불러오는 중입니다" compact headingLevel={3} /></div>;
+    return <div className="orbit-side"><StateView variant="loading" title={t.loading} compact headingLevel={3} /></div>;
   }
 
   // 부모가 있는 세션(다른 세션이 띄운 세션)은 부모 세션 탭의 호출 계보에서 보인다
@@ -46,16 +50,16 @@ export function SessionsView({ctx}: ViewProps) {
   return (
     <div className="orbit-side">
       <SegmentedControl
-        label="세션 보기"
+        label={t.viewLabel}
         value={filter}
         onChange={v => setFilter(v === 'all' ? 'all' : 'live')}
-        options={[{value: 'live', label: `진행 ${live.length}`}, {value: 'all', label: '전체'}]}
+        options={[{value: 'live', label: t.active(live.length)}, {value: 'all', label: t.all}]}
       />
-      {state.status === 'error' && <p className="orbit-alert" role="alert">갱신하지 못했습니다. 마지막으로 읽은 목록입니다. {state.error}</p>}
+      {state.status === 'error' && <p className="orbit-alert" role="alert">{t.refreshFailed} {state.error}</p>}
       {rows.length === 0 ? (
-        <StateView title={filter === 'live' ? '진행 중인 세션이 없습니다' : '세션이 없습니다'} description="Orbit 훅이 켜진 AI 세션이 여기에 나타납니다." compact headingLevel={3} />
+        <StateView title={filter === 'live' ? t.noActive : t.none} description={t.noneHint} compact headingLevel={3} />
       ) : (
-        <ul className="orbit-session-list" aria-label="세션 목록" onKeyDown={moveFocus}>
+        <ul className="orbit-session-list" aria-label={t.listLabel} onKeyDown={moveFocus}>
           {rows.map(s => {
             const props = sessionRowProps(s, titles, now);
             return (

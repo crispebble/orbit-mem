@@ -1,5 +1,7 @@
 // 부품이 함께 쓰는 틀·알림·동작 훅. 빈 상태는 Forma StateView를 쓴다. forma-ai의 shared.tsx에서 Orbit 부품이 쓰는 것만 옮겨 왔다.
 import {useEffect, useRef, useState, type ReactNode} from 'react';
+import {useMessages} from '../i18n/index.ts';
+import {commonText} from '../i18n/messages/common.ts';
 import {createActionGate} from './action.ts';
 
 export type Availability = 'ready' | 'loading' | 'offline' | 'error';
@@ -14,10 +16,11 @@ export function Frame({children, label, surface = 'outlined', className = ''}: {
 }
 
 export function AvailabilityNotice({availability = 'ready', error}: {availability?: Availability; error?: string}) {
+  const t = useMessages(commonText);
   if (availability === 'ready') return null;
   return (
     <p className="orbit-notice" role={availability === 'error' ? 'alert' : 'status'}>
-      {availability === 'loading' ? '불러오는 중입니다.' : availability === 'offline' ? '연결이 끊겼습니다. 마지막 데이터를 표시합니다.' : error || '데이터를 불러오지 못했습니다.'}
+      {availability === 'loading' ? t.availability.loading : availability === 'offline' ? t.availability.offline : error || t.availability.failed}
     </p>
   );
 }
@@ -48,7 +51,8 @@ export function useAction() {
 }
 
 export function ActionFeedback({action}: {action: {pending: boolean; error: string}}) {
+  const t = useMessages(commonText);
   if (action.error) return <p className="orbit-error" role="alert">{action.error}</p>;
-  if (action.pending) return <p className="orbit-sr-only" role="status">요청을 전달하고 있습니다.</p>;
+  if (action.pending) return <p className="orbit-sr-only" role="status">{t.sending}</p>;
   return null;
 }

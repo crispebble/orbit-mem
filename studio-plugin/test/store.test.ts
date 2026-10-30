@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
+import {setLocale} from '../src/i18n/index.ts';
 import {createStore} from '../src/store.ts';
 import type {OniProposal} from '../src/model.ts';
 import {fail, fakeCtx, ok} from './fake-ctx.ts';
@@ -43,7 +44,7 @@ describe('store.refresh', () => {
     await store.refresh();
     const s = store.getState();
     assert.equal(s.status, 'error');
-    assert.match(s.error ?? '', /oni에 연결하지 못했습니다/);
+    assert.match(s.error ?? '', /Could not connect to oni/);
     assert.equal(f.logs.filter(l => l.level === 'error').length, 1);
   });
 
@@ -131,6 +132,25 @@ describe('store.start', () => {
     assert.deepEqual(calls, [{id: 'a', decision: 'approve'}, {id: 'a', decision: 'reject'}]);
     assert.equal(f.notices.length, 2);
     assert.equal(f.notices[0].tone, 'success');
+    assert.deepEqual(f.notices.map(n => n.title), ['Proposal approved', 'Proposal rejected']);
+    assert.deepEqual(item.actions?.map(a => a.label), ['Approve', 'Reject']);
+  });
+
+  it('언어를 한국어로 바꾸면 받은 일을 다시 올리고 알림도 한국어다', async () => {
+    const f = fakeCtx({proposals: () => ok({items: [prop('a')]}), proposal_decide: () => ok({proposal: prop('a', 'approved')})});
+    const store = createStore(f.ctx, timers().api);
+    await store.start();
+    setLocale('ko');
+    try {
+      const item = f.inbox.at(-1)![0];
+      assert.deepEqual(item.actions?.map(a => a.label), ['승인', '거절']);
+      assert.match(item.subtitle ?? '', /^후보 확정 · /);
+      await f.fireAction(item, 'approve');
+      assert.equal(f.notices[0].title, '제안을 승인했습니다');
+    } finally {
+      setLocale('en');
+      store.dispose();
+    }
   });
 
   it('받은 일 동작이 실패하면 위험 알림을 낸다', async () => {

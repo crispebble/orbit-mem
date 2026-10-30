@@ -1,6 +1,9 @@
 // oni MCP 도구 결과(구조화 결과)를 화면 모델로 바꾸는 순수 함수들.
 // 도구 계약 원본: orbit/internal/mcpserver/server.go, orbit/internal/memory/{model,proposal}.go
 import type {InboxItem} from '@onidot-labs/studio-plugin';
+import {pick} from './i18n/index.ts';
+import {memoryText} from './i18n/messages/memory.ts';
+import {proposalText} from './i18n/messages/proposals.ts';
 import type {
   MemoryKind,
   MemorySource,
@@ -111,38 +114,29 @@ const KINDS: readonly MemoryKind[] = ['rule', 'fact', 'decision', 'lesson', 'jou
 const STATES: readonly MemoryState[] = ['candidate', 'confirmed', 'stale', 'hidden'];
 const SOURCE_KINDS: readonly MemorySourceKind[] = ['quote', 'file', 'command', 'session', 'host_memory', 'legacy'];
 
-const sourceLabels: Record<MemorySourceKind, string> = {
-  quote: '내 말', file: '파일', command: '명령', session: '대화 기록', host_memory: '호스트 기억', legacy: '옛 Knowledge',
-};
+/** 출처 이름: 지금 언어로 */
+const sourceLabel = (kind: MemorySourceKind): string => pick(memoryText).sources[kind];
 
-const proposalKindLabels: Record<string, string> = {
-  confirm: '후보 확정', stale: '낡은 기억 정리', merge: '기억 합치기', reclassify: '종류 다시 분류', apply_file: '파일 반영', direction: '방향 제안',
-  edit: '기억 고치기', revert: '변경 되돌리기', link: '관련 기억 잇기', retag: '태그 정리',
-};
-
-const actionLabels: Record<string, string> = {
-  create: '', seen: '다시 나옴', confirm: '확정', update: '고침', edit: '고침', stale: '낡음으로 표시', restore: '후보로 되돌림', supersede: '대체됨', reclassify: '종류 바꿈', retag: '태그 바꿈', revert: '되돌림',
-};
-
-export const proposalStatusLabels: Record<string, string> = {pending: '대기', approved: '승인함', rejected: '거절함', settled: '다른 길로 처리됨'};
+export const proposalStatusLabel = (status: string): string => (pick(proposalText).statuses as Record<string, string>)[status] ?? status;
 
 export function proposalKindLabel(kind: string): string {
-  return proposalKindLabels[kind] ?? kind;
+  return (pick(proposalText).rowKinds as Record<string, string>)[kind] ?? kind;
 }
 
 /** 월·일·시각. 올해가 아니면 시각 없이 연도를 붙인다. 시각이 없으면 빈 글. */
 export function formatDate(ms: number | undefined, now: Date = new Date()): string {
   if (!ms) return '';
   const d = new Date(ms);
-  if (d.getFullYear() !== now.getFullYear()) return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+  const t = pick(memoryText).date;
+  if (d.getFullYear() !== now.getFullYear()) return t.withYear(d.getFullYear(), d.getMonth() + 1, d.getDate());
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${hh}:${mm}`;
+  return t.withTime(d.getMonth() + 1, d.getDate(), `${hh}:${mm}`);
 }
 
 /** 범위(global·project:<키>)를 사람이 읽는 이름으로 */
 export function scopeLabel(scope: string, project?: string): string {
-  if (!scope || scope === 'global') return '전역';
+  if (!scope || scope === 'global') return pick(memoryText).scope.global;
   if (project) return project;
   return scope.startsWith('project:') ? scope.slice('project:'.length) : scope;
 }
@@ -169,7 +163,7 @@ export function toMemoryRecord(s: OniSummary, now: Date = new Date()): OrbitMemo
 function toSource(s: OniSource, now: Date): MemorySource {
   const kind: MemorySourceKind = (SOURCE_KINDS as readonly string[]).includes(s.kind) ? (s.kind as MemorySourceKind) : 'session';
   const when = formatDate(s.at, now);
-  const out: MemorySource = {kind, label: when ? `${sourceLabels[kind]} · ${when}` : sourceLabels[kind]};
+  const out: MemorySource = {kind, label: when ? `${sourceLabel(kind)} · ${when}` : sourceLabel(kind)};
   if (s.excerpt) out.text = s.excerpt;
   if (s.ref) out.path = s.ref;
   return out;
@@ -179,9 +173,10 @@ function toVersions(history: readonly OniVersion[], now: Date): MemoryVersion[] 
   const asc = [...history].sort((a, b) => a.version - b.version);
   const out = asc.map((h, i): MemoryVersion => {
     const prev = asc[i - 1];
+    const actions = pick(memoryText).versionActions as Record<string, string>;
     const label = h.action === 'create'
-      ? (h.memory.state === 'confirmed' ? '확정으로 남김' : '후보로 남김')
-      : actionLabels[h.action] || h.action;
+      ? (h.memory.state === 'confirmed' ? actions.createdConfirmed : actions.createdCandidate)
+      : actions[h.action] || h.action;
     const v: MemoryVersion = {version: h.version, label, at: formatDate(h.at, now)};
     if (h.reason) v.by = h.reason;
     if (h.action === 'confirm') v.tone = 'ok';
@@ -269,7 +264,7 @@ function evidenceOf(memories: readonly OniMemory[], now: Date): ProposalEvidence
   for (const m of memories) {
     const sources = m.sources ?? [];
     if (!sources.length) {
-      out.push({id: `${m.id}`, label: '기억', text: m.title});
+      out.push({id: `${m.id}`, label: pick(memoryText).evidenceMemory, text: m.title});
       continue;
     }
     sources.forEach((s, i) => {
@@ -283,7 +278,7 @@ function evidenceOf(memories: readonly OniMemory[], now: Date): ProposalEvidence
 export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], now: Date = new Date()): Proposal {
   const payload = p.payload ?? {};
   const date = formatDate(p.createdAt, now);
-  const out: Proposal = {id: p.id, kind: asProposalKind(p.kind), title: p.title, source: p.retroId ? `${date} 회고에서` : date};
+  const out: Proposal = {id: p.id, kind: asProposalKind(p.kind), title: p.title, source: p.retroId ? pick(proposalText).fromRetro(date) : date};
   const evidence = evidenceOf(related, now);
   if (evidence.length) out.evidence = evidence;
   if (p.kind === 'apply_file') {
@@ -292,15 +287,15 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
     if (p.body) out.explanation = p.body;
   } else if (p.kind === 'merge') {
     const text = payload.mergedBody ?? '';
-    out.diff = {path: `합친 기억 · ${payload.mergedTitle ?? ''}`, lines: addLines(text), text};
+    out.diff = {path: pick(proposalText).mergedPath(payload.mergedTitle ?? ''), lines: addLines(text), text};
     // 고친 제목은 합칠 기억의 제목이 된다(oni merge: title이 mergedTitle을 바꾼다).
     if (payload.mergedTitle) out.title = payload.mergedTitle;
     if (p.body) out.explanation = p.body;
   } else if (p.kind === 'direction') {
-    out.diff = {path: `새 결정 기억 · ${p.title}`, lines: addLines(p.body ?? ''), text: p.body ?? ''};
+    out.diff = {path: pick(proposalText).directionPath(p.title), lines: addLines(p.body ?? ''), text: p.body ?? ''};
   } else if (p.kind === 'link') {
     // 잇기는 기억 내용을 바꾸지 않아 고쳐서 승인이 없다(oni가 거부한다). 두 기억은 근거에 보인다.
-    const why = [p.body, payload.note && `잇는 근거: ${payload.note}`].filter(Boolean).join('\n\n');
+    const why = [p.body, payload.note && pick(proposalText).linkReason(payload.note)].filter(Boolean).join('\n\n');
     if (why) out.explanation = why;
   } else {
     if (p.body) out.explanation = p.body;
@@ -319,6 +314,7 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
 // ---------- 받은 일 ----------
 
 export function toInboxItems(proposals: readonly OniProposal[], now: Date = new Date()): InboxItem[] {
+  const t = pick(proposalText);
   return proposals
     .filter(p => p.status === 'pending')
     .map(p => ({
@@ -330,8 +326,8 @@ export function toInboxItems(proposals: readonly OniProposal[], now: Date = new 
       unread: true,
       createdAt: p.createdAt,
       actions: [
-        {id: 'approve', label: '승인', tone: 'primary' as const},
-        {id: 'reject', label: '거절', tone: 'danger' as const},
+        {id: 'approve', label: t.approve, tone: 'primary' as const},
+        {id: 'reject', label: t.reject, tone: 'danger' as const},
       ],
     }));
 }

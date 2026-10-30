@@ -1,6 +1,9 @@
 // Orbit 앱의 공유 상태: 제안 목록, 받은 일·배지 동기화, 결정·기억 호출.
 // React에 기대지 않는다(화면은 subscribe/getState로 읽는다). ctx만 있으면 시험할 수 있다.
 import type {InboxItem, PluginContext} from '@onidot-labs/studio-plugin';
+import {onLocale, pick} from './i18n/index.ts';
+import {commonText} from './i18n/messages/common.ts';
+import {proposalText} from './i18n/messages/proposals.ts';
 import {callOni, errorMessage, itemsOf, OrbitError} from './oni.ts';
 import {
   toInboxItems,
@@ -53,12 +56,20 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   let inflight: Promise<void> | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let offAction: (() => void) | undefined;
+  let offLocale: (() => void) | undefined;
   let lastLogged: string | undefined;
 
   const set = (next: Partial<OrbitState>) => {
     state = {...state, ...next};
     listeners.forEach(l => l());
   };
+
+  /** 받은 일·배지를 지금 제안과 언어로 다시 만든다 */
+  function publishInbox(): void {
+    const items: InboxItem[] = toInboxItems(state.proposals);
+    inbox.set('proposals', items);
+    ctx.app.setBadge('orbit', items.length > 0 ? items.length : null);
+  }
 
   async function load(): Promise<void> {
     if (state.status !== 'ready') set({status: 'loading', error: undefined});
@@ -67,13 +78,11 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
       const proposals = itemsOf<OniProposal>(out, 'proposals');
       lastLogged = undefined;
       set({status: 'ready', proposals, error: undefined});
-      const items: InboxItem[] = toInboxItems(proposals);
-      inbox.set('proposals', items);
-      ctx.app.setBadge('orbit', items.length > 0 ? items.length : null);
+      publishInbox();
     } catch (e) {
       const message = errorMessage(e);
       // 같은 오류를 60초마다 되풀이해 적지 않는다
-      if (message !== lastLogged) ctx.log.error(`제안을 불러오지 못했습니다: ${message}`);
+      if (message !== lastLogged) ctx.log.error(`Could not load proposals: ${message}`);
       lastLogged = message;
       set({status: 'error', error: message});
     }
@@ -102,10 +111,11 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     const approve = actionId === 'approve';
     try {
       const out = await decide(decideArgs(item.id, approve ? 'approve' : 'reject'));
-      ctx.notify({title: approve ? '제안을 승인했습니다' : '제안을 거절했습니다', body: out.file ? `${item.title} · 파일 반영: ${out.file}` : item.title, tone: 'success'});
+      const t = pick(proposalText).notify;
+      ctx.notify({title: approve ? t.approved : t.rejected, body: out.file ? t.appliedToFile(item.title, out.file) : item.title, tone: 'success'});
     } catch (e) {
-      ctx.log.error(`제안 결정 실패(${item.id}): ${errorMessage(e)}`);
-      ctx.notify({title: '결정하지 못했습니다', body: `${item.title} · ${errorMessage(e)}`, tone: 'danger'});
+      ctx.log.error(`Proposal decision failed (${item.id}): ${errorMessage(e)}`);
+      ctx.notify({title: pick(proposalText).notify.failed, body: `${item.title} · ${errorMessage(e)}`, tone: 'danger'});
     }
   }
 
@@ -118,7 +128,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   async function getMemory(id: string): Promise<{memory: OniMemory; history: OniVersion[]}> {
     const out = await callOni<{items?: OniMemory[]; history?: Record<string, OniVersion[]>}>(ctx, 'memory_get', {ids: [id], history: true});
     const memory = itemsOf<OniMemory>(out, 'memory_get')[0];
-    if (!memory) throw new OrbitError('기억을 찾지 못했습니다.');
+    if (!memory) throw new OrbitError(pick(commonText).oni.memoryNotFound);
     return {memory, history: out.history?.[id] ?? []};
   }
 
@@ -128,7 +138,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
       try {
         return itemsOf<OniMemory>(await callOni<unknown>(ctx, 'memory_get', {ids: [id]}), 'memory_get');
       } catch (e) {
-        ctx.log.warn(`기억을 읽지 못했습니다(${id}): ${errorMessage(e)}`);
+        ctx.log.warn(`Could not read memory (${id}): ${errorMessage(e)}`);
         return [];
       }
     }));
@@ -142,15 +152,17 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
       const args: Record<string, unknown> = {...step};
       if (args.expectedVersion === undefined && last) args.expectedVersion = last.version;
       const out = await callOni<{memory?: OniMemory}>(ctx, 'memory_update', args);
-      if (!out.memory) throw new OrbitError('oni의 memory_update 응답 모양이 맞지 않습니다.');
+      if (!out.memory) throw new OrbitError(pick(commonText).oni.badShape('memory_update'));
       last = out.memory;
     }
-    if (!last) throw new OrbitError('바뀐 내용이 없습니다.');
+    if (!last) throw new OrbitError(pick(commonText).oni.nothingChanged);
     return last;
   }
 
   async function start(): Promise<void> {
     offAction = ctx.inbox.onAction(handleAction);
+    // 언어가 바뀌면 이미 올린 받은 일 글도 새 언어로 다시 올린다
+    offLocale = onLocale(() => { if (state.status === 'ready') publishInbox(); });
     await refresh();
     timer = timers.setInterval(() => { void refresh(); }, REFRESH_MS);
   }
@@ -160,6 +172,8 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     timer = undefined;
     offAction?.();
     offAction = undefined;
+    offLocale?.();
+    offLocale = undefined;
     listeners.clear();
   }
 

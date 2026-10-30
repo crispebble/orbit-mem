@@ -1,4 +1,6 @@
 // 읽는 쪽 연결(`work`)로 작업 도구를 부르고 응답을 검사해 돌려준다. oni 호출 경계 하나.
+import {pick} from '../i18n/index.ts';
+import {workText} from '../i18n/messages/work.ts';
 import {errorMessage, OrbitError} from '../oni.ts';
 import {
   checkContract, parseChanges, parseGet, parseList, parseSession, parseSessions, WorkPaused, WorkToolError,
@@ -21,12 +23,12 @@ async function call(ctx: WorkCtx, tool: string, args: Record<string, unknown>, o
   try {
     result = await ctx.mcp.call<unknown>(WORK_CONNECTION_ID, tool, {...args, major: READ_MAJOR_ARG}, options);
   } catch (e) {
-    throw new OrbitError(`oni에 연결하지 못했습니다: ${errorMessage(e)}`, {connection: true});
+    throw new OrbitError(pick(workText).error.connect(errorMessage(e)), {connection: true});
   }
   const out = result.structured;
   if (out === undefined || out === null) {
-    if (result.isError) throw new WorkToolError('UNKNOWN', result.text.trim() || `${tool} 호출이 실패했습니다.`);
-    throw new OrbitError(`oni의 ${tool} 응답에 구조화 결과가 없습니다. Orbit을 올려 주세요.`);
+    if (result.isError) throw new WorkToolError('UNKNOWN', result.text.trim() || pick(workText).error.callFailed(tool));
+    throw new OrbitError(pick(workText).error.noStructured(tool));
   }
   checkContract(out, tool);
   return out;

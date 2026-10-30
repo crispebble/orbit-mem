@@ -158,7 +158,7 @@ describe('work store', () => {
     const store = createWorkStore(f.ctx, {sleep: noSleep});
     await store.start();
     await until(() => store.getState().status === 'paused');
-    assert.equal(store.getState().pause?.message, 'Orbit이 이 Orbit 앱보다 새 판입니다. Orbit 앱을 올려 주세요.');
+    assert.equal(store.getState().pause?.message, 'Orbit is newer than this Orbit app. Please update the Orbit app.');
     assert.equal(f.calls.length, 1);
     store.dispose();
   });

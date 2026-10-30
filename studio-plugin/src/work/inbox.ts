@@ -1,5 +1,6 @@
 // 받은 일: `blocked` + `waiting_user` 단계를 kind 'waiting' 항목으로. 확인·거절 동작은 없다(계약 1.0은 읽기 전용).
 // ctx.inbox.set은 플러그인의 받은 일 전체를 바꾸므로 제안(store.ts)과 같은 갈래 합치기(inbox-parts.ts)에 'waiting' 갈래로 넣는다.
+import {onLocale} from '../i18n/index.ts';
 import {blockText, waitingSteps} from './display.ts';
 import type {Work, WorkInboxItem} from './types.ts';
 
@@ -54,9 +55,15 @@ export function syncWaitingInbox(store: DetailSource, parts: {set(part: string, 
     parts.set('waiting', waitingInboxItems(Object.values(details)));
   };
   const off = store.subscribe(publish);
+  // 언어가 바뀌면 부제(막힘 사유)를 새 언어로 다시 올린다
+  const offLocale = onLocale(() => {
+    last = undefined;
+    publish();
+  });
   publish();
   return () => {
     off();
+    offLocale();
     parts.clear('waiting');
   };
 }

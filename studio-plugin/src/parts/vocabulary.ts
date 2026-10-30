@@ -1,5 +1,8 @@
 // Orbit 기억·제안 어휘. Forma(forma-ai 0.9.x)의 management-model.ts에서 옮겨 왔다.
 // Forma 0.10.0에서 이 어휘가 빠지므로 플러그인이 갖는다.
+import {pick} from '../i18n/index.ts';
+import {memoryText} from '../i18n/messages/memory.ts';
+import {proposalText} from '../i18n/messages/proposals.ts';
 
 export type MemoryKind = 'rule' | 'fact' | 'decision' | 'lesson' | 'journal';
 export type MemoryState = 'candidate' | 'confirmed' | 'stale' | 'hidden';
@@ -50,58 +53,22 @@ export interface OrbitMemory {
   lastUsed?: string;
 }
 
-export const memoryKindLabels: Record<MemoryKind, string> = {
-  rule: '규칙',
-  fact: '사실',
-  decision: '결정',
-  lesson: '교훈',
-  journal: '일지',
-};
-
-export const memoryStateLabels: Record<MemoryState, string> = {
-  candidate: '후보',
-  confirmed: '확정',
-  stale: '낡음',
-  hidden: '숨김',
-};
-
-export const memorySourceLabels: Record<MemorySourceKind, string> = {
-  quote: '내 말',
-  file: '파일',
-  command: '명령',
-  session: '대화 기록',
-  host_memory: '호스트 기억',
-  legacy: '옛 Knowledge',
-};
-
-export const proposalKindLabels: Record<ProposalKind, string> = {
-  confirm: '후보 확정',
-  stale: '낡은 기억 정리',
-  merge: '기억 합치기',
-  reclassify: '종류 재분류',
-  apply_file: '파일 반영',
-  direction: '방향 제안',
-  link: '관련 기억 잇기',
-  cleanup: '기억 정리·합치기',
-  harness: '하네스 반영',
-};
+// 이름과 안내는 지금 언어로 읽는다(그릴 때·부를 때). 화면은 useLocale·useMessages로 언어 바뀜을 따라간다.
+export const memoryKindLabels = (): Record<MemoryKind, string> => pick(memoryText).kinds;
+export const memoryStateLabels = (): Record<MemoryState, string> => pick(memoryText).states;
+export const memorySourceLabels = (): Record<MemorySourceKind, string> => pick(memoryText).sources;
+export const proposalKindLabels = (): Record<ProposalKind, string> => pick(proposalText).kinds;
 
 /** 승인 단추 옆에 보이는 안내: 승인하면 무엇이 바뀌는지 */
-export const proposalApproveHints: Record<ProposalKind, string> = {
-  confirm: '승인하면 이 후보를 확정 기억으로 바꿉니다.',
-  stale: '승인하면 대상 기억을 낡음으로 표시합니다. 이력은 남습니다.',
-  merge: '승인하면 합친 기억을 새로 만들고 원래 기억은 낡음이 됩니다.',
-  reclassify: '승인하면 기억의 종류를 바꿉니다.',
-  apply_file: '승인하면 파일 변경만 만들어 둡니다. 커밋은 직접 합니다.',
-  direction: '승인하면 결정 기억으로 남깁니다.',
-  link: '승인하면 두 기억을 잇습니다. 기억 내용은 바뀌지 않습니다.',
-  cleanup: '승인하면 결정을 기록합니다.',
-  harness: '승인하면 파일 변경만 만들어 둡니다. 커밋은 직접 합니다.',
-};
+export const proposalApproveHints = (): Record<ProposalKind, string> => pick(proposalText).approveHints;
 
 export const KINDS: readonly MemoryKind[] = ['rule', 'fact', 'decision', 'lesson', 'journal'];
-export const GLOBAL_SCOPE = '전역';
+
+/** 전역 범위의 이름(지금 언어). 기억의 scope 칸에는 이 이름이 그대로 들어간다. */
+export const globalScope = (): string => pick(memoryText).scope.global;
+/** 어느 언어의 전역 이름이든 전역으로 본다(언어가 바뀌어도 고치던 값이 어긋나지 않게) */
+export const isGlobalScope = (scope: string): boolean => scope === memoryText.en.scope.global || scope === memoryText.ko.scope.global;
 
 export const kindOf = (memory: OrbitMemory): MemoryKind => memory.kind ?? 'fact';
 export const stateOf = (memory: OrbitMemory): MemoryState => memory.state ?? 'confirmed';
-export const scopeOf = (memory: OrbitMemory): string => memory.scope || GLOBAL_SCOPE;
+export const scopeOf = (memory: OrbitMemory): string => memory.scope || globalScope();

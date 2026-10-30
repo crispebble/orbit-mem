@@ -1,25 +1,30 @@
 // 세션 보기의 표시 모델(순수 함수): 세션 줄(Forma `SessionRow` props), 호출 계보(forma-ui `Tree`에 넣을 나무),
 // 사건 기록(forma-ai `AgentTimeline` events), 사용자 확인 기다림 때 세션으로 가는 길.
 import type {AgentTimelineEvent, SessionRowProps} from '@onidot-labs/studio-plugin/ai';
+import {localeTag, pick} from '../i18n/index.ts';
+import {workKitText, workText} from '../i18n/messages/work.ts';
 import {runStateView, sessionStateView} from './display.ts';
 import {agoText, hostLabel, spanText} from './graph.ts';
 import type {Run, Session, SessionEvent} from './types.ts';
 
-const SURFACE: Record<string, string> = {cli: 'CLI', desktop: '데스크톱', headless: '백그라운드'};
+const SURFACE_KEYS = ['cli', 'desktop', 'headless'];
 
 /** 화면 종류 글. 모르는 값·`unknown`은 「알 수 없음」 */
 export function surfaceLabel(surface: string | undefined): string {
-  return (surface && SURFACE[surface]) || '알 수 없음';
+  const m = pick(workText);
+  if (surface === 'cli') return 'CLI';
+  if (surface && SURFACE_KEYS.includes(surface)) return (m.surface as Record<string, string>)[surface];
+  return m.unknown;
 }
 
-const END: Record<string, string> = {session_end: '세션 종료'};
 /** 호스트가 준 끝 이유(Claude Code SessionEnd reason). 모르는 글은 원문 그대로 */
-const END_DETAIL: Record<string, string> = {prompt_input_exit: '입력으로 종료', clear: '대화 지움', logout: '로그아웃', other: '기타'};
-
 export function endText(s: Pick<Session, 'state' | 'endReason' | 'endDetail'>): string | undefined {
   if (s.state !== 'ended') return undefined;
-  const head = END[s.endReason ?? ''] ?? '알 수 없음';
-  return s.endDetail ? `${head} · ${END_DETAIL[s.endDetail] ?? s.endDetail}` : head;
+  const m = pick(workText);
+  const head = s.endReason === 'session_end' ? m.endReason.session_end : m.unknown;
+  if (!s.endDetail) return head;
+  const details = ['prompt_input_exit', 'clear', 'logout', 'other'];
+  return `${head} · ${details.includes(s.endDetail) ? (m.endReason as Record<string, string>)[s.endDetail] : s.endDetail}`;
 }
 
 const tail = (path: string) => path.split('/').filter(Boolean).pop() ?? path;
@@ -39,10 +44,11 @@ function elapsedOf(s: Pick<Session, 'startedAt' | 'endedAt'>, now: number): stri
 /** 세션 한 줄. 레포·브랜치·끝 사유는 세션 칸에서 읽는다(실행 칸이 아니다). 선택·누르기는 화면이 붙인다. */
 export function sessionRowProps(s: Session, stepTitles: ReadonlyMap<string, string>, now: number): Omit<SessionRowProps, 'onSelect' | 'selected'> {
   const view = sessionStateView(s.state);
-  const surface = s.surface && SURFACE[s.surface];
+  const surface = s.surface && SURFACE_KEYS.includes(s.surface) ? surfaceLabel(s.surface) : undefined;
+  const m = pick(workText).sessionRow;
   const ids = s.activeStepIds;
   const first = ids.map(id => stepTitles.get(id)).find((t): t is string => !!t);
-  const step = ids.length === 0 ? undefined : first ? `${first}${ids.length > 1 ? ` 외 ${ids.length - 1}` : ''}` : `단계 ${ids.length}개`;
+  const step = ids.length === 0 ? undefined : first ? (ids.length > 1 ? m.moreSteps(first, ids.length - 1) : first) : m.stepCount(ids.length);
   // 관측 오래됨 판정은 Orbit이 한다(세션 state `stale`). 플러그인이 따로 기준 시간을 두지 않는다.
   const seen = s.state === 'stale' ? agoText(s.lastSeenAt, now) : undefined;
   return {
@@ -51,9 +57,10 @@ export function sessionRowProps(s: Session, stepTitles: ReadonlyMap<string, stri
     step,
     elapsed: elapsedOf(s, now),
     status: {label: view.label, tone: view.tone},
-    lastSeen: seen ? `마지막 관측 ${seen}` : undefined,
+    lastSeen: seen ? m.lastSeen(seen) : undefined,
     endReason: endText(s),
     muted: s.state === 'ended',
+    text: pick(workKitText).sessionRow,
   };
 }
 
@@ -73,9 +80,10 @@ export interface LineageItem {
 const ENDED = new Set(['finished', 'failed', 'lost']);
 
 function runLabel(run: Run): string {
-  if (run.kind === 'subagent') return run.role || '서브에이전트 · 종류 미확인';
-  if (run.kind === 'session') return `별도 세션 · ${hostLabel(run.host)}`;
-  return '알 수 없음';
+  const m = pick(workText);
+  if (run.kind === 'subagent') return run.role || m.who.subagentUnknown;
+  if (run.kind === 'session') return m.who.separateSession(hostLabel(run.host));
+  return m.unknown;
 }
 
 /** 호출 계보: 메인 세션 → `parentSessionId`로 이은 실행. 별도 세션 실행은 그 세션 아래의 실행을 이어 그린다. */
@@ -100,7 +108,7 @@ export function lineageOf(root: Pick<Session, 'sessionId' | 'host' | 'surface' |
       });
   return {
     id: root.sessionId,
-    label: `메인 세션 · ${hostLabel(root.host)}`,
+    label: pick(workText).who.mainSessionBy(hostLabel(root.host)),
     detail: sessionStateView(root.state).label,
     ended: root.state === 'ended',
     background: false,
@@ -108,37 +116,26 @@ export function lineageOf(root: Pick<Session, 'sessionId' | 'host' | 'surface' |
   };
 }
 
-const EVENT: Record<string, string> = {
-  'session.started': '세션 시작',
-  'turn.started': '차례 시작',
-  'turn.ended': '차례 끝',
-  'step.changed': '단계 바뀜',
-  'run.started': '실행 시작',
-  'run.ended': '실행 끝',
-  'evidence.added': '증거 남김',
-  'block.opened': '막힘',
-  'block.cleared': '막힘 풀림',
-  'session.ended': '세션 끝',
-};
-
-const clock = (timeZone?: string) => new Intl.DateTimeFormat('ko-KR', {hour: '2-digit', minute: '2-digit', hour12: false, timeZone});
+const clock = (timeZone?: string) => new Intl.DateTimeFormat(localeTag(), {hour: '2-digit', minute: '2-digit', hour12: false, timeZone});
 
 /** 세션 사건 → AgentTimeline events. 시각은 PC 시간대(timeZone은 시험용). 단계 제목을 알면 덧붙인다. */
 export function timelineOf(events: readonly SessionEvent[], stepTitles: ReadonlyMap<string, string>, timeZone?: string): AgentTimelineEvent[] {
   const fmt = clock(timeZone);
+  const ev = pick(workText).events as Record<string, unknown>;
+  const name = (kind: string): string => (typeof ev[kind] === 'string' && kind.includes('.') ? (ev[kind] as string) : pick(workText).unknown);
   return events.map(e => {
     const t = Date.parse(e.at);
     const parts = Number.isNaN(t) ? [] : fmt.formatToParts(new Date(t));
     const hour = parts.find(p => p.type === 'hour')?.value;
     const minute = parts.find(p => p.type === 'minute')?.value;
     const step = e.stepId ? stepTitles.get(e.stepId) : undefined;
-    const detail = [e.summary, step && !e.summary?.includes(step) ? `단계: ${step}` : undefined].filter(Boolean).join(' · ');
+    const detail = [e.summary, step && !e.summary?.includes(step) ? pick(workText).events.stepPrefix(step) : undefined].filter(Boolean).join(' · ');
     return {
       id: e.seq,
       time: hour && minute ? `${hour === '24' ? '00' : hour}:${minute}` : undefined,
       dateTime: e.at,
-      agent: e.runId ? '실행' : '메인 세션',
-      title: EVENT[e.kind] ?? '알 수 없음',
+      agent: e.runId ? pick(workText).events.agentRun : pick(workText).who.mainSession,
+      title: name(e.kind),
       detail: detail || undefined,
     };
   });

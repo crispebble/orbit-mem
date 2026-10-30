@@ -1,6 +1,6 @@
 // 작업·세션 공유 상태: 처음 읽기, 실시간 갱신(watch), 확인 전 표시. React에 기대지 않는다(ctx만 있으면 시험할 수 있다).
 import {errorMessage, OrbitError} from '../oni.ts';
-import {PAUSE_MESSAGE, WorkPaused, WorkToolError, type PauseKind} from './contract.ts';
+import {pauseMessage, WorkPaused, WorkToolError, type PauseKind} from './contract.ts';
 import {sessionGet, sessionsList, workGet, workList} from './client.ts';
 import {defaultList, dismiss as dismissId, loadReview, saveReview, updatePending} from './review.ts';
 import {abortableSleep, RETRY_MS, watchChanges} from './watch.ts';
@@ -182,7 +182,7 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
   }
 
   function fail(message: string) {
-    if (message !== lastLogged) ctx.log.error(`작업 기록을 불러오지 못했습니다: ${message}`);
+    if (message !== lastLogged) ctx.log.error(`Could not load work history: ${message}`);
     lastLogged = message;
     set({status: 'error', error: message});
   }
@@ -194,8 +194,8 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
   }
 
   function pause(kind: PauseKind) {
-    ctx.log.warn(`작업 기록을 읽지 않습니다: ${PAUSE_MESSAGE[kind]}`);
-    set({status: 'paused', pause: {kind, message: PAUSE_MESSAGE[kind]}, error: undefined});
+    ctx.log.warn(`Not reading work history: ${pauseMessage(kind)}`);
+    set({status: 'paused', pause: {kind, message: pauseMessage(kind)}, error: undefined});
   }
 
   /** 범위가 바뀌면 처음부터 다시 읽는다. 실패하면 쉬었다가 될 때까지 다시(변경 대기는 그대로 이어진다). */
@@ -235,7 +235,7 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
             onError: message => {
               watchFailures += 1;
               if (watchFailures >= WATCH_FAILURES_TO_REPORT) fail(message);
-              else if (state.status === 'ready') ctx.log.warn(`작업 변경 대기를 다시 겁니다: ${message}`);
+              else if (state.status === 'ready') ctx.log.warn(`Re-arming the work change watch: ${message}`);
             },
           },
         });

@@ -5,6 +5,7 @@ import {
   blockText, formatTime, groupWorks, isRunningNow, layoutStatus, progressOf, RUN_FRESH_MS, runStateView,
   sessionStateView, stepRuns, stepStatusView, verificationBadge, workStateView,
 } from '../src/work/display.ts';
+import {setLocale} from '../src/i18n/index.ts';
 import {parseGet, parseList} from '../src/work/contract.ts';
 import {defaultList, dismiss, PENDING_MAX, updatePending} from '../src/work/review.ts';
 import {waitingInboxItems} from '../src/work/inbox.ts';
@@ -33,8 +34,8 @@ describe('상태 표시 대응', () => {
   });
 
   it('단계 상태 여섯 가지와 모르는 값(설계 「상태 표시 대응」)', () => {
-    assert.deepEqual(['pending', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'].map(s => stepStatusView(s).label), ['대기', '준비됨', '진행 중', '막힘', '끝', '취소']);
-    assert.equal(stepStatusView('brand_new').label, '알 수 없음');
+    assert.deepEqual(['pending', 'ready', 'in_progress', 'blocked', 'done', 'cancelled'].map(s => stepStatusView(s).label), ['Pending', 'Ready', 'In progress', 'Blocked', 'Done', 'Cancelled']);
+    assert.equal(stepStatusView('brand_new').label, 'Unknown');
     assert.equal(stepStatusView('brand_new').known, false);
     assert.equal(layoutStatus('brand_new'), 'pending');
     assert.equal(layoutStatus('done'), 'done');
@@ -42,31 +43,31 @@ describe('상태 표시 대응', () => {
 
   it('막힌 단계는 사유로 가른다: 사용자 확인 기다림, 실패(run_failed만), 그 밖은 막힘, 모르는 사유는 알 수 없음', () => {
     const view = (reason: string) => stepStatusView('blocked', {reason, since: ''});
-    assert.deepEqual([view('waiting_user').label, view('waiting_user').tone], ['사용자 확인 기다림', 'warning']);
-    assert.deepEqual([view('run_failed').label, view('run_failed').tone], ['실패', 'danger']);
-    assert.deepEqual(['run_lost', 'interrupted', 'stale', 'declared'].map(r => view(r).label), ['막힘', '막힘', '막힘', '막힘']);
-    assert.deepEqual([view('brand_new').label, view('brand_new').known], ['알 수 없음', false]);
-    assert.equal(stepStatusView('blocked').label, '막힘');
+    assert.deepEqual([view('waiting_user').label, view('waiting_user').tone], ['Waiting for user confirmation', 'warning']);
+    assert.deepEqual([view('run_failed').label, view('run_failed').tone], ['Failed', 'danger']);
+    assert.deepEqual(['run_lost', 'interrupted', 'stale', 'declared'].map(r => view(r).label), ['Blocked', 'Blocked', 'Blocked', 'Blocked']);
+    assert.deepEqual([view('brand_new').label, view('brand_new').known], ['Unknown', false]);
+    assert.equal(stepStatusView('blocked').label, 'Blocked');
   });
 
   it('세션 상태 다섯 가지와 모르는 값', () => {
-    assert.deepEqual(['running', 'waiting_user', 'idle', 'stale', 'ended'].map(s => sessionStateView(s).label), ['도는 중', '사용자 확인 기다림', '쉬는 중', '관측 오래됨', '끝남']);
-    assert.equal(sessionStateView('x').label, '알 수 없음');
+    assert.deepEqual(['running', 'waiting_user', 'idle', 'stale', 'ended'].map(s => sessionStateView(s).label), ['Running', 'Waiting for user confirmation', 'Idle', 'Stale observation', 'Ended']);
+    assert.equal(sessionStateView('x').label, 'Unknown');
   });
 
   it('실행 상태 네 가지, 오래된 running은 관측 오래됨', () => {
-    assert.equal(runStateView(run({state: 'failed'}), NOW).label, '실패');
-    assert.equal(runStateView(run({state: 'lost'}), NOW).label, '연결 끊김');
-    assert.equal(runStateView(run({state: 'finished'}), NOW).label, '끝남');
-    assert.equal(runStateView(run({lastSeenAt: new Date(NOW - 1000).toISOString()}), NOW).label, '도는 중');
-    assert.equal(runStateView(run({lastSeenAt: new Date(NOW - RUN_FRESH_MS - 1).toISOString()}), NOW).label, '관측 오래됨');
+    assert.equal(runStateView(run({state: 'failed'}), NOW).label, 'Failed');
+    assert.equal(runStateView(run({state: 'lost'}), NOW).label, 'Disconnected');
+    assert.equal(runStateView(run({state: 'finished'}), NOW).label, 'Finished');
+    assert.equal(runStateView(run({lastSeenAt: new Date(NOW - 1000).toISOString()}), NOW).label, 'Running');
+    assert.equal(runStateView(run({lastSeenAt: new Date(NOW - RUN_FRESH_MS - 1).toISOString()}), NOW).label, 'Stale observation');
   });
 
   it('작업 상태: 끝남 · 확인 전', () => {
-    assert.equal(workStateView({state: 'open'}, false).label, '진행');
-    assert.equal(workStateView({state: 'done'}, true).label, '끝남 · 확인 전');
-    assert.equal(workStateView({state: 'done'}, false).label, '끝남');
-    assert.equal(workStateView({state: 'zzz'}, false).label, '알 수 없음');
+    assert.equal(workStateView({state: 'open'}, false).label, 'Active');
+    assert.equal(workStateView({state: 'done'}, true).label, 'Done · not reviewed');
+    assert.equal(workStateView({state: 'done'}, false).label, 'Done');
+    assert.equal(workStateView({state: 'zzz'}, false).label, 'Unknown');
   });
 
   it('화면 문구에 Work를 쓰지 않는다', () => {
@@ -80,34 +81,49 @@ describe('상태 표시 대응', () => {
   });
 });
 
+describe('한국어로 바꾸면', () => {
+  it('상태 글과 시각이 한국어로 나온다', () => {
+    setLocale('ko');
+    try {
+      assert.equal(stepStatusView('in_progress').label, '진행 중');
+      assert.equal(stepStatusView('blocked', {reason: 'waiting_user', since: ''}).label, '사용자 확인 기다림');
+      assert.equal(workStateView({state: 'done'}, true).label, '끝남 · 확인 전');
+      assert.equal(formatTime('2026-10-28T05:12:30.123Z', 'Asia/Seoul'), '10월 28일 14:12');
+      assert.equal(blockText({reason: 'run_lost', since: ''}), '실행 끊김');
+    } finally {
+      setLocale('en');
+    }
+  });
+});
+
 describe('검증 배지와 막힘 사유', () => {
   it('검증 결과는 배지로만 붙는다: 끝난 단계의 실패는 「끝남 · 검증 실패」, 끝나지 않은 단계는 「검증 실패」, 통과·없음은 배지 없음', () => {
     assert.equal(verificationBadge({state: 'none', outdated: false}, 'done'), undefined);
     assert.equal(verificationBadge({state: 'pass', outdated: false}, 'done'), undefined);
-    assert.deepEqual([verificationBadge({state: 'fail', outdated: false}, 'done')?.label, verificationBadge({state: 'fail', outdated: false}, 'done')?.tone], ['끝남 · 검증 실패', 'danger']);
-    assert.equal(verificationBadge({state: 'fail', outdated: false}, 'in_progress')?.label, '검증 실패');
-    assert.equal(verificationBadge({state: 'needs_user', outdated: false}, 'done')?.label, '사용자 확인 필요');
-    assert.deepEqual([verificationBadge({state: 'brand_new', outdated: false}, 'done')?.label], ['알 수 없음']);
+    assert.deepEqual([verificationBadge({state: 'fail', outdated: false}, 'done')?.label, verificationBadge({state: 'fail', outdated: false}, 'done')?.tone], ['Done · verification failed', 'danger']);
+    assert.equal(verificationBadge({state: 'fail', outdated: false}, 'in_progress')?.label, 'Verification failed');
+    assert.equal(verificationBadge({state: 'needs_user', outdated: false}, 'done')?.label, 'Needs user confirmation');
+    assert.deepEqual([verificationBadge({state: 'brand_new', outdated: false}, 'done')?.label], ['Unknown']);
   });
 
   it('지난 검증(outdated)은 「오래됨」으로 흐리게 보인다', () => {
     const b = verificationBadge({state: 'fail', outdated: true}, 'done');
-    assert.deepEqual([b?.label, b?.tone, b?.outdated], ['오래됨', 'neutral', true]);
+    assert.deepEqual([b?.label, b?.tone, b?.outdated], ['Outdated', 'neutral', true]);
     // 통과도 뒤에 커밋이 오면 지난 검증이다
-    assert.equal(verificationBadge({state: 'pass', outdated: true}, 'done')?.label, '오래됨');
+    assert.equal(verificationBadge({state: 'pass', outdated: true}, 'done')?.label, 'Outdated');
     assert.equal(verificationBadge({state: 'none', outdated: true}, 'done'), undefined);
   });
 
   it('예시: done 단계에 fail 검증이 붙어도 단계 상태는 done 그대로', () => {
     const s = task.steps.find(x => x.id === 'st-2b3c4d5e6f70');
-    assert.equal(stepStatusView(s?.status ?? '').label, '끝');
+    assert.equal(stepStatusView(s?.status ?? '').label, 'Done');
     assert.equal(verificationBadge(s?.verification, s?.status ?? '')?.outdated, true);
   });
 
   it('막힘 사유 문구와 모르는 사유', () => {
-    assert.equal(blockText({reason: 'waiting_user', detail: '배포해도 될까요?', since: ''}), '사용자 확인 기다림: 배포해도 될까요?');
-    assert.deepEqual(['run_failed', 'run_lost', 'interrupted', 'stale', 'declared'].map(reason => blockText({reason, since: ''})), ['진행 중 실패', '실행 끊김', '중단됨', '오래 멈춤', '막힘 보고']);
-    assert.equal(blockText({reason: 'new_reason', since: ''}), '알 수 없음');
+    assert.equal(blockText({reason: 'waiting_user', detail: '배포해도 될까요?', since: ''}), 'Waiting for user confirmation: 배포해도 될까요?');
+    assert.deepEqual(['run_failed', 'run_lost', 'interrupted', 'stale', 'declared'].map(reason => blockText({reason, since: ''})), ['Failed while running', 'Run disconnected', 'Interrupted', 'Stalled', 'Reported as blocked']);
+    assert.equal(blockText({reason: 'new_reason', since: ''}), 'Unknown');
   });
 });
 
@@ -165,8 +181,8 @@ describe('하위 작업 묶기·진행·시각', () => {
   });
 
   it('시각은 시간대에 맞춰 보인다', () => {
-    assert.equal(formatTime('2026-10-28T05:12:30.123Z', 'Asia/Seoul'), '10월 28일 14:12');
-    assert.equal(formatTime('2026-10-28T05:12:30.123Z', 'UTC'), '10월 28일 05:12');
+    assert.equal(formatTime('2026-10-28T05:12:30.123Z', 'Asia/Seoul'), 'Oct 28, 14:12');
+    assert.equal(formatTime('2026-10-28T05:12:30.123Z', 'UTC'), 'Oct 28, 05:12');
     assert.equal(formatTime('이상한 값'), '이상한 값');
     assert.equal(typeof formatTime('2026-10-28T05:12:30.123Z'), 'string'); // PC 시간대
   });
@@ -204,7 +220,7 @@ describe('받은 일·홈 위젯·범위', () => {
     assert.equal(items.length, 1);
     assert.equal(items[0].kind, 'waiting');
     assert.equal(items[0].path, task.cwd);
-    assert.match(items[0].subtitle ?? '', /사용자 확인 기다림/);
+    assert.match(items[0].subtitle ?? '', /Waiting for user confirmation/);
     assert.equal(items[0].title, task.steps.find(s => s.id === 'st-4d5e6f708192')?.title);
     assert.equal(waitingInboxItems([{...task, state: 'done'}]).length, 0);
   });

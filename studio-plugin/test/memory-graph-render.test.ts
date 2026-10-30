@@ -31,35 +31,35 @@ const st = (over: Partial<GraphState>): GraphState => ({status: 'ready', include
 describe('기억 그래프 탭', () => {
   it('그래프가 있으면 패널(클러스터·관계)·거르기·도구를 그린다', () => {
     const t = text(h.renderBody(st({graph: all})));
-    for (const s of ['클러스터 지도', '주제 겹쳐보기', '연결 관계', 'orbit', '브랜드', '그 밖', '같은 세션', '회고 연결', '대체 사슬', '숨김 포함', '다시 읽기', '목록으로', '일지']) {
+    for (const s of ['Memory clusters', 'Topic overlays', 'Link types', 'orbit', '브랜드', 'Other', 'Same session', 'Retrospective link', 'Replacement chain', 'Include hidden', 'Reload', 'Back to list', 'Journal']) {
       assert.ok(t.includes(s), s);
     }
   });
 
   it('불러오는 중', () => {
-    assert.match(text(h.renderBody(st({status: 'loading'}))), /그래프를 불러오는 중/);
+    assert.match(text(h.renderBody(st({status: 'loading'}))), /Loading the graph/);
   });
 
   it('오류: 제목·메시지·코드·다시 시도', () => {
     const t = text(h.renderBody(st({status: 'error', error: '기억 기록을 읽지 못했습니다: database is locked', code: 'UNAVAILABLE'})));
-    for (const s of ['기억 그래프를 읽지 못했습니다', 'database is locked', 'UNAVAILABLE', '다시 시도']) assert.ok(t.includes(s), s);
+    for (const s of ['Could not load the memory graph', 'database is locked', 'UNAVAILABLE', 'Try again']) assert.ok(t.includes(s), s);
   });
 
   it('멈춤: 판 문구와 다시 확인. 그래프는 그리지 않는다', () => {
-    const t = text(h.renderBody(st({status: 'paused', pause: {kind: 'orbit-older', message: 'Orbit을 올려 주세요.'}})));
-    assert.match(t, /Orbit을 올려 주세요/);
-    assert.match(t, /다시 확인/);
-    assert.ok(!t.includes('클러스터 지도'));
+    const t = text(h.renderBody(st({status: 'paused', pause: {kind: 'orbit-older', message: ''}})));
+    assert.match(t, /Please update Orbit\./);
+    assert.match(t, /Check again/);
+    assert.ok(!t.includes('Memory clusters'));
   });
 
   it('빈 그래프', () => {
-    assert.match(text(h.renderBody(st({graph: {...all, nodes: [], edges: [], groups: [], total: 0}}))), /표시할 항목이 없습니다/);
+    assert.match(text(h.renderBody(st({graph: {...all, nodes: [], edges: [], groups: [], total: 0}}))), /No memories to show/);
   });
 
   it('잘림·다시 읽기 실패를 알린다', () => {
     const t = text(h.renderBody(st({graph: parseMemoryGraph(example('memory_graph.truncated')), staleError: 'database is locked'})));
-    assert.match(t, /최근에 고친 2개만 보입니다\(전체 3개\)/);
-    assert.match(t, /다시 읽지 못했습니다: database is locked/);
+    assert.match(t, /Showing only the 2 most recently edited \(of 3\)\./);
+    assert.match(t, /Could not reload: database is locked/);
   });
 });
 
@@ -67,7 +67,7 @@ describe('고른 기억 카드', () => {
   it('종류·상태 배지, 범위, 클러스터, 연결 수, 주제 태그(제외 태그 뺌), 단추', () => {
     const node = all.nodes.find(n => n.id === 'm-1b2c3d4e5f60')!;
     const t = text(h.renderCard(all, node));
-    for (const s of [node.title, '결정', '확정', '프로젝트 · orbit', 'orbit', '연결 4개', '#orbit', '#기억-그래프', '기억 열기', '주변 보기', '선택 풀기']) {
+    for (const s of [node.title, 'Decision', 'Confirmed', 'Project · orbit', 'orbit', '4 links', '#orbit', '#기억-그래프', 'Open memory', 'Show surroundings', 'Deselect']) {
       assert.ok(t.includes(s), s);
     }
     assert.ok(!t.includes('#결정'), '종류 이름 태그는 뺀다');
@@ -81,11 +81,27 @@ describe('관련 기억', () => {
       {id: 'l-2', memoryId: 'm-3', origin: 'ai'},
     ]);
     const t = text(html);
-    for (const s of ['관련 기억', '이어진 기억', '같은 결정의 근거 · 회고가 이음', 'm-3', 'AI가 이음']) assert.ok(t.includes(s), s);
+    for (const s of ['Related memories', '이어진 기억', '같은 결정의 근거 · Linked by a retrospective', 'm-3', 'Linked by AI']) assert.ok(t.includes(s), s);
     assert.equal((html.match(/orbit-link-button/g) ?? []).length, 2);
   });
 
   it('연결이 없으면 그리지 않는다', () => {
-    assert.ok(!text(h.renderLinks([])).includes('관련 기억'));
+    assert.ok(!text(h.renderLinks([])).includes('Related memories'));
+  });
+});
+
+describe('한국어', () => {
+  it('언어를 한국어로 바꾸면 탭·카드·관련 기억이 한국어로 그려진다', () => {
+    h.setLocale('ko');
+    try {
+      const t = text(h.renderBody(st({graph: all})));
+      for (const s of ['클러스터 지도', '주제 겹쳐보기', '그 밖', '숨김 포함', '다시 읽기', '목록으로']) assert.ok(t.includes(s), s);
+      const node = all.nodes.find(n => n.id === 'm-1b2c3d4e5f60')!;
+      const card = text(h.renderCard(all, node));
+      for (const s of ['결정', '확정', '프로젝트 · orbit', '연결 4개', '기억 열기']) assert.ok(card.includes(s), s);
+      assert.ok(text(h.renderLinks([{id: 'l-2', memoryId: 'm-3', origin: 'ai'}])).includes('AI가 이음'));
+    } finally {
+      h.setLocale('en');
+    }
   });
 });

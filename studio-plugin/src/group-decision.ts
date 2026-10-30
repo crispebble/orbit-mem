@@ -1,5 +1,7 @@
 // 묶음 결정 흐름: 확인 창 → proposal_decide ids → 결과 알림. React에 기대지 않아 ctx만으로 시험한다.
 import type {PluginContext} from '@onidot-labs/studio-plugin';
+import {pick} from './i18n/index.ts';
+import {proposalText} from './i18n/messages/proposals.ts';
 import {errorMessage} from './oni.ts';
 import {decideManyArgs} from './requests.ts';
 import type {OrbitStore} from './store.ts';
@@ -10,8 +12,6 @@ export interface DecidableGroup {
   rows: readonly {id: string; title: string}[];
 }
 
-const decisionWord = {approve: '승인', reject: '거절'} as const;
-
 /** 묶음의 제안을 모두 승인·거절한다. 사용자가 확인 창에서 고르지 않으면 'cancelled'. */
 export async function decideGroup(
   ctx: PluginContext,
@@ -19,33 +19,38 @@ export async function decideGroup(
   g: DecidableGroup,
   decision: 'approve' | 'reject',
 ): Promise<'cancelled' | 'done' | 'failed'> {
-  const word = decisionWord[decision];
-  const what = `${g.label} ${g.rows.length}건`;
-  const body = decision === 'approve'
-    ? `제안마다 승인한 것과 같습니다.${g.kind === 'apply_file' || g.kind === 'revert' ? ' 파일 반영·되돌리기는 파일을 바꿉니다.' : ''} 하나가 실패해도 나머지는 결정하고, 실패한 것은 이유와 함께 알려 드립니다.`
-    : '제안마다 거절한 것과 같습니다. 후보 확정을 거절하면 그 후보는 숨겨집니다. 하나가 실패해도 나머지는 결정합니다.';
+  const approve = decision === 'approve';
+  const t = pick(proposalText).decision;
+  const count = g.rows.length;
+  const body = approve ? t.approveBody(g.kind === 'apply_file' || g.kind === 'revert') : t.rejectBody;
   const answer = await ctx.ui.ask({
-    title: `${what}을 모두 ${word}할까요?`,
+    title: approve ? t.approveTitle(g.label, count) : t.rejectTitle(g.label, count),
     body,
-    actions: [{id: decision, label: `모두 ${word}`, variant: decision === 'approve' ? 'primary' : 'danger'}, {id: 'cancel', label: '취소', variant: 'ghost'}],
+    actions: [
+      {id: decision, label: approve ? pick(proposalText).groups.approveAll : pick(proposalText).groups.rejectAll, variant: approve ? 'primary' : 'danger'},
+      {id: 'cancel', label: t.cancel, variant: 'ghost'},
+    ],
   });
   if (answer !== decision) return 'cancelled';
   try {
     const out = await store.decideMany(decideManyArgs(g.rows.map(r => r.id), decision));
+    // 결정을 기다리는 사이 언어가 바뀔 수 있어 알림 글은 지금 언어로 다시 읽는다
+    const after = pick(proposalText).decision;
     if (out.failed.length === 0) {
-      ctx.notify({title: `${g.label} ${out.decided}건을 ${word}했습니다`, tone: 'success'});
+      ctx.notify({title: approve ? after.approved(g.label, out.decided) : after.rejected(g.label, out.decided), tone: 'success'});
       return 'done';
     }
-    for (const f of out.failed) ctx.log.warn(`묶음 ${word} 실패(${f.id}): ${f.error}`);
+    for (const f of out.failed) ctx.log.warn(`Group ${decision} failed (${f.id}): ${f.error}`);
     ctx.notify({
-      title: `${out.decided}건 ${word}, ${out.failed.length}건은 결정하지 못했습니다`,
+      title: approve ? after.partialApproved(out.decided, out.failed.length) : after.partialRejected(out.decided, out.failed.length),
       body: out.failed.map(f => `${g.rows.find(r => r.id === f.id)?.title ?? f.id}: ${f.error}`).join('\n'),
       tone: out.decided > 0 ? 'warning' : 'danger',
     });
     return 'done';
   } catch (e) {
-    ctx.log.error(`묶음 ${word} 실패(${g.kind}): ${errorMessage(e)}`);
-    ctx.notify({title: `${what}을 ${word}하지 못했습니다`, body: errorMessage(e), tone: 'danger'});
+    ctx.log.error(`Group ${decision} failed (${g.kind}): ${errorMessage(e)}`);
+    const after = pick(proposalText).decision;
+    ctx.notify({title: approve ? after.approveFailed(g.label, count) : after.rejectFailed(g.label, count), body: errorMessage(e), tone: 'danger'});
     // oni가 결정한 뒤 응답만 늦었을 수 있다: 목록을 다시 읽는다
     await store.refresh();
     return 'failed';
