@@ -10,7 +10,7 @@ import {
   type OniSummary,
   type OniVersion,
 } from './model.ts';
-import {decideArgs, findArgs, type DecideArgs, type FindParams, type UpdateArgs} from './requests.ts';
+import {decideArgs, findArgs, type DecideArgs, type DecideManyArgs, type FindParams, type UpdateArgs} from './requests.ts';
 import type {OrbitMemory} from './parts/index.ts';
 import {createInboxParts} from './inbox-parts.ts';
 
@@ -32,6 +32,12 @@ export interface DecideResult {
   changed?: string[];
   created?: string;
   file?: string;
+}
+
+/** 묶음 결정 결과: 결정한 수와, 결정하지 못한 제안과 그 이유 */
+export interface BatchOutcome {
+  decided: number;
+  failed: {id: string; error: string}[];
 }
 
 /** 브라우저의 setInterval은 window에 묶여 있어 객체 메서드로 부르면 Illegal invocation이 난다. 감싸서 넘긴다. */
@@ -82,6 +88,13 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     const out = await callOni<DecideResult>(ctx, 'proposal_decide', {...args});
     await refresh();
     return out;
+  }
+
+  /** 여럿을 한 번에 결정한다. 하나가 실패해도 나머지는 oni가 결정하고, 실패한 것은 이유와 함께 돌아온다. */
+  async function decideMany(args: DecideManyArgs): Promise<BatchOutcome> {
+    const out = await callOni<{decided?: unknown[] | null; failed?: BatchOutcome['failed'] | null}>(ctx, 'proposal_decide', {...args});
+    await refresh();
+    return {decided: out.decided?.length ?? 0, failed: out.failed ?? []};
   }
 
   async function handleAction(item: InboxItem, actionId: string): Promise<void> {
@@ -156,7 +169,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
       listeners.add(l);
       return () => { listeners.delete(l); };
     },
-    refresh, decide, findMemories, getMemory, getMemories, updateMemory, start, dispose,
+    refresh, decide, decideMany, findMemories, getMemory, getMemories, updateMemory, start, dispose,
   };
 }
 

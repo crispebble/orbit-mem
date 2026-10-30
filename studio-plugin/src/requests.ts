@@ -45,6 +45,20 @@ export function decideArgs(id: string, decision: 'approve' | 'reject', o: Decide
   return args;
 }
 
+export interface DecideManyArgs {
+  ids: string[];
+  decision: 'approve' | 'reject';
+  note?: string;
+}
+
+/** 같은 답으로 여럿을 결정하는 proposal_decide 인자(orbit 0.3.9~). 고쳐서 승인은 하나씩 decideArgs로 한다. */
+export function decideManyArgs(ids: readonly string[], decision: 'approve' | 'reject', note?: string): DecideManyArgs {
+  const args: DecideManyArgs = {ids: [...ids], decision};
+  const n = note?.trim();
+  if (n) args.note = n;
+  return args;
+}
+
 /** ProposalDetail의 승인(고쳐서 승인 포함)을 proposal_decide 인자로. 고친 제목은 title, 고친 내용은 body로 보낸다(고친 것만). */
 export function approvalToDecideArgs(p: OniProposal, a: ProposalApproval): DecideArgs {
   const o: DecideOptions = {};

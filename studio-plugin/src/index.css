@@ -52,3 +52,16 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* 제안 묶음: 묶음 사이와 묶음 단추 줄 */
+.orbit-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--forma-space-2);
+  min-width: 0;
+}
+.orbit-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--forma-space-2);
+  padding: var(--forma-space-1) 0 var(--forma-space-2);
+}

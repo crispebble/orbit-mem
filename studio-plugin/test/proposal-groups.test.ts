@@ -1,0 +1,117 @@
+// 제안 묶어 보기와 묶음 결정(설계 · Orbit 3차 O3-1 「묶어 보기와 일괄 결정」 Studio Orbit 앱).
+import assert from 'node:assert/strict';
+import {mkdirSync, rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {after, before, describe, it} from 'node:test';
+import {build} from 'esbuild';
+import {groupProposalRows, toProposalRow, type OniProposal} from '../src/model.ts';
+import {decideManyArgs} from '../src/requests.ts';
+import {createStore} from '../src/store.ts';
+import {fail, fakeCtx, ok} from './fake-ctx.ts';
+
+const prop = (id: string, kind: string, status = 'pending', createdAt = 1_780_000_000_000): OniProposal =>
+  ({id, kind, title: `제안 ${id}`, memoryIds: [], payload: {}, status, createdAt});
+
+describe('groupProposalRows', () => {
+  it('종류별로 묶고 건수가 많은 묶음부터, 같으면 먼저 나온 종류부터 둔다', () => {
+    const rows = [prop('a', 'confirm'), prop('b', 'stale'), prop('c', 'stale'), prop('d', 'link'), prop('e', 'confirm'), prop('f', 'stale')]
+      .map(p => toProposalRow(p));
+    const groups = groupProposalRows(rows);
+    assert.deepEqual(groups.map(g => [g.kind, g.label, g.rows.map(r => r.id)]), [
+      ['stale', '낡은 기억 정리', ['b', 'c', 'f']],
+      ['confirm', '후보 확정', ['a', 'e']],
+      ['link', '관련 기억 잇기', ['d']],
+    ]);
+  });
+
+  it('빈 목록은 빈 묶음', () => {
+    assert.deepEqual(groupProposalRows([]), []);
+  });
+});
+
+describe('decideManyArgs', () => {
+  it('ids와 결정, 빈 사유는 빼고 보낸다', () => {
+    assert.deepEqual(decideManyArgs(['a', 'b'], 'approve'), {ids: ['a', 'b'], decision: 'approve'});
+    assert.deepEqual(decideManyArgs(['a'], 'reject', '  '), {ids: ['a'], decision: 'reject'});
+    assert.deepEqual(decideManyArgs(['a'], 'reject', ' 묶음 거절 '), {ids: ['a'], decision: 'reject', note: '묶음 거절'});
+  });
+});
+
+describe('store.decideMany', () => {
+  it('proposal_decide에 ids로 한 번 보내고 다시 불러온 뒤 결정 수와 실패를 돌려준다', async () => {
+    let decided = false;
+    const f = fakeCtx({
+      proposals: () => ok({items: decided ? [prop('a', 'stale', 'approved'), prop('b', 'stale')] : [prop('a', 'stale'), prop('b', 'stale')]}),
+      proposal_decide: () => {
+        decided = true;
+        return ok({decided: [{proposal: prop('a', 'stale', 'approved')}], failed: [{id: 'b', error: '이미 결정한 제안입니다'}]});
+      },
+    });
+    const store = createStore(f.ctx);
+    await store.refresh();
+    const out = await store.decideMany(decideManyArgs(['a', 'b'], 'approve'));
+    assert.deepEqual(out, {decided: 1, failed: [{id: 'b', error: '이미 결정한 제안입니다'}]});
+    assert.deepEqual(f.calls.filter(c => c.tool === 'proposal_decide'), [{tool: 'proposal_decide', args: {ids: ['a', 'b'], decision: 'approve'}}]);
+    assert.equal(f.calls.at(-1)?.tool, 'proposals');
+    assert.equal(store.getState().proposals.filter(p => p.status === 'pending').length, 1);
+  });
+
+  it('실패 칸이 비어 오면 빈 목록으로 본다', async () => {
+    const f = fakeCtx({proposals: () => ok({items: []}), proposal_decide: () => ok({decided: [{}, {}]})});
+    const store = createStore(f.ctx);
+    assert.deepEqual(await store.decideMany(decideManyArgs(['a', 'b'], 'reject')), {decided: 2, failed: []});
+  });
+
+  it('도구 오류는 던진다', async () => {
+    const f = fakeCtx({proposals: () => ok({items: []}), proposal_decide: () => fail('입력이 올바르지 않습니다')});
+    const store = createStore(f.ctx);
+    await assert.rejects(store.decideMany(decideManyArgs(['a'], 'approve')), /입력이 올바르지 않습니다/);
+  });
+});
+
+type Harness = typeof import('./proposal-groups-harness.tsx');
+let h: Harness;
+const dir = new URL(`../node_modules/.cache/orbit-groups-render-${process.pid}`, import.meta.url).pathname;
+mkdirSync(dir, {recursive: true});
+
+before(async () => {
+  const outfile = join(dir, 'harness.mjs');
+  await build({
+    entryPoints: [new URL('./proposal-groups-harness.tsx', import.meta.url).pathname],
+    outfile, bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', logLevel: 'silent',
+    packages: 'external', loader: {'.css': 'empty'},
+  });
+  h = await import(outfile);
+});
+after(() => rmSync(dir, {recursive: true, force: true}));
+
+const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+
+describe('ProposalGroupList', () => {
+  const groups = [
+    {kind: 'stale', label: '낡은 기억 정리', items: [{id: 'b', title: '제안 b', subtitle: '오늘'}, {id: 'c', title: '제안 c', subtitle: '어제'}]},
+    {kind: 'confirm', label: '후보 확정', items: [{id: 'a', title: '제안 a', subtitle: '오늘'}]},
+  ];
+
+  it('묶음마다 이름·건수·묶음 승인·거절과 제안을 그린다', () => {
+    const html = h.render({groups});
+    const t = text(html);
+    for (const s of ['낡은 기억 정리', '2', '후보 확정', '1', '제안 b', '제안 c', '제안 a']) assert.ok(t.includes(s), s);
+    assert.equal(html.match(/>모두 승인</g)?.length, 2);
+    assert.equal(html.match(/>모두 거절</g)?.length, 2);
+    assert.match(html, /aria-label="낡은 기억 정리 2건 모두 승인"/);
+  });
+
+  it('한 묶음을 결정하는 동안 결정이 겹치지 않게 모든 묶음 단추를 끈다', () => {
+    const idle = h.render({groups});
+    assert.doesNotMatch(idle.match(/<button[^>]*aria-label="후보 확정 1건 모두 승인"[^>]*>/)?.[0] ?? '', /disabled/);
+    const busy = h.render({groups, busyKind: 'stale'});
+    const buttons = busy.match(/<button[^>]*aria-label="[^"]*모두 (승인|거절)"[^>]*>/g) ?? [];
+    assert.equal(buttons.length, 4);
+    for (const b of buttons) assert.match(b, /disabled/);
+  });
+
+  it('결정할 수 없으면(연결 끊김) 묶음 단추를 그리지 않는다', () => {
+    assert.doesNotMatch(h.render({groups, decidable: false}), /모두 승인/);
+  });
+});
