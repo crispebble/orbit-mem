@@ -237,10 +237,68 @@ type builder struct {
 
 func (b *builder) subst(s string) string {
 	s = strings.ReplaceAll(s, "{{version}}", b.m.Version)
+	s = strings.ReplaceAll(s, "{{knowledgeDir}}", b.knowledgeDir())
 	for k, v := range b.o.Vars {
 		s = strings.ReplaceAll(s, "{{"+k+"}}", v)
 	}
 	return s
+}
+
+// knowledgeDir is where the built plugin's field-knowledge packs are, as an
+// absolute path: Codex role files are copied elsewhere and still need to find them.
+func (b *builder) knowledgeDir() string {
+	out, err := filepath.Abs(b.o.Out)
+	if err != nil {
+		out = b.o.Out
+	}
+	return filepath.ToSlash(filepath.Join(out, "plugins", b.m.Name, "knowledge"))
+}
+
+var signalRE = regexp.MustCompile(`→\s*(\S+)\s*$`)
+
+// knowledge puts the field-knowledge packs (knowledge/<분야>/, 명세 · Orbit 3차 O3-5) as they are. Each pack
+// has a one-line signal list SIGNALS.md whose signals point at item files in the pack.
+func (b *builder) knowledge(base string) error {
+	root := filepath.Join(b.o.Source, "knowledge")
+	packs, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, p := range packs {
+		if !p.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, p.Name())
+		signals, err := readText(filepath.Join(dir, "SIGNALS.md"))
+		if err != nil {
+			return fmt.Errorf("knowledge/%s: 신호 목록 SIGNALS.md가 필요합니다", p.Name())
+		}
+		for _, line := range strings.Split(signals, "\n") {
+			if m := signalRE.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+				if _, err := os.Stat(filepath.Join(dir, m[1])); err != nil {
+					return fmt.Errorf("knowledge/%s/SIGNALS.md의 신호가 없는 항목 %s를 가리킵니다", p.Name(), m[1])
+				}
+			}
+		}
+		items, err := os.ReadDir(dir)
+		if err != nil {
+			return err
+		}
+		for _, it := range items {
+			if it.IsDir() || !strings.HasSuffix(it.Name(), ".md") {
+				continue
+			}
+			t, err := readText(filepath.Join(dir, it.Name()))
+			if err != nil {
+				return err
+			}
+			b.put(base+"/knowledge/"+p.Name()+"/"+it.Name(), []byte(b.subst(t)))
+		}
+	}
+	return nil
 }
 
 func (b *builder) put(rel string, content []byte) { b.outputs[filepath.ToSlash(rel)] = content }
@@ -310,6 +368,9 @@ func (b *builder) generate() error {
 			}
 			b.put(base+"/skills/"+s+"/references/"+r.Name(), []byte(b.subst(t)))
 		}
+	}
+	if err := b.knowledge(base); err != nil {
+		return err
 	}
 	// agents
 	common := ""
@@ -439,7 +500,7 @@ func (b *builder) generate() error {
 // managed are the generated-only directories: anything there not generated this run is a leftover.
 func (b *builder) managed() []string {
 	base := "plugins/" + b.m.Name
-	return []string{base + "/agents", base + "/skills", base + "/codex/agents", base + "/hooks"}
+	return []string{base + "/agents", base + "/skills", base + "/codex/agents", base + "/hooks", base + "/knowledge"}
 }
 
 func (b *builder) flush() (Result, error) {

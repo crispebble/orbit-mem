@@ -256,3 +256,39 @@ func TestBuild_Codex에_나가는_SessionEnd_훅은_3초를_넘지_않는다(t *
 		}
 	}
 }
+
+// 명세 · O3-5 「분야 지식 분리」: 원본의 knowledge/<분야>/를 플러그인에 그대로 싣고, 본문의 {{knowledgeDir}}를 그 설치 경로로 바꾼다.
+// 분야 묶음마다 SIGNALS.md가 있어야 하고, 신호가 가리키는 항목 파일이 있어야 한다.
+func TestBuild_분야_묶음을_싣고_경로를_채운다(t *testing.T) {
+	src := fixture(t)
+	write(t, src, map[string]string{
+		"agents/worker.md":            "# 작업자\n작업 전에 {{knowledgeDir}}/spring/SIGNALS.md를 읽는다.",
+		"knowledge/spring/SIGNALS.md": "# spring\n\n- Boot 4 스타터 이름을 쓸 때 → boot4.md\n",
+		"knowledge/spring/boot4.md":   "웹 스타터는 spring-boot-starter-webmvc다.",
+		"knowledge/react/SIGNALS.md":  "- Next.js App Router 컴포넌트를 쓸 때 → nextjs.md\n",
+		"knowledge/react/nextjs.md":   "서버 컴포넌트가 기본이다.",
+	})
+	out := t.TempDir()
+	if _, err := Build(Options{Source: src, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	kdir := filepath.Join(out, "plugins", "harness", "knowledge")
+	if got := read(t, filepath.Join(kdir, "spring", "boot4.md")); !strings.Contains(got, "webmvc") {
+		t.Fatalf("항목 %q", got)
+	}
+	if got := read(t, filepath.Join(out, "plugins", "harness", "agents", "worker.md")); !strings.Contains(got, kdir+"/spring/SIGNALS.md") {
+		t.Errorf("에이전트 본문의 분야 묶음 경로:\n%s", got)
+	}
+	if got := read(t, filepath.Join(out, "plugins", "harness", "codex", "agents", "harness-worker.toml")); !strings.Contains(got, kdir+"/spring/SIGNALS.md") {
+		t.Errorf("Codex 역할 본문의 분야 묶음 경로:\n%s", got)
+	}
+
+	write(t, src, map[string]string{"knowledge/spring/SIGNALS.md": "- 없는 항목 → missing.md\n"})
+	if _, err := Build(Options{Source: src, Out: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "missing.md") {
+		t.Errorf("없는 항목을 가리키는 신호는 거절합니다: %v", err)
+	}
+	os.Remove(filepath.Join(src, "knowledge", "spring", "SIGNALS.md"))
+	if _, err := Build(Options{Source: src, Out: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "SIGNALS.md") {
+		t.Errorf("신호 목록이 없는 분야 묶음은 거절합니다: %v", err)
+	}
+}
