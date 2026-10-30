@@ -95,6 +95,7 @@ type Submission struct {
 	Usage       []UsageIn         `json:"usage,omitempty" jsonschema:"세션 끝: 이 세션에 넣은 기억마다 사용 판정"`
 	Lessons     []LessonIn        `json:"lessons,omitempty" jsonschema:"주간: 효과 판정에서 얻은 교훈"`
 	Sources     []SourceVerdictIn `json:"sources,omitempty" jsonschema:"하루: 「근거 파일이 바뀐 기억」마다 판정"`
+	Legacy      []LegacyVerdictIn `json:"legacy,omitempty" jsonschema:"옛 기억 판정: 「옛 기억 판정」 묶음의 기억마다 판정"`
 }
 
 const (
@@ -155,7 +156,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindDaily && !mat.onlySources() && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
 		return "", errors.New("하루 회고는 journal(title, body)이 필요합니다")
 	}
-	if mat.Kind == KindSession || mat.Kind == KindTidy {
+	if mat.Kind == KindSession || mat.Kind == KindTidy || mat.Kind == KindLegacy {
 		sub.Journal = nil // 세션 끝 회고의 요약은 summary 한 줄이고, 일지는 하루 회고가 쓴다
 	}
 	// 정리 제안(link·retag)이 제출 상한을 넘기면 제출 전체를 거부하지 않고 넘친 정리 제안만 뒤에서부터 뺀다.
@@ -195,6 +196,16 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindTidy && len(sub.Memories) > 0 {
 		notes = append(notes, "그래프 정리는 기억을 새로 남기지 않습니다")
 		sub.Memories = nil
+	}
+	if mat.Kind == KindLegacy {
+		if len(sub.Memories) > 0 {
+			notes = append(notes, "옛 기억 판정은 기억을 새로 남기지 않습니다")
+			sub.Memories = nil
+		}
+		if len(sub.Proposals) > 0 {
+			notes = append(notes, "옛 기억 판정은 proposals 대신 legacy 판정으로 냅니다")
+			sub.Proposals = nil
+		}
 	}
 	journalID := ""
 	if sub.Journal != nil && strings.TrimSpace(sub.Journal.Title) != "" {
@@ -376,7 +387,18 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		proposed += n
 		notes = append(notes, snotes...)
 	}
+	legacyJudgedN := 0
+	if mat.Kind == KindLegacy && mat.Legacy != nil {
+		n, lp, lnotes := applyLegacy(s, mat, id, sub.Legacy)
+		legacyJudgedN, proposed = n, proposed+lp
+		notes = append(notes, lnotes...)
+	} else if len(sub.Legacy) > 0 {
+		notes = append(notes, "옛 기억 판정(legacy)은 옛 기억 판정 회고에서만 받습니다")
+	}
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
+	if mat.Kind == KindLegacy {
+		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))
+	}
 	flags := append(append([]string{}, sub.Flags...), sub.Patterns...)
 	fb, _ := json.Marshal(nonNil(flags))
 	// 완료 표시와 읽은 발화 구간은 함께 남긴다: 하나만 남으면 같은 발화를 다시 읽거나 영영 못 읽는다.

@@ -104,6 +104,13 @@ func cmdRetro(a *app, args []string) error {
 		res, err := r.RunTidyOne(ctx)
 		a.printResults([]retro.Result{res})
 		return err
+	case "legacy":
+		res, err := r.RunLegacyOne(ctx)
+		a.printResults([]retro.Result{res})
+		if c, cerr := s.CountLegacy(); cerr == nil && c.Total > 0 {
+			fmt.Fprintf(a.stdout, "옛 기억: 대상 %d개 중 판정 %d개, 남음 %d개\n", c.Total, c.Judged, c.Left)
+		}
+		return err
 	case "status":
 		list, err := retro.Recent(s, *n)
 		if err != nil {

@@ -241,7 +241,7 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 	}
 	signedOut := hostSignedOut(out)
 	if signedOut {
-		msg += "\n로그인된 뒤 다음 실행에서 다시 돕니다"
+		msg += "\n" + signedOutNote
 	}
 	res.Status, res.Error = StatusFailed, msg
 	_, _ = r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=?`, StatusFailed, r.now().UnixMilli(), msg, res.ID)
@@ -268,6 +268,9 @@ func hostSignedOut(out string) bool {
 	}
 	return false
 }
+
+// signedOutNote ends the error of a run the host was not signed in for.
+const signedOutNote = "로그인된 뒤 다음 실행에서 다시 돕니다"
 
 // signedOutError is a failed run that matches ErrHostSignedOut.
 type signedOutError string
@@ -386,6 +389,12 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	}
 	if err != nil {
 		errs = append(errs, fmt.Errorf("주간 %s: %w", week, err))
+	}
+	// 옛 기억 판정은 하루 회고·주간 회고 뒤에 하루 묶음 수까지 돈다(설계 · Orbit 3차 O3-3).
+	lres, err := r.legacyDaily(ctx)
+	results = append(results, lres...)
+	if err != nil {
+		errs = append(errs, err)
 	}
 	if _, err := r.Store.CloseSettled(); err != nil {
 		errs = append(errs, err)
