@@ -201,3 +201,74 @@ func TestRetag_뺄_태그가_겹치는_대기_묶기는_다시_받지_않는다(
 		t.Errorf("다른 묶기: %v", err)
 	}
 }
+
+// 검토 지적: 반대 방향(A→B 대기 중 B→A)과 거절한 묶기의 반대 방향은 받지 않는다.
+func TestRetag_반대_방향_묶기는_받지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	taggedMemory(t, s, "A 기억", "deploy")
+	taggedMemory(t, s, "B 기억", "배포")
+	ab, err := s.Propose(ProposalInput{Kind: ProposalRetag, Title: "deploy를 배포로", Payload: Payload{FromTags: []string{"deploy"}, ToTags: []string{"배포"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ba := ProposalInput{Kind: ProposalRetag, Title: "배포를 deploy로", Payload: Payload{FromTags: []string{"배포"}, ToTags: []string{"deploy"}}}
+	if _, err := s.Propose(ba); !errors.Is(err, ErrDuplicateProposal) {
+		t.Errorf("대기 중 반대 방향: %v", err)
+	}
+	if _, err := s.Decide(DecideInput{ID: ab.ID, Decision: "reject"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Propose(ba); !errors.Is(err, ErrDuplicateProposal) {
+		t.Errorf("거절한 묶기의 반대 방향: %v", err)
+	}
+}
+
+// 검토 지적: 뺄 태그를 주면 그 태그를 가진 기억만 대상이다. 넣을·뺄 태그는 주제 태그여야 한다.
+func TestRetag_뺄_태그가_없는_기억과_표식_태그는_받지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := taggedMemory(t, s, "A 기억", "deploy")
+	x := taggedMemory(t, s, "X 기억", "orbit")
+	p, err := s.Propose(ProposalInput{Kind: ProposalRetag, Title: "묶기", MemoryIDs: []string{a.ID, x.ID}, Payload: Payload{FromTags: []string{"deploy"}, ToTags: []string{"배포"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(p.MemoryIDs, []string{a.ID}) {
+		t.Errorf("대상: %v", p.MemoryIDs)
+	}
+	for _, in := range []ProposalInput{
+		{Kind: ProposalRetag, Title: "종류 이름", MemoryIDs: []string{x.ID}, Payload: Payload{ToTags: []string{"결정"}}},
+		{Kind: ProposalRetag, Title: "표식", MemoryIDs: []string{x.ID}, Payload: Payload{ToTags: []string{"imported:x"}}},
+		{Kind: ProposalRetag, Title: "표식 빼기", Payload: Payload{FromTags: []string{"imported:server-knowledge"}, ToTags: []string{"orbit"}}},
+	} {
+		if _, err := s.Propose(in); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v", in.Title, err)
+		}
+	}
+}
+
+// 검토 지적: 승인은 한 트랜잭션이다. 읽은 판 그대로 고치고, 바뀐 기억은 모두 원장에 남는다.
+func TestRetag_승인은_읽은_판_그대로_한_번에_쓴다(t *testing.T) {
+	s, _ := newTestStore(t)
+	var ms []Memory
+	for i := range 5 {
+		ms = append(ms, taggedMemory(t, s, "기억 "+string(rune('A'+i)), "deploy", "x"))
+	}
+	p, err := s.Propose(ProposalInput{Kind: ProposalRetag, Title: "묶기", Payload: Payload{FromTags: []string{"deploy"}, ToTags: []string{"배포"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _ := s.LedgerEntry(res.LedgerID)
+	if len(res.Changed) != 5 || len(e.Before.Memories) != 5 {
+		t.Fatalf("바뀐 것 %v, 원장 %d", res.Changed, len(e.Before.Memories))
+	}
+	for _, m := range ms {
+		got, _ := s.Get(m.ID)
+		if got.Version != m.Version+1 || !reflect.DeepEqual(got.Tags, []string{"배포", "x"}) || e.Before.After[m.ID] != got.Version {
+			t.Errorf("%s: %+v", m.ID, got)
+		}
+	}
+}

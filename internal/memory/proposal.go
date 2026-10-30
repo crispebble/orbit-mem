@@ -128,11 +128,12 @@ func fingerprint(in ProposalInput) string {
 			parts = append(parts, in.Payload.Path)
 		}
 	case ProposalRetag:
-		// 태그 묶기는 대상 기억이 아니라 뺄·넣을 태그로 같은 제안을 가린다. 거절한 묶기는
-		// 표기가 달라도, 그 태그를 가진 기억이 늘어도 다시 나오지 않는다. 태그 달기는 기억마다 다르다.
-		parts = []string{in.Kind, strings.Join(sortedKeys(in.Payload.FromTags), ","), strings.Join(sortedKeys(in.Payload.ToTags), ",")}
-		if len(in.Payload.FromTags) == 0 {
-			parts = append(parts, strings.Join(ids, ","))
+		// 태그 묶기는 대상 기억이 아니라 묶는 태그 열쇠의 모음으로 같은 제안을 가린다. 거절한 묶기는
+		// 표기·방향이 달라도, 그 태그를 가진 기억이 늘어도 다시 나오지 않는다. 태그 달기는 기억마다 다르다.
+		if len(in.Payload.FromTags) > 0 {
+			parts = []string{in.Kind, strings.Join(sortedKeys(append(append([]string{}, in.Payload.FromTags...), in.Payload.ToTags...)), ",")}
+		} else {
+			parts = []string{in.Kind, strings.Join(sortedKeys(in.Payload.ToTags), ","), strings.Join(ids, ",")}
 		}
 	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
@@ -207,7 +208,7 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 		if err := s.prepareRetag(&in); err != nil {
 			return Proposal{}, err
 		}
-		if busy, err := s.retagBusy(in.Payload.FromTags); err != nil || busy != "" {
+		if busy, err := s.retagBusy(in.Payload.FromTags, in.Payload.ToTags); err != nil || busy != "" {
 			if err != nil {
 				return Proposal{}, err
 			}
@@ -505,8 +506,16 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if given(in.Title) || given(in.Body) {
 			return fmt.Errorf("%w: 태그 제안은 고쳐서 승인할 수 없습니다. 거절하고 태그를 직접 고쳐 주세요", ErrInvalid)
 		}
+		// 한 트랜잭션으로 읽고 쓴다: 중간에 실패해도 반쯤 바뀐 채 원장 없이 남지 않고, 읽은 뒤 바뀐 태그를 덮지 않는다.
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		now := s.nowMs()
+		var changed []string
 		for _, id := range p.MemoryIDs {
-			m, err := getTx(s.db, id)
+			m, err := getTx(tx, id)
 			if err != nil {
 				return err
 			}
@@ -514,14 +523,19 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			if slices.Equal(next, m.Tags) {
 				continue
 			}
-			if _, err := s.Update(UpdateInput{ID: id, Tags: &next, Reason: "제안 승인 " + p.ID, Action: "retag"}); err != nil {
+			m.Tags, m.Version, m.UpdatedAt = next, m.Version+1, now
+			if err := writeTx(tx, m, "retag", "제안 승인 "+p.ID, now); err != nil {
 				return err
 			}
-			res.Changed = append(res.Changed, id)
+			changed = append(changed, id)
 		}
-		if len(res.Changed) == 0 {
+		if len(changed) == 0 {
 			return errAlreadyRetagged
 		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		res.Changed = append(res.Changed, changed...)
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
 			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
@@ -676,6 +690,14 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 	if len(in.Payload.ToTags) == 0 {
 		return fmt.Errorf("%w: 넣을 태그(toTags)가 필요합니다", ErrInvalid)
 	}
+	for _, t := range append(append([]string{}, in.Payload.FromTags...), in.Payload.ToTags...) {
+		if !IsTopicKey(TagKey(t)) {
+			return fmt.Errorf("%w: %q는 주제 태그가 아닙니다(표식 태그·종류 이름은 고치지 않습니다)", ErrInvalid, t)
+		}
+	}
+	hasFrom := func(m Memory) bool {
+		return slices.ContainsFunc(in.Payload.FromTags, func(t string) bool { return hasTagKey(m.Tags, TagKey(t)) })
+	}
 	ids := in.MemoryIDs
 	if len(ids) == 0 {
 		if len(in.Payload.FromTags) == 0 {
@@ -686,7 +708,7 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 			return err
 		}
 		for _, m := range all {
-			if slices.ContainsFunc(in.Payload.FromTags, func(t string) bool { return hasTagKey(m.Tags, TagKey(t)) }) {
+			if hasFrom(m) {
 				ids = append(ids, m.ID)
 			}
 		}
@@ -700,8 +722,8 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 			return err
 		}
 		next := retagged(m.Tags, in.Payload.FromTags, in.Payload.ToTags)
-		if slices.Equal(next, m.Tags) {
-			continue
+		if slices.Equal(next, m.Tags) || len(in.Payload.FromTags) > 0 && !hasFrom(m) {
+			continue // 묶기는 뺄 태그를 가진 기억만 고친다
 		}
 		in.MemoryIDs = append(in.MemoryIDs, id)
 		lines = append(lines, fmt.Sprintf("- %s %s: %s → %s", id, ClipRunes(m.Title, 60), tagList(m.Tags), tagList(next)))
@@ -795,9 +817,11 @@ func sortedKeys(tags []string) []string {
 	return out
 }
 
-// retagBusy is the pending retag proposal that already takes out one of the
-// tags from (any spelling), or "".
-func (s *Store) retagBusy(from []string) (string, error) {
+// retagBusy is the pending tag merge that already works on these tags, or "":
+// one that takes out a tag this one takes out or puts in, or puts in a tag
+// this one takes out (the reverse or a chain). Two merges into the same tag
+// from different tags do not clash.
+func (s *Store) retagBusy(from, to []string) (string, error) {
 	if len(from) == 0 {
 		return "", nil
 	}
@@ -805,9 +829,15 @@ func (s *Store) retagBusy(from []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	keys := sortedKeys(from)
+	overlap := func(a, b []string) bool {
+		kb := sortedKeys(b)
+		return slices.ContainsFunc(sortedKeys(a), func(k string) bool { return slices.Contains(kb, k) })
+	}
 	for _, p := range pending {
-		if p.Kind == ProposalRetag && slices.ContainsFunc(sortedKeys(p.Payload.FromTags), func(k string) bool { return slices.Contains(keys, k) }) {
+		if p.Kind != ProposalRetag || len(p.Payload.FromTags) == 0 {
+			continue
+		}
+		if overlap(from, p.Payload.FromTags) || overlap(from, p.Payload.ToTags) || overlap(to, p.Payload.FromTags) {
 			return p.ID, nil
 		}
 	}
