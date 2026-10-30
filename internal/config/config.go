@@ -40,6 +40,11 @@ type Config struct {
 	SessionRetroDailyMax int    `json:"sessionRetroDailyMax"`        // 하루 세션 끝 회고 실행 상한, 0은 상한 없음
 	RecallChars          int    `json:"recallChars"`                 // 요청마다 넣는 작업 회상의 글자 수 상한
 	LedgerWindowDays     int    `json:"ledgerWindowDays"`            // 변경 효과를 보는 변경 전·후 기간(일)
+
+	// 기억 그래프 정리(설계 · Orbit 3차 O3-2). 하루 회고에 붙는다. 0이면 그 부분을 끈다.
+	GraphTidyMemories  int `json:"graphTidyMemories"`  // 회당 연결 후보를 볼 클러스터 기억 수
+	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
+	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
 }
 
 // Work recording switch values.
@@ -109,6 +114,9 @@ func (c Config) Validate() error {
 	}
 	if c.LedgerWindowDays < 1 || c.LedgerWindowDays > 90 || c.SessionRetroDailyMax < 0 {
 		return errors.New("ledgerWindowDays(1-90)·sessionRetroDailyMax(0 이상)을 확인해 주세요")
+	}
+	if c.GraphTidyMemories < 0 || c.GraphTidyMemories > 200 || c.GraphTidyUntagged < 0 || c.GraphTidyUntagged > 200 || c.GraphTidyProposals < 0 || c.GraphTidyProposals > 20 {
+		return errors.New("graphTidyMemories·graphTidyUntagged(0-200)·graphTidyProposals(0-20)를 확인해 주세요")
 	}
 	return nil
 }

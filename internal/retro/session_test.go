@@ -365,7 +365,7 @@ func TestWeekly_정리_재료와_교훈_제출(t *testing.T) {
 			Proposals: []ProposalIn{
 				{Kind: "edit", Title: "범위 좁히기", MemoryIDs: []string{a.ID}, NewScope: "project", Project: "/w/app"},
 				{Kind: "revert", Title: "되돌리기", LedgerID: dr.LedgerID},
-				{Kind: "link", Title: "서로 보완하는 기억", MemoryIDs: []string{a.ID, b.ID}, Note: "같은 배포 절차의 앞뒤"},
+				{Kind: "link", Title: "서로 보완하는 기억", MemoryIDs: []string{a.ID, b.ID}, Relation: "sequence", Note: "같은 배포 절차의 앞뒤"},
 			},
 			Lessons: []LessonIn{
 				{LedgerID: dr.LedgerID, Signal: "회고 예약 문구", Lesson: "예약 기억은 명령까지 적는다", Basis: "교정 1→0", Confidence: "low"},
@@ -397,7 +397,7 @@ func TestWeekly_정리_재료와_교훈_제출(t *testing.T) {
 		t.Fatalf("proposals = %v (%s)", kinds, report)
 	}
 	for _, p := range pending {
-		if p.Kind == "link" && (p.Payload.Note != "같은 배포 절차의 앞뒤" || len(p.MemoryIDs) != 2) {
+		if p.Kind == "link" && (p.Payload.Note != "앞뒤 절차: 같은 배포 절차의 앞뒤" || len(p.MemoryIDs) != 2) {
 			t.Errorf("link 제안: %+v", p)
 		}
 	}

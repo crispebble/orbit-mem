@@ -100,6 +100,10 @@ func cmdRetro(a *app, args []string) error {
 		}
 		a.printResults(results)
 		return nil
+	case "tidy":
+		res, err := r.RunTidyOne(ctx)
+		a.printResults([]retro.Result{res})
+		return err
 	case "status":
 		list, err := retro.Recent(s, *n)
 		if err != nil {

@@ -38,7 +38,7 @@ type MemoryIn struct {
 
 // ProposalIn is a proposal from the retrospective.
 type ProposalIn struct {
-	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction·edit·revert·link"`
+	Kind        string   `json:"kind" jsonschema:"stale·merge·reclassify·apply_file·direction·edit·revert·link·retag"`
 	Title       string   `json:"title"`
 	Body        string   `json:"body,omitempty" jsonschema:"왜 제안하는지"`
 	MemoryIDs   []string `json:"memoryIds,omitempty"`
@@ -54,6 +54,9 @@ type ProposalIn struct {
 	Project     string   `json:"project,omitempty" jsonschema:"edit: 새 범위가 project면 그 작업 디렉터리"`
 	LedgerID    string   `json:"ledgerId,omitempty" jsonschema:"revert: 되돌릴 원장 id"`
 	Note        string   `json:"note,omitempty" jsonschema:"link: 두 기억을 잇는 근거 한 줄(memoryIds에 이을 기억 둘)"`
+	Relation    string   `json:"relation,omitempty" jsonschema:"link: 잇는 관계 basis(같은 결정의 근거)·sequence(앞뒤 절차)·exception(예외)"`
+	FromTags    []string `json:"fromTags,omitempty" jsonschema:"retag: 뺄 태그(뜻이 같은 다른 태그를 묶을 때). memoryIds를 비우면 이 태그를 가진 기억 모두"`
+	ToTags      []string `json:"toTags,omitempty" jsonschema:"retag: 넣을 태그"`
 }
 
 // UsageIn is the session-end retrospective's verdict on one memory put into the session.
@@ -152,7 +155,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindDaily && !mat.onlySources() && (sub.Journal == nil || strings.TrimSpace(sub.Journal.Title) == "") {
 		return "", errors.New("하루 회고는 journal(title, body)이 필요합니다")
 	}
-	if mat.Kind == KindSession {
+	if mat.Kind == KindSession || mat.Kind == KindTidy {
 		sub.Journal = nil // 세션 끝 회고의 요약은 summary 한 줄이고, 일지는 하루 회고가 쓴다
 	}
 	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals || len(sub.Corrections) > maxSubmitCorrections || len(sub.Lessons) > maxSubmitLessons {
@@ -178,6 +181,10 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	}
 	var report []string
 	var notes []string
+	if mat.Kind == KindTidy && len(sub.Memories) > 0 {
+		notes = append(notes, "그래프 정리는 기억을 새로 남기지 않습니다")
+		sub.Memories = nil
+	}
 	journalID := ""
 	if sub.Journal != nil && strings.TrimSpace(sub.Journal.Title) != "" {
 		title := sub.Journal.Title
@@ -291,11 +298,28 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		notes = append(notes, "세션 끝 회고는 제안을 내지 않습니다. 하루·주간 회고가 냅니다")
 		sub.Proposals = nil
 	}
+	tidied := 0
 	for _, in := range sub.Proposals {
 		pi := memory.ProposalInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, RetroID: id,
 			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content,
-				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID, Note: in.Note}}
+				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID, Note: in.Note, FromTags: in.FromTags, ToTags: in.ToTags}}
+		tidy := in.Kind == memory.ProposalLink || in.Kind == memory.ProposalRetag
+		if mat.Kind == KindTidy && !tidy {
+			notes = append(notes, in.Title+": 그래프 정리는 link·retag 제안만 냅니다")
+			continue
+		}
+		if tidy && mat.Tidy != nil && mat.Tidy.Max > 0 && tidied >= mat.Tidy.Max {
+			notes = append(notes, fmt.Sprintf("%s: 회당 정리 제안 상한 %d건을 넘어 뺐습니다", in.Title, mat.Tidy.Max))
+			continue
+		}
 		switch in.Kind {
+		case memory.ProposalLink:
+			label, ok := linkRelations[in.Relation]
+			if !ok {
+				notes = append(notes, in.Title+": 잇는 관계(relation: basis·sequence·exception)가 없어 뺐습니다. 같은 태그·같은 세션만으로는 잇지 않습니다")
+				continue
+			}
+			pi.Payload.Note = label + ": " + strings.TrimSpace(in.Note)
 		case memory.ProposalEdit:
 			switch in.NewScope {
 			case "":
@@ -332,6 +356,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		proposed++
+		if tidy {
+			tidied++
+		}
 	}
 	if len(sub.Sources) > 0 {
 		n, snotes := applySources(s, mat, func(path string) (string, bool) { return judgedHash(p, id, path) }, sub.Sources, id)
@@ -359,9 +386,10 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		return "", err
 	}
 	finished = true
+	advanceTidy(s, mat.Tidy, day)
 	// 교정과 사용 판정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
 	// 그 사이에 프로세스가 죽으면 그 회고의 교정·판정만 빠진다(감수한다).
-	if mat.Kind != KindWeekly {
+	if mat.Kind == KindDaily || mat.Kind == KindSession {
 		n, corrected, cnotes := recordCorrections(s, mat, id, sub.Corrections)
 		notes = append(notes, cnotes...)
 		report = append(report, fmt.Sprintf("교정 %d건", n))
@@ -372,6 +400,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		}
 	} else if len(sub.Corrections) > 0 {
 		notes = append(notes, "교정은 하루·세션 끝 회고에서만 받습니다")
+		sub.Corrections = nil
 	}
 	if mat.Kind != KindSession && len(sub.Usage) > 0 {
 		notes = append(notes, "사용 판정은 세션 끝 회고에서만 받습니다")
