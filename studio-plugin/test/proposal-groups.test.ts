@@ -7,6 +7,7 @@ import {build} from 'esbuild';
 import {groupProposalRows, toProposalRow, type OniProposal} from '../src/model.ts';
 import {decideManyArgs} from '../src/requests.ts';
 import {createStore} from '../src/store.ts';
+import {decideGroup} from '../src/group-decision.ts';
 import {fail, fakeCtx, ok} from './fake-ctx.ts';
 
 const prop = (id: string, kind: string, status = 'pending', createdAt = 1_780_000_000_000): OniProposal =>
@@ -66,6 +67,38 @@ describe('store.decideMany', () => {
     const f = fakeCtx({proposals: () => ok({items: []}), proposal_decide: () => fail('입력이 올바르지 않습니다')});
     const store = createStore(f.ctx);
     await assert.rejects(store.decideMany(decideManyArgs(['a'], 'approve')), /입력이 올바르지 않습니다/);
+  });
+});
+
+describe('decideGroup', () => {
+  const group = {kind: 'stale', label: '낡은 기억 정리', rows: [{id: 'a', title: '제안 a'}, {id: 'b', title: '제안 b'}]};
+  const handlers = (decide: () => ReturnType<typeof ok>) => ({proposals: () => ok({items: []}), proposal_decide: decide});
+
+  it('확인 창에서 고르지 않으면 아무것도 보내지 않는다', async () => {
+    const f = fakeCtx(handlers(() => ok({decided: []})), {ask: 'cancel'});
+    assert.equal(await decideGroup(f.ctx, createStore(f.ctx), group, 'approve'), 'cancelled');
+    assert.equal(f.asks[0]?.title, '낡은 기억 정리 2건을 모두 승인할까요?');
+    assert.equal(f.calls.length, 0);
+  });
+
+  it('모두 결정하면 성공 알림', async () => {
+    const f = fakeCtx(handlers(() => ok({decided: [{}, {}]})), {ask: 'reject'});
+    assert.equal(await decideGroup(f.ctx, createStore(f.ctx), group, 'reject'), 'done');
+    assert.deepEqual(f.calls[0], {tool: 'proposal_decide', args: {ids: ['a', 'b'], decision: 'reject'}});
+    assert.deepEqual(f.notices.at(-1), {title: '낡은 기억 정리 2건을 거절했습니다', tone: 'success'});
+  });
+
+  it('일부 실패는 제목과 이유를 경고로 알린다', async () => {
+    const f = fakeCtx(handlers(() => ok({decided: [{}], failed: [{id: 'b', error: '이미 결정한 제안입니다'}]})), {ask: 'approve'});
+    await decideGroup(f.ctx, createStore(f.ctx), group, 'approve');
+    assert.deepEqual(f.notices.at(-1), {title: '1건 승인, 1건은 결정하지 못했습니다', body: '제안 b: 이미 결정한 제안입니다', tone: 'warning'});
+  });
+
+  it('호출이 실패하면 알리고 목록을 다시 읽는다', async () => {
+    const f = fakeCtx(handlers(() => fail('시간 초과')), {ask: 'approve'});
+    assert.equal(await decideGroup(f.ctx, createStore(f.ctx), group, 'approve'), 'failed');
+    assert.equal(f.notices.at(-1)?.tone, 'danger');
+    assert.equal(f.calls.at(-1)?.tool, 'proposals');
   });
 });
 
