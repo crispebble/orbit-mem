@@ -153,8 +153,16 @@ type Report struct {
 	Graph        Graph                `json:"graph"`
 	States       map[string]int       `json:"states"` // 지금 기억 수(상태별)
 	Legacy       memory.LegacyCount   `json:"legacy"` // 옮겨 온 옛 기억 판정(설계 · Orbit 3차 O3-3)
+	Lab          Lab                  `json:"lab"`    // 기간 안에 시작한 하네스 실험(명세 · Orbit 3차 O3-5)
 	// 옛 기억 정리를 시작하기 전 상태별 기억 수(끝 기준 3의 「전」). 시작하지 않았으면 nil
 	LegacyBaseline *memory.LegacyBaseline `json:"legacyBaseline,omitempty"`
+}
+
+// Lab counts the harness lab's experiments in the period and what they cost.
+type Lab struct {
+	Experiments int            `json:"experiments"`
+	Verdicts    map[string]int `json:"verdicts"` // helped·harmful·no_effect·failed
+	CostUSD     float64        `json:"costUsd"`
 }
 
 // Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
@@ -412,6 +420,22 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if b, ok := s.LegacyBaseline(); ok {
 		r.LegacyBaseline = &b
 	}
+	xs, err := s.LabExperiments(startMs, endMs)
+	if err != nil {
+		return r, err
+	}
+	r.Lab = Lab{Verdicts: map[string]int{}}
+	for _, x := range xs {
+		r.Lab.Experiments++
+		r.Lab.CostUSD += x.CostUSD
+		v := x.Verdict
+		if x.Status == memory.LabFailed {
+			v = memory.LabFailed
+		}
+		if v != "" {
+			r.Lab.Verdicts[v]++
+		}
+	}
 	jc, err := s.JudgmentCounts(startMs, endMs)
 	if err != nil {
 		return r, err
@@ -550,6 +574,11 @@ func Render(r Report) string {
 		fmt.Fprintf(&b, " (옛 기억 정리 시작 %s: %s)", lb.Day, states(lb.States))
 	}
 	b.WriteString("\n")
+	if lab := r.Lab; lab.Experiments > 0 {
+		v := lab.Verdicts
+		fmt.Fprintf(&b, "- 하네스 실험실: 실험 %d번(도움됨 %d · 해로움 %d · 효과 없음 %d · 실패 %d), 비용 $%.4f\n", lab.Experiments,
+			v[memory.VerdictHelped], v[memory.VerdictHarmful], v[memory.VerdictNoEffect], v[memory.LabFailed], lab.CostUSD)
+	}
 	if l := r.Legacy; l.Total > 0 {
 		var by []string
 		for _, v := range []struct{ key, name string }{{"keep", "그대로 둠"}, {"confirm", "확정"}, {"merge", "합치기"}, {"stale", "낡음"}} {

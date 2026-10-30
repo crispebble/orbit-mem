@@ -286,6 +286,7 @@ type HostOutput struct {
 	InputTokens  int
 	OutputTokens int
 	Text         string
+	IsError      bool // 호스트가 오류로 끝났다(상한 초과·로그인 없음 등)
 }
 
 // parseHostOutput reads the last line of out that is a JSON object with a
@@ -300,9 +301,10 @@ func parseHostOutput(out string) HostOutput {
 			continue
 		}
 		var v struct {
-			Result string   `json:"result"`
-			Cost   *float64 `json:"total_cost_usd"`
-			Usage  struct {
+			IsError bool     `json:"is_error"`
+			Result  string   `json:"result"`
+			Cost    *float64 `json:"total_cost_usd"`
+			Usage   struct {
 				Input       int `json:"input_tokens"`
 				CacheRead   int `json:"cache_read_input_tokens"`
 				CacheCreate int `json:"cache_creation_input_tokens"`
@@ -313,7 +315,7 @@ func parseHostOutput(out string) HostOutput {
 			continue
 		}
 		return HostOutput{Known: true, CostUSD: *v.Cost, InputTokens: v.Usage.Input + v.Usage.CacheRead + v.Usage.CacheCreate,
-			OutputTokens: v.Usage.Output, Text: v.Result}
+			OutputTokens: v.Usage.Output, Text: v.Result, IsError: v.IsError}
 	}
 	return h
 }
@@ -461,6 +463,13 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 	}
 	return Cmd{Name: name, Args: args, Dir: dir, Env: env, Stdin: text}
 }
+
+// ExecHost runs a host process with stdin closed and returns all of its output
+// (stdout and stderr). The harness lab runs its candidates and judge with it.
+func ExecHost(ctx context.Context, c Cmd) (string, error) { return execHost(ctx, c) }
+
+// ParseHostOutput reads cost, tokens and the answer from a host's JSON output.
+func ParseHostOutput(out string) HostOutput { return parseHostOutput(out) }
 
 // execHost runs a host process with stdin closed and returns the tail of its output.
 func execHost(ctx context.Context, c Cmd) (string, error) {

@@ -637,6 +637,16 @@ func cmdConfig(a *app, args []string) error {
 		cfg.SessionRetro = b
 	case "sessionRetroModel":
 		cfg.SessionRetroModel = val
+	case "labModel":
+		cfg.LabModel = val
+	case "labJudgeModel":
+		cfg.LabJudgeModel = val
+	case "labRunUSD", "labExperimentUSD":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
+		}
+		*map[string]*float64{"labRunUSD": &cfg.LabRunUSD, "labExperimentUSD": &cfg.LabExperimentUSD}[key] = f
 	case "retiredNames":
 		cfg.RetiredNames = nil
 		for _, n := range strings.Split(val, ",") {
@@ -644,16 +654,16 @@ func cmdConfig(a *app, args []string) error {
 				cfg.RetiredNames = append(cfg.RetiredNames, n)
 			}
 		}
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches":
+	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches", "labRuns":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
 		}
 		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
-			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches}[key] = n
+			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns}[key] = n
 	default:
-		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames)", key)
+		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel)", key)
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

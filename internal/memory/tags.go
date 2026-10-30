@@ -27,11 +27,25 @@ func IsImported(m Memory) bool {
 	return false
 }
 
+// DomainPrefix starts the tag that puts a memory in a field-knowledge pack of
+// this PC (명세 · Orbit 3차 O3-5 「PC 기억 분야 묶음」): 분야:<이름>.
+const DomainPrefix = "분야:"
+
+// DomainOf is the field-knowledge pack a memory belongs to, or "".
+func DomainOf(m Memory) string {
+	for _, t := range m.Tags {
+		if k := TagKey(t); strings.HasPrefix(k, DomainPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(k, DomainPrefix))
+		}
+	}
+	return ""
+}
+
 // markerTag is a mark the old Knowledge and Claude memory imports left, and
 // kindTags are kind names: neither says what a memory is about (설계 · Orbit
 // 2차 — 기억 그래프 「제외 태그」, the same rule as the Studio graph view).
 var (
-	markerTag = regexp.MustCompile(`^(imported|space|since|type|옛|superseded-by):`)
+	markerTag = regexp.MustCompile(`^(imported|space|since|type|옛|superseded-by|분야):`)
 	kindTags  = map[string]bool{"규칙": true, "사실": true, "결정": true, "교훈": true, "일지": true, "회고": true,
 		"rule": true, "fact": true, "decision": true, "lesson": true, "journal": true}
 )

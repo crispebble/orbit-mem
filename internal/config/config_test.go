@@ -149,3 +149,19 @@ func TestDefault_옛_기억_정리(t *testing.T) {
 		}
 	}
 }
+
+// 하네스 실험실 기본값: 후보마다 3회, 실행 $1·실험 $10, 실행 sonnet·고르기 opus(2026-10-30 사용자 결정). 고르는 모델은 실행 모델과 달라야 한다.
+func TestDefault_하네스_실험실(t *testing.T) {
+	c := Default()
+	if c.LabRuns != 3 || c.LabRunUSD != 1 || c.LabExperimentUSD != 10 || c.LabModel != "sonnet" || c.LabJudgeModel != "opus" {
+		t.Fatalf("기본값: %+v", c)
+	}
+	for _, bad := range []func(*Config){func(c *Config) { c.LabRuns = 0 }, func(c *Config) { c.LabRunUSD = 0 },
+		func(c *Config) { c.LabExperimentUSD = 0.5 }, func(c *Config) { c.LabJudgeModel = "sonnet" }} {
+		c := Default()
+		bad(&c)
+		if c.Validate() == nil {
+			t.Errorf("받으면 안 됩니다: %+v", c)
+		}
+	}
+}

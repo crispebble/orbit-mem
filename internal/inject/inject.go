@@ -5,6 +5,7 @@ package inject
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -79,7 +80,7 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	}
 	var rules, decisions []memory.Memory
 	for _, m := range confirmed {
-		if !inScope(m, scope) {
+		if !inScope(m, scope) || memory.DomainOf(m) != "" { // 분야 지식은 요청에 맞을 때 신호로만 넣는다
 			continue
 		}
 		switch m.Kind {
@@ -188,8 +189,9 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 	byID := map[string]memory.Memory{}
 	var docs []memory.Doc
 	for _, m := range active {
-		// 확정 규칙은 세션 시작에 이미 들어갔다. 일지는 대화 맥락이 아니다.
-		if !inScope(m, scope) || m.Kind == memory.KindJournal || (m.Kind == memory.KindRule && m.State == memory.StateConfirmed) {
+		// 확정 규칙은 세션 시작에 이미 들어갔다(분야 규칙은 빼고). 일지는 대화 맥락이 아니다.
+		domain := memory.DomainOf(m) != ""
+		if !inScope(m, scope) || m.Kind == memory.KindJournal || (m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain) {
 			continue
 		}
 		byID[m.ID] = m
@@ -223,8 +225,15 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 	head := "[Orbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
 	used := utf8.RuneCountInString(head)
 	var entries strings.Builder
+	var domains []string // 요청과 맞은 분야, 맞은 순서
 	for _, h := range hits {
 		m := byID[h.Doc.ID]
+		if d := memory.DomainOf(m); d != "" {
+			if !slices.Contains(domains, d) {
+				domains = append(domains, d)
+			}
+			continue
+		}
 		state := "확정"
 		if m.State == memory.StateCandidate {
 			state = "후보"
@@ -245,6 +254,36 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		entries.WriteString(line)
 		used += n
 		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+	}
+	// 분야 지식은 본문 대신 그 분야의 신호(제목·id)를 글자 수 안에서 보이고, AI가 필요한 항목만 연다(설계 · Orbit 개선 3차).
+	for _, d := range domains {
+		var members []memory.Memory
+		for _, m := range byID {
+			if memory.DomainOf(m) == d {
+				members = append(members, m)
+			}
+		}
+		sort.Slice(members, func(i, j int) bool { return members[i].UpdatedAt > members[j].UpdatedAt })
+		sec := fmt.Sprintf("[분야 「%s」 신호] 필요한 항목만 memory_get으로 연다.\n", d)
+		if used+utf8.RuneCountInString(sec) > budget {
+			break
+		}
+		entries.WriteString(sec)
+		used += utf8.RuneCountInString(sec)
+		shownN := 0
+		for _, m := range members {
+			line := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
+			if used+utf8.RuneCountInString(line) > budget {
+				break
+			}
+			entries.WriteString(line)
+			used += utf8.RuneCountInString(line)
+			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+			shownN++
+		}
+		if shownN < len(members) { // 길이 때문에 다 보이지 못하면 그 사실을 알린다(남은 것은 memory_find로)
+			entries.WriteString(fmt.Sprintf("- …신호 %d개 중 %d개만 보임. 나머지는 memory_find로 찾는다\n", len(members), shownN))
+		}
 	}
 	if len(inj.MemoryIDs) == 0 {
 		return inj.done(&b)

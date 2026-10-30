@@ -94,3 +94,54 @@ func TestHarnessSentencesForWorkGraph(t *testing.T) {
 		}
 	}
 }
+
+// 명세 · O3-5 「분야 지식 분리」(수용 기준 7): 스택 에이전트에는 일하는 방법만 남고, 분야 사실은 분야 묶음에 있다.
+// 에이전트는 자기 분야 묶음의 신호 목록을 가리키고, 빌드하면 그 경로가 설치 위치로 바뀐다.
+func TestOrbit플러그인_분야_지식이_분리된다(t *testing.T) {
+	src, out := t.TempDir(), t.TempDir()
+	if err := Write(src); err != nil {
+		t.Fatal(err)
+	}
+	moved := map[string][]string{ // 에이전트 → 분야 묶음과, 에이전트 본문에서 빠져 분야 묶음으로 간 사실
+		"kotlin-spring-dev": {"kotlin-spring", "spring-boot-starter-webmvc", "tools.jackson.module", "build-logic", "@Transactional"},
+		"react-ts-dev":      {"react-web", `"use client"`, "@tailwindcss/postcss", "react-router-dom", "VITE_"},
+		"electron-dev":      {"electron", "contextBridge", "nodeIntegration", "electron-serve"},
+		"flutter-dev":       {"flutter", "flutter_secure_storage", "flutter_localizations"},
+		"node-cli-dev":      {"node-cli", "import.meta.url", "node --test"},
+	}
+	for agent, want := range moved {
+		pack, facts := want[0], want[1:]
+		body, _ := os.ReadFile(filepath.Join(src, "agents", agent+".md"))
+		if !strings.Contains(string(body), "{{knowledgeDir}}/"+pack+"/SIGNALS.md") {
+			t.Errorf("%s가 분야 묶음 %s의 신호 목록을 가리키지 않습니다", agent, pack)
+		}
+		var all strings.Builder
+		entries, err := os.ReadDir(filepath.Join(src, "knowledge", pack))
+		if err != nil {
+			t.Fatalf("분야 묶음 %s: %v", pack, err)
+		}
+		for _, e := range entries {
+			b, _ := os.ReadFile(filepath.Join(src, "knowledge", pack, e.Name()))
+			all.Write(b)
+		}
+		for _, f := range facts {
+			if strings.Contains(string(body), f) {
+				t.Errorf("%s 본문에 분야 사실 %q가 남았습니다", agent, f)
+			}
+			if !strings.Contains(all.String(), f) {
+				t.Errorf("분야 묶음 %s에 %q가 없습니다", pack, f)
+			}
+		}
+	}
+	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/oni")}); err != nil {
+		t.Fatal(err)
+	}
+	kdir := filepath.ToSlash(filepath.Join(out, "plugins", "orbit", "knowledge"))
+	b, _ := os.ReadFile(filepath.Join(out, "plugins", "orbit", "agents", "kotlin-spring-dev.md"))
+	if !strings.Contains(string(b), kdir+"/kotlin-spring/SIGNALS.md") {
+		t.Errorf("빌드한 에이전트의 분야 묶음 경로:\n%s", b)
+	}
+	if _, err := os.Stat(filepath.Join(out, "plugins", "orbit", "knowledge", "kotlin-spring", "boot4-names.md")); err != nil {
+		t.Error(err)
+	}
+}

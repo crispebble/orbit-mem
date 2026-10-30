@@ -320,7 +320,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		notes = append(notes, "세션 끝 회고는 제안을 내지 않습니다. 하루·주간 회고가 냅니다")
 		sub.Proposals = nil
 	}
-	tidied := 0
+	tidied, labbed := 0, 0
 	for _, in := range sub.Proposals {
 		pi := memory.ProposalInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, RetroID: id,
 			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content,
@@ -370,6 +370,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 				notes = append(notes, in.Title+": 읽은 뒤 파일이 바뀌어 뺐습니다")
 				continue
 			}
+			// 하네스(플러그인 원본) 변경은 실험실을 통과해야 사용자에게 간다(설계 · Orbit 개선 3차 「스킬 제안」).
+			// 실험실은 플러그인 원본 안 파일만 시험할 수 있다. 원본 밖 파일은 지금처럼 바로 대기로 간다.
+			pi.Lab = mat.PluginSource != "" && allowedTarget([]string{mat.PluginSource}, in.Path) && memory.FileTarget(in.Path) == memory.TargetHarness
 		}
 		if _, err := s.Propose(pi); err != nil {
 			if !errors.Is(err, memory.ErrDuplicateProposal) {
@@ -378,6 +381,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		proposed++
+		if pi.Lab {
+			labbed++
+		}
 		if tidy {
 			tidied++
 		}
@@ -396,6 +402,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		notes = append(notes, "옛 기억 판정(legacy)은 옛 기억 판정 회고에서만 받습니다")
 	}
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
+	if labbed > 0 {
+		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(oni lab candidates)", labbed))
+	}
 	if mat.Kind == KindLegacy {
 		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))
 	}

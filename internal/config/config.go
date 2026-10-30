@@ -53,6 +53,14 @@ type Config struct {
 	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
 	RetiredNames   []string `json:"retiredNames,omitempty"` // 보관한 저장소·옛 제품 이름(낡음 판정의 근거로 보인다)
+
+	// 하네스 실험실(명세 · Orbit 3차 O3-5). 지금 하네스와 고친 하네스를 같은 과제로 돌려 익명으로 고른다.
+	// 기본값은 사용자가 정했다(2026-10-30, U13~U15): 후보마다 3회, 실행 $1·실험 $10, 실행 sonnet·고르기 opus.
+	LabRuns          int     `json:"labRuns"`          // 후보마다 회차 수
+	LabRunUSD        float64 `json:"labRunUSD"`        // 실행 한 번 비용 상한(USD)
+	LabExperimentUSD float64 `json:"labExperimentUSD"` // 실험 하나(모든 실행+고르기) 누적 상한(USD)
+	LabModel         string  `json:"labModel"`         // 후보 실행 모델
+	LabJudgeModel    string  `json:"labJudgeModel"`    // 결과물을 익명으로 고르는 모델(후보 실행 모델과 달라야 한다)
 }
 
 // Work recording switch values.
@@ -93,7 +101,8 @@ func (c Config) SessionModel() string {
 func Default() Config {
 	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
-		LegacyMemories: 30, LegacyBatches: 1}
+		LegacyMemories: 30, LegacyBatches: 1,
+		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus"}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -129,6 +138,12 @@ func (c Config) Validate() error {
 	}
 	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
 		return errors.New("legacyMemories(1-100)·legacyBatches(0-20)를 확인해 주세요")
+	}
+	if c.LabRuns < 1 || c.LabRuns > 10 || c.LabRunUSD <= 0 || c.LabRunUSD > 20 || c.LabExperimentUSD < c.LabRunUSD || c.LabExperimentUSD > 200 {
+		return errors.New("labRuns(1-10)·labRunUSD(0 초과 20 이하)·labExperimentUSD(labRunUSD 이상 200 이하)를 확인해 주세요")
+	}
+	if c.LabModel == "" || c.LabJudgeModel == "" || c.LabModel == c.LabJudgeModel {
+		return errors.New("labModel과 labJudgeModel은 비울 수 없고 서로 달라야 합니다(같은 모델이 자기 결과를 고르지 않게)")
 	}
 	return nil
 }
