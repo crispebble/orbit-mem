@@ -302,3 +302,26 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 		}
 	}
 }
+
+// 명세 · O3-5 「기록」: 기간 안 하네스 실험 수·판정·비용을 보인다.
+func TestCompute_하네스_실험실_지표(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 31, 12, 0, 0, 0, time.Local))
+	at := s.Now().UnixMilli()
+	for i, x := range []memory.LabExperiment{{ID: "x-1", Status: memory.LabDone, Verdict: memory.VerdictHelped, CostUSD: 1.5},
+		{ID: "x-2", Status: memory.LabFailed, CostUSD: 0.5}} {
+		x.TaskID, x.Runs, x.CreatedAt = "t-1", 3, at-int64(i)
+		if err := s.SaveLabExperiment(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err := Compute(s, "2026-10-25", "2026-10-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Lab.Experiments != 2 || rep.Lab.Verdicts["helped"] != 1 || rep.Lab.Verdicts["failed"] != 1 {
+		t.Fatalf("실험실 지표 %+v", rep.Lab)
+	}
+	if out := Render(rep); !strings.Contains(out, "하네스 실험실: 실험 2번(도움됨 1 · 해로움 0 · 효과 없음 0 · 실패 1), 비용 $2.0000") {
+		t.Fatal(out)
+	}
+}

@@ -121,7 +121,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema); err != nil {
 		return fmt.Errorf("기억 DB를 열 수 없습니다: %w", err)
 	}
 	if err := addColumns(tx); err != nil {

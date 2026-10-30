@@ -43,6 +43,7 @@ func commands() []command {
 		{"config", "oni config [show | set <키> <값>]", cmdConfig},
 		{"backup", "oni backup   # 기억 DB 사본을 지금 만든다", cmdBackup},
 		{"stats", "oni stats [--days N | --week YYYY-MM-DD(월요일)] [--json]   # 교정·회상·사용 판정·원장·제안·회고 지표", cmdStats},
+		{"lab", "oni lab task new --title T --instruction(-file) X --criteria(-file) X [--start DIR] [--from-corrections ID,…] | task list | candidates | run --task T (--change DIR | --proposal ID) | show <id> | list [--json]   # 하네스 실험실", cmdLab},
 		{"ledger", "oni ledger [--all] [--n N] [--json]   # 승인한 변경과 효과 판정", cmdLedger},
 	}
 }

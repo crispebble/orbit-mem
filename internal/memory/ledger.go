@@ -91,7 +91,7 @@ type LedgerEntry struct {
 func FileTarget(path string) string {
 	p := filepath.ToSlash(path)
 	base := filepath.Base(p)
-	if strings.Contains(p, "/skills/") || strings.Contains(p, "/agents/") || base == "agents-common.md" || base == "plugin.json" {
+	if strings.Contains(p, "/skills/") || strings.Contains(p, "/agents/") || strings.Contains(p, "/knowledge/") || base == "agents-common.md" || base == "plugin.json" {
 		return TargetHarness
 	}
 	return TargetInstruction
