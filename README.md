@@ -15,6 +15,7 @@ PC마다 깔리는 Go 바이너리 하나(`oni`)다. AI 호스트(Claude Code·C
 | `oni retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일, 근거 파일이 바뀐 기억 판정 포함), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
 | `oni retro sessions` | 세션 끝 회고 대기열을 비운다(세션 종료 훅이 부른다). 다른 회고가 돌고 있으면 바로 끝난다. 호스트가 로그인되어 있지 않으면(macOS 로그아웃·재시동 중 등) 남은 세션을 대기열에 두고 멈추며, 다음 세션 끝이나 예약 회고가 다시 돌린다 |
 | `oni retro legacy` | 옛 Knowledge·Claude 메모리에서 옮겨 온 기억(`imported:*`) 한 묶음(`legacyMemories`, 기본 30)을 대표 태그 클러스터별로 판정한다. 확정·합치기·낡음은 근거와 함께 제안으로, 그대로 둠은 사건으로 남는다. 예약 회고는 하루에 `legacyBatches` 묶음까지 돌리고, 모두 판정하면 멈춘다. 낡음 판정에 쓸 보관한 저장소·옛 이름은 `retiredNames`(쉼표로 구분)에 둔다 |
+| `oni lab` | 하네스 실험실. `task new`(작업 지시·판정 기준·시작 상태, `--from-corrections`로 교정 인용을 기준에 붙임)·`task list`, `run --task T --change DIR\|--proposal ID`(지금 플러그인과 고친 플러그인을 `labRuns`번씩 실험 전용 `ORBIT_HOME`에서 `claude -p --restricted`로 돌리고, 결과물을 A·B로 섞어 `labJudgeModel`이 고름. 판정은 원장에 실험 줄로, 도움됨이면 파일 반영 제안으로), `show`·`list`, `candidates`(회고가 낸 하네스 변경 중 실험실 대기). 플러그인 원본(`pluginSource`)을 쓰는 PC에서만 돈다. 과제·결과물은 `ORBIT_HOME/lab/`에만 둔다 |
 | `oni proposals` | 회고 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `oni memory find\|show` | 기억 찾기·읽기 |
 | `oni migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
@@ -52,13 +53,14 @@ go build -o dist/oni ./cmd/oni
 | `internal/transcript` | Claude·Codex 대화 기록에서 사용자 말과 AI 답만 추리기 |
 | `internal/retro` | 세션 끝·하루·주간 회고, 대기열과 읽은 발화 구간, 밀린 회고 따라잡기, 흡수, 주간 정리 재료, 제출 반영(쓰기·사용 판정, 교훈) |
 | `internal/migrate` | 옛 Knowledge 이전 |
+| `internal/lab` | 하네스 실험실: 과제, 후보 빌드·실행, 익명 고르기, 원장 실험 줄과 제안 |
 | `internal/pluginbuild` | 두 호스트 플러그인 빌드 |
-| `internal/orbitplugin/source` | Orbit 플러그인 원본: MCP·훅, 스킬 15개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`) |
+| `internal/orbitplugin/source` | Orbit 플러그인 원본: MCP·훅, 스킬 15개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`), 분야 묶음(`knowledge/<분야>/`: 한 줄 신호 목록 `SIGNALS.md`와 항목. 에이전트에는 일하는 방법만 두고 분야 사실은 여기에) |
 | `internal/install` | 바이너리·플러그인 등록·Codex 역할 복사·OS 예약 |
 
 ## 플러그인 원본 고치기
 
-스킬·역할은 `internal/orbitplugin/source`가 정본이다. 고친 뒤 `go build`로 바이너리를 다시 만들거나, 이 PC에서는 `oni install --plugin-source internal/orbitplugin/source`로 내장 원본 대신 이 디렉터리를 쓰게 한다. 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다. 플러그인 버전은 `internal/version`의 oni 버전과 같다.
+스킬·역할·분야 묶음은 `internal/orbitplugin/source`가 정본이다. 회고가 낸 원본 변경은 실험실(`oni lab`)에서 도움됨으로 판정된 것만 사용자 승인으로 간다. 개인·회사 분야 지식은 원본이 아니라 그 PC 기억에 `분야:<이름>` 태그로 둔다(요청과 맞으면 신호만 붙는다). 고친 뒤 `go build`로 바이너리를 다시 만들거나, 이 PC에서는 `oni install --plugin-source internal/orbitplugin/source`로 내장 원본 대신 이 디렉터리를 쓰게 한다. 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다. 플러그인 버전은 `internal/version`의 oni 버전과 같다.
 
 ## 릴리스
 
