@@ -286,6 +286,58 @@ func TestSources_판정_대상이_아닌_파일과_기억은_받지_않는다(t 
 	}
 }
 
+func TestSources_옛_출처_파일이_바뀜_제안은_새_판정으로_대체한다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	dir := t.TempDir()
+	keptFile, goneFile, deleted := filepath.Join(dir, "kept.md"), filepath.Join(dir, "gone.md"), filepath.Join(dir, "deleted.json")
+	w(t, keptFile, "가 규칙")
+	w(t, goneFile, "나 규칙")
+	w(t, deleted, "증거")
+	kept := fileMemory(t, e, "가", keptFile, "가 규칙")
+	gone := fileMemory(t, e, "나", goneFile, "나 규칙")
+	absent := fileMemory(t, e, "다", deleted, "증거")
+	w(t, keptFile, "머리말\n가 규칙")
+	w(t, goneFile, "다른 규칙")
+	os.Remove(deleted)
+	var legacy []string
+	for _, m := range []memory.Memory{kept, gone, absent} {
+		p, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "출처 파일이 바뀜: " + m.Title,
+			Body: "근거 파일이 이 기억을 만든 뒤 바뀌었습니다.", MemoryIDs: []string{m.ID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy = append(legacy, p.ID)
+	}
+	unused, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "오래 쓰지 않음", Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}})
+	other, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "오래 쓰지 않은 기억", MemoryIDs: []string{unused.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	for _, id := range legacy {
+		if p, _ := e.s.GetProposal(id); p.Status != memory.StatusSettled || !strings.Contains(p.Note, "새 출처 판정") {
+			t.Fatalf("legacy %s = %+v", id, p)
+		}
+	}
+	pending, _ := e.s.Proposals(memory.StatusPending)
+	if len(pending) != 2 {
+		t.Fatalf("pending = %+v", pending)
+	}
+	byID := map[string]memory.Proposal{}
+	for _, p := range pending {
+		byID[p.ID] = p
+	}
+	if _, ok := byID[other.ID]; !ok {
+		t.Fatalf("other stale proposals stay: %+v", pending)
+	}
+	for _, p := range pending {
+		if p.ID != other.ID && (p.MemoryIDs[0] != gone.ID || !strings.Contains(p.Body, "나 규칙")) {
+			t.Fatalf("the vanished excerpt comes back as a new proposal: %+v", p)
+		}
+	}
+}
+
 func sorted(ids ...string) []string {
 	out := append([]string(nil), ids...)
 	for i := range out {

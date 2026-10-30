@@ -41,3 +41,28 @@ func (s *Store) SetSourceHash(sourceID, hash string) error {
 	}
 	return nil
 }
+
+// legacySourceTitle starts the proposals the whole-file hash check made up to
+// 0.3.8: one stale proposal per memory on any change of the file.
+const legacySourceTitle = "출처 파일이 바뀜: "
+
+// SettleLegacySourceProposals closes those pending proposals so the excerpt
+// check judges their memories again. That check never moved their source
+// hashes on, so it catches every one of them.
+func (s *Store) SettleLegacySourceProposals() (int, error) {
+	pending, err := s.Proposals(StatusPending)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range pending {
+		if p.Kind != ProposalStale || p.RetroID != "" || !strings.HasPrefix(p.Title, legacySourceTitle) {
+			continue
+		}
+		if err := s.finish(&p, StatusSettled, "새 출처 판정(발췌 비교)으로 다시 봄"); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
