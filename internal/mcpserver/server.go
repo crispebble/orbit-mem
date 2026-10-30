@@ -40,13 +40,13 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	// memory_save and memory_update only add: an edit, stale or supersede keeps
 	// every earlier version. proposal_decide can overwrite or remove a user's
 	// file (apply_file, revert); a decided proposal is not decided again.
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_find", Description: "질의·종류·범위·태그로 기억을 찾는다. 기본은 전역과 이 프로젝트의 후보·확정 기억이다.", Annotations: readHints()},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
 			for _, m := range out.Items {
 				ids = append(ids, m.ID)
 			}
-			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope, "ids": ids}
+			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope, "ids": ids, "tags": len(in.Tags)}
 		}))
 	mcp.AddTool(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 출처와 후보가 나온 날을 함께 준다.", Annotations: readHints()},
 		track(h, "memory_get", h.get, func(in GetIn, out GetOut) map[string]any {
@@ -64,11 +64,11 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기, 관련 기억 잇기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기, 관련 기억 잇기, 태그 묶기·달기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기는 고쳐서 승인할 수 없다). ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기·태그는 고쳐서 승인할 수 없다). ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
@@ -119,6 +119,7 @@ type FindIn struct {
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal 중 고른 것"`
 	Scope  string   `json:"scope,omitempty" jsonschema:"here(전역+이 프로젝트, 기본)·global·all"`
 	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale. 기본은 candidate와 confirmed"`
+	Tags   []string `json:"tags,omitempty" jsonschema:"이 태그 중 하나라도 가진 기억만. 대소문자·앞뒤 공백·-와 _ 차이는 무시한다"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"최대 개수(기본 20, 최대 50)"`
 }
 
@@ -157,7 +158,7 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Project: h.o.Project, Limit: limit}
+	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: limit}
 	switch in.Scope {
 	case "", "here":
 	case "global":

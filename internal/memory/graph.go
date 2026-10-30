@@ -115,6 +115,7 @@ func (s *Store) Graph(in GraphInput) (Graph, error) {
 	if err != nil {
 		return Graph{}, err
 	}
+	labels := TagLabels(all)
 	byID := make(map[string]Memory, len(all))
 	for _, m := range all {
 		byID[m.ID] = m
@@ -201,13 +202,18 @@ func (s *Store) Graph(in GraphInput) (Graph, error) {
 			continue
 		}
 		sort.Strings(members)
-		out.Groups = append(out.Groups, groupOf(k, members))
+		g := groupOf(k, members)
+		if k.kind == RelTag {
+			g.Label = MaskSecrets(labels[k.key])
+		}
+		out.Groups = append(out.Groups, g)
 	}
 	return out, nil
 }
 
 // graphGroups reads the tag, session and file memberships of every memory.
-// 세션은 호스트를 아는 출처(claude:·codex:)만, 파일은 절대경로만 묶는다.
+// 태그는 표기 차이를 무시한 열쇠(TagKey)로 묶는다. 세션은 호스트를 아는
+// 출처(claude:·codex:)만, 파일은 절대경로만 묶는다.
 func (s *Store) graphGroups(all []Memory) (map[groupKey][]string, error) {
 	groups := map[groupKey][]string{}
 	add := func(k groupKey, id string) {
@@ -221,7 +227,9 @@ func (s *Store) graphGroups(all []Memory) (map[groupKey][]string, error) {
 	}
 	for _, m := range all {
 		for _, t := range m.Tags {
-			add(groupKey{RelTag, t}, m.ID)
+			if k := TagKey(t); k != "" {
+				add(groupKey{RelTag, k}, m.ID)
+			}
 		}
 	}
 	rows, err := s.db.Query(`SELECT memory_id, kind, ref FROM sources WHERE kind IN (?, ?) ORDER BY memory_id, at, id`, SourceSession, SourceFile)
@@ -281,9 +289,13 @@ func graphNode(m Memory) GraphNode {
 }
 
 // graphFilter is kinds·states·scopes·tags·기간. 빈 목록은 모두(상태는 숨김을 뺀 기본).
+// 태그는 표기 차이를 무시한다(TagKey).
 func graphFilter(in GraphInput) func(Memory) bool {
 	kinds, states, scopes := set(in.Kinds, Kinds), set(in.States, DefaultGraphStates), set(in.Scopes, nil)
-	tags := set(in.Tags, nil)
+	tags := map[string]bool{}
+	for _, t := range in.Tags {
+		tags[TagKey(t)] = true
+	}
 	return func(m Memory) bool {
 		if !kinds[m.Kind] || !states[m.State] {
 			return false
@@ -296,7 +308,7 @@ func graphFilter(in GraphInput) func(Memory) bool {
 		}
 		if len(tags) > 0 {
 			for _, t := range m.Tags {
-				if tags[t] {
+				if tags[TagKey(t)] {
 					return true
 				}
 			}

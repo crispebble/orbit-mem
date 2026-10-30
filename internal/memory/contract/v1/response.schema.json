@@ -79,7 +79,7 @@
       "required": ["kind", "key", "label", "members"],
       "properties": {
         "kind": {"enum": ["tag", "session", "file"]},
-        "key": {"type": "string", "minLength": 1, "description": "태그, 세션 출처 ref(호스트:세션 id), 파일 절대경로"},
+        "key": {"type": "string", "minLength": 1, "description": "태그 열쇠(표기를 맞춘 것, 1.2), 세션 출처 ref(호스트:세션 id), 파일 절대경로"},
         "label": {"type": "string"},
         "host": {"enum": ["claude", "codex"], "description": "세션 묶음만"},
         "members": {"type": "array", "items": {"$ref": "#/$defs/id"}, "minItems": 2, "uniqueItems": true}

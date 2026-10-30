@@ -13,8 +13,9 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 2, supportedMajors: [1]}`가 있다.
 - 1.1은 오류 코드 `UNAVAILABLE`을 더했다. 1.0과 나머지는 같다.
+- 1.2는 태그를 표기 차이 없이 맞춘다(설계 · Orbit 3차 O3-2 「읽을 때 맞추기」). 대소문자·앞뒤 공백·`-`와 `_`만 다른 태그는 한 묶음이고, 묶음 `key`는 그 맞춘 열쇠(작은 글자, `_`는 `-`), `label`은 가장 많은 기억이 쓴 표기다. 입력 `tags` 거르기도 표기 차이를 무시한다. 노드의 `tags`는 저장한 표기 그대로다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 기억 종류·상태, 선·묶음 종류, 연결 종류(`relation`), 만든 쪽(`origin`)은 「알 수 없음」으로 보인다.
 - `response.schema.json`은 oni가 내는 1.1 응답을 엄격하게 검사한다(모르는 칸·값을 거부). oni 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
@@ -41,7 +42,7 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | `kinds` | `rule`·`fact`·`decision`·`lesson`·`journal` 목록 | 모두 | 기억 종류 |
 | `states` | `candidate`·`confirmed`·`stale`·`hidden` 목록 | `candidate`·`confirmed`·`stale` | 기억 상태 |
 | `scopes` | `global`·`project:<키>` 목록 | 모두 | 범위 |
-| `tags` | 문자열 목록 | 없음 | 이 태그 중 하나라도 가진 기억만 |
+| `tags` | 문자열 목록 | 없음 | 이 태그 중 하나라도 가진 기억만. 대소문자·앞뒤 공백·`-`와 `_` 차이는 무시한다(1.2) |
 | `updatedFrom`, `updatedTo` | RFC 3339 시각 | 없음 | 마지막으로 고친 때가 이 사이인 기억만(양 끝 포함) |
 | `relations` | `link`·`supersede`·`session`·`file`·`tag` 목록 | 모두 | 응답에 담을 선·묶음 종류 |
 | `limit` | 정수(1 이상) | `limitMax` | 줄 기억 수 상한. `limitMax`보다 크면 `limitMax`. 넘으면 최근에 고친 것부터 남기고 `truncated: true`. `focus`는 오래됐어도 남긴다 |
@@ -54,7 +55,7 @@ AI 호스트(`oni mcp`)에는 열지 않는다. AI는 `memory_get` 응답의 `li
 | --- | --- |
 | `nodes` | 기억. 최근에 고친 순. 본문은 없다(고를 때 `memory_get`) |
 | `edges` | 선. `link`(명시 연결, 방향 없음, `from < to`로 id 순)와 `supersede`(대체, 옛 기억 → 새 기억) |
-| `groups` | 파생 묶음. `tag`(같은 태그), `session`(같은 세션 출처, `host` 있음), `file`(같은 파일 출처, `key`는 절대경로). 소속은 둘 이상 |
+| `groups` | 파생 묶음. `tag`(같은 태그, `key`는 표기를 맞춘 열쇠·`label`은 많이 쓴 표기), `session`(같은 세션 출처, `host` 있음), `file`(같은 파일 출처, `key`는 절대경로). 소속은 둘 이상 |
 | `total` | 거르기를 맞춘 기억 수(`limit`으로 자르기 전) |
 | `truncated` | `limit`으로 잘렸으면 `true` |
 | `focus` | 입력 `focus`를 그대로 돌려준다 |
