@@ -49,18 +49,23 @@ type Tidy struct {
 func (t *Tidy) empty() bool { return t == nil || len(t.Memories) < 2 && len(t.Untagged) == 0 }
 
 // tidyState is the cursor kept in meta: the cluster being walked and where
-// the next batch starts, and the day each cluster was last finished.
+// the next batch starts, and for each finished cluster the day and its size then.
 type tidyState struct {
-	Cluster string            `json:"cluster,omitempty"`
-	Next    int               `json:"next,omitempty"`
-	Done    map[string]string `json:"done,omitempty"`
+	Cluster string              `json:"cluster,omitempty"`
+	Next    int                 `json:"next,omitempty"`
+	Done    map[string]tidyDone `json:"done,omitempty"`
 }
 
-func (r *Runner) tidyState() tidyState {
+type tidyDone struct {
+	Day  string `json:"day"`
+	Size int    `json:"size"`
+}
+
+func readTidyState(s *memory.Store) tidyState {
 	var st tidyState
-	_ = json.Unmarshal([]byte(r.Store.Meta(tidyMeta)), &st)
+	_ = json.Unmarshal([]byte(s.Meta(tidyMeta)), &st)
 	if st.Done == nil {
-		st.Done = map[string]string{}
+		st.Done = map[string]tidyDone{}
 	}
 	return st
 }
@@ -69,10 +74,12 @@ func tidyMemory(m memory.Memory) TidyMemory {
 	return TidyMemory{ID: m.ID, Kind: m.Kind, State: m.State, Title: m.Title, Tags: m.Tags, Body: clipBytes(memory.MaskSecrets(m.Body), 400)}
 }
 
-// tidyMaterial picks the next batch of the graph tidy, or nil when it is off.
-// Clusters cover every candidate and confirmed memory except journals; the
-// walk goes on in the cluster it stopped in, then takes clusters never done in
-// picked order, then the one done longest ago.
+// tidyMaterial picks the next batch of the graph tidy, or nil when it is off
+// or has nothing to show. Clusters cover every candidate and confirmed memory
+// except journals; the walk goes on in the cluster it stopped in, then takes
+// clusters never done in picked order, then, of the clusters whose size
+// changed since they were done, the one done longest ago. A cluster that did
+// not change is not walked again (it would cost a run to see the same pairs).
 func (r *Runner) tidyMaterial() (*Tidy, error) {
 	n, u := r.Cfg.GraphTidyMemories, r.Cfg.GraphTidyUntagged
 	if n <= 0 && u <= 0 {
@@ -102,20 +109,21 @@ func (r *Runner) tidyMaterial() (*Tidy, error) {
 		for _, k := range c.Of {
 			sizes[k]++
 		}
-		st := r.tidyState()
+		st := readTidyState(r.Store)
 		pick := ""
 		if st.Cluster != "" && sizes[st.Cluster] > st.Next {
 			pick, t.From = st.Cluster, st.Next
 		} else {
 			for _, k := range c.Picked {
-				if sizes[k] < 2 {
+				d, done := st.Done[k]
+				if sizes[k] < 2 || done && d.Size == sizes[k] {
 					continue
 				}
-				if _, done := st.Done[k]; !done {
+				if !done {
 					pick = k
 					break
 				}
-				if pick == "" || st.Done[k] < st.Done[pick] {
+				if pick == "" || d.Day < st.Done[pick].Day {
 					pick = k
 				}
 			}
@@ -124,6 +132,9 @@ func (r *Runner) tidyMaterial() (*Tidy, error) {
 			members := c.Members(live, pick)
 			labels := memory.TagLabels(members)
 			t.Cluster, t.Label, t.Size = pick, labels[pick], len(members)
+			if len(members)-t.From < 2 { // 남은 것이 하나면 앞 묶음과 겹쳐 둘 이상을 본다(쌍이 없으면 커서가 멈춘다)
+				t.From = max(0, len(members)-max(n, 2))
+			}
 			end := min(t.From+n, len(members))
 			in := map[string]bool{}
 			for _, m := range members[t.From:end] {
@@ -139,16 +150,17 @@ func (r *Runner) tidyMaterial() (*Tidy, error) {
 					t.Links = append(t.Links, [2]string{l.A, l.B})
 				}
 			}
-			t.Tags = memory.TopicTagCounts(live)
-			pending, err := r.Store.Proposals(memory.StatusPending)
-			if err != nil {
-				return nil, err
-			}
-			for _, p := range pending {
-				if p.Kind == memory.ProposalRetag && len(p.Payload.FromTags) > 0 {
-					t.Merging = append(t.Merging, strings.Join(p.Payload.FromTags, ", ")+" → "+strings.Join(p.Payload.ToTags, ", "))
-				}
-			}
+		}
+	}
+	// 주제 태그 목록은 태그 달기·묶기의 재료라 연결 후보를 꺼도 싣는다.
+	t.Tags = memory.TopicTagCounts(live)
+	pending, err := r.Store.Proposals(memory.StatusPending)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range pending {
+		if p.Kind == memory.ProposalRetag && len(p.Payload.FromTags) > 0 {
+			t.Merging = append(t.Merging, strings.Join(p.Payload.FromTags, ", ")+" → "+strings.Join(p.Payload.ToTags, ", "))
 		}
 	}
 	if u > 0 {
@@ -172,17 +184,13 @@ func advanceTidy(s *memory.Store, t *Tidy, day string) {
 	if t == nil || t.Cluster == "" {
 		return
 	}
-	var st tidyState
-	_ = json.Unmarshal([]byte(s.Meta(tidyMeta)), &st)
-	if st.Done == nil {
-		st.Done = map[string]string{}
-	}
+	st := readTidyState(s)
 	next := t.From + len(t.Memories)
 	if next < t.Size {
 		st.Cluster, st.Next = t.Cluster, next
 	} else {
 		st.Cluster, st.Next = "", 0
-		st.Done[t.Cluster] = day
+		st.Done[t.Cluster] = tidyDone{Day: day, Size: t.Size}
 	}
 	b, _ := json.Marshal(st)
 	_ = s.SetMeta(tidyMeta, string(b))
@@ -260,6 +268,6 @@ func renderTidy(b *strings.Builder, t *Tidy) {
 		b.WriteString("\n")
 	}
 	if t.Max > 0 {
-		fmt.Fprintf(b, "정리 제안(link·retag)은 이번에 %d건까지 받는다. 확실한 것부터 낸다.\n\n", t.Max)
+		fmt.Fprintf(b, "정리 제안(link·retag)은 이번에 %d건까지 받는다. 제출은 일반 제안과 합쳐 %d건까지다. 확실한 것부터 낸다.\n\n", t.Max, maxSubmitProposals)
 	}
 }

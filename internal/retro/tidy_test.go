@@ -2,6 +2,7 @@ package retro
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -199,4 +200,98 @@ func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 		t.Fatalf("retag: %+v", retags)
 	}
 	_ = ms
+}
+
+// runTidyOnce runs one tidy and returns its material.
+func runTidyOnce(t *testing.T, e *env, sub Submission) (string, Result) {
+	t.Helper()
+	var text string
+	e.ai = func(id string) error {
+		text = readAll(t, e, id)
+		if sub.Summary == "" {
+			sub.Summary = "정리"
+		}
+		_, err := Submit(e.s, e.r.Paths, id, sub)
+		return err
+	}
+	res, err := e.r.RunTidy(context.Background())
+	if err != nil {
+		t.Fatalf("정리 %+v %v", res, err)
+	}
+	return text, res
+}
+
+// 검토 지적 1: 클러스터의 마지막 묶음이 기억 하나여도 커서가 멈추지 않는다(앞 묶음과 겹쳐 둘 이상을 보인다).
+// 검토 지적 7: 한 바퀴 돈 뒤에는 바뀐 클러스터만 다시 본다. 볼 것이 없으면 호스트를 부르지 않는다.
+func TestTidy_마지막_묶음과_한_바퀴_뒤(t *testing.T) {
+	now := time.Date(2026, 10, 27, 4, 0, 0, 0, kst)
+	e, ms := tidyEnv(t, now)
+	e.r.Cfg.GraphTidyMemories, e.r.Cfg.GraphTidyUntagged = 2, 0
+	retro := ms["회고 결과는 제안으로만 반영한다"] // orbit 셋 중 마지막(만든 순서)
+	text, _ := runTidyOnce(t, e, Submission{})
+	if !strings.Contains(section(text, "## 그래프 정리"), "(3개 중 1~2째)") {
+		t.Fatalf("첫 묶음:\n%s", text)
+	}
+	text, _ = runTidyOnce(t, e, Submission{})
+	if tidy := section(text, "## 그래프 정리"); !strings.Contains(tidy, "(3개 중 2~3째)") || !strings.Contains(tidy, retro.ID) {
+		t.Fatalf("마지막 묶음은 앞과 겹쳐 둘:\n%s", text)
+	}
+	text, _ = runTidyOnce(t, e, Submission{})
+	if !strings.Contains(section(text, "## 그래프 정리"), "studio") {
+		t.Fatalf("orbit을 마치면 studio:\n%s", text)
+	}
+	calls := len(e.calls)
+	if res, err := e.r.RunTidy(context.Background()); err != nil || res.Status != StatusEmpty || len(e.calls) != calls {
+		t.Fatalf("한 바퀴 뒤 바뀐 것이 없으면 돌지 않는다: %+v %v", res, err)
+	}
+	if _, err := e.s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "회고 실패는 다음 실행에서 다시 돈다", Tags: []string{"orbit"}, Scope: memory.ScopeGlobal,
+		State: memory.StateConfirmed, Source: memory.Source{Kind: memory.SourceSession}}); err != nil {
+		t.Fatal(err)
+	}
+	text, _ = runTidyOnce(t, e, Submission{})
+	if !strings.Contains(section(text, "## 그래프 정리"), "orbit") {
+		t.Fatalf("기억이 늘어난 클러스터는 다시 본다:\n%s", text)
+	}
+}
+
+// 검토 지적 6: 연결 후보를 꺼도(graphTidyMemories 0) 태그 달기·묶기 재료(주제 태그 목록)는 보인다.
+func TestTidy_연결을_꺼도_태그_목록은_보인다(t *testing.T) {
+	now := time.Date(2026, 10, 27, 4, 0, 0, 0, kst)
+	e, _ := tidyEnv(t, now)
+	e.r.Cfg.GraphTidyMemories = 0
+	text, _ := runTidyOnce(t, e, Submission{})
+	if strings.Contains(text, "## 그래프 정리:") || !strings.Contains(text, "## 주제 태그가 없는 기억") || !strings.Contains(text, "## 주제 태그 목록") {
+		t.Fatalf("재료:\n%s", text)
+	}
+}
+
+// 검토 지적 5: 정리 제안과 일반 제안을 합쳐 제출 상한을 넘으면 제출 전체를 거부하지 않고 넘친 정리 제안만 뺀다.
+func TestTidy_제출_상한을_넘친_정리_제안만_뺀다(t *testing.T) {
+	now := time.Date(2026, 10, 27, 4, 0, 0, 0, kst)
+	e, ms := tidyEnv(t, now)
+	e.r.Cfg.GraphTidyProposals = 20
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "회고 확인"))
+	var props []ProposalIn
+	for i := range 3 {
+		props = append(props, ProposalIn{Kind: "direction", Title: fmt.Sprintf("방향 %d", i), Body: "근거"})
+	}
+	for i := range 19 {
+		props = append(props, ProposalIn{Kind: "retag", Title: fmt.Sprintf("태그 달기 %d", i), MemoryIDs: []string{ms["옛 서버 지식"].ID}, ToTags: []string{fmt.Sprintf("주제%d", i)}})
+	}
+	var text, report string
+	e.ai = func(id string) error {
+		text = readAll(t, e, id)
+		var err error
+		report, err = Submit(e.s, e.r.Paths, id, Submission{Summary: "회고", Journal: &JournalIn{Title: "회고", Body: "-"}, Proposals: props})
+		return err
+	}
+	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
+		t.Fatalf("daily %+v %v", res, err)
+	}
+	if len(pendingOf(t, e, memory.ProposalDirection)) != 3 || len(pendingOf(t, e, memory.ProposalRetag)) != 17 {
+		t.Errorf("방향 %d, 태그 %d (%s)", len(pendingOf(t, e, memory.ProposalDirection)), len(pendingOf(t, e, memory.ProposalRetag)), report)
+	}
+	if !strings.Contains(report, "제출 상한 20건") || !strings.Contains(text, "일반 제안과 합쳐 20건") {
+		t.Errorf("보고·안내:\n%s\n%s", report, text)
+	}
 }

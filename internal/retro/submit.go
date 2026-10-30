@@ -158,6 +158,14 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	if mat.Kind == KindSession || mat.Kind == KindTidy {
 		sub.Journal = nil // 세션 끝 회고의 요약은 summary 한 줄이고, 일지는 하루 회고가 쓴다
 	}
+	// 정리 제안(link·retag)이 제출 상한을 넘기면 제출 전체를 거부하지 않고 넘친 정리 제안만 뒤에서부터 뺀다.
+	dropped := 0
+	for i := len(sub.Proposals) - 1; i >= 0 && len(sub.Proposals) > maxSubmitProposals && mat.Tidy != nil; i-- {
+		if k := sub.Proposals[i].Kind; k == memory.ProposalLink || k == memory.ProposalRetag {
+			sub.Proposals = append(sub.Proposals[:i], sub.Proposals[i+1:]...)
+			dropped++
+		}
+	}
 	if len(sub.Memories) > maxSubmitMemories || len(sub.Proposals) > maxSubmitProposals || len(sub.Corrections) > maxSubmitCorrections || len(sub.Lessons) > maxSubmitLessons {
 		return "", fmt.Errorf("기억은 %d건, 제안은 %d건, 교정은 %d건까지 냅니다. 중요한 것만 골라 다시 제출해 주세요", maxSubmitMemories, maxSubmitProposals, maxSubmitCorrections)
 	}
@@ -181,6 +189,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	}
 	var report []string
 	var notes []string
+	if dropped > 0 {
+		notes = append(notes, fmt.Sprintf("정리 제안 %d건은 제출 상한 %d건을 넘어 뺐습니다", dropped, maxSubmitProposals))
+	}
 	if mat.Kind == KindTidy && len(sub.Memories) > 0 {
 		notes = append(notes, "그래프 정리는 기억을 새로 남기지 않습니다")
 		sub.Memories = nil
