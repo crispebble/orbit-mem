@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {describe, it} from 'node:test';
 import {parseMemoryGraph, type GraphNode, type MemoryGraph} from '../src/memory-graph/contract.ts';
 import {
-  CLUSTER_MAX, clusterByRepresentativeTag, isExcludedTag, memoryDescription, OTHER_CLUSTER, TAG_GROUP_MAX, toMemoryNetwork, UNKNOWN,
+  clusterByRepresentativeTag, clusterMinNew, isExcludedTag, memoryDescription, OTHER_CLUSTER, TAG_GROUP_MAX, toMemoryNetwork, UNKNOWN,
 } from '../src/memory-graph/network.ts';
 import {WorkPaused, WorkShapeError, WorkToolError} from '../src/work/contract.ts';
 
@@ -83,19 +83,39 @@ describe('대표 태그(클러스터)', () => {
     assert.ok(nodes.every(n => clusterOf.get(n.id) === 'ui'));
   });
 
-  it('7개까지 고르고 나머지는 그 밖(other 칸), 색 칸은 고른 순서대로 c1~c7', () => {
+  it('앞뒤 공백·-와 _·전각 차이도 같은 태그다(oni TagKey와 같은 규칙)', () => {
+    const nodes = [node(['claude_code']), node(['Claude-Code ']), node(['ＣＬＡＵＤＥ-code'])];
+    const {clusters, clusterOf} = clusterByRepresentativeTag(nodes);
+    assert.deepEqual(clusters.map(c => c.id), ['claude-code']);
+    assert.equal(clusters[0].label, 'claude_code');
+    assert.ok(nodes.every(n => clusterOf.get(n.id) === 'claude-code'));
+  });
+
+  it('개수 상한 없이 새로 묶는 기억이 전체의 1%(최소 2개) 이상인 태그까지 고르고, 색 칸은 고른 순서대로 c1, c2, …', () => {
+    // t0~t9가 10, 9, …, 1개. 기억 56개라 기준은 2개: t0~t8(9개)을 고르고 t9(1개)와 태그 없는 기억은 그 밖
     const nodes: GraphNode[] = [];
     for (let t = 0; t < 10; t++) for (let k = 0; k < 10 - t; k++) nodes.push(node([`t${t}`]));
     nodes.push(node([]));
     const {clusters} = clusterByRepresentativeTag(nodes);
-    assert.equal(clusters.length, CLUSTER_MAX + 1);
-    assert.deepEqual(clusters.map(c => c.tone), ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'other']);
-    assert.deepEqual(clusters.slice(0, 7).map(c => c.id), ['t0', 't1', 't2', 't3', 't4', 't5', 't6']);
-    assert.deepEqual(clusters[7], {id: OTHER_CLUSTER, label: '그 밖', tone: 'other'});
+    assert.equal(clusters.length, 9 + 1);
+    assert.deepEqual(clusters.map(c => c.tone), ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'other']);
+    assert.deepEqual(clusters.slice(0, 9).map(c => c.id), ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8']);
+    assert.deepEqual(clusters[9], {id: OTHER_CLUSTER, label: '그 밖', tone: 'other'});
+  });
+
+  it('1%는 받은 노드가 아니라 응답의 total(잘리기 전 기억 수)로 센다(oni stats와 같은 기준)', () => {
+    const nodes = [node(['a']), node(['a']), node(['a'])];
+    assert.deepEqual(clusterByRepresentativeTag(nodes).clusters.map(c => c.id), ['a']);
+    assert.deepEqual(clusterByRepresentativeTag(nodes, 1000).clusters.map(c => c.id), [OTHER_CLUSTER]);
+    assert.equal(toMemoryNetwork(graph(nodes, {total: 1000, truncated: true})).clusters[0].id, OTHER_CLUSTER);
+  });
+
+  it('클러스터 기준은 전체의 1%, 최소 2개(oni ClusterMinNew와 같다)', () => {
+    for (const [n, want] of [[0, 2], [10, 2], [249, 2], [250, 3], [558, 6], [1000, 10]] as const) assert.equal(clusterMinNew(n), want);
   });
 
   it('같으면 키 순이고, 같은 입력이면 같은 결과다', () => {
-    const nodes = [node(['나']), node(['가']), node(['b']), node(['a'])];
+    const nodes = [node(['나']), node(['가']), node(['b']), node(['a'])].flatMap(n => [n, node(n.tags)]);
     assert.deepEqual(clusterByRepresentativeTag(nodes).clusters.map(c => c.id), ['a', 'b', '가', '나']);
     const g = parseMemoryGraph(example('memory_graph.all'));
     assert.deepEqual(toMemoryNetwork(g), toMemoryNetwork(structuredClone(g)));
@@ -106,9 +126,9 @@ describe('예시 응답 → 부품 입력', () => {
   const g = parseMemoryGraph(example('memory_graph.all'));
   const net = toMemoryNetwork(g);
 
-  it('기억마다 점 하나, 클러스터는 대표 태그(결정·회고 태그는 빼고)', () => {
+  it('기억마다 점 하나, 클러스터는 대표 태그(결정·회고 태그는 빼고, 기억 하나만 묶는 태그는 그 밖)', () => {
     assert.equal(net.nodes.length, g.nodes.length);
-    assert.deepEqual(net.clusters.map(c => [c.id, c.tone]), [['orbit', 'c1'], ['브랜드', 'c2'], ['forma', 'c3'], ['설계', 'c4'], [OTHER_CLUSTER, 'other']]);
+    assert.deepEqual(net.clusters.map(c => [c.id, c.tone]), [['orbit', 'c1'], ['브랜드', 'c2'], [OTHER_CLUSTER, 'other']]);
     const journal = net.nodes.find(n => n.id === 'm-60718293a4b5');
     assert.equal(journal?.cluster, OTHER_CLUSTER); // 태그가 「회고」뿐이다
   });
@@ -145,7 +165,7 @@ describe('예시 응답 → 부품 입력', () => {
   it('종류로 걸러도 클러스터 색이 바뀌지 않고, 선은 남은 기억끼리만', () => {
     const rules = toMemoryNetwork(g, {kinds: new Set(['rule'])});
     assert.ok(rules.nodes.every(n => g.nodes.find(m => m.id === n.id)?.kind === 'rule'));
-    assert.deepEqual(rules.clusters.map(c => [c.id, c.tone]), [['브랜드', 'c2'], ['설계', 'c4']]);
+    assert.deepEqual(rules.clusters.map(c => [c.id, c.tone]), [['브랜드', 'c2'], [OTHER_CLUSTER, 'other']]);
     const ids = new Set(rules.nodes.map(n => n.id));
     assert.ok(rules.edges.every(e => ids.has(e.from) && ids.has(e.to)));
     assert.equal(rules.edges.filter(e => e.relation === 'supersede').length, 1);

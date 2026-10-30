@@ -16,7 +16,7 @@ const Name = "orbit.memory"
 // Major and Minor are the version oni answers by default.
 const (
 	Major = 1
-	Minor = 1
+	Minor = 2
 )
 
 // SupportedMajors are the major versions oni answers.

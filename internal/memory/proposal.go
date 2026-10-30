@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -24,6 +25,7 @@ const (
 	ProposalEdit       = "edit"       // 기억 하나의 제목·본문·태그·범위 고치기
 	ProposalRevert     = "revert"     // 원장 한 줄의 변경 되돌리기
 	ProposalLink       = "link"       // 관련 기억 둘 잇기
+	ProposalRetag      = "retag"      // 뜻이 같은 태그 묶기, 주제 태그 달기
 )
 
 // Proposal statuses.
@@ -34,7 +36,7 @@ const (
 	StatusSettled  = "settled" // 다른 길로 이미 이뤄져 닫힘
 )
 
-var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink}
+var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag}
 
 var (
 	ErrDuplicateProposal = errors.New("같은 제안이 이미 있거나 거절됐습니다")
@@ -42,6 +44,8 @@ var (
 	ErrDecided           = errors.New("이미 결정한 제안입니다")
 	// errAlreadyLinked: 연결 제안을 승인할 때 그 쌍이 이미 다른 길로 이어져 있다. 제안은 정리(settled)로 닫는다.
 	errAlreadyLinked = errors.New("이미 이어진 기억입니다")
+	// errAlreadyRetagged: 태그 제안을 승인할 때 바꿀 기억이 남지 않았다(다른 길로 이미 바뀜). 정리(settled)로 닫는다.
+	errAlreadyRetagged = errors.New("이미 태그가 바뀐 기억입니다")
 )
 
 // Payload carries what a proposal needs beyond memory ids.
@@ -59,6 +63,8 @@ type Payload struct {
 	Project     string   `json:"project,omitempty"`     // edit: 새 범위가 프로젝트면 그 이름
 	LedgerID    string   `json:"ledgerId,omitempty"`    // revert: 되돌릴 원장 줄
 	Note        string   `json:"note,omitempty"`        // link: 잇는 근거(연결에 남는다)
+	FromTags    []string `json:"fromTags,omitempty"`    // retag: 뺄 태그(표기 차이 무시)
+	ToTags      []string `json:"toTags,omitempty"`      // retag: 넣을 태그
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -120,6 +126,14 @@ func fingerprint(in ProposalInput) string {
 	case ProposalStale:
 		if in.Payload.Path != "" { // 근거 파일 판정: 파일마다 다른 제안이다
 			parts = append(parts, in.Payload.Path)
+		}
+	case ProposalRetag:
+		// 태그 묶기는 대상 기억이 아니라 묶는 태그 열쇠의 모음으로 같은 제안을 가린다. 거절한 묶기는
+		// 표기·방향이 달라도, 그 태그를 가진 기억이 늘어도 다시 나오지 않는다. 태그 달기는 기억마다 다르다.
+		if len(in.Payload.FromTags) > 0 {
+			parts = []string{in.Kind, strings.Join(sortedKeys(append(append([]string{}, in.Payload.FromTags...), in.Payload.ToTags...)), ",")}
+		} else {
+			parts = []string{in.Kind, strings.Join(sortedKeys(in.Payload.ToTags), ","), strings.Join(ids, ",")}
 		}
 	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
@@ -190,6 +204,16 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 			return Proposal{}, fmt.Errorf("%w: 이미 이어진 기억입니다", ErrInvalid)
 		}
 		in.Payload.Note = ClipRunes(MaskSecrets(strings.TrimSpace(in.Payload.Note)), 300)
+	case ProposalRetag:
+		if err := s.prepareRetag(&in); err != nil {
+			return Proposal{}, err
+		}
+		if busy, err := s.retagBusy(in.Payload.FromTags, in.Payload.ToTags); err != nil || busy != "" {
+			if err != nil {
+				return Proposal{}, err
+			}
+			return Proposal{}, fmt.Errorf("%w (대기 중인 %s가 같은 태그를 묶습니다)", ErrDuplicateProposal, busy)
+		}
 	case ProposalRevert:
 		e, err := s.LedgerEntry(in.Payload.LedgerID)
 		if err != nil {
@@ -337,14 +361,21 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		if err != nil {
 			return res, err
 		}
-		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) {
-			if err := s.finish(&p, StatusSettled, "이미 이어짐"); err != nil {
+		if err := s.apply(p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) {
+			note := "이미 이어짐"
+			if errors.Is(err, errAlreadyRetagged) {
+				note = "이미 태그가 바뀜"
+			}
+			if err := s.finish(&p, StatusSettled, note); err != nil {
 				return res, err
 			}
 			res.Proposal = p
 			return res, nil
 		} else if err != nil {
 			return res, err
+		}
+		if p.Kind == ProposalRetag { // 바뀌지 않은 기억은 원장·되돌리기에서 뺀다
+			before.Memories = slices.DeleteFunc(before.Memories, func(m Memory) bool { return !slices.Contains(res.Changed, m.ID) })
 		}
 		if err := s.finish(&p, StatusApproved, in.Note); err != nil {
 			return res, err
@@ -471,6 +502,40 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			return errAlreadyLinked
 		}
 		res.Link = l.ID
+	case ProposalRetag:
+		if given(in.Title) || given(in.Body) {
+			return fmt.Errorf("%w: 태그 제안은 고쳐서 승인할 수 없습니다. 거절하고 태그를 직접 고쳐 주세요", ErrInvalid)
+		}
+		// 한 트랜잭션으로 읽고 쓴다: 중간에 실패해도 반쯤 바뀐 채 원장 없이 남지 않고, 읽은 뒤 바뀐 태그를 덮지 않는다.
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		now := s.nowMs()
+		var changed []string
+		for _, id := range p.MemoryIDs {
+			m, err := getTx(tx, id)
+			if err != nil {
+				return err
+			}
+			next := retagged(m.Tags, p.Payload.FromTags, p.Payload.ToTags)
+			if slices.Equal(next, m.Tags) {
+				continue
+			}
+			m.Tags, m.Version, m.UpdatedAt = next, m.Version+1, now
+			if err := writeTx(tx, m, "retag", "제안 승인 "+p.ID, now); err != nil {
+				return err
+			}
+			changed = append(changed, id)
+		}
+		if len(changed) == 0 {
+			return errAlreadyRetagged
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		res.Changed = append(res.Changed, changed...)
 	case ProposalApplyFile:
 		if in.Body != nil || in.Title != nil {
 			return fmt.Errorf("%w: 파일 반영 제안은 고쳐서 승인할 수 없습니다. 거절하고 파일을 직접 고쳐 주세요", ErrInvalid)
@@ -491,8 +556,9 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 }
 
 // CloseSettled closes confirm proposals whose memories are no longer candidates
-// (confirmed by repetition, edited by hand or gone stale) and link proposals
-// whose memories got linked another way, and returns how many.
+// (confirmed by repetition, edited by hand or gone stale), link proposals
+// whose memories got linked another way and retag proposals with nothing left
+// to change, and returns how many.
 func (s *Store) CloseSettled() (int, error) {
 	pending, err := s.Proposals(StatusPending)
 	if err != nil {
@@ -500,6 +566,15 @@ func (s *Store) CloseSettled() (int, error) {
 	}
 	n := 0
 	for _, p := range pending {
+		if p.Kind == ProposalRetag {
+			if !s.retagPending(p) {
+				if err := s.finish(&p, StatusSettled, "이미 태그가 바뀜"); err != nil {
+					return n, err
+				}
+				n++
+			}
+			continue
+		}
 		if p.Kind == ProposalLink && len(p.MemoryIDs) == 2 {
 			if linked, err := s.linked(p.MemoryIDs[0], p.MemoryIDs[1]); err != nil {
 				return n, err
@@ -605,4 +680,166 @@ func editedMemory(m Memory, pl Payload, title, body *string) Memory {
 		m.Body = *body
 	}
 	return m
+}
+
+// prepareRetag checks a retag proposal and fills in what it changes: without
+// memory ids, every memory in the graph that carries one of the tags to take
+// out. Memories it would not change are dropped; the body shows each change.
+func (s *Store) prepareRetag(in *ProposalInput) error {
+	in.Payload.FromTags, in.Payload.ToTags = cleanTags(in.Payload.FromTags), cleanTags(in.Payload.ToTags)
+	if len(in.Payload.ToTags) == 0 {
+		return fmt.Errorf("%w: 넣을 태그(toTags)가 필요합니다", ErrInvalid)
+	}
+	for _, t := range append(append([]string{}, in.Payload.FromTags...), in.Payload.ToTags...) {
+		if !IsTopicKey(TagKey(t)) {
+			return fmt.Errorf("%w: %q는 주제 태그가 아닙니다(표식 태그·종류 이름은 고치지 않습니다)", ErrInvalid, t)
+		}
+	}
+	hasFrom := func(m Memory) bool {
+		return slices.ContainsFunc(in.Payload.FromTags, func(t string) bool { return hasTagKey(m.Tags, TagKey(t)) })
+	}
+	ids := in.MemoryIDs
+	if len(ids) == 0 {
+		if len(in.Payload.FromTags) == 0 {
+			return fmt.Errorf("%w: 태그를 달 기억 id나 뺄 태그(fromTags)가 필요합니다", ErrInvalid)
+		}
+		all, err := s.list(DefaultGraphStates)
+		if err != nil {
+			return err
+		}
+		for _, m := range all {
+			if hasFrom(m) {
+				ids = append(ids, m.ID)
+			}
+		}
+		sort.Strings(ids)
+	}
+	var lines []string
+	in.MemoryIDs = nil
+	for _, id := range uniq(ids) {
+		m, err := getTx(s.db, id)
+		if err != nil {
+			return err
+		}
+		next := retagged(m.Tags, in.Payload.FromTags, in.Payload.ToTags)
+		if slices.Equal(next, m.Tags) || len(in.Payload.FromTags) > 0 && !hasFrom(m) {
+			continue // 묶기는 뺄 태그를 가진 기억만 고친다
+		}
+		in.MemoryIDs = append(in.MemoryIDs, id)
+		lines = append(lines, fmt.Sprintf("- %s %s: %s → %s", id, ClipRunes(m.Title, 60), tagList(m.Tags), tagList(next)))
+	}
+	if len(in.MemoryIDs) == 0 {
+		return fmt.Errorf("%w: 바뀌는 기억이 없습니다", ErrInvalid)
+	}
+	const shown = 30
+	if len(lines) > shown {
+		lines = append(lines[:shown], fmt.Sprintf("- 외 %d개", len(lines)-shown))
+	}
+	head := "넣을 태그: " + strings.Join(in.Payload.ToTags, ", ")
+	if len(in.Payload.FromTags) > 0 {
+		head = "바꿀 태그: " + strings.Join(in.Payload.FromTags, ", ") + " → " + strings.Join(in.Payload.ToTags, ", ")
+	}
+	in.Body = strings.TrimSpace(in.Body + "\n\n" + head + fmt.Sprintf("\n대상 기억 %d개:\n", len(in.MemoryIDs)) + strings.Join(lines, "\n"))
+	return nil
+}
+
+// retagPending says whether a retag proposal still has a memory to change.
+func (s *Store) retagPending(p Proposal) bool {
+	for _, id := range p.MemoryIDs {
+		if m, err := getTx(s.db, id); err == nil && !slices.Equal(retagged(m.Tags, p.Payload.FromTags, p.Payload.ToTags), m.Tags) {
+			return true
+		}
+	}
+	return false
+}
+
+// retagged is tags with the from tags (any spelling) taken out and the to
+// tags put in where the first one was, or at the end. A to tag the memory
+// already has in another spelling is not added again. When the result passes
+// the tag limit, older tags give way from the end so the new ones stay.
+func retagged(tags, from, to []string) []string {
+	toKeys := map[string]bool{}
+	for _, t := range to {
+		toKeys[TagKey(t)] = true
+	}
+	remove := map[string]bool{}
+	for _, t := range from {
+		if k := TagKey(t); !toKeys[k] {
+			remove[k] = true
+		}
+	}
+	var kept []string
+	at := -1
+	for _, t := range tags {
+		if remove[TagKey(t)] {
+			if at < 0 {
+				at = len(kept)
+			}
+			continue
+		}
+		kept = append(kept, t)
+	}
+	var add []string
+	for _, t := range to {
+		if !hasTagKey(kept, TagKey(t)) && !hasTagKey(add, TagKey(t)) {
+			add = append(add, t)
+		}
+	}
+	if at < 0 {
+		at = len(kept)
+	}
+	if over := len(kept) + len(add) - maxTags; over > 0 {
+		for over > 0 && len(kept) > 0 {
+			kept = kept[:len(kept)-1]
+			over--
+		}
+		at = min(at, len(kept))
+	}
+	out := append(append(append([]string{}, kept[:at]...), add...), kept[at:]...)
+	return cleanTags(out)
+}
+
+func tagList(tags []string) string {
+	if len(tags) == 0 {
+		return "(없음)"
+	}
+	return strings.Join(tags, ", ")
+}
+
+func sortedKeys(tags []string) []string {
+	var out []string
+	for _, t := range tags {
+		if k := TagKey(t); k != "" && !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// retagBusy is the pending tag merge that already works on these tags, or "":
+// one that takes out a tag this one takes out or puts in, or puts in a tag
+// this one takes out (the reverse or a chain). Two merges into the same tag
+// from different tags do not clash.
+func (s *Store) retagBusy(from, to []string) (string, error) {
+	if len(from) == 0 {
+		return "", nil
+	}
+	pending, err := s.Proposals(StatusPending)
+	if err != nil {
+		return "", err
+	}
+	overlap := func(a, b []string) bool {
+		kb := sortedKeys(b)
+		return slices.ContainsFunc(sortedKeys(a), func(k string) bool { return slices.Contains(kb, k) })
+	}
+	for _, p := range pending {
+		if p.Kind != ProposalRetag || len(p.Payload.FromTags) == 0 {
+			continue
+		}
+		if overlap(from, p.Payload.FromTags) || overlap(from, p.Payload.ToTags) || overlap(to, p.Payload.FromTags) {
+			return p.ID, nil
+		}
+	}
+	return "", nil
 }

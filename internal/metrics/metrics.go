@@ -150,6 +150,44 @@ type Report struct {
 	Usage        Usage                `json:"usage"`
 	Ledger       memory.LedgerSummary `json:"ledger"`
 	Writes       Writes               `json:"writes"`
+	Graph        Graph                `json:"graph"`
+}
+
+// Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
+// the graph's default states split by representative tags, each newly
+// covering at least 1% of them (memory.ClusterMinNew).
+type Graph struct {
+	Memories  int     `json:"memories"`
+	Clusters  int     `json:"clusters"` // 「그 밖」 빼고
+	Other     int     `json:"other"`
+	OtherRate float64 `json:"otherRate"`
+	Untagged  int     `json:"untagged"` // 주제 태그가 하나도 없는 기억
+	Links     int     `json:"links"`    // 그래프 안 기억끼리의 살아 있는 명시 연결
+	TopicTags int     `json:"topicTags"`
+}
+
+func graphNow(s *memory.Store) (Graph, error) {
+	ms, err := s.List(memory.DefaultGraphStates...)
+	if err != nil {
+		return Graph{}, err
+	}
+	links, err := s.Links()
+	if err != nil {
+		return Graph{}, err
+	}
+	c := memory.Clusters(ms, memory.ClusterMinNew(len(ms)))
+	g := Graph{Memories: len(ms), Clusters: len(c.Picked), Other: c.Other, OtherRate: rate(c.Other, len(ms)), Untagged: c.Untagged,
+		TopicTags: len(memory.TopicTagCounts(ms))}
+	in := make(map[string]bool, len(ms))
+	for _, m := range ms {
+		in[m.ID] = true
+	}
+	for _, l := range links {
+		if in[l.A] && in[l.B] {
+			g.Links++
+		}
+	}
+	return g, nil
 }
 
 const topN = 5
@@ -358,6 +396,9 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if r.Ledger, err = s.SummarizeLedger(startMs, endMs); err != nil {
 		return r, err
 	}
+	if r.Graph, err = graphNow(s); err != nil {
+		return r, err
+	}
 	jc, err := s.JudgmentCounts(startMs, endMs)
 	if err != nil {
 		return r, err
@@ -426,7 +467,7 @@ func titled(cs []Count) string {
 	return strings.Join(parts, ", ")
 }
 
-var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}}
+var retroKindNames = []struct{ kind, name string }{{"session", "세션 끝"}, {"daily", "하루"}, {"weekly", "주간"}, {"tidy", "그래프 정리"}}
 
 // Render is the report as short Korean text for the terminal and the weekly retrospective.
 func Render(r Report) string {
@@ -485,5 +526,8 @@ func Render(r Report) string {
 	b.WriteString("\n")
 	cost := t.Cost
 	fmt.Fprintf(&b, "- 회고 비용(호스트 추정) $%.4f(세션 끝 $%.4f), 토큰 입력 %d · 출력 %d, 비용 모름 %d번\n", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown)
+	g := r.Graph
+	fmt.Fprintf(&b, "- 기억 그래프: 기억 %d개, 클러스터 %d개, 그 밖 %d개(%s), 주제 태그 없음 %d개, 연결 %d개, 주제 태그 %d종\n",
+		g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags)
 	return b.String()
 }

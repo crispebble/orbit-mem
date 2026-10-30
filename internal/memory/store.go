@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -188,6 +189,9 @@ func validScope(s string) bool {
 	return s == ScopeGlobal || strings.HasPrefix(s, "project:") && len(s) > len("project:")
 }
 
+// maxTags is how many tags a memory keeps.
+const maxTags = 10
+
 func cleanTags(tags []string) []string {
 	out := []string{}
 	seen := map[string]bool{}
@@ -198,7 +202,7 @@ func cleanTags(tags []string) []string {
 		}
 		seen[t] = true
 		out = append(out, t)
-		if len(out) == 10 {
+		if len(out) == maxTags {
 			break
 		}
 	}
@@ -644,6 +648,7 @@ type FindInput struct {
 	Project     string   // "project:<키>": 전역과 이 프로젝트. 비우면 전역만(AllProjects가 아니면)
 	AllProjects bool
 	GlobalOnly  bool
+	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
 	Limit       int
 }
 
@@ -661,9 +666,18 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 		m Memory
 		r Rank
 	}
+	var tags []string
+	for _, t := range in.Tags {
+		if k := TagKey(t); k != "" {
+			tags = append(tags, k)
+		}
+	}
 	var hits []ranked
 	for _, m := range all {
 		if len(in.Kinds) > 0 && !contains(in.Kinds, m.Kind) {
+			continue
+		}
+		if len(tags) > 0 && !slices.ContainsFunc(tags, func(k string) bool { return hasTagKey(m.Tags, k) }) {
 			continue
 		}
 		switch {

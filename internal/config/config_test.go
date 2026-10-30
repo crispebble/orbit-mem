@@ -121,3 +121,15 @@ func TestValidate_2차_설정_범위(t *testing.T) {
 		}
 	}
 }
+
+// 기억 그래프 정리 기본값: 회당 클러스터 기억 40·태그 없는 기억 20을 보고 제안 20건까지(2026-10-30 사용자 결정).
+func TestDefault_그래프_정리(t *testing.T) {
+	c := Default()
+	if c.GraphTidyMemories != 40 || c.GraphTidyUntagged != 20 || c.GraphTidyProposals != 20 {
+		t.Fatalf("기본값: %+v", c)
+	}
+	c.GraphTidyProposals = 21
+	if c.Validate() == nil {
+		t.Error("정리 제안 상한은 회고 제출 상한(20)을 넘지 않는다")
+	}
+}

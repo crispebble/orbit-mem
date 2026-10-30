@@ -1,5 +1,6 @@
 // memory_graph 응답 → Forma 관계망 그래프(NetworkGraph·NetworkPanel) 입력. DOM·React를 쓰지 않는 순수 함수다.
-// 규칙은 Atlas 「설계 · Orbit 2차 — 기억 그래프」 「Studio 보기」(rev 3): 클러스터는 대표 태그(덮기 순서 7개 + 그 밖),
+// 규칙은 Atlas 「설계 · Orbit 2차 — 기억 그래프」 「Studio 보기」(rev 3): 클러스터는 대표 태그(덮기 순서, 새로 묶는 기억이
+// 전체의 1% 이상인 태그까지 + 그 밖. 개수 상한은 두지 않는다, 2026-10-30 사용자 결정),
 // 옛 Knowledge 표식 태그는 클러스터·같은 태그 선에서 뺀다, 종류는 모양이 아니라 설명(말풍선)으로, 색은 클러스터.
 // 부품 타입은 Studio 플러그인 API `/graph`(forma-ui `/graph`를 다시 내보냄)에서 받는다. 플러그인은 Forma를 직접 가져오지 않는다.
 import type {NetworkCluster, NetworkEdge, NetworkNode, NetworkOverlay, NetworkRelation} from '@onidot-labs/studio-plugin/graph';
@@ -24,9 +25,10 @@ export interface MemoryNetwork {
 export const UNKNOWN = '알 수 없음';
 export const OTHER_CLUSTER = 'other';
 export const OTHER_LABEL = '그 밖';
-/** Forma 클러스터 팔레트 칸 수(rev 17 「색 토큰」). 여덟째부터 색을 되풀이하면 색이 클러스터를 뜻하지 않게 된다 */
-export const CLUSTER_MAX = 7;
-const PALETTE = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'] as const;
+/** 클러스터가 되려면 새로 묶는 기억이 전체의 1% 이상, 최소 2개(oni memory.ClusterMinNew). 사람마다 클러스터 수가 다르다 */
+export const clusterMinNew = (memories: number) => Math.max(2, Math.floor((memories + 50) / 100));
+/** 고른 순서대로 색 칸 c1, c2, …. 칸마다 다른 색은 Studio 키트 그래프 부품이 정한다 */
+const clusterTone = (i: number) => `c${i + 1}`;
 
 /** 시안 3판 어댑터의 구현 값. 실제 화면에서 고친다 */
 export const TAG_ALL_PAIRS_MAX = 5;
@@ -51,7 +53,8 @@ const MARKER_TAG = /^(imported|space|since|type|옛|superseded-by):/;
 /** 종류 이름 태그. 종류는 배지로 보이므로 클러스터 기준에서 뺀다(제안) */
 const KIND_TAGS = new Set(['규칙', '사실', '결정', '교훈', '일지', '회고', 'rule', 'fact', 'decision', 'lesson', 'journal']);
 
-const tagKey = (tag: string) => tag.trim().toLowerCase();
+/** 태그 열쇠: 전각·대소문자·앞뒤 공백·-와 _ 차이를 맞춘다(oni TagKey, orbit.memory 1.2와 같은 규칙) */
+const tagKey = (tag: string) => tag.normalize('NFKC').trim().toLowerCase().replace(/_/g, '-');
 
 /** 클러스터 기준과 「같은 태그」 선에서 빼는 태그 */
 export function isExcludedTag(tag: string): boolean {
@@ -70,26 +73,28 @@ export function topicKeys(tags: readonly string[]): Set<string> {
 export interface Clustering {
   /** 기억 id → 클러스터 id(태그 키 또는 other) */
   clusterOf: Map<string, string>;
-  /** 고른 순서. tone은 c1~c7, 그 밖은 other */
+  /** 고른 순서. tone은 c1, c2, …(상한 없음, Studio 키트 0.2.0), 그 밖은 other */
   clusters: NetworkCluster[];
 }
 
 /**
- * 덮기 순서: 아직 클러스터에 들지 않은 기억이 가장 많이 가진 주제 태그를 하나씩 고른다(같으면 키 순). 7개까지.
+ * 덮기 순서: 아직 클러스터에 들지 않은 기억이 가장 많이 가진 주제 태그를 하나씩 고른다(같으면 키 순).
+ * 그 태그가 새로 묶는 기억이 clusterMinNew보다 적으면 멈춘다.
  * 기억은 자기가 가진 고른 태그 중 먼저 고른 것에 든다. 하나도 없으면 그 밖. 같은 입력이면 같은 결과다.
  */
-export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' | 'tags'>[]): Clustering {
+export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' | 'tags'>[], total = nodes.length): Clustering {
   const keys = nodes.map(n => topicKeys(n.tags));
   const label = new Map<string, string>();
   for (const n of nodes) for (const t of n.tags) if (!isExcludedTag(t) && !label.has(tagKey(t))) label.set(tagKey(t), t.trim());
   let uncovered = nodes.map((_, i) => i).filter(i => keys[i].size > 0);
   const picked: string[] = [];
-  while (picked.length < CLUSTER_MAX && uncovered.length > 0) {
+  const minNew = clusterMinNew(Math.max(total, nodes.length));
+  while (uncovered.length > 0) {
     const count = new Map<string, number>();
     for (const i of uncovered) for (const k of keys[i]) count.set(k, (count.get(k) ?? 0) + 1);
     let best: string | undefined, bestN = 0;
     for (const [k, c] of count) if (c > bestN || (c === bestN && best !== undefined && k < best)) { best = k; bestN = c; }
-    if (best === undefined) break;
+    if (best === undefined || bestN < minNew) break;
     picked.push(best);
     const chosen = best;
     uncovered = uncovered.filter(i => !keys[i].has(chosen));
@@ -101,7 +106,7 @@ export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' 
     clusterOf.set(n.id, k ?? OTHER_CLUSTER);
     if (!k) others++;
   });
-  const clusters: NetworkCluster[] = picked.map((k, i) => ({id: k, label: label.get(k) ?? k, tone: PALETTE[i]}));
+  const clusters: NetworkCluster[] = picked.map((k, i) => ({id: k, label: label.get(k) ?? k, tone: clusterTone(i)}));
   if (others) clusters.push({id: OTHER_CLUSTER, label: OTHER_LABEL, tone: 'other'});
   return {clusterOf, clusters};
 }
@@ -137,7 +142,7 @@ const byUpdated = (byId: Map<string, GraphNode>) => (a: string, b: string) => {
 };
 
 export function toMemoryNetwork(graph: MemoryGraph, opts: NetworkOptions = {}): MemoryNetwork {
-  const {clusterOf, clusters: allClusters} = clusterByRepresentativeTag(graph.nodes);
+  const {clusterOf, clusters: allClusters} = clusterByRepresentativeTag(graph.nodes, graph.total);
   const visible = opts.kinds ? graph.nodes.filter(n => opts.kinds!.has(n.kind)) : graph.nodes;
   const byId = new Map(visible.map(n => [n.id, n] as const));
   const nodes: NetworkNode[] = visible.map(n => ({

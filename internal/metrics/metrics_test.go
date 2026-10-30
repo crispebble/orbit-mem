@@ -225,3 +225,37 @@ func TestCompute_근거_파일_판정을_감지_수와_제안_수로_보인다(t
 		t.Fatalf("render = %s", out)
 	}
 }
+
+// 설계 · Orbit 3차 O3-2 「클러스터 다시 재기」: 지금 그래프의 「그 밖」 비율·클러스터 수·연결 수를 보인다.
+// 그래프 기본 상태(후보·확정·낡음)의 기억을 대표 태그로 나눈다(새로 묶는 기억이 전체의 1% 이상, 최소 2개).
+func TestCompute_기억_그래프_지표(t *testing.T) {
+	s := store(t, time.Date(2026, 10, 27, 12, 0, 0, 0, time.Local))
+	save := func(title string, tags ...string) memory.Memory {
+		m, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: title, Tags: tags, Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	a := save("A", "orbit")
+	b := save("B", "Orbit", "ui")
+	save("C", "imported:server-knowledge")
+	hidden := save("D", "studio")
+	if _, err := s.SetState(hidden.ID, memory.StateHidden, "거절"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Link(memory.LinkInput{From: a.ID, To: b.ID, Origin: memory.LinkOriginAI}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Compute(s, "2026-10-21", "2026-10-27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := rep.Graph
+	if g.Memories != 3 || g.Clusters != 1 || g.Other != 1 || g.Untagged != 1 || g.Links != 1 || g.TopicTags != 2 {
+		t.Fatalf("그래프 지표: %+v", g)
+	}
+	if !strings.Contains(Render(rep), "기억 그래프: 기억 3개, 클러스터 1개, 그 밖 1개(33%), 주제 태그 없음 1개, 연결 1개, 주제 태그 2종") {
+		t.Fatal(Render(rep))
+	}
+}

@@ -637,14 +637,15 @@ func cmdConfig(a *app, args []string) error {
 		cfg.SessionRetro = b
 	case "sessionRetroModel":
 		cfg.SessionRetroModel = val
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays":
+	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return fmt.Errorf("%s는 숫자입니다: %q", key, val)
 		}
-		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays}[key] = n
+		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
+			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals}[key] = n
 	default:
-		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays)", key)
+		return fmt.Errorf("모르는 키입니다: %s (retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals)", key)
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

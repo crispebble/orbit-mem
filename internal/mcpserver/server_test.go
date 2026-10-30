@@ -291,3 +291,28 @@ func TestToolAnnotations(t *testing.T) {
 		"proposal_decide": {destructive: true, idempotent: true},
 	})
 }
+
+// 설계 · Orbit 3차 O3-2 끝 기준 1: memory_find의 태그 거르기는 표기 차이(대소문자·공백·-/_)를 무시한다.
+func TestFind_태그로_거르고_표기_차이는_무시한다(t *testing.T) {
+	cs, s := connect(t)
+	for _, in := range []memory.SaveInput{
+		{Kind: memory.KindRule, Title: "화면은 Studio 키트로", Tags: []string{"Claude_Code", "ui"}},
+		{Kind: memory.KindRule, Title: "화면 크기는 토큰으로", Tags: []string{"claude-code"}},
+		{Kind: memory.KindRule, Title: "화면 글은 존댓말로", Tags: []string{"orbit"}},
+	} {
+		in.Scope, in.Source = memory.ScopeGlobal, memory.Source{Kind: memory.SourceSession}
+		if _, err := s.Save(in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var found FindOut
+	call(t, cs, "memory_find", map[string]any{"query": "화면", "tags": []string{" CLAUDE-CODE "}}, &found)
+	if len(found.Items) != 2 {
+		t.Fatalf("태그 거르기: %+v", found.Items)
+	}
+	for _, it := range found.Items {
+		if it.Title == "화면 글은 존댓말로" {
+			t.Errorf("다른 태그 기억이 나왔습니다: %+v", it)
+		}
+	}
+}

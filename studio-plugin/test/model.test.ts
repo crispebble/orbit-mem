@@ -171,6 +171,16 @@ describe('제안 변환', () => {
     assert.equal(toProposal(pending({kind: 'link', body: '', payload: {note: '근거만'}}), [], now).explanation, '잇는 근거: 근거만');
   });
 
+  it('태그 정리(retag)는 이름을 보이고 바뀔 태그는 설명으로 보이며 고쳐서 승인이 없다', () => {
+    assert.equal(toProposalRow(pending({kind: 'retag'}), now).kindLabel, '태그 정리');
+    const body = '같은 제품\n\n바꿀 태그: onidot-studio → studio\n대상 기억 2개:\n- m-1 A: onidot-studio → studio';
+    const p = toProposal(pending({kind: 'retag', body, payload: {fromTags: ['onidot-studio'], toTags: ['studio']}}), [memory], now);
+    assert.equal(p.kind, 'cleanup');
+    assert.equal(p.explanation, body);
+    assert.equal(p.body, undefined);
+    assert.equal(p.diff, undefined);
+  });
+
   it('Orbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
     for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
