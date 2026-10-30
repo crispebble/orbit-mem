@@ -103,6 +103,13 @@ describe('대표 태그(클러스터)', () => {
     assert.deepEqual(clusters[9], {id: OTHER_CLUSTER, label: '그 밖', tone: 'other'});
   });
 
+  it('1%는 받은 노드가 아니라 응답의 total(잘리기 전 기억 수)로 센다(oni stats와 같은 기준)', () => {
+    const nodes = [node(['a']), node(['a']), node(['a'])];
+    assert.deepEqual(clusterByRepresentativeTag(nodes).clusters.map(c => c.id), ['a']);
+    assert.deepEqual(clusterByRepresentativeTag(nodes, 1000).clusters.map(c => c.id), [OTHER_CLUSTER]);
+    assert.equal(toMemoryNetwork(graph(nodes, {total: 1000, truncated: true})).clusters[0].id, OTHER_CLUSTER);
+  });
+
   it('클러스터 기준은 전체의 1%, 최소 2개(oni ClusterMinNew와 같다)', () => {
     for (const [n, want] of [[0, 2], [10, 2], [249, 2], [250, 3], [558, 6], [1000, 10]] as const) assert.equal(clusterMinNew(n), want);
   });

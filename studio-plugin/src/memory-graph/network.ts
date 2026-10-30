@@ -82,13 +82,13 @@ export interface Clustering {
  * 그 태그가 새로 묶는 기억이 clusterMinNew보다 적으면 멈춘다.
  * 기억은 자기가 가진 고른 태그 중 먼저 고른 것에 든다. 하나도 없으면 그 밖. 같은 입력이면 같은 결과다.
  */
-export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' | 'tags'>[]): Clustering {
+export function clusterByRepresentativeTag(nodes: readonly Pick<GraphNode, 'id' | 'tags'>[], total = nodes.length): Clustering {
   const keys = nodes.map(n => topicKeys(n.tags));
   const label = new Map<string, string>();
   for (const n of nodes) for (const t of n.tags) if (!isExcludedTag(t) && !label.has(tagKey(t))) label.set(tagKey(t), t.trim());
   let uncovered = nodes.map((_, i) => i).filter(i => keys[i].size > 0);
   const picked: string[] = [];
-  const minNew = clusterMinNew(nodes.length);
+  const minNew = clusterMinNew(Math.max(total, nodes.length));
   while (uncovered.length > 0) {
     const count = new Map<string, number>();
     for (const i of uncovered) for (const k of keys[i]) count.set(k, (count.get(k) ?? 0) + 1);
@@ -142,7 +142,7 @@ const byUpdated = (byId: Map<string, GraphNode>) => (a: string, b: string) => {
 };
 
 export function toMemoryNetwork(graph: MemoryGraph, opts: NetworkOptions = {}): MemoryNetwork {
-  const {clusterOf, clusters: allClusters} = clusterByRepresentativeTag(graph.nodes);
+  const {clusterOf, clusters: allClusters} = clusterByRepresentativeTag(graph.nodes, graph.total);
   const visible = opts.kinds ? graph.nodes.filter(n => opts.kinds!.has(n.kind)) : graph.nodes;
   const byId = new Map(visible.map(n => [n.id, n] as const));
   const nodes: NetworkNode[] = visible.map(n => ({
