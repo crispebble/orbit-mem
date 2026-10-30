@@ -3,7 +3,8 @@ package memory
 import (
 	"database/sql"
 	"errors"
-	"fmt"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // 기억끼리의 명시 연결(설계 「Orbit 2차 — 기억 그래프」). 연결은 방향이 없고 양 끝을 id 순(a < b)으로 둔다.
@@ -90,10 +91,10 @@ func (s *Store) Link(in LinkInput) (Link, bool, error) {
 		in.Kind = LinkRelated
 	}
 	if in.Kind != LinkRelated || !contains(LinkOrigins, in.Origin) {
-		return Link{}, false, fmt.Errorf("%w: 연결 종류는 %s, 만든 쪽은 ai·retro·user입니다", ErrInvalid, LinkRelated)
+		return Link{}, false, i18n.Errorf("memory.err.link_kind_origin", ErrInvalid, LinkRelated)
 	}
 	if in.From == in.To {
-		return Link{}, false, fmt.Errorf("%w: 기억을 자기 자신과 이을 수 없습니다", ErrInvalid)
+		return Link{}, false, i18n.Errorf("memory.err.link_self", ErrInvalid)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {

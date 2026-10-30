@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/metrics"
 	"github.com/onidot-labs/orbit/internal/transcript"
@@ -258,7 +259,7 @@ func (r *Runner) material(kind, period string) (Material, error) {
 			}
 		}
 		if rep, err := metrics.Compute(r.Store, period, dayOf(start.AddDate(0, 0, 6))); err == nil {
-			mat.Stats = metrics.Render(rep)
+			mat.Stats = metrics.RenderIn(rep, i18n.KO) // 회고 재료는 AI가 읽는 글이라 사람의 언어와 무관하게 한국어
 		}
 		cutoff := r.now().AddDate(0, 0, -unusedDays).UnixMilli()
 		for _, m := range active {

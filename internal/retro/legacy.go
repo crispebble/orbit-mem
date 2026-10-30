@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
@@ -220,8 +221,10 @@ func (r *Runner) legacyDaily(ctx context.Context) ([]Result, error) {
 	today := dayOf(r.now())
 	var ran int
 	// 호스트가 로그인되어 있지 않아 모델에 닿지 못한 실행은 몫으로 세지 않는다(로그인 뒤 같은 날 다시 돈다).
-	if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=? AND NOT (status=? AND error LIKE ?)`,
-		KindLegacy, today, StatusFailed, "%"+signedOutNote+"%").Scan(&ran); err != nil {
+	notes := signedOutNotes()
+	like := strings.TrimSuffix(strings.Repeat("error LIKE ? OR ", len(notes)), " OR ")
+	if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=? AND NOT (status=? AND (`+like+`))`,
+		append([]any{KindLegacy, today, StatusFailed}, notes...)...).Scan(&ran); err != nil {
 		return nil, err
 	}
 	var results []Result
@@ -232,7 +235,7 @@ func (r *Runner) legacyDaily(ctx context.Context) ([]Result, error) {
 		}
 		results = append(results, res)
 		if err != nil {
-			return results, fmt.Errorf("옛 기억 판정: %w", err)
+			return results, i18n.Errorf("retro.err.legacy", err)
 		}
 	}
 	return results, nil

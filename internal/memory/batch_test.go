@@ -28,7 +28,7 @@ func TestDecideMany_여럿을_결정하고_실패는_이유와_함께_돌려준�
 	for _, f := range res.Failed {
 		reasons[f.ID] = f.Error
 	}
-	if !strings.Contains(reasons[pb.ID], "이미 결정") || !strings.Contains(reasons["p-없음"], "제안이 없습니다") {
+	if !strings.Contains(reasons[pb.ID], "already decided") || !strings.Contains(reasons["p-없음"], "no such proposal") {
 		t.Fatalf("reasons = %v", reasons)
 	}
 	for _, id := range []string{a.ID, c.ID} {

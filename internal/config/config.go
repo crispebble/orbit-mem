@@ -4,10 +4,12 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).
@@ -19,6 +21,7 @@ const (
 
 // Config is this PC's settings.
 type Config struct {
+	Language        string   `json:"language,omitempty"`     // en(기본) | ko: oni가 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
 	RetroHost       string   `json:"retroHost"`              // claude | codex
 	RetroModel      string   `json:"retroModel"`             // 비우면 호스트 기본값
 	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
@@ -99,7 +102,7 @@ func (c Config) SessionModel() string {
 
 // Default is the starting configuration.
 func Default() Config {
-	return Config{RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
+	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
 		LegacyMemories: 30, LegacyBatches: 1,
 		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus"}
@@ -107,45 +110,60 @@ func Default() Config {
 
 // Validate checks values a person may have typed by hand.
 func (c Config) Validate() error {
+	if c.Language != "" && !slices.Contains(i18n.Langs, i18n.Lang(c.Language)) {
+		return i18n.Errorf("config.err.language", c.Language)
+	}
 	if c.RetroHost != "claude" && c.RetroHost != "codex" {
-		return fmt.Errorf("retroHost는 claude 또는 codex입니다: %q", c.RetroHost)
+		return i18n.Errorf("config.err.retro_host", c.RetroHost)
 	}
 	if c.RetroHour < 0 || c.RetroHour > 23 {
-		return fmt.Errorf("retroHour는 0-23입니다: %d", c.RetroHour)
+		return i18n.Errorf("config.err.retro_hour", c.RetroHour)
 	}
 	if c.Inject != InjectFull && c.Inject != InjectRules && c.Inject != InjectOff {
-		return fmt.Errorf("inject는 full|rules|off입니다: %q", c.Inject)
+		return i18n.Errorf("config.err.inject", c.Inject)
 	}
 	if c.Work != "" && c.Work != WorkOnValue && c.Work != WorkOff {
-		return fmt.Errorf("work는 on|off입니다: %q", c.Work)
+		return i18n.Errorf("config.err.work", c.Work)
 	}
 	if c.WorkStaleAfter != "" {
 		if d, err := time.ParseDuration(c.WorkStaleAfter); err != nil || d <= 0 {
-			return fmt.Errorf("workStaleAfter는 20m 같은 양의 시간입니다: %q", c.WorkStaleAfter)
+			return i18n.Errorf("config.err.work_stale_after", c.WorkStaleAfter)
 		}
 	}
 	if c.RecentDecisions < 0 || c.RecentDecisions > 20 || c.BackupKeep < 1 {
-		return errors.New("recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요")
+		return i18n.Errorf("config.err.recent_backup")
 	}
 	if c.RecallChars < 100 || c.RecallChars > maxRecallChars {
-		return fmt.Errorf("recallChars는 100-%d입니다: %d", maxRecallChars, c.RecallChars)
+		return i18n.Errorf("config.err.recall_chars", maxRecallChars, c.RecallChars)
 	}
 	if c.LedgerWindowDays < 1 || c.LedgerWindowDays > 90 || c.SessionRetroDailyMax < 0 {
-		return errors.New("ledgerWindowDays(1-90)·sessionRetroDailyMax(0 이상)을 확인해 주세요")
+		return i18n.Errorf("config.err.ledger_session")
 	}
 	if c.GraphTidyMemories < 0 || c.GraphTidyMemories > 200 || c.GraphTidyUntagged < 0 || c.GraphTidyUntagged > 200 || c.GraphTidyProposals < 0 || c.GraphTidyProposals > 20 {
-		return errors.New("graphTidyMemories·graphTidyUntagged(0-200)·graphTidyProposals(0-20)를 확인해 주세요")
+		return i18n.Errorf("config.err.graph_tidy")
 	}
 	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
-		return errors.New("legacyMemories(1-100)·legacyBatches(0-20)를 확인해 주세요")
+		return i18n.Errorf("config.err.legacy")
 	}
 	if c.LabRuns < 1 || c.LabRuns > 10 || c.LabRunUSD <= 0 || c.LabRunUSD > 20 || c.LabExperimentUSD < c.LabRunUSD || c.LabExperimentUSD > 200 {
-		return errors.New("labRuns(1-10)·labRunUSD(0 초과 20 이하)·labExperimentUSD(labRunUSD 이상 200 이하)를 확인해 주세요")
+		return i18n.Errorf("config.err.lab_budget")
 	}
 	if c.LabModel == "" || c.LabJudgeModel == "" || c.LabModel == c.LabJudgeModel {
-		return errors.New("labModel과 labJudgeModel은 비울 수 없고 서로 달라야 합니다(같은 모델이 자기 결과를 고르지 않게)")
+		return i18n.Errorf("config.err.lab_models")
 	}
 	return nil
+}
+
+// Language is the language setting of the configuration file, read even when
+// the rest of the file does not validate (so its errors are in that language).
+func Language(path string) string {
+	var c struct {
+		Language string `json:"language"`
+	}
+	if b, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(b, &c)
+	}
+	return c.Language
 }
 
 // Home is Orbit's data directory: ORBIT_HOME, else the OS config directory + /orbit.
@@ -184,7 +202,7 @@ func Load(path string) (Config, error) {
 		return c, err
 	}
 	if err := json.Unmarshal(b, &c); err != nil {
-		return c, fmt.Errorf("설정 파일을 읽을 수 없습니다(%s): %w", path, err)
+		return c, i18n.Errorf("config.err.read", path, err)
 	}
 	return c, c.Validate()
 }

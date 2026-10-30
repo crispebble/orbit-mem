@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 	"github.com/onidot-labs/orbit/internal/transcript"
 	"github.com/onidot-labs/orbit/internal/work"
@@ -37,12 +38,12 @@ const (
 )
 
 // ErrBusy means another retrospective is running on this PC.
-var ErrBusy = errors.New("다른 회고가 이미 돌고 있습니다")
+var ErrBusy = i18n.Err("retro.err.busy")
 
 // ErrHostSignedOut means the headless host found no sign-in: it never
 // reached the model. macOS logout is one cause (the keychain goes away while
 // the session-end hooks still run), so the run is retried later.
-var ErrHostSignedOut = errors.New("호스트가 로그인되어 있지 않습니다")
+var ErrHostSignedOut = i18n.Err("retro.err.host_signed_out")
 
 const (
 	maxCatchUpDays = 7
@@ -148,18 +149,18 @@ func (r *Runner) RunOne(ctx context.Context, kind, period string) (Result, error
 func (r *Runner) Run(ctx context.Context, kind, period string) (Result, error) {
 	res := Result{Kind: kind, Period: period}
 	if kind != KindDaily && kind != KindWeekly {
-		return res, fmt.Errorf("회고 종류는 daily 또는 weekly입니다")
+		return res, i18n.Errorf("retro.err.kind")
 	}
 	start, err := time.ParseInLocation("2006-01-02", period, r.loc())
 	if err != nil {
-		return res, fmt.Errorf("날짜는 YYYY-MM-DD입니다: %s", period)
+		return res, i18n.Errorf("retro.err.date_format", period)
 	}
 	today := dayOf(r.now())
 	if kind == KindDaily && period >= today {
-		return res, fmt.Errorf("하루 회고는 어제까지만 돌립니다: %s", period)
+		return res, i18n.Errorf("retro.err.daily_until_yesterday", period)
 	}
 	if kind == KindWeekly && (start.Weekday() != time.Monday || dayOf(start.AddDate(0, 0, 7)) > today) {
-		return res, fmt.Errorf("주간 회고는 끝난 주의 월요일 날짜로 돌립니다: %s", period)
+		return res, i18n.Errorf("retro.err.weekly_monday", period)
 	}
 	if _, st, _ := r.existing(kind, period); st == StatusDone || st == StatusEmpty {
 		res.Status = StatusSkipped
@@ -187,7 +188,7 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 	if mat.empty() {
 		res.Status = StatusEmpty
 		_, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary,session) VALUES(?,?,?,?,?,?,?,?,?)`,
-			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, "재료 없음", mat.Session)
+			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, i18n.T("retro.no_material"), mat.Session)
 		return res, err
 	}
 	dir := filepath.Join(r.Paths.RetroDir(), res.ID)
@@ -229,7 +230,7 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 		res.Status = StatusDone
 		return res, nil
 	}
-	msg := "호스트가 결과를 제출하지 않았습니다"
+	msg := i18n.T("retro.host_no_result")
 	if execErr != nil {
 		msg += ": " + execErr.Error()
 	}
@@ -241,7 +242,7 @@ func (r *Runner) launch(ctx context.Context, mat Material, model string) (Result
 	}
 	signedOut := hostSignedOut(out)
 	if signedOut {
-		msg += "\n" + signedOutNote
+		msg += "\n" + i18n.T("retro.signed_out_note")
 	}
 	res.Status, res.Error = StatusFailed, msg
 	_, _ = r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=?`, StatusFailed, r.now().UnixMilli(), msg, res.ID)
@@ -269,8 +270,15 @@ func hostSignedOut(out string) bool {
 	return false
 }
 
-// signedOutNote ends the error of a run the host was not signed in for.
-const signedOutNote = "로그인된 뒤 다음 실행에서 다시 돕니다"
+// signedOutNotes are the endings (in every language) of the error of a run
+// the host was not signed in for; legacyDaily finds such runs by them.
+func signedOutNotes() []any {
+	var out []any
+	for _, l := range i18n.Langs {
+		out = append(out, "%"+i18n.TIn(l, "retro.signed_out_note")+"%")
+	}
+	return out
+}
 
 // signedOutError is a failed run that matches ErrHostSignedOut.
 type signedOutError string
@@ -336,7 +344,7 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	var errs []error
 	// 작업 기록 DB도 같은 날 함께 복사한다(설계 · Orbit 2차 「저장」). 실패해도 회고는 돈다
 	if _, err := work.DailyBackup(r.Paths.WorkDB(), r.Paths.Backups(), max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
-		errs = append(errs, fmt.Errorf("작업 기록 DB를 백업하지 못했습니다: %w", err))
+		errs = append(errs, i18n.Errorf("retro.err.backup", err))
 	}
 	// 세션 끝 회고를 먼저 끝내야 하루 회고가 그 결과를 모으고 남은 발화만 읽는다.
 	sres, err := r.drain(ctx)
@@ -382,7 +390,7 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	}
 	// 주간 회고가 판정을 근거로 쓰도록 그 전에 관찰 기간이 끝난 변경을 판정한다.
 	if _, err := r.Store.JudgeLedger(max(r.Cfg.LedgerWindowDays, 1)); err != nil {
-		errs = append(errs, fmt.Errorf("효과 판정: %w", err))
+		errs = append(errs, i18n.Errorf("retro.err.effect", err))
 	}
 	week := lastWeekStart(today)
 	res, err := r.Run(ctx, KindWeekly, week)
@@ -390,7 +398,7 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 		results = append(results, res)
 	}
 	if err != nil {
-		errs = append(errs, fmt.Errorf("주간 %s: %w", week, err))
+		errs = append(errs, i18n.Errorf("retro.err.weekly", week, err))
 	}
 	// 옛 기억 판정은 하루 회고·주간 회고 뒤에 하루 묶음 수까지 돈다(설계 · Orbit 3차 O3-3).
 	lres, err := r.legacyDaily(ctx)
@@ -552,7 +560,7 @@ func Recent(s *memory.Store, n int) ([]RetroStatus, error) {
 func getStatus(s *memory.Store, id string) (RetroStatus, error) {
 	st, err := scanStatus(s.DB().QueryRow(`SELECT `+statusCols+` FROM retros WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return st, fmt.Errorf("회고가 없습니다: %s", id)
+		return st, i18n.Errorf("retro.err.no_retro", id)
 	}
 	return st, err
 }

@@ -8,13 +8,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
@@ -165,7 +165,7 @@ func fileState(path, version string) (state, hash string) {
 func Run(s *memory.Store, o Options) (Report, error) {
 	rep := Report{ByState: map[string]int{}, ByKind: map[string]int{}}
 	if _, err := os.Stat(o.From); err != nil {
-		return rep, fmt.Errorf("옛 Knowledge 사본을 찾을 수 없습니다: %w", err)
+		return rep, i18n.Errorf("migrate.err.no_copy", err)
 	}
 	old, err := sql.Open("sqlite", "file:"+filepath.ToSlash(o.From)+"?mode=ro")
 	if err != nil {
@@ -175,7 +175,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 	observations := map[string]legacyObservation{}
 	rows, err := old.Query(`SELECT id, body FROM observations`)
 	if err != nil {
-		return rep, fmt.Errorf("옛 관측을 읽을 수 없습니다: %w", err)
+		return rep, i18n.Errorf("migrate.err.read_observations", err)
 	}
 	for rows.Next() {
 		var id, body string
@@ -191,7 +191,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 	rows.Close()
 	rows, err = old.Query(`SELECT body FROM records ORDER BY id`)
 	if err != nil {
-		return rep, fmt.Errorf("옛 기록을 읽을 수 없습니다: %w", err)
+		return rep, i18n.Errorf("migrate.err.read_records", err)
 	}
 	var records []legacyRecord
 	for rows.Next() {
@@ -203,7 +203,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		var r legacyRecord
 		if err := json.Unmarshal([]byte(body), &r); err != nil {
 			rows.Close()
-			return rep, fmt.Errorf("옛 기록 해석 실패: %w", err)
+			return rep, i18n.Errorf("migrate.err.parse_records", err)
 		}
 		records = append(records, r)
 	}
@@ -279,7 +279,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		m, err := s.Save(memory.SaveInput{Kind: kind, Title: r.Title, Body: r.Body, Tags: tags, Scope: memory.ScopeGlobal,
 			State: state, LegacyID: r.ID, Source: first, Extra: sources, Day: createdDay, At: r.Created.At})
 		if err != nil {
-			return rep, fmt.Errorf("%s(%s) 옮기기 실패: %w", r.ID, r.Title, err)
+			return rep, i18n.Errorf("migrate.err.move_failed", r.ID, r.Title, err)
 		}
 		for _, ab := range absorbed {
 			_, _ = s.DB().Exec(`INSERT INTO absorbed(path,hash,at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash`, ab[0], ab[1], time.Now().UnixMilli())
@@ -289,8 +289,8 @@ func Run(s *memory.Store, o Options) (Report, error) {
 			_, _ = s.Update(memory.UpdateInput{ID: m.ID, State: &state, Reason: reason, Action: "migrate"})
 		}
 		if len(changed) > 0 && state != memory.StateStale {
-			_, _ = s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "출처 파일이 바뀜: " + m.Title,
-				Body:      "옮긴 기억의 근거 파일이 기록 뒤에 바뀌었거나 없어졌습니다: " + strings.Join(changed, ", ") + ". 아직 맞는지 보고 정리할지 정해 주세요.",
+			_, _ = s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: i18n.TIn(i18n.KO, "migrate.source_changed_title", m.Title),
+				Body:      i18n.TIn(i18n.KO, "migrate.source_changed_body", strings.Join(changed, ", ")),
 				MemoryIDs: []string{m.ID}})
 		}
 	}

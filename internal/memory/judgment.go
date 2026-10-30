@@ -1,8 +1,9 @@
 package memory
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Write verdicts a retrospective gives each candidate memory (설계 「쓰기 판정 기록」).
@@ -47,10 +48,10 @@ func scanJudgment(row interface{ Scan(...any) error }) (Judgment, error) {
 func (s *Store) RecordJudgment(j Judgment) (Judgment, error) {
 	j.Reason = strings.TrimSpace(j.Reason)
 	if !contains(WriteVerdicts, j.Verdict) || strings.TrimSpace(j.Title) == "" {
-		return j, fmt.Errorf("%w: 판정은 %s, 제목이 필요합니다", ErrInvalid, strings.Join(WriteVerdicts, "·"))
+		return j, i18n.Errorf("memory.err.verdict_title", ErrInvalid, strings.Join(WriteVerdicts, "·"))
 	}
 	if j.Verdict == VerdictReject && j.Reason == "" {
-		return j, fmt.Errorf("%w: 거절에는 사유가 필요합니다", ErrInvalid)
+		return j, i18n.Errorf("memory.err.reject_reason", ErrInvalid)
 	}
 	return j, s.insertJudgment(&j)
 }

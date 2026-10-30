@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // What an approved change touched (설계 「변경 효과 원장」).
@@ -45,7 +47,7 @@ type LedgerBefore struct {
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
-var ErrMemoryChanged = errors.New("되돌릴 변경 뒤에 기억이 다시 바뀌었습니다. 이력을 보고 직접 고쳐 주세요")
+var ErrMemoryChanged = i18n.Err("memory.err.memory_changed")
 
 // Window counts the signals about a change's memories in one period.
 type Window struct {
@@ -119,7 +121,7 @@ func scanLedger(row interface{ Scan(...any) error }) (LedgerEntry, error) {
 func (s *Store) LedgerEntry(id string) (LedgerEntry, error) {
 	e, err := scanLedger(s.db.QueryRow(`SELECT `+ledgerCols+` FROM ledger WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return e, fmt.Errorf("%w: 원장에 없는 변경입니다: %s", ErrInvalid, id)
+		return e, i18n.Errorf("memory.err.not_in_ledger", ErrInvalid, id)
 	}
 	return e, err
 }
@@ -362,7 +364,7 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		return err
 	}
 	if e.RevertedBy != "" {
-		return fmt.Errorf("%w: 이미 되돌린 변경입니다(%s)", ErrInvalid, e.RevertedBy)
+		return i18n.Errorf("memory.err.already_reverted", ErrInvalid, e.RevertedBy)
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -380,7 +382,7 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 			return err
 		}
 		if v, ok := e.Before.After[id]; ok && cur.Version != v {
-			return fmt.Errorf("%w: %s(판본 %d → 지금 %d)", ErrMemoryChanged, id, v, cur.Version)
+			return i18n.Errorf("memory.err.memory_changed_at", ErrMemoryChanged, id, v, cur.Version)
 		}
 	}
 	writeFile := false
@@ -473,7 +475,7 @@ func (s *Store) SetLedgerLesson(id, lessonID string) error {
 		return err
 	}
 	if !e.Evidence || (e.Verdict != VerdictHelped && e.Verdict != VerdictHarmful) || e.LessonID != "" {
-		return fmt.Errorf("%w: 교훈은 증거 있는 도움됨·해로움 판정에 하나만 붙입니다", ErrInvalid)
+		return i18n.Errorf("memory.err.lesson_verdict", ErrInvalid)
 	}
 	_, err = s.db.Exec(`UPDATE ledger SET lesson_id=? WHERE id=? AND lesson_id=''`, lessonID, id)
 	return err
@@ -509,7 +511,7 @@ func overlaps(a, b []string) bool {
 // (windowDays) has ended, and returns how many it judged.
 func (s *Store) JudgeLedger(windowDays int) (int, error) {
 	if windowDays < 1 {
-		return 0, fmt.Errorf("%w: 관찰 기간은 1일 이상입니다", ErrInvalid)
+		return 0, i18n.Errorf("memory.err.observe_days", ErrInvalid)
 	}
 	w := int64(windowDays) * 24 * 3600 * 1000
 	now := s.nowMs()

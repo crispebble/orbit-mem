@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -163,5 +164,39 @@ func TestDefault_하네스_실험실(t *testing.T) {
 		if c.Validate() == nil {
 			t.Errorf("받으면 안 됩니다: %+v", c)
 		}
+	}
+}
+
+func TestLanguage_기본은_영어이고_en_ko만_받는다(t *testing.T) {
+	if Default().Language != "en" {
+		t.Fatalf("default %q", Default().Language)
+	}
+	for _, ok := range []string{"", "en", "ko"} {
+		c := Default()
+		c.Language = ok
+		if err := c.Validate(); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"ja", "KO", "ko-KR"} {
+		c := Default()
+		c.Language = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "language is en or ko") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+func TestLanguage_검증에_실패한_설정에서도_언어를_읽는다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if Language(path) != "" {
+		t.Fatal("no file")
+	}
+	os.WriteFile(path, []byte(`{"language":"ko","retroHour":99}`), 0o600)
+	if _, err := Load(path); err == nil {
+		t.Fatal("retroHour 99 should fail")
+	}
+	if Language(path) != "ko" {
+		t.Fatalf("%q", Language(path))
 	}
 }

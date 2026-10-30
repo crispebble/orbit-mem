@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
@@ -374,6 +375,32 @@ func TestLegacy_로그인되지_않아_실패한_실행은_몫에서_뺀다(t *t
 	e.r.legacyDaily(context.Background())
 	if len(e.calls) != calls+1 {
 		t.Fatalf("로그인 뒤 실패(제출 없음)는 몫을 씁니다: %d", len(e.calls))
+	}
+}
+
+// 한국어로 쓰던 때 남은 로그아웃 실패도 영어로 바꾼 뒤 몫에서 뺀다(ONID-61).
+func TestLegacy_다른_언어로_남은_로그아웃_실패도_몫에서_뺀다(t *testing.T) {
+	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
+	e, _ := legacyEnv(t, now)
+	signedOut := true
+	e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
+		e.calls = append(e.calls, c)
+		if signedOut {
+			return `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"is_error":true,"result":"Not logged in · Please run /login","type":"result"}`, errors.New("exit 1")
+		}
+		return "", nil
+	}
+	i18n.Set(i18n.KO)
+	defer i18n.Set(i18n.EN)
+	if _, err := e.r.legacyDaily(context.Background()); !errors.Is(err, ErrHostSignedOut) {
+		t.Fatalf("로그아웃 실패여야 합니다: %v", err)
+	}
+	i18n.Set(i18n.EN)
+	signedOut = false
+	calls := len(e.calls)
+	e.r.legacyDaily(context.Background())
+	if len(e.calls) != calls+1 {
+		t.Fatalf("언어를 바꿔도 같은 날 다시 돌아야 합니다: %d → %d", calls, len(e.calls))
 	}
 }
 

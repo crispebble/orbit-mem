@@ -27,6 +27,7 @@ func home(t *testing.T) string {
 	t.Helper()
 	h := t.TempDir()
 	t.Setenv("ORBIT_HOME", h)
+	t.Setenv("ORBIT_LANG", "") // 이 PC의 언어 설정과 무관하게 기본(영어)으로 돈다
 	return h
 }
 
@@ -70,11 +71,11 @@ func TestProposals_터미널에서_승인(t *testing.T) {
 	m, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "후보", Source: memory.Source{Kind: "session"}})
 	p, _ := s.Propose(memory.ProposalInput{Kind: "confirm", Title: "후보 확정", MemoryIDs: []string{m.ID}})
 	out, _, _ := run(t, "", "proposals")
-	if !strings.Contains(out, p.ID) || !strings.Contains(out, "대기 1건") {
+	if !strings.Contains(out, p.ID) || !strings.Contains(out, "1 waiting") {
 		t.Fatalf("list: %s", out)
 	}
 	out, errOut, code := run(t, "", "proposals", "approve", p.ID, "--title", "고친 후보")
-	if code != 0 || !strings.Contains(out, "승인했습니다") {
+	if code != 0 || !strings.Contains(out, "approved.") {
 		t.Fatalf("approve: %s %s", out, errOut)
 	}
 	got, _ := s.Get(m.ID)
@@ -93,11 +94,11 @@ func TestProposals_연결_제안의_근거와_결과(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, _ := run(t, "", "proposals", "show", p.ID)
-	if !strings.Contains(out, "잇는 근거: 같은 결정의 근거") {
+	if !strings.Contains(out, "Why link: 같은 결정의 근거") {
 		t.Fatalf("show: %s", out)
 	}
 	out, errOut, code := run(t, "", "proposals", "approve", p.ID)
-	if code != 0 || !strings.Contains(out, "이은 연결 l-") {
+	if code != 0 || !strings.Contains(out, "Added link l-") {
 		t.Fatalf("approve: %s %s", out, errOut)
 	}
 }
@@ -110,7 +111,7 @@ func TestProposals_하나씩_검토(t *testing.T) {
 	s.Propose(memory.ProposalInput{Kind: "confirm", Title: "가 확정", MemoryIDs: []string{a.ID}})
 	s.Propose(memory.ProposalInput{Kind: "confirm", Title: "나 확정", MemoryIDs: []string{b.ID}})
 	out, _, code := run(t, "a\nr\n", "proposals", "review")
-	if code != 0 || !strings.Contains(out, "남은 제안 0건") {
+	if code != 0 || !strings.Contains(out, "0 proposals left") {
 		t.Fatalf("review: %s", out)
 	}
 	ga, _ := s.Get(a.ID)
@@ -129,7 +130,7 @@ func TestPluginBuild_와_검사(t *testing.T) {
 	if o, e, code := run(t, "", "plugin", "build", src, "--out", out); code != 0 {
 		t.Fatalf("build: %s %s", o, e)
 	}
-	if o, e, code := run(t, "", "plugin", "build", src, "--out", out, "--check"); code != 0 || !strings.Contains(o, "같습니다") {
+	if o, e, code := run(t, "", "plugin", "build", src, "--out", out, "--check"); code != 0 || !strings.Contains(o, "match the source") {
 		t.Fatalf("check: %s %s", o, e)
 	}
 }
@@ -168,6 +169,11 @@ func TestMCP_stdio로_도구를_부른다(t *testing.T) {
 	if !strings.Contains(string(b), "stdio로 저장") {
 		t.Fatalf("find result: %s", b)
 	}
+	// MCP 응답 글은 AI가 읽으므로 언어 설정(기본 영어)과 무관하게 한국어다.
+	res, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "proposal_decide", Arguments: map[string]any{"id": "p-none", "decision": "approve"}})
+	if res == nil || !res.IsError || !strings.ContainsFunc(res.Content[0].(*mcp.TextContent).Text, func(r rune) bool { return r >= 0xAC00 && r <= 0xD7A3 }) {
+		t.Fatalf("not found: %+v", res.Content[0])
+	}
 }
 
 func TestHook_인자가_틀려도_호스트를_막지_않는다(t *testing.T) {
@@ -205,7 +211,7 @@ func TestStats_기간_지표를_보여_준다(t *testing.T) {
 	s := seed(t)
 	s.RecordEvent(memory.Event{Kind: memory.EventCorrection}, map[string]any{"memoryId": "m-x", "injected": "no"})
 	out, errOut, code := run(t, "", "stats")
-	if code != 0 || !strings.Contains(out, "반복 교정 1건") {
+	if code != 0 || !strings.Contains(out, "Repeated corrections: 1") {
 		t.Fatalf("stats: %s %s", out, errOut)
 	}
 	out, _, code = run(t, "", "stats", "--days", "3", "--json")
@@ -293,7 +299,7 @@ func TestRetroSessions_대기열이_비면_조용히_끝난다(t *testing.T) {
 	home(t)
 	seed(t)
 	out, errOut, code := run(t, "", "retro", "sessions")
-	if code != 0 || !strings.Contains(out, "대기 세션 0") {
+	if code != 0 || !strings.Contains(out, "0 sessions waiting") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }
@@ -308,7 +314,7 @@ func TestLedger_승인한_변경을_보여_준다(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, code := run(t, "", "ledger")
-	if code != 0 || !strings.Contains(out, res.LedgerID) || !strings.Contains(out, "관찰 중") || !strings.Contains(out, "문구 고치기") {
+	if code != 0 || !strings.Contains(out, res.LedgerID) || !strings.Contains(out, "observing") || !strings.Contains(out, "문구 고치기") {
 		t.Fatalf("ledger: %s", out)
 	}
 	out, _, _ = run(t, "", "ledger", "--json")
@@ -338,7 +344,7 @@ func TestConfig_2차_키를_설정한다(t *testing.T) {
 func TestLab_과제_명령과_설정(t *testing.T) {
 	h := home(t)
 	seed(t)
-	if _, errOut, code := run(t, "", "lab", "task", "list"); code == 0 || !strings.Contains(errOut, "플러그인 원본") {
+	if _, errOut, code := run(t, "", "lab", "task", "list"); code == 0 || !strings.Contains(errOut, "plugin source") {
 		t.Fatalf("원본 없이 돌면 안 됩니다: %d %s", code, errOut)
 	}
 	src := filepath.Join(h, "src")
@@ -348,10 +354,10 @@ func TestLab_과제_명령과_설정(t *testing.T) {
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	if out, errOut, code := run(t, "", "lab", "task", "new", "--title", "묻기", "--instruction", "물어라", "--criteria", "풀어 쓴다"); code != 0 || !strings.Contains(out, "과제를 만들었습니다") {
+	if out, errOut, code := run(t, "", "lab", "task", "new", "--title", "묻기", "--instruction", "물어라", "--criteria", "풀어 쓴다"); code != 0 || !strings.Contains(out, "Created task") {
 		t.Fatalf("과제 %d %s %s", code, out, errOut)
 	}
-	if out, _, _ := run(t, "", "lab", "task", "list"); !strings.Contains(out, "「묻기」") {
+	if out, _, _ := run(t, "", "lab", "task", "list"); !strings.Contains(out, "“묻기”") {
 		t.Fatalf("목록 %s", out)
 	}
 	for _, kv := range [][2]string{{"labRuns", "5"}, {"labRunUSD", "0.5"}, {"labExperimentUSD", "8"}, {"labModel", "haiku"}, {"labJudgeModel", "sonnet"}} {
@@ -362,7 +368,7 @@ func TestLab_과제_명령과_설정(t *testing.T) {
 	if _, _, code := run(t, "", "config", "set", "labJudgeModel", "haiku"); code != 1 {
 		t.Fatal("고르는 모델이 실행 모델과 같으면 받지 않습니다")
 	}
-	if out, _, _ := run(t, "", "lab", "candidates"); !strings.Contains(out, "실험실 대기 0건") {
+	if out, _, _ := run(t, "", "lab", "candidates"); !strings.Contains(out, "0 waiting for the lab") {
 		t.Fatalf("후보 %s", out)
 	}
 	// 검토 지적 4: 실험하지 않을 실험실 대기 제안은 사용자가 닫을 수 있다.
@@ -375,7 +381,7 @@ func TestLab_과제_명령과_설정(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, errOut, code := run(t, "", "lab", "drop", p.ID, "--note", "필요 없음"); code != 0 || !strings.Contains(out, "닫았습니다") {
+	if out, errOut, code := run(t, "", "lab", "drop", p.ID, "--note", "필요 없음"); code != 0 || !strings.Contains(out, "Closed lab proposal") {
 		t.Fatalf("닫기 %d %s %s", code, out, errOut)
 	}
 	s, _ = openStore()

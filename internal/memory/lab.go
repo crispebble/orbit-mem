@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // The harness lab's records (명세 · Orbit 3차 O3-5 「기록」). The answers and
@@ -113,7 +114,7 @@ func scanLab(row interface{ Scan(...any) error }) (LabExperiment, error) {
 func (s *Store) LabExperiment(id string) (LabExperiment, error) {
 	e, err := scanLab(s.db.QueryRow(`SELECT `+labCols+` FROM lab_experiments WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return e, fmt.Errorf("실험이 없습니다: %s", id)
+		return e, i18n.Errorf("memory.err.no_experiment", id)
 	}
 	return e, err
 }
@@ -185,7 +186,7 @@ type LabLedgerInput struct {
 // lab changes no file.
 func (s *Store) RecordLabLedger(in LabLedgerInput) (string, error) {
 	if in.Verdict != VerdictHelped && in.Verdict != VerdictHarmful && in.Verdict != VerdictNoEffect {
-		return "", fmt.Errorf("%w: 실험 판정은 helped·harmful·no_effect입니다", ErrInvalid)
+		return "", i18n.Errorf("memory.err.experiment_verdict", ErrInvalid)
 	}
 	now := s.nowMs()
 	id := NewID("l-")
@@ -205,7 +206,7 @@ func (s *Store) ReleaseLabProposal(id, summary string) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("%w: 실험실 대기 제안이 아닙니다: %s", ErrInvalid, id)
+		return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, id)
 	}
 	return nil
 }
@@ -217,7 +218,7 @@ func (s *Store) CloseLabProposal(id, note string) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
-		return fmt.Errorf("%w: 실험실 대기 제안이 아닙니다: %s", ErrInvalid, id)
+		return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, id)
 	}
 	return nil
 }

@@ -5,20 +5,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/memory"
 )
 
-var ledgerVerdictNames = map[string]string{memory.VerdictPending: "관찰 중", memory.VerdictHelped: "도움됨", memory.VerdictHarmful: "해로움",
-	memory.VerdictNoEffect: "효과 없음", memory.VerdictMixed: "섞임"}
+// verdictName and targetName are the ledger names a person reads; an unknown code is shown as is.
+func verdictName(v string) string {
+	if !contains([]string{memory.VerdictPending, memory.VerdictHelped, memory.VerdictHarmful, memory.VerdictNoEffect, memory.VerdictMixed}, v) {
+		return v
+	}
+	return i18n.T("verdict." + v)
+}
 
-var ledgerTargetNames = map[string]string{memory.TargetMemory: "기억", memory.TargetHarness: "하네스", memory.TargetInstruction: "지침"}
+func targetName(t string) string {
+	if !contains([]string{memory.TargetMemory, memory.TargetHarness, memory.TargetInstruction}, t) {
+		return t
+	}
+	return i18n.T("target." + t)
+}
 
 // cmdLedger prints the change effect ledger (설계 「변경 효과 원장」), newest first.
 func cmdLedger(a *app, args []string) error {
 	fs := a.flags("ledger")
-	all := fs.Bool("all", false, "변경 내용까지")
-	n := fs.Int("n", 30, "개수")
-	asJSON := fs.Bool("json", false, "JSON")
+	all := fs.Bool("all", false, i18n.T("flag.ledger.all"))
+	n := fs.Int("n", 30, i18n.T("flag.count"))
+	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -38,23 +49,23 @@ func cmdLedger(a *app, args []string) error {
 		return a.json(rows)
 	}
 	if len(rows) == 0 {
-		fmt.Fprintln(a.stdout, "원장이 비어 있습니다. 제안을 승인하면 한 줄씩 남습니다.")
+		fmt.Fprintln(a.stdout, i18n.T("cli.ledger.empty"))
 		return nil
 	}
 	for _, e := range rows {
-		verdict := ledgerVerdictNames[e.Verdict]
+		verdict := verdictName(e.Verdict)
 		if e.Verdict != memory.VerdictPending && !e.Evidence {
-			verdict += "(증거 없음)"
+			verdict = i18n.T("cli.ledger.no_evidence", verdict)
 		}
 		title, _, _ := strings.Cut(e.Basis, "\n")
 		fmt.Fprintf(a.stdout, "%s %s %-6s %s %s · %s %s\n", time.UnixMilli(e.At).Format("2006-01-02"), e.ID, verdict, e.ProposalKind,
-			oneLine(title, 60), ledgerTargetNames[e.TargetKind], oneLine(strings.Join(e.Targets, ", "), 80))
+			oneLine(title, 60), targetName(e.TargetKind), oneLine(strings.Join(e.Targets, ", "), 80))
 		if e.Verdict != memory.VerdictPending {
 			o := e.Observation
-			fmt.Fprintf(a.stdout, "    관찰: 전 나쁜 신호 %d·상관없음 %d·세션 %d → 후 %d·%d·%d\n", o.Before.Bad, o.Before.Irrelevant, o.Before.Sessions,
-				o.After.Bad, o.After.Irrelevant, o.After.Sessions)
+			fmt.Fprintln(a.stdout, "    "+i18n.T("cli.ledger.observation", o.Before.Bad, o.Before.Irrelevant, o.Before.Sessions,
+				o.After.Bad, o.After.Irrelevant, o.After.Sessions))
 		}
-		for _, link := range []struct{ label, id string }{{"교훈", e.LessonID}, {"되돌림", e.RevertedBy}, {"되돌린 원장", e.RevertOf}} {
+		for _, link := range []struct{ label, id string }{{i18n.T("cli.ledger.lesson"), e.LessonID}, {i18n.T("cli.ledger.reverted_by"), e.RevertedBy}, {i18n.T("cli.ledger.revert_of"), e.RevertOf}} {
 			if link.id != "" {
 				fmt.Fprintf(a.stdout, "    %s: %s\n", link.label, link.id)
 			}

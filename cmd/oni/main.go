@@ -13,6 +13,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+
+	"github.com/onidot-labs/orbit/internal/config"
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 type app struct {
@@ -21,41 +24,42 @@ type app struct {
 }
 
 type command struct {
-	name, usage string
+	name, usage string // usage is a catalog key
 	run         func(a *app, args []string) error
 }
 
-var errUsage = errors.New("사용법이 맞지 않습니다")
+var errUsage = i18n.Err("cli.err.usage")
 
 func commands() []command {
 	return []command{
-		{"version", "oni version", cmdVersion},
-		{"install", "oni install [--bin-dir D] [--retro-host claude|codex] [--retro-model M] [--plugin-source DIR] [--apply-target PATH]... [--no-schedule] [--no-hosts] [--dry-run]", cmdInstall},
-		{"uninstall", "oni uninstall   # 플러그인 등록·예약을 지운다. 기억 DB는 남긴다", cmdUninstall},
-		{"doctor", "oni doctor [--json]", cmdDoctor},
-		{"mcp", "oni mcp [--retro ID | --reader]   # 호스트가 띄우는 MCP 서버(stdio). --reader는 작업 기록·기억 그래프 읽기 전용", cmdMCP},
-		{"hook", "oni hook session-start|prompt|session-end|work --host claude|codex [--skip-lists]   # 호스트 훅(stdin JSON)", cmdHook},
-		{"memory", "oni memory find [질의] [--kind K] [--all] [--json] | show <id> [--history]", cmdMemory},
-		{"proposals", "oni proposals [list|review|show <id>|approve <id> [--title T] [--body B|--body-file F] [--note N]|reject <id> [--note N]] [--all]", cmdProposals},
-		{"retro", "oni retro run [--day YYYY-MM-DD|--week YYYY-MM-DD] | sessions | tidy | legacy | status [--n N] | material --day YYYY-MM-DD   # tidy: 기억 그래프 정리만 지금 한 번, legacy: 옛 기억 한 묶음 판정", cmdRetro},
-		{"migrate", "oni migrate --from <knowledge-auto-*.sqlite 사본> [--dry-run] [--json]", cmdMigrate},
-		{"plugin", "oni plugin build <원본> [--out D] [--check] [--var k=v]... | install <빌드한 마켓 디렉터리>", cmdPlugin},
-		{"config", "oni config [show | set <키> <값>]", cmdConfig},
-		{"backup", "oni backup   # 기억 DB 사본을 지금 만든다", cmdBackup},
-		{"stats", "oni stats [--days N | --week YYYY-MM-DD(월요일)] [--json]   # 교정·회상·사용 판정·원장·제안·회고 지표", cmdStats},
-		{"lab", "oni lab task new --title T --instruction(-file) X --criteria(-file) X [--start DIR] [--from-corrections ID,…] | task list | candidates | drop <제안> [--note N] | run --task T (--change DIR | --proposal ID) | show <id> | list [--json]   # 하네스 실험실", cmdLab},
-		{"ledger", "oni ledger [--all] [--n N] [--json]   # 승인한 변경과 효과 판정", cmdLedger},
+		{"version", "usage.version", cmdVersion},
+		{"install", "usage.install", cmdInstall},
+		{"uninstall", "usage.uninstall", cmdUninstall},
+		{"doctor", "usage.doctor", cmdDoctor},
+		{"mcp", "usage.mcp", cmdMCP},
+		{"hook", "usage.hook", cmdHook},
+		{"memory", "usage.memory", cmdMemory},
+		{"proposals", "usage.proposals", cmdProposals},
+		{"retro", "usage.retro", cmdRetro},
+		{"migrate", "usage.migrate", cmdMigrate},
+		{"plugin", "usage.plugin", cmdPlugin},
+		{"config", "usage.config", cmdConfig},
+		{"backup", "usage.backup", cmdBackup},
+		{"stats", "usage.stats", cmdStats},
+		{"lab", "usage.lab", cmdLab},
+		{"ledger", "usage.ledger", cmdLedger},
 	}
 }
 
 func (a *app) usage() {
-	fmt.Fprintln(a.stderr, "Orbit — 이 PC의 AI 기억·회고·플러그인 도구\n\n명령:")
+	fmt.Fprintln(a.stderr, i18n.T("cli.usage_head"))
 	for _, c := range commands() {
-		fmt.Fprintln(a.stderr, "  "+c.usage)
+		fmt.Fprintln(a.stderr, "  "+i18n.T(c.usage))
 	}
 }
 
 func (a *app) main(args []string) int {
+	i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), config.Language(paths().Config())))
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		a.usage()
 		if len(args) == 0 {
@@ -71,14 +75,17 @@ func (a *app) main(args []string) int {
 		if err == nil {
 			return 0
 		}
-		if errors.Is(err, errUsage) || errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(a.stderr, "사용법: "+c.usage)
+		if errors.Is(err, flag.ErrHelp) { // a.flags already printed the usage
+			return 2
+		}
+		if errors.Is(err, errUsage) {
+			fmt.Fprintln(a.stderr, i18n.T("cli.usage_line", i18n.T(c.usage)))
 			return 2
 		}
 		fmt.Fprintln(a.stderr, "oni "+c.name+": "+err.Error())
 		return 1
 	}
-	fmt.Fprintf(a.stderr, "모르는 명령입니다: %s\n", args[0])
+	fmt.Fprintln(a.stderr, i18n.T("cli.unknown_command", args[0]))
 	a.usage()
 	return 2
 }
@@ -86,6 +93,11 @@ func (a *app) main(args []string) int {
 func (a *app) flags(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(a.stderr)
+	cmd, _, _ := strings.Cut(name, " ")
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), i18n.T("cli.usage_line", i18n.T("usage."+cmd)))
+		fs.PrintDefaults()
+	}
 	return fs
 }
 

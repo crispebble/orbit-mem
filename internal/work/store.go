@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit/internal/i18n"
 	"github.com/onidot-labs/orbit/internal/sqlitedb"
 )
 
@@ -111,7 +112,7 @@ func open(path string, busy time.Duration) (*Store, error) {
 	// 한 프로세스에 연결 하나(sqlitedb): data_version은 연결마다 따로이고, 쓰기 대기는 프로세스 사이에서만 한다.
 	db, err := sqlitedb.Open(path, busy, "synchronous(NORMAL)")
 	if err != nil {
-		return nil, fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
+		return nil, i18n.Errorf("work.err.db_open", err)
 	}
 	s := &Store{db: db, path: path, Now: time.Now}
 	if err := s.migrate(); err != nil {
@@ -125,17 +126,17 @@ func (s *Store) migrate() error {
 	// 이미 이 판이면 읽기만 한다: 읽는 쪽(oni mcp --reader, 재개 문맥, doctor)이 쓰기 잠금을 다투지 않게.
 	var v int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
-		return fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
+		return i18n.Errorf("work.err.db_open", err)
 	}
 	if v > schemaVersion {
-		return fmt.Errorf("작업 기록 DB가 이 oni보다 새 판(%d)입니다. oni를 올려 주세요", v)
+		return i18n.Errorf("work.err.db_newer", v)
 	}
 	if v == schemaVersion && s.db.QueryRow(`SELECT value FROM meta WHERE key='db_id'`).Scan(&s.dbID) == nil {
 		return nil
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("작업 기록 DB를 열 수 없습니다: %w", err)
+		return i18n.Errorf("work.err.db_open", err)
 	}
 	defer tx.Rollback()
 	// 다른 프로세스가 먼저 올렸을 수 있어 잠금을 잡은 뒤 다시 본다
@@ -152,7 +153,7 @@ func (s *Store) migrate() error {
 		}
 	}
 	if _, err := tx.Exec(schema); err != nil {
-		return fmt.Errorf("작업 기록 DB를 만들 수 없습니다: %w", err)
+		return i18n.Errorf("work.err.db_create", err)
 	}
 	if err := tx.QueryRow(`SELECT value FROM meta WHERE key='db_id'`).Scan(&s.dbID); errors.Is(err, sql.ErrNoRows) {
 		s.dbID = newDBID()
@@ -164,7 +165,7 @@ func (s *Store) migrate() error {
 	}
 	if old {
 		if err := rebuild(tx); err != nil {
-			return fmt.Errorf("작업 기록 DB를 새 판으로 올리지 못했습니다: %w", err)
+			return i18n.Errorf("work.err.db_upgrade", err)
 		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version=%d`, schemaVersion)); err != nil {
@@ -241,7 +242,7 @@ func (s *Store) Append(e Event) (Result, error) {
 	e.Seq, _ = res.LastInsertId()
 	r := newReducer(tx, e, false)
 	if err := r.apply(); err != nil {
-		return Result{}, fmt.Errorf("%s 사건을 적용하지 못했습니다: %w", e.Kind, err)
+		return Result{}, i18n.Errorf("work.err.apply_event", e.Kind, err)
 	}
 	if err := r.flush(); err != nil {
 		return Result{}, err
@@ -291,7 +292,7 @@ func rebuild(tx *sql.Tx) error {
 	for _, e := range evs {
 		r := newReducer(tx, e, true)
 		if err := r.apply(); err != nil {
-			return fmt.Errorf("%d번 사건(%s)을 다시 적용하지 못했습니다: %w", e.Seq, e.Kind, err)
+			return i18n.Errorf("work.err.reapply_event", e.Seq, e.Kind, err)
 		}
 		if err := r.flush(); err != nil {
 			return err
@@ -344,7 +345,7 @@ func DailyBackup(dbPath, dir string, keep int, now time.Time) (string, error) {
 	defer s.Close()
 	dst := filepath.Join(dir, "work-"+now.Local().Format("20060102")+".sqlite")
 	if err := s.Backup(dst); err != nil {
-		return "", fmt.Errorf("작업 기록 백업 실패: %w", err)
+		return "", i18n.Errorf("work.err.backup", err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {

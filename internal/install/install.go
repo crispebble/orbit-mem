@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+
+	"github.com/onidot-labs/orbit/internal/i18n"
 )
 
 // Hosts are the host CLIs found on this PC. An empty path means not installed.
@@ -334,7 +336,7 @@ func ApplySchedule(s Schedule, run func(string, ...string) (string, error)) (str
 		_, err = run("schtasks", "/Create", "/TN", WindowsTask, "/XML", file, "/F")
 		return WindowsTask, err
 	}
-	return "", fmt.Errorf("%s에서는 예약을 지원하지 않습니다. oni retro run을 직접 예약해 주세요", runtime.GOOS)
+	return "", i18n.Errorf("install.err.no_schedule", runtime.GOOS)
 }
 
 // RemoveSchedule unregisters the schedule.
@@ -421,7 +423,7 @@ func CopyBinary(src, dst string) (bool, error) {
 		if _, err := os.Stat(dst); err == nil {
 			if err := os.Rename(dst, old); err != nil { // 실행 중인 exe는 지울 수 없어 이름만 바꾼다
 				os.Remove(tmp)
-				return false, fmt.Errorf("기존 oni를 바꿀 수 없습니다(실행 중인 세션을 닫고 다시 해 주세요): %w", err)
+				return false, i18n.Errorf("install.err.replace_oni", err)
 			}
 			if err := os.Rename(tmp, dst); err != nil {
 				_ = os.Rename(old, dst)
