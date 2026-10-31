@@ -19,9 +19,9 @@
     "delegate",
     "git-commit",
     "pull-request",
-    "run",
-    "all-in",
-    "resume"
+    "ultrawork",
+    "ulw-plan",
+    "ulw-execute"
   ],
   "mcpServers": {
     "orbit": {

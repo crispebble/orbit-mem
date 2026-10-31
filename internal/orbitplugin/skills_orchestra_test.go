@@ -11,12 +11,20 @@ import (
 	"github.com/onidot-labs/openorbit/internal/pluginbuild"
 )
 
-// 오케스트레이터 스킬(설계 · OpenOrbit 4차 R4-5): 이름은 짧은 영어 식별자가 정본이고, 영어 기본·한국어 지원이다.
+// 오케스트레이터 스킬(설계 · OpenOrbit 4차 R4-5): 이름과 호출 방식은 널리 쓰이는 키워드·명령을 따르고
+// (ultrawork·ulw-plan·ulw-execute), 본문은 OpenOrbit이 새로 쓴다. 영어 기본·한국어 지원이다.
 // description(트리거)은 영어와 한국어를 함께 써서 한국어로 말해도 걸린다.
 var orchestraSkills = map[string][]string{
-	"run":    {"orb run", "orb work get", "--max-cost", "--max-turns", "--max-minutes", "--json", "--events", "exit code", "## 한국어 요약"},
-	"all-in": {"orb run --all-in", "all-in", "allin", "끝까지", "decision card", "three times", "## 한국어 요약"},
-	"resume": {"orb run --resume", "orb work list --cwd . --state open --launcher orbit-pi", "## 한국어 요약"},
+	"ultrawork":   {"orb run --ultrawork", "orb work get", "--max-cost", "--max-turns", "--max-minutes", "--json", "--events", "exit code", "decision card", "three times", "ulw-plan", "## 한국어 요약"},
+	"ulw-plan":    {"orb run --plan", "orb work get", "does not change", "orbit:ulw-execute", "## 한국어 요약"},
+	"ulw-execute": {"orb run --resume", "orb work list --cwd . --state open --launcher orbit-pi", `origin.host`, "orbit-pi", "## 한국어 요약"},
+}
+
+// 트리거 낱말(대소문자 무시). ultrawork는 ulw-plan과 구분됨을 밝힌다.
+var orchestraTriggers = map[string][]string{
+	"ultrawork":   {"ulw", "ultrawork", "끝까지", "끝까지 해", "all the way", "ulw-plan"},
+	"ulw-plan":    {"ulw plan", "ulw-plan", "계획만", "plan first"},
+	"ulw-execute": {"ulw-execute", "이어서 해", "resume", "continue the plan"},
 }
 
 var hangul = regexp.MustCompile(`[가-힣]`)
@@ -62,8 +70,13 @@ func TestOrchestraSkills_영어_기본_한국어_트리거로_두_호스트에_�
 		}
 		body := string(built)
 		d := frontDescription(t, body)
-		if !strings.HasPrefix(d, "Use when") || !hangul.MatchString(d) || !strings.Contains(d, "Triggers:") {
+		if !strings.HasPrefix(d, "Use when") || !hangul.MatchString(d) || !strings.Contains(d, "Triggers") {
 			t.Errorf("%s description은 영어로 시작하고 한국어와 Triggers를 함께 담아야 합니다: %s", name, d)
+		}
+		for _, w := range orchestraTriggers[name] {
+			if !strings.Contains(strings.ToLower(d), strings.ToLower(w)) {
+				t.Errorf("%s description에 트리거 %q가 없습니다", name, w)
+			}
 		}
 		for _, w := range wants {
 			if !strings.Contains(body, w) {
@@ -79,16 +92,10 @@ func TestOrchestraSkills_영어_기본_한국어_트리거로_두_호스트에_�
 	if !strings.Contains(string(cx), `"./skills/"`) {
 		t.Errorf("codex 매니페스트에 skills가 없습니다: %s", cx)
 	}
-	if d := frontDescription(t, string(mustRead(t, filepath.Join(out, "plugins", "orbit", "skills", "all-in", "SKILL.md")))); !strings.Contains(d, "ulw") {
-		t.Errorf("all-in 트리거에 ulw가 없습니다: %s", d)
+	// 앞 이름(run·all-in·resume)은 확정 이름에 흡수했다
+	for _, old := range []string{"run", "all-in", "resume"} {
+		if strings.Contains(","+listed+",", ","+old+",") {
+			t.Errorf("옛 스킬 이름 %s가 남았습니다", old)
+		}
 	}
-}
-
-func mustRead(t *testing.T, p string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
