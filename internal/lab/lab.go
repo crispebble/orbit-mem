@@ -47,7 +47,7 @@ type Lab struct {
 	Store  *memory.Store
 	Cfg    config.Config
 	Paths  config.Paths
-	Oni    string // 후보 플러그인의 훅·MCP가 부를 oni
+	Orb    string // 후보 플러그인의 훅·MCP가 부를 orb
 	Source string // 지금 쓰는 플러그인 원본
 	Exec   func(context.Context, retro.Cmd) (string, error)
 	Now    func() time.Time
@@ -277,7 +277,7 @@ func (l *Lab) inSource(path string) (string, error) {
 
 // build makes a candidate's plugin from source and returns its plugin folder and hash.
 func (l *Lab) build(source, out string) (string, string, error) {
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: source, Out: out, Vars: orbitplugin.Vars(l.Oni)}); err != nil {
+	if _, err := pluginbuild.Build(pluginbuild.Options{Source: source, Out: out, Vars: orbitplugin.Vars(l.Orb)}); err != nil {
 		return "", "", err
 	}
 	plugins, err := os.ReadDir(filepath.Join(out, "plugins"))

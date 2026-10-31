@@ -1,6 +1,6 @@
 #!/bin/sh
 # 작업 그래프 호스트 실행 끝 기준(설계 · Orbit 2차 「끝 기준」)을 새 헤드리스 세션으로 확인한다.
-# claude 세션은 이 체크아웃의 oni와 플러그인을 빈 ORBIT_HOME으로 붙이고, 설치된 Orbit 플러그인은 그 세션에서 끈다.
+# claude 세션은 이 체크아웃의 orb와 플러그인을 빈 ORBIT_HOME으로 붙이고, 설치된 Orbit 플러그인은 그 세션에서 끈다.
 # 호스트 계정의 사용량이 든다.
 #
 #   scripts/e2e-work.sh [작업 디렉터리]          # claude 세션 A·B
@@ -12,8 +12,8 @@ mkdir -p "$E"
 E=$(cd "$E" && pwd -P)
 model=${E2E_MODEL:-sonnet}
 
-go build -o "$E/bin/oni" "$root/cmd/oni"
-"$E/bin/oni" plugin build "$root/internal/orbitplugin/source" --out "$E/market" --var "oni=$E/bin/oni" --var "onicmd=$E/bin/oni" >/dev/null
+go build -o "$E/bin/orb" "$root/cmd/orb"
+"$E/bin/orb" plugin build "$root/internal/orbitplugin/source" --out "$E/market" --var "oni=$E/bin/orb" --var "onicmd=$E/bin/orb" >/dev/null
 echo '{"enabledPlugins":{"orbit@orbit":false}}' >"$E/settings.json"
 
 repo() { # $1: 디렉터리
@@ -63,12 +63,12 @@ claude_run b "다음을 순서대로 하세요.
 
 if [ "${E2E_CODEX:-}" = 1 ]; then
 	# Codex는 플러그인 훅을 /hooks에서 사용자가 신뢰해야 돌고, 신뢰는 플러그인 이름과 훅 내용에 묶인다.
-	# 그래서 세션 C는 이 마켓이 아니라 이 PC에 설치해 신뢰한 Orbit 플러그인(oni install)으로 돈다.
-	# 설치본 oni가 이 체크아웃과 같은 판이어야 이 체크아웃을 확인한 것이 된다.
-	want=$("$E/bin/oni" version)
-	got=$(oni version 2>/dev/null || true)
+	# 그래서 세션 C는 이 마켓이 아니라 이 PC에 설치해 신뢰한 Orbit 플러그인(orb install)으로 돈다.
+	# 설치본 orb가 이 체크아웃과 같은 판이어야 이 체크아웃을 확인한 것이 된다.
+	want=$("$E/bin/orb" version)
+	got=$(orb version 2>/dev/null || true)
 	if [ "$got" != "$want" ]; then
-		echo "설치된 oni($got)가 이 체크아웃($want)과 달라 Codex 세션을 건너뜁니다. 이 판을 oni install로 설치하고 codex /hooks에서 Orbit 훅을 신뢰한 뒤 다시 돌립니다." >&2
+		echo "설치된 orb($got)가 이 체크아웃($want)과 달라 Codex 세션을 건너뜁니다. 이 판을 orb install로 설치하고 codex /hooks에서 Orbit 훅을 신뢰한 뒤 다시 돌립니다." >&2
 	else
 		mkdir -p "$E/c/home"
 		repo "$E/c/repo"

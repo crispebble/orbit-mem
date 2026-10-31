@@ -33,7 +33,7 @@ func loadConfig() (config.Config, error) { return config.Load(paths().Config()) 
 func openStore() (*memory.Store, error) { return memory.Open(paths().DB()) }
 
 func cmdVersion(a *app, args []string) error {
-	fmt.Fprintln(a.stdout, "oni "+version.Version)
+	fmt.Fprintln(a.stdout, "orb "+version.Version)
 	return nil
 }
 
@@ -96,7 +96,7 @@ type hookInput struct {
 	TranscriptPath string `json:"transcript_path"`
 }
 
-// spawnDetached starts a background oni that outlives the hook, its output
+// spawnDetached starts a background orb that outlives the hook, its output
 // appended to log.
 var spawnDetached = func(name string, args []string, log string) error {
 	_ = os.MkdirAll(filepath.Dir(log), 0o700)
@@ -127,14 +127,14 @@ func (a *app) sessionEnd(in hookInput, host string, cfg config.Config) {
 	defer s.Close()
 	queued, err := retro.Enqueue(s, paths(), retro.SessionEnd{Host: host, Session: in.SessionID, Transcript: in.TranscriptPath, Cwd: in.Cwd})
 	if err != nil {
-		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.enqueue_failed", err))
+		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.enqueue_failed", err))
 		return
 	}
 	if !queued {
 		return
 	}
 	if err := spawnDetached(selfPath(), []string{"retro", "sessions"}, filepath.Join(paths().Logs(), "session-retro.log")); err != nil {
-		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.spawn_failed", err))
+		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.spawn_failed", err))
 	}
 }
 
@@ -152,7 +152,7 @@ func cmdHook(a *app, args []string) error {
 	skipLists := fs.Bool("skip-lists", false, i18n.T("flag.hook.skip_lists"))
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end" && pos[0] != "work") || (*host != "claude" && *host != "codex") {
-		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.bad_args"))
+		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
 	}
 	start := time.Now()
@@ -172,7 +172,7 @@ func cmdHook(a *app, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
 			close(recorded)
-			fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.config_failed", err))
+			fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.config_failed", err))
 			done <- ""
 			return
 		}
@@ -214,7 +214,7 @@ func cmdHook(a *app, args []string) error {
 			}
 		}
 	case <-deadline:
-		fmt.Fprintln(a.stderr, "oni hook: "+i18n.T("cli.hook.timeout"))
+		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.timeout"))
 	}
 	return nil
 }

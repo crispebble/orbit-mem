@@ -1,4 +1,5 @@
 {
+  "install.err.alias_self": "the oni alias would point at itself: %s",
   "install.err.no_schedule": "scheduling is not supported on %s. Schedule oni retro run yourself",
   "install.err.replace_oni": "cannot replace the existing oni (close the running sessions and try again): %w"
 }

@@ -1,4 +1,4 @@
-// Package install puts oni on this PC: the binary, the Orbit plugin in each
+// Package install puts orb on this PC: the binary, the Orbit plugin in each
 // host's marketplace, the Codex role files of a built plugin and the OS
 // schedule for retrospectives (launchd on Mac, Task Scheduler on Windows).
 package install
@@ -180,7 +180,7 @@ func CopyCodexAgents(pluginDir, codexHome string) (CopyResult, error) {
 
 // Schedule is the retrospective schedule of this PC.
 type Schedule struct {
-	Oni      string   // oni 절대경로
+	Orb      string   // orb 절대경로
 	Hour     int      // 하루 회고 시각
 	Home     string   // ORBIT_HOME(기본 위치가 아니면)
 	PathDirs []string // claude·codex가 있는 디렉터리
@@ -235,7 +235,7 @@ func LaunchdPlist(s Schedule) string {
 	<string>Background</string>
 </dict>
 </plist>
-`, LaunchdLabel, xmlEscape(s.Oni), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
+`, LaunchdLabel, xmlEscape(s.Orb), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
 }
 
 // TaskXML is the Windows Task Scheduler definition (UTF-16LE with BOM, as
@@ -255,7 +255,7 @@ func TaskXML(s Schedule) []byte {
 	if s.Home != "" {
 		inner = `set "ORBIT_HOME=` + s.Home + `" && `
 	}
-	inner += `"` + s.Oni + `" retro run`
+	inner += `"` + s.Orb + `" retro run`
 	if s.Logs != "" {
 		inner += ` >> "` + filepath.Join(s.Logs, "retro.log") + `" 2>&1`
 	}
@@ -369,7 +369,7 @@ func ScheduleInstalled(run func(string, ...string) (string, error)) bool {
 	return false
 }
 
-// DefaultBinDir is where oni is installed: ~/.local/bin on Mac and Linux,
+// DefaultBinDir is where orb is installed: ~/.local/bin on Mac and Linux,
 // %LOCALAPPDATA%\Programs\orbit on Windows.
 func DefaultBinDir() string {
 	if runtime.GOOS == "windows" {
@@ -381,15 +381,15 @@ func DefaultBinDir() string {
 	return filepath.Join(home, ".local", "bin")
 }
 
-// BinaryName is oni's file name on this OS.
+// BinaryName is orb's file name on this OS.
 func BinaryName() string {
 	if runtime.GOOS == "windows" {
-		return "oni.exe"
+		return "orb.exe"
 	}
-	return "oni"
+	return "orb"
 }
 
-// CopyBinary installs the running oni at dst (atomically) unless it already is dst.
+// CopyBinary installs the running orb at dst (atomically) unless it already is dst.
 func CopyBinary(src, dst string) (bool, error) {
 	if a, err := filepath.EvalSymlinks(src); err == nil {
 		src = a

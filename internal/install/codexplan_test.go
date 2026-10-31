@@ -38,7 +38,7 @@ func TestCodexPlan_켜짐_판단과_켜기(t *testing.T) {
 			t.Errorf("원래 설정을 잃었습니다: %q", b)
 		}
 		if body != "" && !want {
-			if baks, _ := filepath.Glob(filepath.Join(dir, "config.toml.oni-*")); len(baks) != 1 {
+			if baks, _ := filepath.Glob(filepath.Join(dir, "config.toml.orb-*")); len(baks) != 1 {
 				t.Errorf("고치기 전 사본이 없습니다: %v", baks)
 			}
 		}
