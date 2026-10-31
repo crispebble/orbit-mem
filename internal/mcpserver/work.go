@@ -102,6 +102,33 @@ func addWorkTools(srv *mcp.Server, w *workTools) {
 	add("work_changes", "after(앞 응답의 seq) 뒤에 바뀐 작업·세션 id. 바뀐 것이 없으면 wait 밀리초까지 기다린다(상한 waitMax). reset이면 처음부터 다시 읽는다.", w.changes)
 }
 
+// CallWork calls one read tool (work_list, work_get, work_sessions, work_changes)
+// as the reader would get it over MCP and returns its structured result: the
+// same contract JSON, with the contract head, argument checks and contract
+// errors (isError). orb work get|list print it for orbit-pi and Orbit Studio.
+func CallWork(o WorkOptions, tool string, arguments map[string]any) (json.RawMessage, bool, error) {
+	w := newWorkTools(o, true)
+	defer w.Close()
+	h := map[string]func(context.Context, args) (any, error){"work_list": w.list, "work_get": w.get, "work_sessions": w.sessions, "work_changes": w.changes}[tool]
+	if h == nil {
+		return nil, false, fmt.Errorf("%s는 읽기 도구가 아닙니다", tool)
+	}
+	schema, err := contract.InputSchema(contract.Major, tool)
+	if err != nil {
+		return nil, false, err
+	}
+	raw, err := json.Marshal(arguments)
+	if err != nil {
+		return nil, false, err
+	}
+	res, err := w.handler(tool, schema, h)(context.Background(), &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tool, Arguments: raw}})
+	if err != nil {
+		return nil, false, err
+	}
+	body, _ := res.StructuredContent.(json.RawMessage)
+	return body, res.IsError, nil
+}
+
 // args are a call's arguments after the contract checks.
 type args map[string]json.RawMessage
 
@@ -298,7 +325,7 @@ func checkAny(field string, ps map[string]any, x any) *callError {
 var typeName = map[string]string{"string": "문자열", "boolean": "불", "integer": "정수(밀리초·개수)", "array": "배열"}
 
 func (w *workTools) filter(a args) (work.Filter, error) {
-	f := work.Filter{CwdPrefix: a.strs("cwdPrefix"), Cursor: a.str("cursor"), Limit: a.int("limit")}
+	f := work.Filter{CwdPrefix: a.strs("cwdPrefix"), Cursor: a.str("cursor"), Limit: a.int("limit"), Launcher: a.str("launcher")}
 	for _, p := range f.CwdPrefix {
 		if !filepath.IsAbs(p) {
 			return f, invalid("cwdPrefix", "cwdPrefix는 절대경로여야 합니다.")

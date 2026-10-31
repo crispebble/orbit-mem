@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onidot.dev/schemas/orbit.work/1/response.schema.json",
-  "title": "orbit.work 1.1 응답",
-  "description": "orb가 내는 1.1 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
+  "title": "orbit.work 1.2 응답",
+  "description": "orb가 내는 1.2 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
   "oneOf": [
     {"$ref": "#/$defs/work_list"},
     {"$ref": "#/$defs/work_get"},
@@ -41,10 +41,26 @@
         "label": {"type": "string"}
       }
     },
-    "host": {"enum": ["claude", "codex"]},
+    "host": {"enum": ["claude", "codex", "orbit-pi"], "description": "orbit-pi(1.2)는 orbit-pi 오케스트레이터 자신이 남긴 세션·작업·실행"},
     "surface": {"enum": ["cli", "desktop", "headless", "unknown"]},
     "launcher": {"enum": ["human", "orbit-pi", "studio", "telegram", "workflow"], "description": "세션을 띄운 쪽(1.1). human은 사람이 직접 연 세션, 나머지는 orbit-pi가 띄운 세션과 orbit-pi에 일을 시킨 쪽"},
-    "listKind": {"enum": ["claude-task", "claude-todo", "claude-app-plan", "codex-plan"]},
+    "listKind": {"enum": ["claude-task", "claude-todo", "claude-app-plan", "codex-plan", "orbit-pi-plan"]},
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "실행이 쓴 비용(1.2). usd가 없으면 구독 엔진",
+      "required": ["engine", "model", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"],
+      "properties": {
+        "engine": {"$ref": "#/$defs/text"},
+        "model": {"$ref": "#/$defs/text"},
+        "usd": {"type": "number", "minimum": 0},
+        "inputTokens": {"type": "integer", "minimum": 0},
+        "outputTokens": {"type": "integer", "minimum": 0},
+        "cacheReadTokens": {"type": "integer", "minimum": 0},
+        "cacheWriteTokens": {"type": "integer", "minimum": 0},
+        "turns": {"type": "integer", "minimum": 0}
+      }
+    },
     "stepStatus": {"enum": ["pending", "ready", "in_progress", "blocked", "done", "cancelled"]},
     "blockReason": {"enum": ["waiting_user", "run_failed", "run_lost", "interrupted", "stale", "declared"]},
     "verificationState": {"enum": ["none", "pass", "fail", "needs_user"]},
@@ -161,6 +177,7 @@
         },
         "title": {"$ref": "#/$defs/text"},
         "activeTitle": {"$ref": "#/$defs/text"},
+        "detail": {"$ref": "#/$defs/text", "description": "호스트가 준 단계 설명(1.2). 여러 줄, 비밀값 가림"},
         "order": {"type": "integer", "minimum": 0},
         "wave": {"type": "integer", "minimum": 0},
         "after": {
@@ -226,7 +243,7 @@
         "sessionId": {"$ref": "#/$defs/id"},
         "parentSessionId": {"$ref": "#/$defs/id"},
         "stepId": {"$ref": "#/$defs/id"},
-        "link": {"enum": ["owner", "single_active", "parent_env", "none"]},
+        "link": {"enum": ["owner", "single_active", "parent_env", "step", "none"], "description": "step(1.2)은 호스트가 사건에 단계 id를 밝힌 것"},
         "background": {"type": "boolean"},
         "cwd": {"$ref": "#/$defs/absPath"},
         "repo": {"$ref": "#/$defs/absPath"},
@@ -235,7 +252,8 @@
         "endReason": {"enum": ["completed", "failed", "session_ended", "unknown"]},
         "startedAt": {"$ref": "#/$defs/time"},
         "lastSeenAt": {"$ref": "#/$defs/time"},
-        "finishedAt": {"$ref": "#/$defs/time"}
+        "finishedAt": {"$ref": "#/$defs/time"},
+        "cost": {"$ref": "#/$defs/cost"}
       }
     },
     "evidence": {

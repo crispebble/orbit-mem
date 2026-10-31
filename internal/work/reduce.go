@@ -267,7 +267,7 @@ func (r *reducer) parentStep(host, session, ref string) (string, string) {
 		return "", ""
 	}
 	var workID string
-	if r.tx.QueryRow(`SELECT open_work FROM lists WHERE host=? AND id=? AND open_work<>'' AND kind<>?`, host, session, ListClaudeTask).Scan(&workID) != nil {
+	if r.tx.QueryRow(`SELECT open_work FROM lists WHERE host=? AND id=? AND open_work<>'' AND kind NOT IN (?,?)`, host, session, ListClaudeTask, ListOrbitPiPlan).Scan(&workID) != nil {
 		return "", ""
 	}
 	var stepID string
@@ -606,8 +606,26 @@ func (r *reducer) queryRuns(cond string, args ...any) ([]runRef, error) {
 	return out, rows.Err()
 }
 
+// hostStep finds the step the host named on the event (1.2 step). An unknown
+// id gives no step: the event is not guessed onto another step.
+func (r *reducer) hostStep(ref StepRef) string {
+	if ref.Step == "" {
+		return ""
+	}
+	var id string
+	_ = r.tx.QueryRow(`SELECT step_id FROM natives WHERE host=? AND list=? AND native=?`, r.e.Host, r.sessionList(ref.List), ref.Step).Scan(&id)
+	return id
+}
+
 // linkStep picks the step a new subagent run works on (설계 「서브에이전트를 단계에 잇는 순서」).
-func (r *reducer) linkStep(role string) (string, string, error) {
+// A step the host named comes first (link step); a named step that is unknown links nothing.
+func (r *reducer) linkStep(role string, ref StepRef) (string, string, error) {
+	if ref.Step != "" {
+		if id := r.hostStep(ref); id != "" {
+			return id, "step", nil
+		}
+		return "", "none", nil
+	}
 	steps, err := r.activeStepsAt(r.e.Host, r.e.Session)
 	if err != nil {
 		return "", "none", err
@@ -638,7 +656,7 @@ func sameRole(owner, role string) bool {
 	return norm(owner) == norm(role)
 }
 
-func (r *reducer) ensureRun(agent, role string) (runRef, bool, error) {
+func (r *reducer) ensureRun(agent, role string, ref StepRef) (runRef, bool, error) {
 	id := hashID("r-", r.e.Host, r.e.Session, agent)
 	var x runRef
 	err := r.tx.QueryRow(`SELECT id, role, step_id, state, tool_use FROM runs WHERE id=?`, id).Scan(&x.id, &x.role, &x.step, &x.state, &x.toolUse)
@@ -649,12 +667,21 @@ func (r *reducer) ensureRun(agent, role string) (runRef, bool, error) {
 				return x, false, err
 			}
 		}
+		// 호스트가 밝힌 단계는 짐작한 연결보다 앞선다(끝 사건이 먼저 와 단계 없이 만든 실행 포함)
+		if s := r.hostStep(ref); s != "" && s != x.step {
+			old := x.step
+			x.step = s
+			if err := r.exec(`UPDATE runs SET step_id=?, link='step' WHERE id=?`, s, id); err != nil {
+				return x, false, err
+			}
+			r.touchWork(r.stepWork(old))
+		}
 		return x, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return x, false, err
 	}
-	step, link, err := r.linkStep(role)
+	step, link, err := r.linkStep(role, ref)
 	if err != nil {
 		return x, false, err
 	}
@@ -669,7 +696,7 @@ func (r *reducer) runStart() error {
 	if err := r.payload(&p); err != nil || p.Agent == "" {
 		return err
 	}
-	run, created, err := r.ensureRun(p.Agent, p.Type)
+	run, created, err := r.ensureRun(p.Agent, p.Type, p.StepRef)
 	if err != nil {
 		return err
 	}
@@ -699,7 +726,7 @@ func (r *reducer) runTool() error {
 	var run runRef
 	if p.Agent != "" {
 		var err error
-		if run, _, err = r.ensureRun(p.Agent, p.Type); err != nil {
+		if run, _, err = r.ensureRun(p.Agent, p.Type, StepRef{}); err != nil {
 			return err
 		}
 	} else if !p.OK {
@@ -712,7 +739,7 @@ func (r *reducer) runTool() error {
 		} else {
 			var err error
 			// 시작 훅 없이 실패한 실행: 도구 호출 하나를 실행 하나로 남긴다
-			if run, _, err = r.ensureRun("tool:"+p.ToolUse, p.Type); err != nil {
+			if run, _, err = r.ensureRun("tool:"+p.ToolUse, p.Type, StepRef{}); err != nil {
 				return err
 			}
 		}
@@ -758,12 +785,18 @@ func (r *reducer) runStop() error {
 	if err := r.payload(&p); err != nil || p.Agent == "" {
 		return err
 	}
-	run, _, err := r.ensureRun(p.Agent, p.Type)
+	run, _, err := r.ensureRun(p.Agent, p.Type, p.StepRef)
 	if err != nil {
 		return err
 	}
 	if p.Transcript != "" {
 		if err := r.exec(`UPDATE runs SET transcript=? WHERE id=?`, p.Transcript, run.id); err != nil {
+			return err
+		}
+	}
+	if p.Cost != nil {
+		b, _ := json.Marshal(cleanCost(*p.Cost))
+		if err := r.exec(`UPDATE runs SET cost=? WHERE id=?`, string(b), run.id); err != nil {
 			return err
 		}
 	}
@@ -796,16 +829,17 @@ func (r *reducer) evidence() error {
 	var agent string
 	var cmd Command
 	var commit Commit
+	var ref StepRef
 	if r.e.Kind == KindCommand {
 		if err := r.payload(&cmd); err != nil {
 			return err
 		}
-		agent = cmd.Agent
+		agent, ref = cmd.Agent, cmd.StepRef
 	} else {
 		if err := r.payload(&commit); err != nil || commit.SHA == "" {
 			return err
 		}
-		agent = commit.Agent
+		agent, ref = commit.Agent, commit.StepRef
 	}
 	var runID, step string
 	if agent != "" {
@@ -813,6 +847,11 @@ func (r *reducer) evidence() error {
 		if r.tx.QueryRow(`SELECT step_id FROM runs WHERE id=?`, runID).Scan(&step) != nil {
 			runID = ""
 		}
+	}
+	if ref.Step != "" {
+		step = r.hostStep(ref) // 호스트가 밝힌 단계가 앞선다. 모르는 단계면 세션 수준 증거
+	} else if agent != "" {
+		// 실행의 단계를 따른다
 	} else if steps, err := r.activeStepsAt(r.e.Host, r.e.Session); err != nil {
 		return err
 	} else if len(steps) == 1 {
@@ -859,6 +898,12 @@ func (r *reducer) title() error {
 		r.touchWork(p.Work)
 	}
 	return nil
+}
+
+// cleanCost keeps a run cost's text fields one line and short.
+func cleanCost(c Cost) Cost {
+	c.Engine, c.Model = Clean(c.Engine, 80), Clean(c.Model, 120)
+	return c
 }
 
 func roleName(role string) string {

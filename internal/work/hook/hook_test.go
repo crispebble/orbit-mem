@@ -527,3 +527,22 @@ func TestBrokenInputGivesNothing(t *testing.T) {
 		}
 	}
 }
+
+// orbit-pi 오케스트레이터가 띄운 하위 세션은 ORBIT_PARENT=orbit-pi:<세션>:<단계 id>를 받는다(설계 · OpenOrbit 4차 R4-5).
+func TestParseParent_orbit_pi_호스트도_받는다(t *testing.T) {
+	cases := map[string]*work.ParentRef{
+		"orbit-pi:P1:step-a": {Host: "orbit-pi", Session: "P1", Step: "step-a"},
+		"orbit-pi:P1":        {Host: "orbit-pi", Session: "P1"},
+		"claude:S1:3":        {Host: "claude", Session: "S1", Step: "3"},
+		"codex:C1:2":         {Host: "codex", Session: "C1", Step: "2"},
+		"telegram:X:1":       nil,
+		"orbit-pi::a":        nil,
+		"":                   nil,
+	}
+	for in, want := range cases {
+		got := parseParent(in)
+		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
+			t.Errorf("%q: %+v, 원하는 값 %+v", in, got, want)
+		}
+	}
+}

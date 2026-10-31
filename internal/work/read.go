@@ -32,13 +32,13 @@ func scanWork(sc interface{ Scan(...any) error }) (workRow, error) {
 }
 
 type stepData struct {
-	id, work, native, title, active, status, owner, declared, lastHost, lastSession string
+	id, work, native, title, active, status, owner, declared, lastHost, lastSession, detail string
 	ord                                                                             int
 	declaredAt, interruptedAt, startedAt, finishedAt                                int64
 }
 
 type runData struct {
-	id, kind, host, session, runHost, agent, role, child, parent, step, link, cwd, repo, branch, model, state, endReason string
+	id, kind, host, session, runHost, agent, role, child, parent, step, link, cwd, repo, branch, model, state, endReason, cost string
 	background                                                                                                           bool
 	startedAt, lastSeen, finishedAt, seq                                                                                 int64
 }
@@ -135,7 +135,7 @@ func (rd *reader) works(cond string, args ...any) ([]workRow, error) {
 }
 
 func (rd *reader) steps(work string) ([]stepData, error) {
-	rows, err := rd.q.Query(`SELECT id,work_id,native,title,active_title,host_status,owner,declared,last_host,last_session,ord,declared_at,interrupted_at,started_at,finished_at
+	rows, err := rd.q.Query(`SELECT id,work_id,native,title,active_title,host_status,owner,declared,last_host,last_session,ord,declared_at,interrupted_at,started_at,finished_at,detail
 		FROM steps WHERE work_id=? ORDER BY ord, id`, work)
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func (rd *reader) steps(work string) ([]stepData, error) {
 	for rows.Next() {
 		var s stepData
 		if err := rows.Scan(&s.id, &s.work, &s.native, &s.title, &s.active, &s.status, &s.owner, &s.declared, &s.lastHost, &s.lastSession,
-			&s.ord, &s.declaredAt, &s.interruptedAt, &s.startedAt, &s.finishedAt); err != nil {
+			&s.ord, &s.declaredAt, &s.interruptedAt, &s.startedAt, &s.finishedAt, &s.detail); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -171,7 +171,7 @@ func (rd *reader) edges(work string) (map[string][]After, error) {
 	return out, rows.Err()
 }
 
-const runCols = `id,kind,host,session,run_host,agent,role,child_session,parent_session,step_id,link,cwd,repo,branch,model,state,end_reason,background,started_at,last_seen,finished_at,seq`
+const runCols = `id,kind,host,session,run_host,agent,role,child_session,parent_session,step_id,link,cwd,repo,branch,model,state,end_reason,background,started_at,last_seen,finished_at,seq,cost`
 
 func (rd *reader) runs(cond string, args ...any) ([]runData, error) {
 	rows, err := rd.q.Query(`SELECT `+runCols+` FROM runs WHERE `+cond+` ORDER BY started_at, seq, id`, args...)
@@ -184,7 +184,7 @@ func (rd *reader) runs(cond string, args ...any) ([]runData, error) {
 		var x runData
 		var bg int
 		if err := rows.Scan(&x.id, &x.kind, &x.host, &x.session, &x.runHost, &x.agent, &x.role, &x.child, &x.parent, &x.step, &x.link, &x.cwd, &x.repo, &x.branch,
-			&x.model, &x.state, &x.endReason, &bg, &x.startedAt, &x.lastSeen, &x.finishedAt, &x.seq); err != nil {
+			&x.model, &x.state, &x.endReason, &bg, &x.startedAt, &x.lastSeen, &x.finishedAt, &x.seq, &x.cost); err != nil {
 			return nil, err
 		}
 		x.background = bg == 1
@@ -255,6 +255,12 @@ func runDoc(x runData) Run {
 	}
 	if r.StartedAt == "" {
 		r.StartedAt = Stamp(x.finishedAt)
+	}
+	if x.cost != "" {
+		var c Cost
+		if json.Unmarshal([]byte(x.cost), &c) == nil {
+			r.Cost = &c
+		}
 	}
 	return r
 }
@@ -345,7 +351,7 @@ func (rd *reader) derive(g *graph) (WorkHead, []Step, VerificationCounts) {
 	var vc VerificationCounts
 	steps := make([]Step, 0, len(g.steps))
 	for _, s := range g.steps {
-		st := Step{ID: s.id, Title: s.title, ActiveTitle: s.active, Order: s.ord, Wave: wave(s.id, 0), After: nonNilAfter(g.edges[s.id]),
+		st := Step{ID: s.id, Title: s.title, ActiveTitle: s.active, Detail: s.detail, Order: s.ord, Wave: wave(s.id, 0), After: nonNilAfter(g.edges[s.id]),
 			StartedAt: Stamp(s.startedAt), FinishedAt: Stamp(s.finishedAt), EvidenceIDs: []string{}, ChildWorkIDs: nonNil(g.kids[s.id])}
 		if s.native != "" {
 			st.Native = &Native{Kind: g.w.listKind, ID: s.native}
@@ -400,7 +406,7 @@ func (rd *reader) head(g *graph) WorkHead {
 	h := WorkHead{ID: w.id, Title: w.title, TitleSource: "ai", TitleUpdatedAt: Stamp(w.titleAt), State: "open", Cwd: w.cwd,
 		Origin:   Origin{Host: w.host, Surface: w.surface, Launcher: w.launcher, SessionID: w.session, List: ListRef{Kind: w.listKind}},
 		OpenedAt: Stamp(w.openedAt), UpdatedAt: Stamp(w.updatedAt), ClosedAt: Stamp(w.closedAt)}
-	if w.listKind == ListClaudeTask {
+	if w.listKind == ListClaudeTask || w.listKind == ListOrbitPiPlan {
 		h.Origin.List.ID = w.listID
 	}
 	if w.titleAt == 0 {
