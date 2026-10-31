@@ -30,6 +30,11 @@ type command struct {
 
 var errUsage = i18n.Err("cli.err.usage")
 
+// exitCode ends orb with a child's exit code without printing anything.
+type exitCode int
+
+func (c exitCode) Error() string { return "" }
+
 func commands() []command {
 	return []command{
 		{"version", "usage.version", cmdVersion},
@@ -50,6 +55,9 @@ func commands() []command {
 		{"ledger", "usage.ledger", cmdLedger},
 		{"inject", "usage.inject", cmdInject},
 		{"runtime", "usage.runtime", cmdRuntime},
+		{"work", "usage.work", cmdWork},
+		{"run", "usage.run", cmdRun},
+		{"profile", "usage.profile", cmdProfile},
 	}
 }
 
@@ -62,6 +70,10 @@ func (a *app) usage() {
 
 func (a *app) main(args []string) int {
 	i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), config.Language(paths().Config())))
+	if len(args) == 0 && zeroArgTUI(isTerminal(a.stdin), isTerminal(a.stdout)) {
+		// 터미널에서 인자 없이 부르면 orbit-pi TUI를 연다(설계 · OpenOrbit 4차 R4-5)
+		return a.exit("orb", a.orbitPi("tui", nil))
+	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		a.usage()
 		if len(args) == 0 {
@@ -77,6 +89,10 @@ func (a *app) main(args []string) int {
 		if err == nil {
 			return 0
 		}
+		var code exitCode
+		if errors.As(err, &code) {
+			return int(code)
+		}
 		if errors.Is(err, flag.ErrHelp) { // a.flags already printed the usage
 			return 2
 		}
@@ -90,6 +106,19 @@ func (a *app) main(args []string) int {
 	fmt.Fprintln(a.stderr, i18n.T("cli.unknown_command", args[0]))
 	a.usage()
 	return 2
+}
+
+// exit prints a command error and gives orb's exit code for it.
+func (a *app) exit(name string, err error) int {
+	var code exitCode
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &code):
+		return int(code)
+	}
+	fmt.Fprintln(a.stderr, name+": "+err.Error())
+	return 1
 }
 
 func (a *app) flags(name string) *flag.FlagSet {

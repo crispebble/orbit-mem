@@ -33,14 +33,14 @@ func scanWork(sc interface{ Scan(...any) error }) (workRow, error) {
 
 type stepData struct {
 	id, work, native, title, active, status, owner, declared, lastHost, lastSession, detail string
-	ord                                                                             int
-	declaredAt, interruptedAt, startedAt, finishedAt                                int64
+	ord                                                                                     int
+	declaredAt, interruptedAt, startedAt, finishedAt                                        int64
 }
 
 type runData struct {
 	id, kind, host, session, runHost, agent, role, child, parent, step, link, cwd, repo, branch, model, state, endReason, cost string
-	background                                                                                                           bool
-	startedAt, lastSeen, finishedAt, seq                                                                                 int64
+	background                                                                                                                 bool
+	startedAt, lastSeen, finishedAt, seq                                                                                       int64
 }
 
 type evData struct {
