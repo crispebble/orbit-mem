@@ -149,7 +149,7 @@ export interface ChangesResult {
 }
 
 // ---- Studio 플러그인 API 0.1.1에 더해진 것 중 이 폴더가 쓰는 좁은 모양 ----
-// 0.3.0 배포 후 지움: devDependency를 올리면 `@onidot-labs/studio-plugin`의 PluginContext를 그대로 쓴다.
+// 0.3.0 배포 후 지움: devDependency를 올리면 `@onidot-labs/orbit-studio-plugin`의 PluginContext를 그대로 쓴다.
 export type StudioScope = {kind: 'all'} | {kind: 'project'; id: string; name: string; directories: string[]};
 
 export interface McpResultLike<T = unknown> {

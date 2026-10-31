@@ -1,7 +1,7 @@
 // 기억 상세: 머리줄, 본문, 태그, 출처, 버전 이력, 대체 관계, 관련 기억(명시 연결).
 import type {ReactNode} from 'react';
 import {Archive, Brain, FileText, History, Link, Link2, Merge, MessageSquareQuote, Pencil, Quote, Sparkles, Terminal, TriangleAlert} from 'lucide-react';
-import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
+import {AgentTimeline} from '@onidot-labs/orbit-studio-plugin/ai';
 import {useMessages} from '../i18n/index.ts';
 import {memoryText} from '../i18n/messages/memory.ts';
 import {ActionFeedback, Frame, useAction} from './shared.tsx';

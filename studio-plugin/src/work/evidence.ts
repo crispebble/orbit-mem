@@ -1,5 +1,5 @@
 // 단계 상세의 증거·실행 표시와 사용자 확인 기다림 때 이어 갈 세션 찾기(순수 함수).
-import type {FlowGraphTone} from '@onidot-labs/studio-plugin/ai';
+import type {FlowGraphTone} from '@onidot-labs/orbit-studio-plugin/ai';
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import {hostLabel} from './graph.ts';

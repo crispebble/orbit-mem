@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@onidot-labs/studio-plugin": "0.21.0",
+    "@onidot-labs/orbit-studio-plugin": "0.24.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

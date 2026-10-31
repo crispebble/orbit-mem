@@ -2,8 +2,8 @@
 // 이유: 칸 하나하나가 orbit.work 계약의 뜻(막힘 사유·검증·실행·커밋)이라 OpenOrbit 도메인이다(설계 「Forma 2차」 묶음 5).
 import type {ReactNode} from 'react';
 import {X} from 'lucide-react';
-import type {PluginContext} from '@onidot-labs/studio-plugin';
-import {Badge, Button, IconButton, PropertyList, TextLink} from '@onidot-labs/studio-plugin/ui';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
+import {Badge, Button, IconButton, PropertyList, TextLink} from '@onidot-labs/orbit-studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workText, workUiText} from '../i18n/messages/work.ts';
 import {blockText, formatTime, runStateView, stepStatusView, verificationBadge} from '../work/display.ts';

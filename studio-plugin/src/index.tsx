@@ -1,5 +1,5 @@
-import {definePlugin} from '@onidot-labs/studio-plugin';
-import type {InboxDetailProps, InboxItem, TabProps} from '@onidot-labs/studio-plugin';
+import {definePlugin} from '@onidot-labs/orbit-studio-plugin';
+import type {InboxDetailProps, InboxItem, TabProps} from '@onidot-labs/orbit-studio-plugin';
 import './index.css';
 import './parts/parts.css';
 import './work-ui/work.css';

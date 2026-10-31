@@ -1,8 +1,8 @@
 // 사이드바 「작업」 보기: 한 줄에 제목·진행·상태 칩·시작한 호스트. 기본은 열린 작업과 「끝남 · 확인 전」, 하위 작업은 상위 아래에 묶는다.
 import {useState, type ReactNode} from 'react';
 import {ListChecks} from 'lucide-react';
-import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Badge, Button, StateView, InboxItem, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import type {ViewProps} from '@onidot-labs/orbit-studio-plugin';
+import {Badge, Button, StateView, InboxItem, SegmentedControl} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useMessages} from '../i18n/index.ts';
 import {workUiText} from '../i18n/messages/work.ts';
 import {groupWorks, progressOf, workStateView, type WorkNode} from '../work/display.ts';

@@ -1,5 +1,5 @@
 // 묶음 결정 흐름: 확인 창 → proposal_decide ids → 결과 알림. React에 기대지 않아 ctx만으로 시험한다.
-import type {PluginContext} from '@onidot-labs/studio-plugin';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {pick} from './i18n/index.ts';
 import {proposalText} from './i18n/messages/proposals.ts';
 import {errorMessage} from './orb.ts';

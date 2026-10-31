@@ -1,9 +1,9 @@
 // 세션 탭: work_sessions({sessionId}) 한 번으로 머리·호출 계보·연결된 작업·증거·바뀐 파일·대화 기록 위치·사건 기록을 그린다.
 // 호출 계보는 forma-ui Tree로, 사건 기록은 forma-ai AgentTimeline으로 조립한다(계보 부품은 Forma에 두지 않기로 함, ONID-26).
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
-import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
-import {Badge, Button, StateView, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/studio-plugin/ui';
+import type {PluginContext, TabProps} from '@onidot-labs/orbit-studio-plugin';
+import {AgentTimeline} from '@onidot-labs/orbit-studio-plugin/ai';
+import {Badge, Button, StateView, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/orbit-studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workKitText, workText, workUiText} from '../i18n/messages/work.ts';
 import {errorMessage} from '../orb.ts';

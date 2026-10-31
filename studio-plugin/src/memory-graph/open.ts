@@ -1,6 +1,6 @@
 // 기억 그래프 탭 열기. 탭은 하나만 연다(같은 id면 이미 열린 탭으로 간다).
 // 이미 열린 탭은 open의 params를 다시 받지 않으므로, 고를 기억은 여기 남겨 두고 탭이 받아 간다.
-import type {PluginContext} from '@onidot-labs/studio-plugin';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {pick} from '../i18n/index.ts';
 import {graphText} from '../i18n/messages/graph.ts';
 

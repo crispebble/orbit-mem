@@ -1,7 +1,7 @@
 // memory 탭: 기억 보기, 고치기, 상태 바꾸기
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import type {TabProps} from '@onidot-labs/studio-plugin';
-import {Button, StateView} from '@onidot-labs/studio-plugin/ui';
+import type {TabProps} from '@onidot-labs/orbit-studio-plugin';
+import {Button, StateView} from '@onidot-labs/orbit-studio-plugin/ui';
 import {pick, useLocale, useMessages} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {memoryText} from './i18n/messages/memory.ts';

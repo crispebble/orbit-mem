@@ -2,7 +2,7 @@
 // 글은 영역마다 messages/<영역>.ts에 en·ko 사전으로 둔다. ko는 en과 같은 모양이어야 한다(타입이 확인).
 // 사용자가 쓴 내용(기억·제안 본문, 작업 제목)과 orb가 돌려준 데이터는 번역하지 않는다.
 import {useSyncExternalStore} from 'react';
-import type {StudioLocale} from '@onidot-labs/studio-plugin';
+import type {StudioLocale} from '@onidot-labs/orbit-studio-plugin';
 
 export type Locale = StudioLocale;
 

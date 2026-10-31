@@ -1,6 +1,6 @@
 // 세션 보기의 표시 모델(순수 함수): 세션 줄(Forma `SessionRow` props), 호출 계보(forma-ui `Tree`에 넣을 나무),
 // 사건 기록(forma-ai `AgentTimeline` events), 사용자 확인 기다림 때 세션으로 가는 길.
-import type {AgentTimelineEvent, SessionRowProps} from '@onidot-labs/studio-plugin/ai';
+import type {AgentTimelineEvent, SessionRowProps} from '@onidot-labs/orbit-studio-plugin/ai';
 import {localeTag, pick} from '../i18n/index.ts';
 import {workKitText, workText} from '../i18n/messages/work.ts';
 import {runStateView, sessionStateView} from './display.ts';

@@ -1,6 +1,6 @@
 // 「담당별」 보조 보기: 단계를 담당(assignee)으로 묶어 forma-ai `AgentOrchestrator`의 workers로 바꾼다.
 // 기본 보기는 선행 관계를 그리는 그래프이고, 이 보기는 누가 무엇을 맡았는지만 보인다(설계 S4-2).
-import type {AgentWorker} from '@onidot-labs/studio-plugin/ai';
+import type {AgentWorker} from '@onidot-labs/orbit-studio-plugin/ai';
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import {blockText} from './display.ts';

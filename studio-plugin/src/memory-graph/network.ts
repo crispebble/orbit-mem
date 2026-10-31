@@ -3,7 +3,7 @@
 // 전체의 1% 이상인 태그까지 + 그 밖. 개수 상한은 두지 않는다, 2026-10-30 사용자 결정),
 // 옛 Knowledge 표식 태그는 클러스터·같은 태그 선에서 뺀다, 종류는 모양이 아니라 설명(말풍선)으로, 색은 클러스터.
 // 부품 타입은 Studio 플러그인 API `/graph`(forma-ui `/graph`를 다시 내보냄)에서 받는다. 플러그인은 Forma를 직접 가져오지 않는다.
-import type {NetworkCluster, NetworkEdge, NetworkNode, NetworkOverlay, NetworkRelation} from '@onidot-labs/studio-plugin/graph';
+import type {NetworkCluster, NetworkEdge, NetworkNode, NetworkOverlay, NetworkRelation} from '@onidot-labs/orbit-studio-plugin/graph';
 import {pick} from '../i18n/index.ts';
 import {graphText} from '../i18n/messages/graph.ts';
 import {memoryText} from '../i18n/messages/memory.ts';

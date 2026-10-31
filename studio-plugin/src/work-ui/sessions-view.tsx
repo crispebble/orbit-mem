@@ -1,8 +1,8 @@
 // 사이드바 「세션」 보기: 메인 세션 단위 한 줄(forma-ai SessionRow). 기본은 끝나지 않은 세션, 「전체」는 끝난 세션도.
 import {useMemo, useState, type KeyboardEvent} from 'react';
-import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {SessionRow} from '@onidot-labs/studio-plugin/ai';
-import {StateView, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import type {ViewProps} from '@onidot-labs/orbit-studio-plugin';
+import {SessionRow} from '@onidot-labs/orbit-studio-plugin/ai';
+import {StateView, SegmentedControl} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useMessages} from '../i18n/index.ts';
 import {workUiText} from '../i18n/messages/work.ts';
 import {sessionRowProps} from '../work/session-view.ts';

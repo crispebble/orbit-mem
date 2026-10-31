@@ -1,7 +1,7 @@
 // 제안 상세: proposal 탭과 받은 일 상세가 함께 쓴다.
 import {useEffect, useMemo, useState} from 'react';
-import type {PluginContext} from '@onidot-labs/studio-plugin';
-import {StateView, Label} from '@onidot-labs/studio-plugin/ui';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
+import {StateView, Label} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useLocale, useMessages} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {proposalText} from './i18n/messages/proposals.ts';
