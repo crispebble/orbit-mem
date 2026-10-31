@@ -1,78 +1,10 @@
 // 뒤쪽 프로세스(데몬 클라이언트): 가짜 데몬(진짜 Connect 서버)과 가짜 orb(셸 스크립트), 임시 ORBIT_HOME으로 시험한다.
 import assert from 'node:assert/strict';
-import {afterEach, describe, it} from 'node:test';
+import {describe, it} from 'node:test';
 import {Code, ConnectError} from '@connectrpc/connect';
 import {DAEMON_METHODS, type DaemonEvent, type DaemonStatus} from '../src/daemon/api.ts';
-import {TOKEN_SECRET, createDaemonBackend} from '../src/backend/service.ts';
-import {fakeDaemon, fakeHome, type FakeDaemon, type FakeHome} from './fake-daemon.ts';
-
-const TOKEN = 'tok-secret-0123456789';
-const call = {signal: new AbortController().signal};
-
-async function until(check: () => boolean, what = 'condition', ms = 4000) {
-  const end = Date.now() + ms;
-  while (!check()) {
-    if (Date.now() > end) assert.fail(`timed out: ${what}`);
-    await new Promise(r => setTimeout(r, 10));
-  }
-}
-
-const cleanups: (() => Promise<void> | void)[] = [];
-afterEach(async () => {
-  while (cleanups.length) await cleanups.pop()!();
-});
-
-interface Rig {
-  home: FakeHome;
-  daemon: FakeDaemon;
-  secrets: Map<string, string>;
-  emitted: {event: string; payload: unknown}[];
-  logs: string[];
-  statuses(): DaemonStatus[];
-  events(): DaemonEvent[];
-  backend: ReturnType<typeof createDaemonBackend>;
-  m<T = any>(name: string, params?: unknown): Promise<T>;
-  everything(): string;
-}
-
-async function rig(opts: {paired?: boolean; published?: boolean; secretsSet?: boolean; lastSeq?: number; pollMs?: number} = {}): Promise<Rig> {
-  const home = fakeHome();
-  const daemon = await fakeDaemon({lastSeq: opts.lastSeq ?? 0});
-  daemon.tokens.add(TOKEN);
-  home.issue(TOKEN);
-  home.startsAt(daemon.url);
-  if (opts.published ?? true) home.publish(daemon.url);
-  const secrets = new Map<string, string>();
-  if (opts.paired) secrets.set(TOKEN_SECRET, TOKEN);
-  const emitted: Rig['emitted'] = [];
-  const logs: string[] = [];
-  const backend = createDaemonBackend({
-    secrets: {
-      get: async n => secrets.get(n) ?? null,
-      ...(opts.secretsSet === false ? {} : {set: async (n: string, v: string) => void secrets.set(n, v), delete: async (n: string) => void secrets.delete(n)}),
-    },
-    emit: (event, payload) => void emitted.push({event, payload}),
-    log: {info: m => void logs.push(m), warn: m => void logs.push(m), error: m => void logs.push(m)},
-    env: home.env,
-    pollMs: opts.pollMs ?? 30,
-    backoffMs: {min: 20, max: 80},
-    startTimeoutMs: 10_000,
-  });
-  cleanups.push(async () => {
-    await backend.stop();
-    await daemon.close();
-    home.cleanup();
-  });
-  const r: Rig = {
-    home, daemon, secrets, emitted, logs, backend,
-    statuses: () => emitted.filter(e => e.event === 'daemon.status').map(e => e.payload as DaemonStatus),
-    events: () => emitted.filter(e => e.event === 'daemon.event').map(e => e.payload as DaemonEvent),
-    m: (name, params) => Promise.resolve(backend.methods[name](params, call)) as never,
-    // 창·로그·사건·결과로 나간 모든 글
-    everything: () => JSON.stringify([emitted, logs]),
-  };
-  return r;
-}
+import {TOKEN_SECRET} from '../src/backend/service.ts';
+import {rig, TOKEN, until} from './backend-rig.ts';
 
 describe('뒤쪽: 찾기와 상태', () => {
   it('status는 데몬을 띄우지 않는다: daemon.json이 없으면 down이고 orb를 부르지 않는다', async () => {

@@ -37,6 +37,17 @@ interface WorkProviderLike {
   list(signal: AbortSignal): Promise<readonly HomeWorkItem[]>;
   subscribe?(onChange: () => void): () => void;
   detail?(id: string, signal: AbortSignal): Promise<HomeWorkDetail | null>;
+  /** 플러그인 API 0.1.27: 지도에서 작업을 열라는 요청(작업 대화를 연다) */
+  open?(id: string): void | Promise<void>;
+  /** 플러그인 API 0.1.27: 지도에서 새 일을 시키라는 요청(작성 중인 글로 작업 대화를 연다) */
+  compose?(input: {text: string; cwd?: string}): void | Promise<void>;
+}
+
+/** 작업 대화를 여는 쪽(Studio 4차 S4-5, C1). 데몬 실행을 찾는 일과 대화 창 열기를 index.tsx가 이어 준다. */
+export interface WorkChatHooks {
+  /** 작업(또는 `session:` 노드)에 해당하는 데몬 실행의 id. 데몬이 없거나 모르면 undefined */
+  runFor(target: {workId?: string; sessionId?: string}): Promise<string | undefined>;
+  open(target: {kind: 'run'; runId: string} | {kind: 'work'; workId: string; cwd?: string} | {kind: 'compose'; text: string; cwd?: string}): void;
 }
 type ProviderStore = Pick<WorkStore, 'getState' | 'subscribe' | 'ensureDetails' | 'loadDetail'>;
 
@@ -152,7 +163,7 @@ interface CardRefsSource {
 }
 
 /** Studio에 작업 공급자를 등록한다. ctx.work가 없는 옛 Studio에서는 아무것도 하지 않는다. 돌려받은 함수로 뺀다. */
-export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProviderLike): () => void}}, store: ProviderStore, cards?: CardRefsSource): () => void {
+export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProviderLike): () => void}}, store: ProviderStore, cards?: CardRefsSource, chat?: WorkChatHooks): () => void {
   const work = ctx.work;
   if (!work || typeof work.provide !== 'function') return () => {};
   return work.provide({
@@ -172,5 +183,27 @@ export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProvide
       return () => { offWork(); offCards?.(); };
     },
     detail: id => providerDetail(store, id),
+    // 작업 대화가 없는 Studio(API 0.1.27 전)나 데몬 클라이언트가 없으면 두 훅을 주지 않는다: Studio는 열기·새 일 시키기를 보이지 않는다
+    ...(chat ? chatHooks(store, chat) : {}),
   });
+}
+
+/** open/compose: 해당 데몬 실행이 있으면 그 실행의 대화, 없으면 작업을 이어 하는 대화(`--resume`), compose는 작성 중인 글 */
+function chatHooks(store: Pick<WorkStore, 'getState'>, chat: WorkChatHooks): Pick<WorkProviderLike, 'open' | 'compose'> {
+  return {
+    async open(id) {
+      if (id.startsWith(SESSION_PREFIX)) {
+        const runId = await chat.runFor({sessionId: id.slice(SESSION_PREFIX.length)}).catch(() => undefined);
+        if (runId) chat.open({kind: 'run', runId});
+        return;
+      }
+      const runId = await chat.runFor({workId: id}).catch(() => undefined);
+      if (runId) return chat.open({kind: 'run', runId});
+      const cwd = store.getState().works.find(w => w.id === id)?.cwd;
+      chat.open({kind: 'work', workId: id, ...(cwd ? {cwd} : {})});
+    },
+    compose({text, cwd}) {
+      chat.open({kind: 'compose', text, ...(cwd ? {cwd} : {})});
+    },
+  };
 }
