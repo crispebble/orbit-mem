@@ -1,0 +1,70 @@
+{
+  "args": {
+    "sessionId": "S1"
+  },
+  "result": {
+    "contract": {
+      "major": 1,
+      "minor": 0,
+      "name": "orbit.decision",
+      "supportedMajors": [
+        1
+      ]
+    },
+    "items": [
+      {
+        "createdAt": "2026-10-28T06:00:00.000Z",
+        "id": "d-3f2a9c1e7b04",
+        "links": [],
+        "owner": "human",
+        "questions": [
+          {
+            "header": "방식",
+            "multiSelect": false,
+            "options": [
+              {
+                "id": "1",
+                "label": "가"
+              },
+              {
+                "id": "2",
+                "label": "나"
+              }
+            ],
+            "text": "어느 쪽으로 할까요?"
+          },
+          {
+            "header": "기능",
+            "multiSelect": true,
+            "options": [
+              {
+                "id": "1",
+                "label": "A"
+              },
+              {
+                "id": "2",
+                "label": "B"
+              }
+            ],
+            "text": "무엇을 켤까요?"
+          }
+        ],
+        "source": "question",
+        "state": "open",
+        "updatedAt": "2026-10-28T06:00:00.000Z",
+        "work": {
+          "host": "claude",
+          "sessionId": "S1",
+          "stepId": "st-5c8afa54426b",
+          "waitKey": "k-ask",
+          "workId": "w-fc12c7c04917"
+        }
+      }
+    ],
+    "limitMax": 200,
+    "seq": "gzgiDwAAAAAAAAAT",
+    "total": 1,
+    "truncated": false
+  },
+  "tool": "decision_list"
+}

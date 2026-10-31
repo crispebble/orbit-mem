@@ -26,15 +26,19 @@ type WorkOptions struct {
 }
 
 const readerInstructions = `OpenOrbit 기록을 읽는다. 작업 기록(orbit.work 1판)은 work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
+결정 카드(orbit.decision 1판)는 decision_list·decision_get으로 읽고 decision_changes로 기다리며, 사용자의 답은 decision_answer로 넘긴다.
 기억 그래프(orbit.memory 1판)는 memory_graph로 읽는다.
 응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id·seq·커서는 받은 그대로 돌려준다.`
 
-// NewReader is orb mcp --reader: read tools for readers such as Studio — the
-// four work tools and memory_graph. It has no memory write tools and no
-// work_title. memDB is opened on the first memory_graph call.
+// NewReader is orb mcp --reader: tools for apps such as Orbit Studio and
+// orbit-pi — the four work tools, the decision card tools and memory_graph.
+// It has no memory write tools and no work_title. memDB is opened on the
+// first memory_graph call.
 func NewReader(wo WorkOptions, memDB, version string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
-	addWorkTools(srv, newWorkTools(wo, true))
+	w := newWorkTools(wo, true)
+	addWorkTools(srv, w)
+	addDecisionTools(srv, w)
 	addMemoryGraphTool(srv, &memoryGraphTool{path: memDB})
 	return srv
 }
@@ -134,6 +138,7 @@ type callError struct {
 	Field      string    `json:"field,omitempty"`
 	Supported  []int     `json:"supportedMajors,omitempty"`
 	Candidates *[]string `json:"candidates,omitempty"` // AMBIGUOUS_WORK에는 빈 배열이라도 둔다
+	Decision   any       `json:"decision,omitempty"`   // orbit.decision CONFLICT: 지금의 카드
 }
 
 func (e *callError) Error() string { return e.Code + ": " + e.Message }

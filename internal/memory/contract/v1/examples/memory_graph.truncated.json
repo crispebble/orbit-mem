@@ -12,7 +12,7 @@
     "contract": {
       "name": "orbit.memory",
       "major": 1,
-      "minor": 2,
+      "minor": 3,
       "supportedMajors": [
         1
       ]
@@ -31,7 +31,11 @@
           "측정"
         ],
         "createdAt": "2026-10-29T08:31:00.000Z",
-        "updatedAt": "2026-10-29T08:40:00.000Z"
+        "updatedAt": "2026-10-29T08:40:00.000Z",
+        "importance": 0.779,
+        "sourceKinds": [
+          "session"
+        ]
       },
       {
         "id": "m-718293a4b5c6",
@@ -45,7 +49,11 @@
           "측정"
         ],
         "createdAt": "2026-10-29T08:30:00.000Z",
-        "updatedAt": "2026-10-29T08:35:00.000Z"
+        "updatedAt": "2026-10-29T08:35:00.000Z",
+        "importance": 0.808,
+        "sourceKinds": [
+          "session"
+        ]
       }
     ],
     "edges": [],

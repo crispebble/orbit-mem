@@ -7,7 +7,7 @@
     "contract": {
       "name": "orbit.work",
       "major": 1,
-      "minor": 0,
+      "minor": 1,
       "supportedMajors": [
         1
       ]
@@ -27,6 +27,7 @@
       "origin": {
         "host": "claude",
         "surface": "cli",
+        "launcher": "human",
         "sessionId": "4f9c2e1a-8b7d-4c3e-9a1f-2b6d8e0c5a71",
         "list": {
           "kind": "claude-task",

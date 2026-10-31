@@ -118,6 +118,8 @@
   "decision.unlinked": "Removed link %s.",
   "flag.count": "how many",
   "flag.hook.skip_lists": "leave list tools to the synchronous hook and do not record them",
+  "flag.hook.runtime": "orbit-pi only: the runtime that started this session calls the hook itself (ORBIT_RUNTIME=orbit-pi turns the plugin hooks off)",
+  "flag.hook.launcher": "with --runtime: who asked orbit-pi for the session (studio, telegram, workflow…); default ORBIT_LAUNCHER or orbit-pi",
   "flag.install.apply_target": "file or directory retrospectives may propose changes to (repeatable)",
   "flag.install.bin_dir": "directory to put orb in",
   "flag.install.dry_run": "only show what would be done",

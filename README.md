@@ -10,8 +10,8 @@ PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·C
 | --- | --- |
 | `orb install` | `orb`를 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고(옛 이름 `oni`는 당분간 같은 자리에 `orb`의 별칭으로 둔다), OpenOrbit 플러그인을 이 PC의 경로로 빌드해 두 호스트의 로컬 마켓에 등록하고(Codex 역할 파일은 `~/.codex/agents/orbit-*.toml`로 복사), 회고 예약(launchd·작업 스케줄러)을 건다. `--plugin-source <원본>`을 주면 내장 원본 대신 그 디렉터리로 빌드한다 |
 | `orb doctor` | 기억 수, 대기 제안, 호스트 등록, 예약, 최근 회고·백업 |
-| `orb mcp [--reader]` | 호스트가 띄우는 MCP 서버. 기억 도구 6개 `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`(`memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다)와 작업 도구 `work_list`, `work_get`, `work_title`. `--reader`는 Orbit Studio 같은 읽는 쪽 전용으로 `work_list`·`work_get`·`work_sessions`·`work_changes`와 기억 그래프 `memory_graph`만 연다(계약 `internal/work/contract/v1`, `internal/memory/contract/v1`) |
-| `orb hook session-start\|prompt\|session-end` | 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 순위대로(작업 회상), 세션이 끝나면 세션 끝 회고 대기열에 넣고 `orb retro sessions`를 뒤에서 띄운다 |
+| `orb mcp [--reader]` | 호스트가 띄우는 MCP 서버. 기억 도구 6개 `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`(`memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다)와 작업 도구 `work_list`, `work_get`, `work_title`. `--reader`는 Orbit Studio·orbit-pi 같은 앱 전용으로 `work_list`·`work_get`·`work_sessions`·`work_changes`, 결정 카드 `decision_list`·`decision_get`·`decision_changes`·`decision_open`·`decision_answer`·`decision_withdraw`, 기억 그래프 `memory_graph`를 연다(계약 `internal/work/contract/v1`, `internal/decision/contract/v1`, `internal/memory/contract/v1`) |
+| `orb hook session-start\|prompt\|session-end\|work` | 질문 도구(AskUserQuestion·request_user_input)는 결정 카드(`orbit.decision`)로 열고 닫는다. orbit-pi가 띄운 세션(`ORBIT_RUNTIME=orbit-pi`)에서는 플러그인 훅이 아무것도 하지 않고, orbit-pi가 `--runtime orbit-pi --launcher <studio·telegram·workflow>`로 부른 것만 기록한다. 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 순위대로(작업 회상), 세션이 끝나면 세션 끝 회고 대기열에 넣고 `orb retro sessions`를 뒤에서 띄운다 |
 | `orb retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일, 근거 파일이 바뀐 기억 판정 포함), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
 | `orb retro sessions` | 세션 끝 회고 대기열을 비운다(세션 종료 훅이 부른다). 다른 회고가 돌고 있으면 바로 끝난다. 호스트가 로그인되어 있지 않으면(macOS 로그아웃·재시동 중 등) 남은 세션을 대기열에 두고 멈추며, 다음 세션 끝이나 예약 회고가 다시 돌린다 |
 | `orb retro legacy` | 옛 Knowledge·Claude 메모리에서 옮겨 온 기억(`imported:*`) 한 묶음(`legacyMemories`, 기본 30)을 대표 태그 클러스터별로 판정한다. 확정·합치기·낡음은 근거와 함께 제안으로, 그대로 둠은 사건으로 남는다. 예약 회고는 하루에 `legacyBatches` 묶음까지 돌리고, 모두 판정하면 멈춘다. 낡음 판정에 쓸 보관한 저장소·옛 이름은 `retiredNames`(쉼표로 구분)에 둔다 |
@@ -53,7 +53,9 @@ go build -o dist/orb ./cmd/orb
 | `internal/memory` | 기억 DB, 한글 검색 점수(옛 Knowledge 규칙), 후보·확정·낡음·숨김, 출처, 버전 이력, 제안, 쓰기 판정, 효과 원장(기록·판정·되돌리기) |
 | `internal/inject` | 훅이 넣는 세션 고정 묶음·작업 회상과 넣은 기억 id |
 | `internal/metrics` | 사건(`events` 표)·회고·제안으로 지표 계산. 새 지표는 사건 종류를 더한다 |
-| `internal/mcpserver` | MCP 도구 6개와 회고 전용 도구 |
+| `internal/mcpserver` | MCP 도구 6개, 작업·결정 카드·기억 그래프 계약 도구, 회고 전용 도구 |
+| `internal/work` | 작업 기록(`work.db`): 훅 사건 원장과 그래프, 결정 카드(`orbit.decision`) |
+| `internal/decision/contract` | 결정 카드 계약 |
 | `internal/transcript` | Claude·Codex 대화 기록에서 사용자 말과 AI 답만 추리기 |
 | `internal/retro` | 세션 끝·하루·주간 회고, 대기열과 읽은 발화 구간, 밀린 회고 따라잡기, 흡수, 주간 정리 재료, 제출 반영(쓰기·사용 판정, 교훈) |
 | `internal/migrate` | 옛 Knowledge 이전 |

@@ -73,6 +73,7 @@ type SessionStart struct {
 	Transcript string     `json:"transcript,omitempty"`
 	ListID     string     `json:"listId,omitempty"` // CLAUDE_CODE_TASK_LIST_ID
 	Parent     *ParentRef `json:"parent,omitempty"`
+	Launcher   string     `json:"launcher,omitempty"` // 세션을 띄운 쪽(계약 origin.launcher)
 }
 
 // ParentRef is ORBIT_PARENT: the session and step a child session works for.

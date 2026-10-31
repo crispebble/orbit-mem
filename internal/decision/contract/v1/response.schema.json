@@ -1,0 +1,670 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://onidot.dev/schemas/orbit.decision/1/response.schema.json",
+  "title": "orbit.decision 1.0 응답",
+  "description": "orb가 내는 1.0 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/decision_list"
+    },
+    {
+      "$ref": "#/$defs/decision_get"
+    },
+    {
+      "$ref": "#/$defs/decision_changes"
+    },
+    {
+      "$ref": "#/$defs/decision_open"
+    },
+    {
+      "$ref": "#/$defs/decision_answer"
+    },
+    {
+      "$ref": "#/$defs/decision_withdraw"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ],
+  "$defs": {
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "major",
+        "minor",
+        "supportedMajors"
+      ],
+      "properties": {
+        "name": {
+          "const": "orbit.decision"
+        },
+        "major": {
+          "const": 1
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supportedMajors": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1,
+          "contains": {
+            "const": 1
+          }
+        }
+      }
+    },
+    "ignoredArgs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "enum": [
+        "open",
+        "answered",
+        "withdrawn",
+        "expired"
+      ]
+    },
+    "source": {
+      "enum": [
+        "question",
+        "permission",
+        "ops",
+        "plugin"
+      ]
+    },
+    "owner": {
+      "enum": [
+        "orbit-pi",
+        "human",
+        "studio"
+      ]
+    },
+    "by": {
+      "enum": [
+        "studio",
+        "telegram",
+        "terminal",
+        "host",
+        "orbit-pi"
+      ]
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "multiSelect",
+        "options"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "header": {
+          "type": "string"
+        },
+        "multiSelect": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          }
+        },
+        "recommended": {
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "work",
+            "session",
+            "step",
+            "atlas",
+            "pr",
+            "memory",
+            "url"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "host": {
+          "enum": [
+            "claude",
+            "codex"
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/id"
+        },
+        "workId": {
+          "$ref": "#/$defs/id"
+        },
+        "stepId": {
+          "$ref": "#/$defs/id"
+        },
+        "waitKey": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      }
+    },
+    "answerItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "optionIds": {
+          "$ref": "#/$defs/ids"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answers",
+        "by",
+        "at"
+      ],
+      "properties": {
+        "answers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/answerItem"
+          }
+        },
+        "by": {
+          "$ref": "#/$defs/by"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "source",
+        "owner",
+        "questions",
+        "links",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/question"
+          }
+        },
+        "context": {
+          "type": "string"
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        },
+        "work": {
+          "$ref": "#/$defs/work"
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/time"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "closeReason": {
+          "type": "string"
+        },
+        "answer": {
+          "$ref": "#/$defs/answer"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "answered"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "answer",
+              "closedAt"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "answer"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "withdrawn"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "closedAt"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "expired"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "expiresAt"
+            ]
+          }
+        }
+      ]
+    },
+    "decision_list": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "items",
+        "total",
+        "truncated",
+        "limitMax"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decision"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "limitMax": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      }
+    },
+    "decision_get": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "decision"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      }
+    },
+    "decision_changes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "reset",
+        "more",
+        "waitMax"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "reset": {
+          "type": "boolean"
+        },
+        "more": {
+          "type": "boolean"
+        },
+        "waitMax": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decisionIds": {
+          "$ref": "#/$defs/ids"
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      },
+      "if": {
+        "properties": {
+          "reset": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "more": {
+            "const": false
+          }
+        },
+        "not": {
+          "required": [
+            "decisionIds"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "decisionIds"
+        ]
+      }
+    },
+    "decision_open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "decision"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      }
+    },
+    "decision_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "decision"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      }
+    },
+    "decision_withdraw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "seq",
+        "decision"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "seq": {
+          "$ref": "#/$defs/id"
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "ignoredArgs": {
+          "$ref": "#/$defs/ignoredArgs"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "error"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "#/$defs/contract"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "enum": [
+                "UNSUPPORTED_MAJOR",
+                "INVALID_ARGUMENT",
+                "NOT_FOUND",
+                "CONFLICT",
+                "CANNOT_RELAY",
+                "UNAVAILABLE"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "supportedMajors": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "decision": {
+              "$ref": "#/$defs/decision"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "code": {
+                    "const": "UNSUPPORTED_MAJOR"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "supportedMajors"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "code": {
+                    "const": "CONFLICT"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "decision"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
