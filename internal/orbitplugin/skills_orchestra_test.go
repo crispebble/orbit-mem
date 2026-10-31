@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/orbit-mem/internal/pluginbuild"
 )
 
 // 오케스트레이터 스킬(설계 · OpenOrbit 4차 R4-5): 이름과 호출 방식은 널리 쓰이는 키워드·명령을 따르고

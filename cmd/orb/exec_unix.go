@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"syscall"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // execOrbitPi replaces orb with node so orbit-pi's TUI gets the terminal as it is.

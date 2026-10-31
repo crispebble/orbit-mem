@@ -14,16 +14,16 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/inject"
-	"github.com/onidot-labs/openorbit/internal/mcpserver"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/project"
-	"github.com/onidot-labs/openorbit/internal/retro"
-	"github.com/onidot-labs/openorbit/internal/version"
-	"github.com/onidot-labs/openorbit/internal/work"
-	"github.com/onidot-labs/openorbit/internal/work/hook"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/inject"
+	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/onidot-labs/orbit-mem/internal/retro"
+	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/onidot-labs/orbit-mem/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work/hook"
 )
 
 func paths() config.Paths { return config.Paths{Home: config.Home()} }

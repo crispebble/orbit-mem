@@ -22,12 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/orbitplugin"
-	"github.com/onidot-labs/openorbit/internal/pluginbuild"
-	"github.com/onidot-labs/openorbit/internal/retro"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/orbitplugin"
+	"github.com/onidot-labs/orbit-mem/internal/pluginbuild"
+	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
 // Candidates.

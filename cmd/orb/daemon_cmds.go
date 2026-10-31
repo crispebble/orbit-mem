@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/install"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/install"
 )
 
 // cmdDaemon runs the orbit-pi daemon (설계 · OpenOrbit 4차 R4-4, D2). Login

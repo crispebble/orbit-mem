@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // Decision cards (orbit.decision 1판, 설계 · Studio 4차 「결정 카드 계약」). A card

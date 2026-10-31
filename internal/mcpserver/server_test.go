@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 func connect(t *testing.T) (*mcp.ClientSession, *memory.Store) {

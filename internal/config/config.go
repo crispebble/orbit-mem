@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).

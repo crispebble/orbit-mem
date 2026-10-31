@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/install"
-	"github.com/onidot-labs/openorbit/internal/version"
+	"github.com/onidot-labs/orbit-mem/internal/install"
+	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
 // 명세 · ONID-107: orb install은 orb를 깔고, 4차 동안 같은 바이너리를 가리키는 oni 별칭을 둔다.

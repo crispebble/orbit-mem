@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // DaemonLabel names the launchd agent that starts the orbit-pi daemon at login

@@ -6,11 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/inject"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/orbitpi"
-	"github.com/onidot-labs/openorbit/internal/project"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/inject"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/orbitpi"
+	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
 // cmdInject gives orbit-pi the memory context the hooks give a host: the session bundle or the

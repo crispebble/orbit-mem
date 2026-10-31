@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	dcontract "github.com/onidot-labs/openorbit/internal/decision/contract"
-	"github.com/onidot-labs/openorbit/internal/work"
+	dcontract "github.com/onidot-labs/orbit-mem/internal/decision/contract"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 var decisionContract = contractInfo{Name: dcontract.Name, Major: dcontract.Major, Minor: dcontract.Minor, Supported: dcontract.SupportedMajors}

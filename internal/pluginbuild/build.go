@@ -29,7 +29,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // Manifest is the source plugin.json.

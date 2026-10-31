@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 func TestOpen_깨진_파일_오류는_언어를_따른다(t *testing.T) {

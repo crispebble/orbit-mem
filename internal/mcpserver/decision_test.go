@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	dcontract "github.com/onidot-labs/openorbit/internal/decision/contract"
-	"github.com/onidot-labs/openorbit/internal/work"
+	dcontract "github.com/onidot-labs/orbit-mem/internal/decision/contract"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // decisionCall calls a decision tool, checks the response against the

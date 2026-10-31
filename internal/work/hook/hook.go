@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // Git reads the repository facts evidence and runs carry.

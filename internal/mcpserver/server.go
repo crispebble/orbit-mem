@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/project"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
 // Options says where the server runs.

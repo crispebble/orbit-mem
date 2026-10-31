@@ -3,7 +3,7 @@ package work
 import (
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // Text limits. Titles and summaries are plain one-line text with secrets masked.

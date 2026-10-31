@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 func probeInput(t *testing.T, name string) string {

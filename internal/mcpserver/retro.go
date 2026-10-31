@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/retro"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
 // NewRetro is the server a headless retrospective talks to: it reads memories,

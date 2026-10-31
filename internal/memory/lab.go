@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // The harness lab's records (명세 · Orbit 3차 O3-5 「기록」). The answers and

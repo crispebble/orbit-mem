@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/orbit-mem/internal/pluginbuild"
 )
 
 // WriteRoles writes the role sources orbit-pi reads (ORBIT_ROLES_DIR, 설계 · OpenOrbit 4차

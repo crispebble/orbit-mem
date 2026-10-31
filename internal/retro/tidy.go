@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // KindTidy is a retrospective that only tidies the memory graph (orb retro tidy).

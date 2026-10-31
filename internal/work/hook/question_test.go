@@ -3,7 +3,7 @@ package hook
 import (
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // 모양은 이 PC 대화 기록의 AskUserQuestion tool_use 입력과 toolUseResult(Claude Code 2.1.303)를 따른다.

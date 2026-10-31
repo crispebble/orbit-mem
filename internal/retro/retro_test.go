@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	"github.com/onidot-labs/openorbit/internal/transcript"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
 var kst = time.FixedZone("KST", 9*3600)

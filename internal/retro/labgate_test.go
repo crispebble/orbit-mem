@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // 명세 · O3-5 「스킬 제안과 승인 흐름」: 회고가 낸 하네스(플러그인 원본 스킬·역할·분야 묶음) 파일 반영 제안은

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // KindLegacy is a retrospective that judges memories moved from the old

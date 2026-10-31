@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 type injected struct {

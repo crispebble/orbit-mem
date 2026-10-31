@@ -466,7 +466,7 @@ func TestNoNetworkDependency(t *testing.T) {
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Fields(line)
-		if len(f) == 0 || !strings.HasPrefix(f[0], "github.com/onidot-labs/openorbit/") {
+		if len(f) == 0 || !strings.HasPrefix(f[0], "github.com/onidot-labs/orbit-mem/") {
 			continue
 		}
 		for _, imp := range f[1:] {

@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/mcpserver"
-	"github.com/onidot-labs/openorbit/internal/project"
-	"github.com/onidot-labs/openorbit/internal/work"
-	"github.com/onidot-labs/openorbit/internal/work/hook"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
+	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/onidot-labs/orbit-mem/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work/hook"
 )
 
 // cmdWork is orbit-pi's door to orbit.work (설계 · OpenOrbit 4차 R4-5): emit writes the

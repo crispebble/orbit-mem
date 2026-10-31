@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/memory"
-	memcontract "github.com/onidot-labs/openorbit/internal/memory/contract"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
+	memcontract "github.com/onidot-labs/orbit-mem/internal/memory/contract"
 )
 
 var memoryContract = contractInfo{Name: memcontract.Name, Major: memcontract.Major, Minor: memcontract.Minor, Supported: memcontract.SupportedMajors}
