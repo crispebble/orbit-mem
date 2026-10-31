@@ -7,7 +7,7 @@
   "styles": [
     "dist/index.css"
   ],
-  "description": "View OpenOrbit memories, the memory graph, proposals, and AI work graphs and sessions in Orbit Studio.",
+  "description": "View OpenOrbit memories, the memory graph and proposals in Orbit Studio, and put AI work on the Orbit Studio home map.",
   "apps": [
     {
       "id": "orbit",
@@ -23,14 +23,6 @@
         {
           "id": "memories",
           "title": "Memories"
-        },
-        {
-          "id": "works",
-          "title": "Work"
-        },
-        {
-          "id": "sessions",
-          "title": "Sessions"
         }
       ]
     }
@@ -69,14 +61,6 @@
     {
       "id": "orbit.proposals",
       "title": "Show proposals"
-    },
-    {
-      "id": "orbit.works",
-      "title": "Show work"
-    },
-    {
-      "id": "orbit.sessions",
-      "title": "Show sessions"
     }
   ],
   "inbox": true,
@@ -101,23 +85,19 @@
   },
   "locales": {
     "ko": {
-      "description": "OpenOrbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Orbit Studio에서 봅니다.",
+      "description": "OpenOrbit 기억·기억 그래프·제안을 Orbit Studio에서 보고, AI 작업을 Orbit Studio 홈 작업 지도에 올립니다.",
       "apps": {
         "orbit": {
           "views": {
             "proposals": "제안",
-            "memories": "기억",
-            "works": "작업",
-            "sessions": "세션"
+            "memories": "기억"
           }
         }
       },
       "commands": {
         "orbit.find": "기억 찾기",
         "orbit.memory-graph": "기억 그래프 보기",
-        "orbit.proposals": "제안 보기",
-        "orbit.works": "작업 보기",
-        "orbit.sessions": "세션 보기"
+        "orbit.proposals": "제안 보기"
       }
     }
   }

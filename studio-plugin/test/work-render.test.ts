@@ -81,9 +81,6 @@ describe('작업 탭', () => {
   it('판이 맞지 않으면 작업 화면만 멈추고 안내를 보인다', () => {
     h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: 'OpenOrbit이 이 OpenOrbit 앱보다 새 판입니다. OpenOrbit 앱을 올려 주세요.'}}));
     assert.match(text(h.renderWorkTab(task.id)), /Please update the OpenOrbit app/);
-    assert.match(text(h.renderWorks()), /Please update the OpenOrbit app/);
-    assert.match(text(h.renderSessions()), /Please update the OpenOrbit app/);
-    assert.match(text(h.renderWorks()), /Check again/);
   });
 });
 
@@ -94,30 +91,6 @@ describe('빈·로딩·오류·멈춤 화면', () => {
     assert.ok(m, `StateView가 없습니다: ${html.slice(0, 300)}`);
     return {head: m[0], compact: /data-compact/.test(m[0]), level: m[1]};
   }
-
-  it('사이드바 보기는 Forma StateView를 compact·h3로 그린다', () => {
-    h.useState(state({status: 'loading', works: [], sessions: []}));
-    for (const html of [h.renderWorks(), h.renderSessions()]) {
-      const v = stateView(html);
-      assert.ok(v.compact, v.head);
-      assert.equal(v.level, 'h3');
-      assert.match(v.head, /role="status"/);
-    }
-    h.useState(state({status: 'error', error: '잠김', works: [], sessions: []}));
-    const err = stateView(h.renderWorks());
-    assert.match(err.head, /role="alert"/);
-    assert.match(text(h.renderWorks()), /Could not read work history/);
-    h.useState(state({works: [], sessions: []}));
-    assert.match(text(h.renderWorks()), /No active work/);
-    assert.equal(stateView(h.renderWorks()).level, 'h3');
-  });
-
-  it('멈춤 안내도 StateView이고 「다시 확인」은 동작 자리에 있다', () => {
-    h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: '올려 주세요'}}));
-    const html = h.renderWorks();
-    stateView(html);
-    assert.match(html, /forma-state-view-actions[\s\S]*Check again/);
-  });
 
   it('작업 탭의 없음·로딩은 탭 본문 크기의 StateView다', () => {
     h.useState(state({works: [], details: {}}));
@@ -137,26 +110,6 @@ describe('받은 일의 사용자 확인 기다림', () => {
     assert.ok(t.includes(task.origin!.sessionId));
     assert.ok(t.includes(task.cwd!));
     assert.doesNotMatch(t, /approve|reject|승인|거절/i);
-  });
-});
-
-describe('사이드바 보기', () => {
-  it('작업 목록: 열린 작업과 끝남 · 확인 전', () => {
-    const done: Work = {...task, id: 'w-done', title: '끝난 작업', state: 'done'};
-    h.useState(state({pendingReview: ['w-done']}, [task, done]));
-    const t = text(h.renderWorks());
-    assert.match(t, /Done · not reviewed/);
-    assert.match(t, /Clear from list/);
-    assert.ok(t.includes(task.title));
-  });
-
-  it('세션 목록: 세션 칸의 레포·브랜치와 상태', () => {
-    h.useState(state());
-    const t = text(h.renderSessions());
-    for (const s of sessions.filter(x => x.state !== 'ended' && !x.parentSessionId)) {
-      if (s.branch) assert.ok(t.includes(s.branch), s.branch);
-    }
-    assert.match(t, /Running|Waiting for user confirmation|Idle|Stale observation/);
   });
 });
 
@@ -186,7 +139,7 @@ describe('화면 문구', () => {
     const loaded = {session: page.session, runs: page.runs ?? [], evidence: page.evidence ?? [], pages: [{events: page.events}]};
     const all = [
       h.renderWorkTab(w.id, {step: 'st-2b3c4d5e6f70'}), h.renderWorkTab(w.id, {mode: 'owner'}), h.renderWaiting(w.id, 'st-4d5e6f708192'),
-      h.renderWorks(), h.renderSessions(), h.renderSession(loaded, scrub(state({}, [w])), NOW),
+      h.renderSession(loaded, scrub(state({}, [w])), NOW),
     ].map(text).join(' ');
     assert.doesNotMatch(all, /work/i);
     } finally {
@@ -200,7 +153,6 @@ describe('화면 문구', () => {
       h.useState(state());
       const t = text(h.renderWorkTab(task.id, {step: 'st-2b3c4d5e6f70'}));
       for (const word of ['묶음 1', '사용자 확인 기다림', '흐름', '담당별', '선행', '실행 2건', '증거 3건', '커밋 열기']) assert.ok(t.includes(word), word);
-      assert.match(text(h.renderWorks()), /진행 \d+/);
     } finally {
       h.setLocale('en');
     }

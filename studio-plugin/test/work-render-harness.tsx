@@ -5,9 +5,7 @@ import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 export {setLocale} from '../src/i18n/index.ts';
 import {setWorkStore, stepTitleMap} from '../src/work-ui/runtime.ts';
 import {SessionBody, type Loaded} from '../src/work-ui/session-tab.tsx';
-import {SessionsView} from '../src/work-ui/sessions-view.tsx';
 import {WaitingStepDetail, WorkTab, workNav} from '../src/work-ui/work-tab.tsx';
-import {WorksView} from '../src/work-ui/works-view.tsx';
 import type {WorkState, WorkStore} from '../src/work/store.ts';
 
 const noop = () => {};
@@ -35,7 +33,5 @@ const tab = (type: string, id: string, params: Record<string, unknown> = {}) => 
 
 export const renderWorkTab = (id: string, params: Record<string, unknown> = {}) => renderToStaticMarkup(<WorkTab ctx={ctx} tab={tab('work', id, params)} />);
 export const renderWaiting = (workId: string, stepId: string) => renderToStaticMarkup(<WaitingStepDetail ctx={ctx} workId={workId} stepId={stepId} />);
-export const renderWorks = () => renderToStaticMarkup(<WorksView ctx={ctx} appId="orbit" viewId="works" />);
-export const renderSessions = () => renderToStaticMarkup(<SessionsView ctx={ctx} appId="orbit" viewId="sessions" />);
 export const renderSession = (loaded: Loaded, state: WorkState, now: number) =>
   renderToStaticMarkup(<SessionBody ctx={ctx} loaded={loaded} now={now} titles={stepTitleMap(state)} state={state} nav={workNav(ctx, noop)} onReload={noop} onMore={noop} />);
