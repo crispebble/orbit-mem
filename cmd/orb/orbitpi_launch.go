@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/onidot-labs/openorbit/internal/config"
 	"github.com/onidot-labs/openorbit/internal/i18n"
 	"github.com/onidot-labs/openorbit/internal/orbitpi"
 	"github.com/onidot-labs/openorbit/internal/orbitplugin"
@@ -16,6 +17,7 @@ import (
 // arguments on a terminal.
 type orbitPiLaunch struct {
 	home, orb, roles string
+	lang             string   // orb가 해석한 언어(en|ko). 환경에 ORBIT_LANG가 없을 때 넘긴다
 	base             []string // 물려줄 환경
 	getenv           func(string) string
 	installed        func() bool
@@ -41,6 +43,11 @@ func (l orbitPiLaunch) command(sub string, args []string) ([]string, []string, e
 	}
 	argv := append([]string{"node", cli, sub}, args...)
 	set := map[string]string{"ORBIT_HOME": l.home, "ORBIT_ORB": l.orb, "ORBIT_ROLES_DIR": l.roles}
+	keys := []string{"ORBIT_HOME", "ORBIT_ORB", "ORBIT_ROLES_DIR"}
+	if l.lang != "" && envValue(l.base, i18n.EnvVar) == "" {
+		set[i18n.EnvVar] = l.lang // orbit-pi가 orb와 같은 언어로 말한다
+		keys = append(keys, i18n.EnvVar)
+	}
 	env := make([]string, 0, len(l.base)+len(set))
 	for _, kv := range l.base {
 		k, _, _ := strings.Cut(kv, "=")
@@ -48,10 +55,21 @@ func (l orbitPiLaunch) command(sub string, args []string) ([]string, []string, e
 			env = append(env, kv)
 		}
 	}
-	for _, k := range []string{"ORBIT_HOME", "ORBIT_ORB", "ORBIT_ROLES_DIR"} {
+	for _, k := range keys {
 		env = append(env, k+"="+set[k])
 	}
 	return argv, env, nil
+}
+
+// envValue is the value of key in an environment list (the last one wins, as in exec).
+func envValue(env []string, key string) string {
+	v := ""
+	for _, kv := range env {
+		if k, val, ok := strings.Cut(kv, "="); ok && k == key {
+			v = val
+		}
+	}
+	return v
 }
 
 // zeroArgTUI says whether orb with no arguments opens orbit-pi's TUI: only when
@@ -94,7 +112,8 @@ func launcher() (orbitPiLaunch, error) {
 	if real, err := filepath.EvalSymlinks(orb); err == nil {
 		orb = real
 	}
-	return orbitPiLaunch{home: home, orb: orb, roles: filepath.Join(home, "runtime", "roles"), base: os.Environ(), getenv: os.Getenv,
+	lang := string(i18n.Resolve(os.Getenv(i18n.EnvVar), config.Language(paths().Config())))
+	return orbitPiLaunch{home: home, orb: orb, roles: filepath.Join(home, "runtime", "roles"), lang: lang, base: os.Environ(), getenv: os.Getenv,
 		installed: func() bool { _, err := orbitpi.Status(home); return err == nil }}, nil
 }
 

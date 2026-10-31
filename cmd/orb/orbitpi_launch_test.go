@@ -114,3 +114,27 @@ func TestOrb_TTY에서_런타임이_없으면_사용법과_설치_안내(t *test
 		t.Errorf("%d %q", code, errOut.String())
 	}
 }
+
+// orbit-pi는 orb와 같은 언어로 말한다: ORBIT_LANG가 없으면 orb가 해석한 언어(en|ko)를 넘긴다.
+func TestOrbitPiCommand_ORBIT_LANG가_없으면_orb의_언어를_넘긴다(t *testing.T) {
+	dir := fakeOrbitPi(t)
+	get := func(k string) string { return map[string]string{"ORBIT_PI_DIR": dir}[k] }
+	l := orbitPiLaunch{home: "/h", orb: "/o", roles: "/r", lang: "ko", base: []string{"PATH=/usr/bin"}, getenv: get, installed: func() bool { return false }}
+	_, env, err := l.command("tui", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := envOf(env); m["ORBIT_LANG"] != "ko" {
+		t.Errorf("ORBIT_LANG %q", m["ORBIT_LANG"])
+	}
+	l.base = []string{"ORBIT_LANG=en"}
+	_, env, _ = l.command("run", nil)
+	if m := envOf(env); m["ORBIT_LANG"] != "en" || strings.Count(strings.Join(env, "\n"), "ORBIT_LANG=") != 1 {
+		t.Errorf("이미 있는 ORBIT_LANG를 바꿨습니다: %v", env)
+	}
+	l.base, l.lang = nil, ""
+	_, env, _ = l.command("run", nil)
+	if strings.Contains(strings.Join(env, "\n"), "ORBIT_LANG=") {
+		t.Errorf("언어를 모르면 넘기지 않습니다: %v", env)
+	}
+}
