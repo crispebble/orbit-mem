@@ -1,6 +1,6 @@
 // 작업 하나를 Forma `FlowGraph` props로 바꾼다(순수 함수). 열·선은 계약의 `wave`·`after`를 그대로 쓰고 다시 계산하지 않는다.
 // 이 대응은 OpenOrbit 계약을 아는 플러그인의 몫이라 Forma 부품에 넣지 않는다(설계 「Forma 2차」 묶음 5).
-import type {FlowGraphBadge, FlowGraphColumn, FlowGraphEdge, FlowGraphNode} from '@onidot-labs/studio-plugin/ai';
+import type {FlowGraphBadge, FlowGraphColumn, FlowGraphEdge, FlowGraphNode} from '@onidot-labs/orbit-studio-plugin/ai';
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import {blockText, stepRuns, stepStatusView, verificationBadge} from './display.ts';

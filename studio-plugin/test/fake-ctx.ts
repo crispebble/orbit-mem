@@ -1,4 +1,4 @@
-import type {InboxItem, McpResult, PluginContext} from '@onidot-labs/studio-plugin';
+import type {InboxItem, McpResult, PluginContext} from '@onidot-labs/orbit-studio-plugin';
 
 export interface Call {tool: string; args?: Record<string, unknown>}
 

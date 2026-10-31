@@ -1,6 +1,6 @@
 // 작업 그래프·세션 보기의 표시 모델(순수 함수). 계약이 준 값을 다시 계산하지 않고 화면 문구·색조로 옮긴다.
 // 화면 문구에는 「Work」를 쓰지 않는다(「작업」「단계」「세션」).
-import type {FlowGraphTone} from '@onidot-labs/studio-plugin/ai';
+import type {FlowGraphTone} from '@onidot-labs/orbit-studio-plugin/ai';
 import {localeTag, pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import type {Run, Session, Step, StepBlock, Work, WorkSummary} from './types.ts';

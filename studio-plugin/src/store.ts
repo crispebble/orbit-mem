@@ -1,6 +1,6 @@
 // OpenOrbit 앱의 공유 상태: 제안 목록, 받은 일·배지 동기화, 결정·기억 호출.
 // React에 기대지 않는다(화면은 subscribe/getState로 읽는다). ctx만 있으면 시험할 수 있다.
-import type {InboxItem, PluginContext} from '@onidot-labs/studio-plugin';
+import type {InboxItem, PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {onLocale, pick} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {proposalText} from './i18n/messages/proposals.ts';

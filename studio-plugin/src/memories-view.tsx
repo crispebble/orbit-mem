@@ -1,7 +1,7 @@
 // 사이드바 「기억」 보기: 찾기 칸과 결과 목록
 import {useEffect, useRef, useState} from 'react';
-import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Button} from '@onidot-labs/studio-plugin/ui';
+import type {ViewProps} from '@onidot-labs/orbit-studio-plugin';
+import {Button} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useLocale, useMessages} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {memoryText} from './i18n/messages/memory.ts';

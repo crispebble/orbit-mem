@@ -1,6 +1,6 @@
 // orb MCP 도구 결과(구조화 결과)를 화면 모델로 바꾸는 순수 함수들.
 // 도구 계약 원본: orbit/internal/mcpserver/server.go, orbit/internal/memory/{model,proposal}.go
-import type {InboxItem} from '@onidot-labs/studio-plugin';
+import type {InboxItem} from '@onidot-labs/orbit-studio-plugin';
 import {pick} from './i18n/index.ts';
 import {memoryText} from './i18n/messages/memory.ts';
 import {proposalText} from './i18n/messages/proposals.ts';

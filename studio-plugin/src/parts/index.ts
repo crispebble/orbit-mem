@@ -1,4 +1,4 @@
-// OpenOrbit 전용 부품·어휘. 플러그인 코드는 `@onidot-labs/studio-plugin/ai`가 아니라 여기서 가져온다.
+// OpenOrbit 전용 부품·어휘. 플러그인 코드는 `@onidot-labs/orbit-studio-plugin/ai`가 아니라 여기서 가져온다.
 export {MemoryList, type MemoryListProps, type MemoryListState} from './memory-list.tsx';
 export {MemoryDetail, type MemoryDetailProps, type MemoryLinkView} from './memory-detail.tsx';
 export {MemoryForm, type MemoryFormProps, type MemoryFormValue} from './memory-form.tsx';

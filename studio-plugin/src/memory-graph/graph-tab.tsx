@@ -2,9 +2,9 @@
 // 규칙은 Atlas 「설계 · Orbit 2차 — 기억 그래프」 「Studio 보기」. 부품은 노드·선·클러스터만 알고, 거르기·고른 기억 카드·탭 연결은 여기서 한다.
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {Clock, History, Link2, MessagesSquare} from 'lucide-react';
-import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
-import {describeNetwork, NetworkGraph, NetworkPanel, searchNetwork, type NetworkDescription, type NetworkOverlay} from '@onidot-labs/studio-plugin/graph';
-import {Badge, Button, SegmentedControl, StateView, Switch} from '@onidot-labs/studio-plugin/ui';
+import type {PluginContext, TabProps} from '@onidot-labs/orbit-studio-plugin';
+import {describeNetwork, NetworkGraph, NetworkPanel, searchNetwork, type NetworkDescription, type NetworkOverlay} from '@onidot-labs/orbit-studio-plugin/graph';
+import {Badge, Button, SegmentedControl, StateView, Switch} from '@onidot-labs/orbit-studio-plugin/ui';
 import {localeTag, useLocale, useMessages} from '../i18n/index.ts';
 import {graphText} from '../i18n/messages/graph.ts';
 import {memoryText} from '../i18n/messages/memory.ts';

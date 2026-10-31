@@ -1,6 +1,6 @@
 // 작업·세션 화면을 서버 렌더로 그려 글을 돌려준다(work-render.test.ts가 esbuild로 묶어 부른다). 효과(useEffect)는 돌지 않는다.
 import {renderToStaticMarkup} from 'react-dom/server';
-import type {PluginContext} from '@onidot-labs/studio-plugin';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 // 묶은 이 파일 안의 언어 상태(시험 파일의 것과 다른 사본)를 바꿀 수 있게 내보낸다
 export {setLocale} from '../src/i18n/index.ts';
 import {setWorkStore, stepTitleMap} from '../src/work-ui/runtime.ts';

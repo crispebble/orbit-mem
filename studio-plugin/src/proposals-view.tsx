@@ -1,7 +1,7 @@
 // 사이드바 「제안」 보기: 대기 제안은 종류별 묶음과 묶음 승인·거절, 전체는 최근 것부터 한 줄씩.
 import {useRef, useState} from 'react';
-import type {ViewProps} from '@onidot-labs/studio-plugin';
-import {Button, StateView, InboxItem, Mark, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import type {ViewProps} from '@onidot-labs/orbit-studio-plugin';
+import {Button, StateView, InboxItem, Mark, SegmentedControl} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useMessages} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {proposalText} from './i18n/messages/proposals.ts';

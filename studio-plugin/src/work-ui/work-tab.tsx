@@ -1,9 +1,9 @@
 // 작업 탭: 머리(제목·상태·진행·프로젝트·마지막 갱신·상위 작업 길)와 본문(그래프 + 단계 상세 / 담당별).
 // 그래프는 forma-ai FlowGraph, 담당별은 forma-ai AgentOrchestrator, 나머지는 forma-ui 부품으로 조립한다.
 import {useCallback, type ComponentProps, useEffect, useMemo, useState} from 'react';
-import type {PluginContext, TabProps} from '@onidot-labs/studio-plugin';
-import {AgentOrchestrator, FlowGraph, type FlowGraphView} from '@onidot-labs/studio-plugin/ai';
-import {Badge, Breadcrumbs, Button, StateView, Progress, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
+import type {PluginContext, TabProps} from '@onidot-labs/orbit-studio-plugin';
+import {AgentOrchestrator, FlowGraph, type FlowGraphView} from '@onidot-labs/orbit-studio-plugin/ai';
+import {Badge, Breadcrumbs, Button, StateView, Progress, SegmentedControl} from '@onidot-labs/orbit-studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workKitText, workUiText} from '../i18n/messages/work.ts';
 import {errorMessage} from '../orb.ts';

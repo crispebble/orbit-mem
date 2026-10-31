@@ -1,7 +1,7 @@
 // 기억 목록: 찾기·종류·범위·상태로 거르고 한 건을 고른다.
 import {useState} from 'react';
 import {Search} from 'lucide-react';
-import {StateView} from '@onidot-labs/studio-plugin/ui';
+import {StateView} from '@onidot-labs/orbit-studio-plugin/ui';
 import {useMessages} from '../i18n/index.ts';
 import {memoryText} from '../i18n/messages/memory.ts';
 import {AvailabilityNotice, Frame, type Availability} from './shared.tsx';

@@ -44,11 +44,11 @@ describe('OpenOrbit 부품은 플러그인 안에 있다', () => {
     assert.ok(files.length > 0);
   });
 
-  it('옮긴 이름을 @onidot-labs/studio-plugin/ai에서 가져오지 않는다', () => {
+  it('옮긴 이름을 @onidot-labs/orbit-studio-plugin/ai에서 가져오지 않는다', () => {
     const bad: string[] = [];
     for (const file of files) {
       for (const imp of importsOf(readFileSync(file, 'utf8'))) {
-        if (imp.from !== '@onidot-labs/studio-plugin/ai') continue;
+        if (imp.from !== '@onidot-labs/orbit-studio-plugin/ai') continue;
         for (const name of imp.names) {
           if (name === '*' || MOVED.includes(name)) bad.push(`${file.slice(srcDir.length + 1)}: ${name}`);
         }
@@ -82,6 +82,6 @@ describe('OpenOrbit 부품은 플러그인 안에 있다', () => {
       assert.ok(OLD_FORMA.test(`@onidot-labs/${name}/x`), name);
     }
     assert.ok(!OLD_FORMA.test('@onidot-labs/forma-brand'));
-    assert.ok(!OLD_FORMA.test('@onidot-labs/studio-plugin/ui'));
+    assert.ok(!OLD_FORMA.test('@onidot-labs/orbit-studio-plugin/ui'));
   });
 });

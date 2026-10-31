@@ -1,5 +1,5 @@
 // orb MCP 호출 경계: 연결 실패·도구 오류·응답 모양 오류를 한 가지 오류(OrbitError)로 모은다.
-import type {PluginContext} from '@onidot-labs/studio-plugin';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {pick} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 

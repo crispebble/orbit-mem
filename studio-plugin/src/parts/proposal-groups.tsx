@@ -2,7 +2,7 @@
 // Studio 키트 부품(Disclosure·Count·Button·InboxItem·Mark)을 엮기만 한다. 크기는 키트 토큰을 따른다.
 import {useMessages} from '../i18n/index.ts';
 import {proposalText} from '../i18n/messages/proposals.ts';
-import {Button, Count, Disclosure, InboxItem, Mark} from '@onidot-labs/studio-plugin/ui';
+import {Button, Count, Disclosure, InboxItem, Mark} from '@onidot-labs/orbit-studio-plugin/ui';
 
 export interface ProposalGroupItem {
   id: string;
