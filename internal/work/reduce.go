@@ -13,17 +13,18 @@ import (
 // Every rule here must give the same tables when the ledger is replayed, so it
 // reads only the event and the tables, never the clock or the file system.
 type reducer struct {
-	tx       *sql.Tx
-	e        Event
-	replay   bool
-	sub      int
-	works    map[string]bool
-	sessions map[[2]string]bool
-	opened   []string
+	tx        *sql.Tx
+	e         Event
+	replay    bool
+	sub       int
+	works     map[string]bool
+	sessions  map[[2]string]bool
+	decisions map[string]bool
+	opened    []string
 }
 
 func newReducer(tx *sql.Tx, e Event, replay bool) *reducer {
-	return &reducer{tx: tx, e: e, replay: replay, works: map[string]bool{}, sessions: map[[2]string]bool{}}
+	return &reducer{tx: tx, e: e, replay: replay, works: map[string]bool{}, sessions: map[[2]string]bool{}, decisions: map[string]bool{}}
 }
 
 func (r *reducer) exec(q string, args ...any) error {
@@ -39,6 +40,10 @@ func (r *reducer) payload(v any) error {
 }
 
 func (r *reducer) apply() error {
+	switch r.e.Kind {
+	case KindDecisionOpen, KindDecisionAnswer, KindDecisionWithdraw:
+		return r.decisionEvent()
+	}
 	if r.e.Host == "" || r.e.Session == "" {
 		if r.e.Kind == KindTitle {
 			return r.title()
@@ -114,6 +119,19 @@ func (r *reducer) flush() error {
 			return err
 		}
 	}
+	dids := make([]string, 0, len(r.decisions))
+	for id := range r.decisions {
+		dids = append(dids, id)
+	}
+	sort.Strings(dids)
+	for _, id := range dids {
+		if err := r.exec(`UPDATE decisions SET updated_seq=? WHERE id=?`, r.e.Seq, id); err != nil {
+			return err
+		}
+		if err := r.exec(`INSERT INTO changes(seq,decision_id) VALUES(?,?)`, r.e.Seq, id); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -171,7 +189,7 @@ func (r *reducer) sessionStart() error {
 	set := []string{"turn_open=0", "ended_at=0", "end_reason=''", "end_detail=''"}
 	args := []any{}
 	for col, v := range map[string]string{"surface": p.Surface, "cwd": r.e.Cwd, "repo": p.Repo, "branch": p.Branch, "project_scope": p.Project.Scope,
-		"project_label": p.Project.Label, "model": p.Model, "transcript": p.Transcript, "list_id": p.ListID} {
+		"project_label": p.Project.Label, "model": p.Model, "transcript": p.Transcript, "list_id": p.ListID, "launcher": p.Launcher} {
 		if v != "" {
 			set = append(set, col+"=?")
 			args = append(args, v)
@@ -311,6 +329,9 @@ func (r *reducer) turnEnd() error {
 			return err
 		}
 	}
+	if err := r.withdrawSessionDecisions("turn_ended", p.Prompt); err != nil {
+		return err
+	}
 	if p.Prompt == "" {
 		return r.resolveWaits(`1=1`)
 	}
@@ -337,6 +358,9 @@ func (r *reducer) sessionEnd() error {
 		summary += "(" + clip(p.Reason, 40) + ")"
 	}
 	if err := r.mine("session.ended", "", "", "", summary); err != nil {
+		return err
+	}
+	if err := r.withdrawSessionDecisions("session_ended", ""); err != nil {
 		return err
 	}
 	if err := r.resolveWaits(`1=1`); err != nil {

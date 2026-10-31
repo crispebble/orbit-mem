@@ -13,21 +13,13 @@ import (
 	"github.com/onidot-labs/openorbit/internal/project"
 )
 
-// orbit-pi가 띄운 세션에 넣는 표식(설계 · OpenOrbit 4차 「Claude 엔진 중복 규칙」).
-const (
-	orbitRuntimeEnv = "ORBIT_RUNTIME"
-	orbitRuntimePi  = "orbit-pi"
-)
-
-func startedByOrbitPi() bool { return os.Getenv(orbitRuntimeEnv) == orbitRuntimePi }
-
 // cmdInject gives orbit-pi the memory context the hooks give a host: the session bundle or the
 // memories of one request (stdin), as JSON. It records the same use events as the hooks.
 func cmdInject(a *app, args []string) error {
 	fs := a.flags("inject")
 	cwd := fs.String("cwd", "", i18n.T("flag.inject.cwd"))
 	session := fs.String("session", "", i18n.T("flag.inject.session"))
-	host := fs.String("host", orbitRuntimePi, i18n.T("flag.inject.host"))
+	host := fs.String("host", runtimeOrbitPi, i18n.T("flag.inject.host"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err

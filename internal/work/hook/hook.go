@@ -32,7 +32,9 @@ type Env struct {
 	Git          Git
 	Project      func(cwd string) work.Project
 	TestCommands []string
-	Now          int64 // 밀리초. 훅 프로세스가 입력을 읽기 전에 찍은 시각
+	Now          int64  // 밀리초. 훅 프로세스가 입력을 읽기 전에 찍은 시각
+	Launcher     string // 세션을 띄운 쪽(origin.launcher). 비우면 남기지 않는다
+	NoDecisions  bool   // 질문 도구를 결정 카드로 열지 않는다(orbit-pi가 decision_open으로 연다)
 }
 
 // DefaultTestCommands are common test commands (설계 O6). PC 설정이 더한다.
@@ -123,6 +125,7 @@ func (t *translator) run() {
 	case "PreToolUse":
 		if isQuestionTool(in.Tool) {
 			t.add(work.KindWaitOpen, keyOf("pre", in.ToolUse), work.Wait{Key: toolKey(in.Tool, in.ToolInput), Prompt: in.prompt(), Tool: in.Tool, Agent: in.Agent})
+			t.openQuestion()
 		}
 	case "PostToolUse", "PostToolUseFailure":
 		t.postTool(in.Event == "PostToolUseFailure")
@@ -175,6 +178,7 @@ func (t *translator) sessionStart() {
 	}
 	p.Model = work.Clean(model, 80)
 	p.Parent = parseParent(t.env.Getenv("ORBIT_PARENT"))
+	p.Launcher = t.env.Launcher
 	t.add(work.KindSessionStart, "", p)
 }
 
@@ -278,6 +282,8 @@ func (t *translator) postTool(failed bool) {
 		t.agentTool(failed)
 	case isShell(in.Tool):
 		t.shell(failed)
+	case isQuestionTool(in.Tool):
+		t.closeQuestion(failed)
 	}
 	key := keyOf("post", in.ToolUse)
 	t.add(work.KindToolDone, key, work.ToolDone{Key: toolKey(in.Tool, in.ToolInput), Tool: in.Tool, Agent: in.Agent})

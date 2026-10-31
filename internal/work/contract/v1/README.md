@@ -13,7 +13,8 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.work", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.work", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
+- 1.1은 작업 `origin.launcher`와 세션 `launcher`(세션을 띄운 쪽: `human`·`orbit-pi`·`studio`·`telegram`·`workflow`, 설계 · Studio 4차 S4-1)를 더했다. 1.1 전에 시작한 세션과 그 작업에는 없다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 단계 상태는 "알 수 없음"으로 보이고 배치는 `pending`처럼 한다. 모르는 막힘 사유·증거 종류·사건 종류는 이름만 보인다.
 - `response.schema.json`은 orb가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). orb의 작업 도구 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
@@ -123,5 +124,7 @@
 - 시각은 RFC 3339 UTC 밀리초(`2026-10-28T05:12:30.123Z`)다. 끝나지 않은 칸은 생략한다.
 - id·`seq`·커서는 불투명한 문자열이다. 읽는 쪽은 해석·비교·계산하지 않고 받은 값을 그대로 돌려준다. `native.id`는 호스트가 붙인 번호이며 작업 안에서만 뜻이 있다.
 - `sessionId`는 호스트가 붙인 세션 id 그대로다.
+- `launcher`(1.1)는 세션 시작 훅이 남긴다. 사람이 직접 연 세션은 `human`, orbit-pi가 띄운 세션은 orbit-pi가 `orb hook --runtime orbit-pi --launcher …`로 준 값이다(결정 카드 계약 `internal/decision/contract/v1` 「Claude 엔진 중복 규칙」).
+- 결정 카드(`orbit.decision`)도 같은 기록 DB에 있고 같은 `seq`를 쓴다. `work_changes`에는 카드 변경이 나오지 않는다(`decision_changes`).
 - 세션의 `endDetail`(제안)은 호스트가 세션 끝 사건에 준 이유(Claude Code `SessionEnd`의 `reason`)를 그대로 옮긴 글이다.
 - 글 칸은 일반 텍스트이고 비밀값을 가린다. `ref.transcript`·`ref.agentTranscript`는 이 PC의 로컬 경로다.

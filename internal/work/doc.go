@@ -10,6 +10,7 @@ import "time"
 type Origin struct {
 	Host      string  `json:"host"`
 	Surface   string  `json:"surface"`
+	Launcher  string  `json:"launcher,omitempty"` // 세션을 띄운 쪽(1.1). 모르면 없다
 	SessionID string  `json:"sessionId"`
 	List      ListRef `json:"list"`
 }
@@ -195,6 +196,7 @@ type Session struct {
 	SessionID       string   `json:"sessionId"`
 	Host            string   `json:"host"`
 	Surface         string   `json:"surface"`
+	Launcher        string   `json:"launcher,omitempty"`
 	Cwd             string   `json:"cwd,omitempty"`
 	Repo            string   `json:"repo,omitempty"`
 	Branch          string   `json:"branch,omitempty"`

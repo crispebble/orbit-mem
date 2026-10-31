@@ -11,36 +11,6 @@ import (
 	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
-// 설계 · OpenOrbit 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션(ORBIT_RUNTIME=orbit-pi)에서는
-// 기억 주입과 작업 기록을 orbit-pi가 맡고, 플러그인 훅은 관측(세션 끝 회고)만 한다.
-func TestHook_orbit_pi가_띄운_세션은_주입과_작업_기록을_하지_않는다(t *testing.T) {
-	home(t)
-	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
-	t.Setenv("ORBIT_RUNTIME", "orbit-pi")
-
-	for _, args := range [][]string{{"hook", "session-start", "--host", "claude"}, {"hook", "prompt", "--host", "claude"}} {
-		out, _, code := run(t, `{"cwd":"/tmp","session_id":"s-pi","prompt":"존댓말"}`, args...)
-		if code != 0 || strings.TrimSpace(out) != "" {
-			t.Errorf("%v: code %d out %q", args, code, out)
-		}
-	}
-	if out, _, code := run(t, probeInput(t, "PostToolUse.TaskCreate.1"), "hook", "work", "--host", "claude"); code != 0 || strings.TrimSpace(out) != "" {
-		t.Errorf("work: code %d out %q", code, out)
-	}
-	if w := works(t); len(w.Items) != 0 {
-		t.Errorf("작업을 기록했습니다: %+v", w.Items)
-	}
-	if evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"}); len(evs) != 0 {
-		t.Errorf("주입 사건을 남겼습니다: %+v", evs)
-	}
-
-	t.Setenv("ORBIT_RUNTIME", "")
-	if out, _, _ := run(t, `{"cwd":"/tmp","session_id":"s-human"}`, "hook", "session-start", "--host", "claude"); !strings.Contains(contextOf(t, out), "답은 존댓말") {
-		t.Errorf("사람이 연 세션에는 그대로 주입해야 합니다: %q", out)
-	}
-}
-
 type injected struct {
 	Text      string   `json:"text"`
 	MemoryIDs []string `json:"memoryIds"`

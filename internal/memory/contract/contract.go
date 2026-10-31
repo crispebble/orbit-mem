@@ -16,7 +16,7 @@ const Name = "orbit.memory"
 // Major and Minor are the version orb answers by default.
 const (
 	Major = 1
-	Minor = 2
+	Minor = 3
 )
 
 // SupportedMajors are the major versions orb answers.

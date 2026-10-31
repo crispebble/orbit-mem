@@ -1,0 +1,24 @@
+{
+  "args": {
+    "after": "C6IIpQAAAAAAAAAS",
+    "wait": 0
+  },
+  "result": {
+    "contract": {
+      "major": 1,
+      "minor": 0,
+      "name": "orbit.decision",
+      "supportedMajors": [
+        1
+      ]
+    },
+    "decisionIds": [
+      "d-13f37b481eac"
+    ],
+    "more": false,
+    "reset": false,
+    "seq": "C6IIpQAAAAAAAAAT",
+    "waitMax": 30000
+  },
+  "tool": "decision_changes"
+}

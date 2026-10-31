@@ -16,7 +16,7 @@ const Name = "orbit.work"
 // Major and Minor are the version orb answers by default.
 const (
 	Major = 1
-	Minor = 0
+	Minor = 1
 )
 
 // SupportedMajors are the major versions orb answers.

@@ -479,15 +479,34 @@ type Changes struct {
 // Changes returns works and sessions changed after the cursor, waiting up to
 // wait for a change. A cursor that cannot continue gives Reset.
 func (s *Store) Changes(ctx context.Context, after string, wait time.Duration) (Changes, error) {
+	var c Changes
+	reset, last, err := s.waitChanges(ctx, after, wait, func(from int64) (bool, error) {
+		var err error
+		c, err = s.changesAfter(from)
+		return len(c.WorkIDs)+len(c.Sessions) > 0, err
+	})
+	if err != nil {
+		return c, err
+	}
+	if reset {
+		return Changes{Seq: last, Reset: true}, nil
+	}
+	return c, nil
+}
+
+// waitChanges checks the cursor (work_changes와 decision_changes가 같이 쓴다) and
+// calls fetch until it finds changes or wait passes. reset says the cursor
+// cannot be continued; last is then the current position.
+func (s *Store) waitChanges(ctx context.Context, after string, wait time.Duration, fetch func(from int64) (bool, error)) (bool, int64, error) {
 	last, err := s.LastSeq()
 	if err != nil {
-		return Changes{}, err
+		return false, 0, err
 	}
 	db, from, ok := decodeSeq(after)
 	var minSeq sql.NullInt64
 	_ = s.db.QueryRow(`SELECT MIN(seq) FROM ledger`).Scan(&minSeq)
 	if after == "" || !ok || db != s.dbID || from > last || (minSeq.Valid && from < minSeq.Int64-1) {
-		return Changes{Seq: last, Reset: true}, nil
+		return true, last, nil
 	}
 	if wait > WaitMax {
 		wait = WaitMax
@@ -495,24 +514,24 @@ func (s *Store) Changes(ctx context.Context, after string, wait time.Duration) (
 	deadline := time.Now().Add(wait)
 	ver, _ := s.DataVersion(ctx)
 	for {
-		c, err := s.changesAfter(from)
-		if err != nil || len(c.WorkIDs)+len(c.Sessions) > 0 || wait <= 0 {
-			return c, err
+		found, err := fetch(from)
+		if err != nil || found || wait <= 0 {
+			return false, last, err
 		}
 		for {
 			if !time.Now().Before(deadline) {
-				return c, nil
+				return false, last, nil
 			}
 			t := time.NewTimer(PollInterval)
 			select {
 			case <-ctx.Done():
 				t.Stop()
-				return c, nil
+				return false, last, nil
 			case <-t.C:
 			}
 			v, err := s.DataVersion(ctx)
 			if err != nil {
-				return c, err
+				return false, last, err
 			}
 			if v != ver {
 				ver = v
@@ -523,7 +542,7 @@ func (s *Store) Changes(ctx context.Context, after string, wait time.Duration) (
 }
 
 func (s *Store) changesAfter(from int64) (Changes, error) {
-	rows, err := s.db.Query(`SELECT seq, work_id, host, session FROM changes WHERE seq>? ORDER BY seq, work_id, host, session LIMIT ?`, from, ChangesMax*4)
+	rows, err := s.db.Query(`SELECT seq, work_id, host, session FROM changes WHERE seq>? AND decision_id='' ORDER BY seq, work_id, host, session LIMIT ?`, from, ChangesMax*4)
 	if err != nil {
 		return Changes{}, err
 	}

@@ -120,6 +120,8 @@
   "decision.unlinked": "뗀 연결 %s.",
   "flag.count": "개수",
   "flag.hook.skip_lists": "목록 도구는 동기 훅에 맡기고 기록하지 않는다",
+  "flag.hook.runtime": "orbit-pi만: 세션을 띄운 런타임이 훅을 직접 부른다(ORBIT_RUNTIME=orbit-pi면 플러그인 훅은 끈다)",
+  "flag.hook.launcher": "--runtime과 함께: orbit-pi에 세션을 시킨 쪽(studio·telegram·workflow 등). 기본은 ORBIT_LAUNCHER, 없으면 orbit-pi",
   "flag.inject.cwd": "프로젝트 범위를 정하는 작업 폴더",
   "flag.inject.host": "사용 사건에 남길 호스트 이름",
   "flag.inject.session": "세션 묶음을 같게 유지할 세션 id",

@@ -80,7 +80,7 @@ func seedWork(t *testing.T, e workEnv) {
 		}
 	}
 	str := func(s string) *string { return &s }
-	ev(work.KindSessionStart, "claude", "S1", work.SessionStart{Source: "startup", Surface: "cli", Project: work.Project{Scope: "project:github.com/me/app", Label: "github.com/me/app"}, Repo: e.cwd, Branch: "main"})
+	ev(work.KindSessionStart, "claude", "S1", work.SessionStart{Source: "startup", Surface: "cli", Project: work.Project{Scope: "project:github.com/me/app", Label: "github.com/me/app"}, Repo: e.cwd, Branch: "main", Launcher: "human"})
 	ev(work.KindTurnStart, "claude", "S1", work.Turn{Prompt: "P1"})
 	for i, sub := range []string{"계약", "원장", "그래프", "훅"} {
 		ev(work.KindTaskCreate, "claude", "S1", work.TaskCreate{List: "S1", ID: string(rune('1' + i)), Subject: sub})
@@ -146,10 +146,10 @@ func TestWorkToolLists(t *testing.T) {
 			t.Errorf("AI 호스트 도구에 %s가 없습니다: %s", want, ai)
 		}
 	}
-	if strings.Contains(ai, "work_sessions") || strings.Contains(ai, "work_changes") {
+	if strings.Contains(ai, "work_sessions") || strings.Contains(ai, "work_changes") || strings.Contains(ai, "decision_") {
 		t.Errorf("AI 호스트에 읽는 쪽 도구가 섞였습니다: %s", ai)
 	}
-	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "memory_graph,work_changes,work_get,work_list,work_sessions" {
+	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "decision_answer,decision_changes,decision_get,decision_list,decision_open,decision_withdraw,memory_graph,work_changes,work_get,work_list,work_sessions" {
 		t.Errorf("읽는 쪽 도구: %s", got)
 	}
 }
