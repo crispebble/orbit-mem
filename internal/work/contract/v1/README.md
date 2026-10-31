@@ -1,4 +1,4 @@
-# orbit.work 1판
+# orbit.work 1판(1.2)
 
 `orb mcp`의 작업 도구가 내는 읽기 계약이다. 이 디렉터리의 세 가지가 함께 계약이다.
 
@@ -13,11 +13,12 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.work", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.work", major: 1, minor: 2, supportedMajors: [1]}`가 있다.
 - 1.1은 작업 `origin.launcher`와 세션 `launcher`(세션을 띄운 쪽: `human`·`orbit-pi`·`studio`·`telegram`·`workflow`, 설계 · Studio 4차 S4-1)를 더했다. 1.1 전에 시작한 세션과 그 작업에는 없다.
+- 1.2는 orbit-pi 오케스트레이터의 기록(설계 · OpenOrbit 4차 R4-5)을 위해 호스트 `orbit-pi`, 목록 종류 `orbit-pi-plan`, 실행 `link` 값 `step`, 단계 `detail`(제안), 실행 `cost`(제안), `work_list` 입력 `launcher`를 더했다. 1.2 전에 남은 기록에는 `detail`·`cost`가 없다.
 - 선택 칸·열거값·도구 추가는 `minor`를 올린다. 칸 삭제·이름 변경·뜻 변경·id 규칙 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 단계 상태는 "알 수 없음"으로 보이고 배치는 `pending`처럼 한다. 모르는 막힘 사유·증거 종류·사건 종류는 이름만 보인다.
-- `response.schema.json`은 orb가 내는 1.0 응답을 엄격하게 검사한다(모르는 칸·값을 거부). orb의 작업 도구 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
+- `response.schema.json`은 orb가 내는 현재 판(1.2) 응답을 엄격하게 검사한다(모르는 칸·값을 거부). orb의 작업 도구 시험은 실제 응답을 이 Schema로 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.** 위 판 규칙대로 모르는 칸과 값을 견딘다.
 - 예시 값의 모양(id·`seq`·커서 글자)에는 뜻이 없다. 예시끼리는 같은 시점(`seq`)의 한 기록을 보이도록 맞췄다. `work_list.page1`의 `fliter`는 `ignoredArgs`를 보이려고 일부러 틀린 칸 이름이다.
 
 ## 도구
@@ -42,6 +43,7 @@
 | | `cwdPrefix` | 문자열 배열 | 없음 | 작업 `cwd`가 이 절대경로들 중 하나이거나 그 아래인 것만. 경로 구분자 단위로 비교한다(`/a/b`는 `/a/bc`에 맞지 않는다) |
 | | `state` | 문자열 `open` · `done` · `any` | `any` | 작업 상태 |
 | | `updatedSince` | RFC 3339 문자열 | 없음 | 이 시각 뒤에 갱신된 것만 |
+| | `launcher`(1.2) | 문자열 | 없음 | 작업 `origin.launcher`가 이 값인 것만 |
 | | `cursor` | 문자열 | 없음 | 앞 응답의 `nextCursor` |
 | | `limit` | 정수 | `20` | 쪽 크기. `limitMax`보다 크면 `limitMax`로 줄인다. 1보다 작으면 `INVALID_ARGUMENT` |
 | `work_get` | `workId` | 문자열 | (필수) | 읽을 작업. 없으면 `NOT_FOUND` |
@@ -64,12 +66,15 @@
 | --- | --- |
 | `status` | 호스트 대기 + 끝나지 않은 선행 있음 → `pending`. 호스트 대기 + 선행이 모두 `done`·`cancelled` → `ready`. 호스트 진행 → `in_progress`, 막힘 사유가 열려 있으면 `blocked`. 성공한 완료 갱신 → `done`. 호스트 삭제·스냅숏 목록에서 빠짐 → `cancelled` |
 | `block.reason` | 사유가 여럿 열려 있으면 `waiting_user` → `run_failed` → `run_lost` → `declared` → `interrupted` → `stale` 순으로 앞의 하나를 보인다(제안) |
-| `after` | Claude Code Task의 `blockedBy`·`blocks`에서 온 간선은 `native`. 선행을 담지 못하는 목록(스냅숏)은 목록 순서대로 앞 단계 하나를 선행으로 두고 `order`. 빠진(`cancelled`) 단계는 순서 사슬에 넣지 않는다(제안). 순환이 생기는 간선은 받지 않는다 |
+| `after` | Claude Code Task의 `blockedBy`·`blocks`와 orbit-pi 계획(`orbit-pi-plan`)의 `addBlockedBy`에서 온 간선은 `native`. 선행을 담지 못하는 목록(스냅숏)은 목록 순서대로 앞 단계 하나를 선행으로 두고 `order`. 빠진(`cancelled`) 단계는 순서 사슬에 넣지 않는다(제안). 순환이 생기는 간선은 받지 않는다 |
 | `wave` | 가장 긴 선행 경로의 길이. 선행이 없으면 0 |
 | `verification.state` | 1) 판정 증거가 있으면 가장 최근 판정: 통과·승인 `pass`, 수정 필요·수정 요구 `fail`, 사용자 확인 필요 `needs_user`. 2) 판정이 없고 시험 명령 증거가 있으면 가장 최근 시험 명령의 결과(`ok` → `pass`, `fail` → `fail`). 3) 둘 다 없으면 `none`. `evidenceId`는 1)·2)에서 고른 증거 |
 | `verification.outdated` | 고른 증거보다 뒤에 같은 단계의 `commit` 증거가 있으면 `true` |
 | `done` | 검증 결과에 묶이지 않는다. 검증 결과는 상태를 바꾸지 않고 배지로 붙는다 |
 | 증거 `result` | `command`는 `ok`·`fail`, `verdict`는 `pass`·`needs_fix`·`needs_user`, `commit`은 `ok`(제안)와 `ref.repo`·`ref.sha` |
+| 실행 `link` | 실행을 단계에 이은 근거. `step`(1.2)은 호스트가 사건에 단계 id를 밝힌 것이며 담당(`owner`)·유일한 진행 단계(`single_active`) 추론보다 앞선다. 밝힌 단계 id를 모르면 잇지 않는다(`none`). 같은 규칙으로 증거도 밝힌 단계에 붙는다 |
+| 단계 `detail`(1.2, 제안) | 호스트가 단계를 만들 때 준 설명. 줄바꿈을 지키고 비밀값을 가리고 `DetailMax`(2000자)로 자른다. 없으면 칸이 없다 |
+| 실행 `cost`(1.2, 제안) | 실행이 끝날 때 호스트가 준 비용 `{engine, model, usd?, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, turns?}`. `usd`가 없으면 구독 엔진이다. `work_get`·`work_sessions`의 실행에 있다 |
 | 작업 요약 | `stepCount`(단계 수)와 `verification`(검증 결과별 단계 수, `outdated`는 지난 검증이 붙은 단계 수)은 `work_list`·`work_title`에만 있다(제안) |
 | 세션 `activeStepIds` | 그 세션이 마지막으로 갱신한 단계 중 호스트 진행인 것(`in_progress`·`blocked`) |
 | 세션 `openWorkIds` | 그 세션이 연 작업 중 열린 것. 끝난(`ended`) 세션도 열린 작업을 가질 수 있다 |
@@ -124,6 +129,8 @@
 - 시각은 RFC 3339 UTC 밀리초(`2026-10-28T05:12:30.123Z`)다. 끝나지 않은 칸은 생략한다.
 - id·`seq`·커서는 불투명한 문자열이다. 읽는 쪽은 해석·비교·계산하지 않고 받은 값을 그대로 돌려준다. `native.id`는 호스트가 붙인 번호이며 작업 안에서만 뜻이 있다.
 - `sessionId`는 호스트가 붙인 세션 id 그대로다.
+- 호스트 `orbit-pi`(1.2)는 orbit-pi 오케스트레이터가 `orb work emit`으로 직접 남긴 세션·작업·실행이다. 그 계획 목록의 `origin.list.id`는 orbit-pi가 준 목록 id이며, 다른 세션이 같은 목록 id로 재개하면 같은 작업·같은 단계에 이어진다. orbit-pi가 띄운 하위 세션은 `ORBIT_PARENT=orbit-pi:<세션>:<단계 id>`로 그 단계의 자식 작업이 된다.
+- `orb work get <workId> [--children]`·`orb work list`는 `work_get`·`work_list`(읽는 쪽)와 같은 구조화 결과(계약 머리 포함)를 표준 출력에 낸다. 계약 오류도 같은 모양으로 내고 종료 코드 1로 끝난다.
 - `launcher`(1.1)는 세션 시작 훅이 남긴다. 사람이 직접 연 세션은 `human`, orbit-pi가 띄운 세션은 orbit-pi가 `orb hook --runtime orbit-pi --launcher …`로 준 값이다(결정 카드 계약 `internal/decision/contract/v1` 「Claude 엔진 중복 규칙」).
 - 결정 카드(`orbit.decision`)도 같은 기록 DB에 있고 같은 `seq`를 쓴다. `work_changes`에는 카드 변경이 나오지 않는다(`decision_changes`).
 - 세션의 `endDetail`(제안)은 호스트가 세션 끝 사건에 준 이유(Claude Code `SessionEnd`의 `reason`)를 그대로 옮긴 글이다.

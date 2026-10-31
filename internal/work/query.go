@@ -86,6 +86,7 @@ func (s *Store) decodeCursor(raw, kind string) (*pageCursor, error) {
 // Filter narrows lists of works and sessions.
 type Filter struct {
 	Project   string   // 비우면 모든 프로젝트
+	Launcher  string   // 작업 origin.launcher. 비우면 모두
 	CwdPrefix []string // 이 경로이거나 그 아래
 	State     string   // 작업: open | done | "" ; 세션은 States
 	States    []string
@@ -150,6 +151,9 @@ func (s *Store) ListWorks(f Filter, opt ReadOptions) (WorkPage, error) {
 	cond, args := `updated_seq<=?`, []any{snap}
 	if f.Project != "" {
 		cond, args = cond+` AND project_scope=?`, append(args, f.Project)
+	}
+	if f.Launcher != "" {
+		cond, args = cond+` AND launcher=?`, append(args, f.Launcher)
 	}
 	c, a := cwdCond("cwd", f.CwdPrefix)
 	cond, args = cond+c, append(args, a...)

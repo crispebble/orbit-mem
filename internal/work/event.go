@@ -29,11 +29,15 @@ const (
 
 // List kinds (계약 origin.list.kind).
 const (
-	ListClaudeTask = "claude-task"
-	ListClaudeTodo = "claude-todo"
-	ListAppPlan    = "claude-app-plan"
-	ListCodexPlan  = "codex-plan"
+	ListClaudeTask  = "claude-task"
+	ListClaudeTodo  = "claude-todo"
+	ListAppPlan     = "claude-app-plan"
+	ListCodexPlan   = "codex-plan"
+	ListOrbitPiPlan = "orbit-pi-plan" // orbit-pi 오케스트레이터의 계획(1.2). Claude Task처럼 단계 id와 선행을 준다
 )
+
+// HostOrbitPi is the host name of orbit-pi's own events (orb work emit).
+const HostOrbitPi = "orbit-pi"
 
 // Event is one ledger entry. Data holds the kind's payload.
 type Event struct {
@@ -101,6 +105,8 @@ type TaskCreate struct {
 	ActiveForm string `json:"activeForm,omitempty"`
 	Owner      string `json:"owner,omitempty"`
 	Blocked    string `json:"blocked,omitempty"`
+	// Description is the step's longer text (1.2 detail). orbit-pi gives it; Claude Code hooks do not.
+	Description string `json:"description,omitempty"`
 }
 
 // TaskUpdate is a successful Claude Code TaskUpdate. Nil fields did not change.
@@ -178,6 +184,27 @@ type RunStart struct {
 	Type   string `json:"type,omitempty"`
 	Repo   string `json:"repo,omitempty"`
 	Branch string `json:"branch,omitempty"`
+	StepRef
+}
+
+// StepRef names the host step an event belongs to (1.2): the task id in a list.
+// With a step the reducer links straight to it instead of guessing the step
+// in progress. List empty means the session's list id.
+type StepRef struct {
+	Step string `json:"step,omitempty"`
+	List string `json:"list,omitempty"`
+}
+
+// Cost is what one run spent (1.2 run cost). USD is absent for subscription engines.
+type Cost struct {
+	Engine           string   `json:"engine"`
+	Model            string   `json:"model"`
+	USD              *float64 `json:"usd,omitempty"`
+	InputTokens      int64    `json:"inputTokens"`
+	OutputTokens     int64    `json:"outputTokens"`
+	CacheReadTokens  int64    `json:"cacheReadTokens"`
+	CacheWriteTokens int64    `json:"cacheWriteTokens"`
+	Turns            *int     `json:"turns,omitempty"`
 }
 
 // RunTool is the subagent tool's post-call response.
@@ -196,6 +223,8 @@ type RunStop struct {
 	Type       string   `json:"type,omitempty"`
 	Transcript string   `json:"transcript,omitempty"`
 	Verdict    *Verdict `json:"verdict,omitempty"`
+	Cost       *Cost    `json:"cost,omitempty"`
+	StepRef
 }
 
 // Verdict is a gate or reviewer decision read from the subagent's last answer.
@@ -210,6 +239,7 @@ type Command struct {
 	Text  string `json:"text"`
 	OK    bool   `json:"ok"`
 	Agent string `json:"agent,omitempty"`
+	StepRef
 }
 
 // Commit is a commit the session made.
@@ -219,6 +249,7 @@ type Commit struct {
 	Subject string   `json:"subject,omitempty"`
 	Files   []string `json:"files,omitempty"`
 	Agent   string   `json:"agent,omitempty"`
+	StepRef
 }
 
 // Title is work_title's write.

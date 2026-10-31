@@ -237,10 +237,14 @@ type builder struct {
 	outputs map[string][]byte
 }
 
-func (b *builder) subst(s string) string {
-	s = strings.ReplaceAll(s, "{{version}}", b.m.Version)
-	s = strings.ReplaceAll(s, "{{knowledgeDir}}", b.knowledgeDir())
-	for k, v := range b.o.Vars {
+func (b *builder) subst(s string) string { return Subst(s, b.m.Version, b.knowledgeDir(), b.o.Vars) }
+
+// Subst fills a source text's template variables the way a build does:
+// {{version}}, {{knowledgeDir}} (an absolute path with forward slashes) and vars.
+func Subst(s, version, knowledgeDir string, vars map[string]string) string {
+	s = strings.ReplaceAll(s, "{{version}}", version)
+	s = strings.ReplaceAll(s, "{{knowledgeDir}}", knowledgeDir)
+	for k, v := range vars {
 		s = strings.ReplaceAll(s, "{{"+k+"}}", v)
 	}
 	return s

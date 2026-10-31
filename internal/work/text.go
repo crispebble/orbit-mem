@@ -12,6 +12,9 @@ const (
 	stepTitleMax = 200
 	summaryMax   = 200
 	commandMax   = 200
+	// DetailMax is the step detail limit (1.2). A plan step's description is a
+	// paragraph or two; 2000 characters keeps work_get well under the MCP output warning.
+	DetailMax = 2000
 )
 
 // OneLine joins lines with spaces, masks secret-looking strings and trims.
@@ -28,6 +31,15 @@ func clip(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+// detailText is the step detail rule: lines kept, secrets masked, clipped to DetailMax.
+func detailText(s string) string {
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(memory.MaskSecrets(l), " \t")
+	}
+	return clip(strings.Join(lines, "\n"), DetailMax)
 }
 
 // Clean is the text rule for anything a hook stores: one line, masked, clipped.

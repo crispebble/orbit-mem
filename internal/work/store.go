@@ -31,7 +31,7 @@ type Store struct {
 	Spool string // 잠겨 있을 때 사건을 남기는 디렉터리. 비우면 쓰지 않는다
 }
 
-const schemaVersion = 3
+const schemaVersion = 4 // 4: steps.detail·runs.cost(orbit.work 1.2)
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS steps (
   ord INTEGER NOT NULL DEFAULT 0, listed INTEGER NOT NULL DEFAULT 1, host_status TEXT NOT NULL DEFAULT 'pending', owner TEXT NOT NULL DEFAULT '',
   declared TEXT NOT NULL DEFAULT '', declared_at INTEGER NOT NULL DEFAULT 0, interrupted_at INTEGER NOT NULL DEFAULT 0,
   started_at INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0,
-  last_host TEXT NOT NULL DEFAULT '', last_session TEXT NOT NULL DEFAULT '', created_seq INTEGER NOT NULL DEFAULT 0);
+  last_host TEXT NOT NULL DEFAULT '', last_session TEXT NOT NULL DEFAULT '', created_seq INTEGER NOT NULL DEFAULT 0,
+  detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS steps_work ON steps(work_id);
 CREATE INDEX IF NOT EXISTS steps_session ON steps(last_host, last_session);
 CREATE TABLE IF NOT EXISTS natives (host TEXT NOT NULL, list TEXT NOT NULL, native TEXT NOT NULL, step_id TEXT NOT NULL, PRIMARY KEY(host, list, native));
@@ -80,7 +81,8 @@ CREATE TABLE IF NOT EXISTS runs (
   child_session TEXT NOT NULL DEFAULT '', parent_session TEXT NOT NULL DEFAULT '', step_id TEXT NOT NULL DEFAULT '', link TEXT NOT NULL DEFAULT 'none',
   background INTEGER NOT NULL DEFAULT 0, cwd TEXT NOT NULL DEFAULT '', repo TEXT NOT NULL DEFAULT '', branch TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
   state TEXT NOT NULL DEFAULT 'running', end_reason TEXT NOT NULL DEFAULT '', tool_use TEXT NOT NULL DEFAULT '', transcript TEXT NOT NULL DEFAULT '',
-  started_at INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL DEFAULT 0);
+  started_at INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL DEFAULT 0, finished_at INTEGER NOT NULL DEFAULT 0, seq INTEGER NOT NULL DEFAULT 0,
+  cost TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS runs_session ON runs(host, session);
 CREATE INDEX IF NOT EXISTS runs_step ON runs(step_id) WHERE step_id <> '';
 CREATE TABLE IF NOT EXISTS evidence (
@@ -223,6 +225,7 @@ type Result struct {
 	Seq     int64
 	Skipped bool // 같은 멱등 키가 이미 있었다
 	Opened  []string
+	Touched []string // 이 사건이 바꾼 작업(연 작업 포함), id 순
 }
 
 // Append records the event and applies it to the graph in one transaction.
@@ -271,7 +274,12 @@ func (s *Store) appendTx(tx *sql.Tx, e Event) (Result, error) {
 	if err := r.flush(); err != nil {
 		return Result{}, err
 	}
-	return Result{Seq: e.Seq, Opened: r.opened}, nil
+	touched := make([]string, 0, len(r.works))
+	for id := range r.works {
+		touched = append(touched, id)
+	}
+	sort.Strings(touched)
+	return Result{Seq: e.Seq, Opened: r.opened, Touched: touched}, nil
 }
 
 // Rebuild clears the graph tables and replays the ledger. Positions (seq)

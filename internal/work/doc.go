@@ -136,6 +136,7 @@ type Step struct {
 	Native       *Native      `json:"native,omitempty"`
 	Title        string       `json:"title"`
 	ActiveTitle  string       `json:"activeTitle,omitempty"`
+	Detail       string       `json:"detail,omitempty"` // 1.2: 호스트가 준 단계 설명(비밀값 가림, DetailMax 글자)
 	Order        int          `json:"order"`
 	Wave         int          `json:"wave"`
 	After        []After      `json:"after"`
@@ -169,6 +170,7 @@ type Run struct {
 	StartedAt       string `json:"startedAt"`
 	LastSeenAt      string `json:"lastSeenAt,omitempty"`
 	FinishedAt      string `json:"finishedAt,omitempty"`
+	Cost            *Cost  `json:"cost,omitempty"` // 1.2: 실행이 쓴 비용(orbit-pi run.stop)
 }
 
 // EvidenceRef points at what an evidence is about.

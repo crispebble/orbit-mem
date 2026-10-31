@@ -93,7 +93,28 @@ func (r *reducer) insertStep(work, native, title string, ord int) (string, error
 	return id, err
 }
 
-// nativeStep finds or creates the step of a Claude Code task id.
+// nativeKind is the list kind of host task ids: orbit-pi's plan or Claude Code Task.
+func (r *reducer) nativeKind() string {
+	if r.e.Host == HostOrbitPi {
+		return ListOrbitPiPlan
+	}
+	return ListClaudeTask
+}
+
+// sessionList is the list a task event without a list belongs to: the
+// session's list id (CLAUDE_CODE_TASK_LIST_ID, orbit-pi listId) or the session id.
+func (r *reducer) sessionList(list string) string {
+	if list != "" {
+		return list
+	}
+	_ = r.tx.QueryRow(`SELECT list_id FROM sessions WHERE host=? AND id=?`, r.e.Host, r.e.Session).Scan(&list)
+	if list == "" {
+		list = r.e.Session
+	}
+	return list
+}
+
+// nativeStep finds or creates the step of a host task id (Claude Code Task, orbit-pi plan).
 func (r *reducer) nativeStep(list, native, title string) (string, string, bool, error) {
 	var id, work string
 	err := r.tx.QueryRow(`SELECT n.step_id, s.work_id FROM natives n JOIN steps s ON s.id=n.step_id WHERE n.host=? AND n.list=? AND n.native=?`, r.e.Host, list, native).Scan(&id, &work)
@@ -103,7 +124,7 @@ func (r *reducer) nativeStep(list, native, title string) (string, string, bool, 
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", "", false, err
 	}
-	if work, err = r.listWork(ListClaudeTask, list, true); err != nil {
+	if work, err = r.listWork(r.nativeKind(), list, true); err != nil {
 		return "", "", false, err
 	}
 	if title == "" {
@@ -272,6 +293,7 @@ func (r *reducer) taskCreate() error {
 	if err := r.payload(&p); err != nil || p.ID == "" {
 		return err
 	}
+	p.List = r.sessionList(p.List)
 	step, work, created, err := r.nativeStep(p.List, p.ID, p.Subject)
 	if err != nil {
 		return err
@@ -290,6 +312,9 @@ func (r *reducer) taskCreate() error {
 	}
 	if p.Owner != "" {
 		set, args = append(set, "owner=?"), append(args, p.Owner)
+	}
+	if d := detailText(p.Description); d != "" {
+		set, args = append(set, "detail=?"), append(args, d)
 	}
 	if len(set) > 0 {
 		if err := r.exec(`UPDATE steps SET `+strings.Join(set, ",")+` WHERE id=?`, append(args, step)...); err != nil {
@@ -312,6 +337,7 @@ func (r *reducer) taskUpdate() error {
 	if err := r.payload(&p); err != nil || p.ID == "" {
 		return err
 	}
+	p.List = r.sessionList(p.List)
 	title := ""
 	if p.Subject != nil {
 		title = *p.Subject
@@ -435,7 +461,7 @@ func (r *reducer) taskState() error {
 	}
 	if p.Full {
 		// 목록 전체에서 빠진 열린 작업의 항목은 지워진 것이다
-		open, err := r.listWork(ListClaudeTask, p.List, false)
+		open, err := r.listWork(r.nativeKind(), p.List, false)
 		if err != nil {
 			return err
 		}

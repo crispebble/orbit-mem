@@ -250,10 +250,11 @@ func codexMeta(path, session string) (source, originator string) {
 	return source, rec.Payload.Originator
 }
 
-// parseParent reads ORBIT_PARENT=<host>:<session>:<step>.
+// parseParent reads ORBIT_PARENT=<host>:<session>:<step>. host orbit-pi is the
+// orchestrator: its step is a plan task id (orbit-pi-plan).
 func parseParent(v string) *work.ParentRef {
 	parts := strings.SplitN(strings.TrimSpace(v), ":", 3)
-	if len(parts) < 2 || parts[1] == "" || (parts[0] != "claude" && parts[0] != "codex") {
+	if len(parts) < 2 || parts[1] == "" || (parts[0] != "claude" && parts[0] != "codex" && parts[0] != work.HostOrbitPi) {
 		return nil
 	}
 	p := &work.ParentRef{Host: parts[0], Session: parts[1]}

@@ -92,6 +92,17 @@ func TestExamplesCoverContract(t *testing.T) {
 	walk = func(key string, v any) {
 		switch x := v.(type) {
 		case map[string]any:
+			// 1.2: 단계 detail, 실행 cost(usd가 있는 것·구독)
+			if _, ok := x["detail"]; ok && x["verification"] != nil {
+				mark("step.detail")
+			}
+			if c, ok := x["cost"].(map[string]any); ok {
+				if _, usd := c["usd"]; usd {
+					mark("cost:usd")
+				} else {
+					mark("cost:subscription")
+				}
+			}
 			for k, y := range x {
 				walk(k, y)
 			}
@@ -154,6 +165,8 @@ func TestExamplesCoverContract(t *testing.T) {
 		"page:work_list:next", "page:work_list:last", "page:work_sessions:next", "page:work_sessions:last", "sessionEvents",
 		"error:UNSUPPORTED_MAJOR", "error:INVALID_ARGUMENT", "error:AMBIGUOUS_WORK", "error:NOT_FOUND",
 		"ignoredArgs", "children",
+		// 1.2
+		"kind=orbit-pi-plan", "host=orbit-pi", "link=step", "step.detail", "cost:usd", "cost:subscription",
 	}
 	for _, s := range []string{"pending", "ready", "in_progress", "blocked", "done", "cancelled"} {
 		want = append(want, "status="+s)

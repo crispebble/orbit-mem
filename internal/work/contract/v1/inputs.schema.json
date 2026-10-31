@@ -19,6 +19,7 @@
         "cwdPrefix": {"$ref": "#/$defs/cwdPrefix"},
         "state": {"enum": ["open", "done", "any"], "description": "작업 상태. 기본 any"},
         "updatedSince": {"type": "string", "description": "RFC 3339 시각. 이 시각 뒤에 갱신된 것만"},
+        "launcher": {"type": "string", "description": "작업 origin.launcher가 이 값인 것만(1.2)"},
         "cursor": {"$ref": "#/$defs/cursor"},
         "limit": {"$ref": "#/$defs/limit"}
       }
