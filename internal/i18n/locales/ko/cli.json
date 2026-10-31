@@ -222,5 +222,8 @@
   "verdict.helped": "도움됨",
   "verdict.mixed": "섞임",
   "verdict.no_effect": "효과 없음",
-  "verdict.pending": "관찰 중"
+  "verdict.pending": "관찰 중",
+  "usage.daemon": "orb daemon <start|status|stop|serve|enable|disable|device|call|watch>   # orbit-pi 데몬: Orbit Studio가 붙는 loopback Connect RPC",
+  "cli.daemon.enabled": "로그인 때 데몬이 뜹니다: %s (로그 %s)",
+  "cli.daemon.disabled": "로그인 때 데몬이 뜨지 않습니다."
 }
