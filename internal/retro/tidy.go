@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
-// KindTidy is a retrospective that only tidies the memory graph (oni retro tidy).
+// KindTidy is a retrospective that only tidies the memory graph (orb retro tidy).
 const KindTidy = "tidy"
 
 // tidyMeta is where the graph tidy keeps which cluster it reached.

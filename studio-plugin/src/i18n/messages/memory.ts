@@ -1,4 +1,4 @@
-// 기억 화면(목록·상세·고치기·탭)과 회고 부품의 글. 기억의 제목·본문·태그와 oni가 준 오류 글은 번역하지 않는다.
+// 기억 화면(목록·상세·고치기·탭)과 회고 부품의 글. 기억의 제목·본문·태그와 orb가 준 오류 글은 번역하지 않는다.
 import {defineMessages} from '../index.ts';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

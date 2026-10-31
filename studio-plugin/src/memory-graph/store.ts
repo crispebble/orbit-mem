@@ -1,5 +1,5 @@
 // 기억 그래프 탭의 데이터 상태: memory_graph 읽기·다시 읽기·숨김 포함. React에 기대지 않는다(화면은 subscribe/getState로 읽는다).
-import {errorMessage} from '../oni.ts';
+import {errorMessage} from '../orb.ts';
 import {pauseMessage, WorkPaused, WorkToolError, type PauseKind} from '../work/contract.ts';
 import type {WorkCtx} from '../work/types.ts';
 import {memoryGraph} from './client.ts';

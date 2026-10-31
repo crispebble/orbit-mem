@@ -48,7 +48,7 @@ describe('sessionRowProps', () => {
     assert.equal(sessionRowProps(session({}), titles, NOW).step, undefined);
   });
 
-  it('관측 오래됨은 Orbit이 stale로 판정했을 때만 마지막 관측 시각을 보인다', () => {
+  it('관측 오래됨은 OpenOrbit이 stale로 판정했을 때만 마지막 관측 시각을 보인다', () => {
     assert.equal(sessionRowProps(session({state: 'running', lastSeenAt: '2026-10-28T05:00:00.000Z'}), new Map(), NOW).lastSeen, undefined);
     assert.equal(sessionRowProps(session({state: 'stale', lastSeenAt: '2026-10-28T06:02:00.000Z'}), new Map(), NOW).lastSeen, 'Last seen 39 min ago');
   });

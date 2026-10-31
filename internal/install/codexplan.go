@@ -9,7 +9,7 @@ import (
 )
 
 // Codex hides update_plan since 0.152 unless [tools.update_plan] enabled = true
-// (기억 m-9f5b8a2fb097). Orbit's work graph reads that tool on Codex.
+// (기억 m-9f5b8a2fb097). OpenOrbit's work graph reads that tool on Codex.
 
 var (
 	tomlTable   = regexp.MustCompile(`^\s*\[([^\[\]]+)\]\s*(#.*)?$`)
@@ -43,7 +43,7 @@ func CodexPlanEnabled(codexHome string) bool {
 }
 
 // EnableCodexPlan turns update_plan on in config.toml after keeping a copy of
-// the file. Call it only when the person asked (oni install --enable-codex-plan).
+// the file. Call it only when the person asked (orb install --enable-codex-plan).
 func EnableCodexPlan(codexHome string) error {
 	if CodexPlanEnabled(codexHome) {
 		return nil
@@ -57,7 +57,7 @@ func EnableCodexPlan(codexHome string) error {
 		return err
 	}
 	if len(b) > 0 {
-		if err := os.WriteFile(path+".oni-"+time.Now().Format("20060102T150405"), b, 0o600); err != nil {
+		if err := os.WriteFile(path+".orb-"+time.Now().Format("20060102T150405"), b, 0o600); err != nil {
 			return err
 		}
 	}
@@ -77,6 +77,6 @@ func EnableCodexPlan(codexHome string) error {
 	if out != "" {
 		out += "\n\n"
 	}
-	out += "# Orbit 작업 그래프가 Codex 계획 도구를 읽는다(oni install --enable-codex-plan)\n[tools.update_plan]\nenabled = true\n"
+	out += "# OpenOrbit 작업 그래프가 Codex 계획 도구를 읽는다(orb install --enable-codex-plan)\n[tools.update_plan]\nenabled = true\n"
 	return os.WriteFile(path, []byte(out), 0o600)
 }

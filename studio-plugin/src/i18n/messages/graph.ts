@@ -1,4 +1,4 @@
-// 기억 그래프 탭의 글. 기억 제목·태그와 oni가 준 오류 글은 번역하지 않는다.
+// 기억 그래프 탭의 글. 기억 제목·태그와 orb가 준 오류 글은 번역하지 않는다.
 // network·panel은 Studio 키트 NetworkGraph·NetworkPanel의 text 속성에 그대로 넘기는 모양이다(키트 기본 글은 한국어).
 import {defineMessages} from '../index.ts';
 

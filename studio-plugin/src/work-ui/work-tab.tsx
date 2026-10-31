@@ -6,7 +6,7 @@ import {AgentOrchestrator, FlowGraph, type FlowGraphView} from '@onidot-labs/stu
 import {Badge, Breadcrumbs, Button, StateView, Progress, SegmentedControl} from '@onidot-labs/studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workKitText, workUiText} from '../i18n/messages/work.ts';
-import {errorMessage} from '../oni.ts';
+import {errorMessage} from '../orb.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {progressOf, workStateView} from '../work/display.ts';
 import {agoText, toFlowGraph} from '../work/graph.ts';

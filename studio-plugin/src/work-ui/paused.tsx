@@ -1,4 +1,4 @@
-// 판이 맞지 않아 작업·세션 화면만 멈췄을 때의 안내. Orbit이나 Orbit 앱을 올린 뒤 「다시 확인」으로 이어 읽는다.
+// 판이 맞지 않아 작업·세션 화면만 멈췄을 때의 안내. OpenOrbit이나 OpenOrbit 앱을 올린 뒤 「다시 확인」으로 이어 읽는다.
 import {Button, StateView} from '@onidot-labs/studio-plugin/ui';
 import {useMessages} from '../i18n/index.ts';
 import {workUiText} from '../i18n/messages/work.ts';

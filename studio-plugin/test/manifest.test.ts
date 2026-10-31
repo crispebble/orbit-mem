@@ -28,6 +28,11 @@ describe('plugin.json', () => {
     for (const t of manifest.tabTypes) assert.ok(new RegExp(`(^|\\s|')${t.id}'?:`, 'm').test(index), t.id);
     for (const c of manifest.commands) assert.ok(index.includes(`'${c.id}':`), c.id);
   });
+
+  it('MCP 연결은 orb를 부른다(ONID-107)', () => {
+    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {command: string}[]}};
+    assert.deepEqual([...new Set(full.connections.mcp.map(c => c.command))], ['orb']);
+  });
 });
 
 describe('plugin.json 언어', () => {

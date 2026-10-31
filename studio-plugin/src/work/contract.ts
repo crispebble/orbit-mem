@@ -9,11 +9,11 @@ import type {
 export const READ_MAJOR = 1;
 
 /** 이 데이터만 멈추는 이유. 기억·제안은 영향 없다. */
-export type PauseKind = 'oni-newer' | 'orbit-older';
+export type PauseKind = 'orb-newer' | 'orbit-older';
 
 export function pauseMessage(kind: PauseKind): string {
   const e = pick(workText).error;
-  return kind === 'oni-newer' ? e.oniNewer : e.orbitOlder;
+  return kind === 'orb-newer' ? e.orbNewer : e.orbitOlder;
 }
 
 /** 판 때문에 읽지 못함 */
@@ -62,14 +62,14 @@ export function checkContract(out: unknown, tool: string): ContractInfo {
   };
   const err = isObj(out) && isObj((out as Record<string, unknown>).error) ? ((out as Record<string, unknown>).error as Record<string, unknown>) : undefined;
   if (err?.code === 'UNSUPPORTED_MAJOR') {
-    // oni가 우리 판(1)을 받지 못한다 = oni가 더 새 판. 지원 목록이 1을 품으면 이상한 응답이므로 모양 오류로 둔다.
+    // orb가 우리 판(1)을 받지 못한다 = orb가 더 새 판. 지원 목록이 1을 품으면 이상한 응답이므로 모양 오류로 둔다.
     const list = Array.isArray(err.supportedMajors) ? err.supportedMajors.filter(isInt) : supported;
     if (list.includes(READ_MAJOR)) throw new WorkShapeError(tool, pick(workText).error.whyUnsupportedMajor);
-    throw new WorkPaused(info.major < READ_MAJOR ? 'orbit-older' : 'oni-newer');
+    throw new WorkPaused(info.major < READ_MAJOR ? 'orbit-older' : 'orb-newer');
   }
   if (info.major > READ_MAJOR) {
     if (supported.includes(READ_MAJOR)) return info; // 1도 읽어 줄 수 있다고 밝힘(우리는 major:1을 요청한다)
-    throw new WorkPaused('oni-newer');
+    throw new WorkPaused('orb-newer');
   }
   if (info.major < READ_MAJOR) throw new WorkPaused('orbit-older');
   return info;

@@ -22,12 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/orbitplugin"
-	"github.com/onidot-labs/orbit/internal/pluginbuild"
-	"github.com/onidot-labs/orbit/internal/retro"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/orbitplugin"
+	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/openorbit/internal/retro"
 )
 
 // Candidates.
@@ -47,7 +47,7 @@ type Lab struct {
 	Store  *memory.Store
 	Cfg    config.Config
 	Paths  config.Paths
-	Oni    string // 후보 플러그인의 훅·MCP가 부를 oni
+	Orb    string // 후보 플러그인의 훅·MCP가 부를 orb
 	Source string // 지금 쓰는 플러그인 원본
 	Exec   func(context.Context, retro.Cmd) (string, error)
 	Now    func() time.Time
@@ -277,7 +277,7 @@ func (l *Lab) inSource(path string) (string, error) {
 
 // build makes a candidate's plugin from source and returns its plugin folder and hash.
 func (l *Lab) build(source, out string) (string, string, error) {
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: source, Out: out, Vars: orbitplugin.Vars(l.Oni)}); err != nil {
+	if _, err := pluginbuild.Build(pluginbuild.Options{Source: source, Out: out, Vars: orbitplugin.Vars(l.Orb)}); err != nil {
 		return "", "", err
 	}
 	plugins, err := os.ReadDir(filepath.Join(out, "plugins"))
@@ -356,7 +356,7 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		}
 		plugins[cand], x.Hashes[cand] = p, h
 	}
-	// 실험 전용 Orbit 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
+	// 실험 전용 OpenOrbit 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
 	home := filepath.Join(dir, "home")
 	hc := config.Default()
 	hc.SessionRetro, hc.Work = false, config.WorkOff

@@ -1,5 +1,5 @@
 // Package migrate imports the old Knowledge records (a copy of the
-// knowledge-auto-*.sqlite backup) into Orbit memory once. The old database is
+// knowledge-auto-*.sqlite backup) into OpenOrbit memory once. The old database is
 // opened read-only.
 package migrate
 
@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // Options are the migration inputs.

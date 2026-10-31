@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit/internal/pluginbuild"
-	"github.com/onidot-labs/orbit/internal/version"
+	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/openorbit/internal/version"
 )
 
 func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {
@@ -15,7 +15,7 @@ func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {
 	if err := Write(src); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/oni")}); err != nil {
+	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/orb")}); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"agents/worker.md", "agents/kotlin-spring-dev.md", "codex/agents/orbit-gate.toml", "skills/tdd/SKILL.md", "skills/git-commit/SKILL.md", "skills/memory/SKILL.md"} {
@@ -24,30 +24,40 @@ func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(out, "plugins", "orbit", "hooks", "codex.json"))
-	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-start --host codex") || !strings.Contains(string(b), `"SessionEnd"`) ||
-		!strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-end --host codex") {
+	if !strings.Contains(string(b), "/Users/me/.local/bin/orb hook session-start --host codex") || !strings.Contains(string(b), `"SessionEnd"`) ||
+		!strings.Contains(string(b), "/Users/me/.local/bin/orb hook session-end --host codex") {
 		t.Fatalf("codex hooks: %s", b)
 	}
 	b, _ = os.ReadFile(filepath.Join(out, "plugins", "orbit", "hooks", "claude.json"))
-	if !strings.Contains(string(b), "/Users/me/.local/bin/oni hook session-end --host claude") {
+	if !strings.Contains(string(b), "/Users/me/.local/bin/orb hook session-end --host claude") {
 		t.Fatalf("claude hooks: %s", b)
 	}
 	b, _ = os.ReadFile(filepath.Join(out, "plugins", "orbit", ".mcp.json"))
-	if !strings.Contains(string(b), `"/Users/me/.local/bin/oni"`) {
+	if !strings.Contains(string(b), `"/Users/me/.local/bin/orb"`) {
 		t.Fatalf("mcp: %s", b)
+	}
+	// 원본의 템플릿 변수 이름과 Vars의 키가 맞아 훅·MCP에 풀리지 않은 {{…}}가 남지 않는다(ONID-107: {{orb}}·{{orbcmd}}).
+	if v := Vars("/x/orb"); v["orb"] != "/x/orb" || v["orbcmd"] != "/x/orb" {
+		t.Fatalf("vars: %v", v)
+	}
+	for _, f := range []string{"hooks/codex.json", "hooks/claude.json", ".mcp.json", "codex/mcp.json"} {
+		b, err := os.ReadFile(filepath.Join(out, "plugins", "orbit", f))
+		if err != nil || strings.Contains(string(b), "{{") {
+			t.Errorf("%s: unresolved template or missing: %v %s", f, err, b)
+		}
 	}
 }
 
 func TestVars_공백이_있는_경로만_따옴표(t *testing.T) {
-	if Vars(`C:\Users\Kim Lee\oni.exe`)["onicmd"] != `"C:/Users/Kim Lee/oni.exe"` {
-		t.Fatal(Vars(`C:\Users\Kim Lee\oni.exe`))
+	if Vars(`C:\Users\Kim Lee\orb.exe`)["orbcmd"] != `"C:/Users/Kim Lee/orb.exe"` {
+		t.Fatal(Vars(`C:\Users\Kim Lee\orb.exe`))
 	}
-	if Vars("/a/oni")["onicmd"] != "/a/oni" {
+	if Vars("/a/orb")["orbcmd"] != "/a/orb" {
 		t.Fatal("quoted without spaces")
 	}
 }
 
-func TestOrbit플러그인_버전은_oni_버전과_같다(t *testing.T) {
+func TestOrbit플러그인_버전은_orb_버전과_같다(t *testing.T) {
 	b, _ := source.ReadFile("source/plugin.json")
 	if !strings.Contains(string(b), `"version": "`+version.Version+`"`) {
 		t.Fatalf("plugin.json version must be %s", version.Version)
@@ -154,7 +164,7 @@ func TestOrbit플러그인_분야_지식이_분리된다(t *testing.T) {
 			}
 		}
 	}
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/oni")}); err != nil {
+	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: out, Vars: Vars("/Users/me/.local/bin/orb")}); err != nil {
 		t.Fatal(err)
 	}
 	kdir := filepath.ToSlash(filepath.Join(out, "plugins", "orbit", "knowledge"))

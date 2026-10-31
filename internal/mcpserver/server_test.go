@@ -3,13 +3,14 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 func connect(t *testing.T) (*mcp.ClientSession, *memory.Store) {
@@ -314,5 +315,27 @@ func TestFind_태그로_거르고_표기_차이는_무시한다(t *testing.T) {
 		if it.Title == "화면 글은 존댓말로" {
 			t.Errorf("다른 태그 기억이 나왔습니다: %+v", it)
 		}
+	}
+}
+
+// 저장소 이름이 바뀌면 프로젝트 범위 기억을 새 원격 이름으로 옮길 수 있어야 한다(ONID-107).
+func TestUpdate_project에_디렉터리를_주면_그_저장소의_범위로_옮긴다(t *testing.T) {
+	cs, _ := connect(t)
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "https://github.com/me/renamed.git"}} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	var saved MemoryOut
+	call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "옛 저장소 기억", "scope": "project",
+		"source": map[string]any{"kind": "session"}}, &saved)
+	var moved MemoryOut
+	res := call(t, cs, "memory_update", map[string]any{"id": saved.Memory.ID, "scope": "project", "project": dir, "reason": "저장소 이름 변경"}, &moved)
+	if res.IsError {
+		t.Fatalf("update: %s", text(res))
+	}
+	if moved.Memory.Scope != "project:github.com/me/renamed" || moved.Memory.Project != "github.com/me/renamed" {
+		t.Fatalf("moved = %+v", moved.Memory)
 	}
 }

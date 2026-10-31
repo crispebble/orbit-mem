@@ -70,8 +70,8 @@ func TestCopyCodexAgents_내가_만든_파일만_덮어쓴다(t *testing.T) {
 }
 
 func TestLaunchdPlist_매일_시각과_로그인_때(t *testing.T) {
-	p := LaunchdPlist(Schedule{Oni: "/Users/me/.local/bin/oni", Hour: 4, Home: "/Users/me/orbit", PathDirs: []string{"/Users/me/.local/bin", "/opt/homebrew/bin"}, Logs: "/Users/me/orbit/logs"})
-	for _, want := range []string{"<string>dev.onidot.orbit.retro</string>", "<string>/Users/me/.local/bin/oni</string>", "<string>retro</string>", "<string>run</string>",
+	p := LaunchdPlist(Schedule{Orb: "/Users/me/.local/bin/orb", Hour: 4, Home: "/Users/me/orbit", PathDirs: []string{"/Users/me/.local/bin", "/opt/homebrew/bin"}, Logs: "/Users/me/orbit/logs"})
+	for _, want := range []string{"<string>dev.onidot.orbit.retro</string>", "<string>/Users/me/.local/bin/orb</string>", "<string>retro</string>", "<string>run</string>",
 		"<key>Hour</key>\n\t\t<integer>4</integer>", "<key>RunAtLoad</key>\n\t<true/>", "/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin", "<key>ORBIT_HOME</key>"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("plist missing %q:\n%s", want, p)
@@ -80,7 +80,7 @@ func TestLaunchdPlist_매일_시각과_로그인_때(t *testing.T) {
 }
 
 func TestTaskXML_매일과_로그온과_놓치면_실행(t *testing.T) {
-	b := TaskXML(Schedule{Oni: `C:\Users\me\AppData\Local\Programs\orbit\oni.exe`, Hour: 4, Home: `C:\o`, Logs: `C:\o\logs`})
+	b := TaskXML(Schedule{Orb: `C:\Users\me\AppData\Local\Programs\orbit\orb.exe`, Hour: 4, Home: `C:\o`, Logs: `C:\o\logs`})
 	if len(b) < 2 || b[0] != 0xFF || b[1] != 0xFE {
 		t.Fatal("UTF-16LE BOM missing")
 	}
@@ -89,7 +89,7 @@ func TestTaskXML_매일과_로그온과_놓치면_실행(t *testing.T) {
 		u[i] = uint16(b[2+2*i]) | uint16(b[3+2*i])<<8
 	}
 	x := string(utf16.Decode(u))
-	for _, want := range []string{"<CalendarTrigger>", "T04:00:00", "<LogonTrigger>", "<StartWhenAvailable>true</StartWhenAvailable>", "<Command>cmd.exe</Command>", `oni.exe&#34; retro run`, "ORBIT_HOME=C:\\o", "retro.log", "PT6H"} {
+	for _, want := range []string{"<CalendarTrigger>", "T04:00:00", "<LogonTrigger>", "<StartWhenAvailable>true</StartWhenAvailable>", "<Command>cmd.exe</Command>", `orb.exe&#34; retro run`, "ORBIT_HOME=C:\\o", "retro.log", "PT6H"} {
 		if !strings.Contains(x, want) {
 			t.Errorf("xml missing %q:\n%s", want, x)
 		}

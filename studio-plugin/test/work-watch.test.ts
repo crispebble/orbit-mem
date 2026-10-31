@@ -91,7 +91,7 @@ describe('watchChanges', () => {
     assert.equal(f.calls[1].args?.after, (example('work_changes.reset').result as {seq: string}).seq);
   });
 
-  it('호출이 실패하면(oni가 죽음) 짧게 쉬었다가 마지막 seq부터 다시 건다', async () => {
+  it('호출이 실패하면(orb가 죽음) 짧게 쉬었다가 마지막 seq부터 다시 건다', async () => {
     const f = fakeWorkCtx({
       work_changes: queue([changes({waitMax: 30000, seq: 's1', workIds: ['w1'], sessionIds: []}), new Error('EPIPE')]),
     });
@@ -102,7 +102,7 @@ describe('watchChanges', () => {
     await until(() => f.calls.length >= 3);
     ac.abort();
     await done;
-    assert.ok(r.log.some(l => l.startsWith('error:Could not connect to oni')));
+    assert.ok(r.log.some(l => l.startsWith('error:Could not connect to orb')));
     assert.deepEqual(slept, [RETRY_MS]);
     assert.deepEqual(f.calls.slice(1, 3).map(c => c.args?.after), ['s1', 's1']);
   });
@@ -151,7 +151,7 @@ describe('watchChanges', () => {
     const f = fakeWorkCtx({work_changes: () => ({isError: false, text: '', structured: newer})});
     const r = recorder();
     await watchChanges(f.ctx, {after: 's0', handlers: r.handlers, signal: new AbortController().signal});
-    assert.deepEqual(r.log, ['paused:oni-newer']);
+    assert.deepEqual(r.log, ['paused:orb-newer']);
     assert.equal(f.calls.length, 1);
   });
 

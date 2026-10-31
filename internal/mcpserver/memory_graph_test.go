@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit/internal/memory"
-	memcontract "github.com/onidot-labs/orbit/internal/memory/contract"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	memcontract "github.com/onidot-labs/openorbit/internal/memory/contract"
 )
 
 func (e workEnv) memDB() string { return filepath.Join(e.dir, "m.db") }

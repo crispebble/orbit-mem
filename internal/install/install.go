@@ -1,4 +1,4 @@
-// Package install puts oni on this PC: the binary, the Orbit plugin in each
+// Package install puts orb on this PC: the binary, the OpenOrbit plugin in each
 // host's marketplace, the Codex role files of a built plugin and the OS
 // schedule for retrospectives (launchd on Mac, Task Scheduler on Windows).
 package install
@@ -21,7 +21,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // Hosts are the host CLIs found on this PC. An empty path means not installed.
@@ -124,7 +124,7 @@ func saveOwned(dir string, m map[string]string) error {
 
 // CopyCodexAgents copies a built plugin's codex/agents/*.toml into
 // <codexHome>/agents. Codex plugins cannot carry roles, so they are installed
-// as files. Only files Orbit wrote and nobody changed since are replaced or removed.
+// as files. Only files OpenOrbit wrote and nobody changed since are replaced or removed.
 func CopyCodexAgents(pluginDir, codexHome string) (CopyResult, error) {
 	var res CopyResult
 	srcs, err := filepath.Glob(filepath.Join(pluginDir, "codex", "agents", "*.toml"))
@@ -180,7 +180,7 @@ func CopyCodexAgents(pluginDir, codexHome string) (CopyResult, error) {
 
 // Schedule is the retrospective schedule of this PC.
 type Schedule struct {
-	Oni      string   // oni 절대경로
+	Orb      string   // orb 절대경로
 	Hour     int      // 하루 회고 시각
 	Home     string   // ORBIT_HOME(기본 위치가 아니면)
 	PathDirs []string // claude·codex가 있는 디렉터리
@@ -235,7 +235,7 @@ func LaunchdPlist(s Schedule) string {
 	<string>Background</string>
 </dict>
 </plist>
-`, LaunchdLabel, xmlEscape(s.Oni), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
+`, LaunchdLabel, xmlEscape(s.Orb), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
 }
 
 // TaskXML is the Windows Task Scheduler definition (UTF-16LE with BOM, as
@@ -255,13 +255,13 @@ func TaskXML(s Schedule) []byte {
 	if s.Home != "" {
 		inner = `set "ORBIT_HOME=` + s.Home + `" && `
 	}
-	inner += `"` + s.Oni + `" retro run`
+	inner += `"` + s.Orb + `" retro run`
 	if s.Logs != "" {
 		inner += ` >> "` + filepath.Join(s.Logs, "retro.log") + `" 2>&1`
 	}
 	x := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Orbit 회고(하루·주간)</Description></RegistrationInfo>
+  <RegistrationInfo><Description>OpenOrbit 회고(하루·주간)</Description></RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
       <StartBoundary>2026-01-01T%02d:00:00</StartBoundary>
@@ -369,7 +369,7 @@ func ScheduleInstalled(run func(string, ...string) (string, error)) bool {
 	return false
 }
 
-// DefaultBinDir is where oni is installed: ~/.local/bin on Mac and Linux,
+// DefaultBinDir is where orb is installed: ~/.local/bin on Mac and Linux,
 // %LOCALAPPDATA%\Programs\orbit on Windows.
 func DefaultBinDir() string {
 	if runtime.GOOS == "windows" {
@@ -381,15 +381,15 @@ func DefaultBinDir() string {
 	return filepath.Join(home, ".local", "bin")
 }
 
-// BinaryName is oni's file name on this OS.
+// BinaryName is orb's file name on this OS.
 func BinaryName() string {
 	if runtime.GOOS == "windows" {
-		return "oni.exe"
+		return "orb.exe"
 	}
-	return "oni"
+	return "orb"
 }
 
-// CopyBinary installs the running oni at dst (atomically) unless it already is dst.
+// CopyBinary installs the running orb at dst (atomically) unless it already is dst.
 func CopyBinary(src, dst string) (bool, error) {
 	if a, err := filepath.EvalSymlinks(src); err == nil {
 		src = a
@@ -423,7 +423,7 @@ func CopyBinary(src, dst string) (bool, error) {
 		if _, err := os.Stat(dst); err == nil {
 			if err := os.Rename(dst, old); err != nil { // 실행 중인 exe는 지울 수 없어 이름만 바꾼다
 				os.Remove(tmp)
-				return false, i18n.Errorf("install.err.replace_oni", err)
+				return false, i18n.Errorf("install.err.replace_binary", err)
 			}
 			if err := os.Rename(tmp, dst); err != nil {
 				_ = os.Rename(old, dst)

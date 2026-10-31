@@ -22,7 +22,7 @@ describe('memory_graph 호출', () => {
     assert.deepEqual(f.calls.map(c => c.args), [{major: 1}, {states: ['candidate', 'confirmed', 'stale', 'hidden'], major: 1}]);
   });
 
-  it('memory_graph가 없는 oni(0.3.5 이하)는 「Orbit을 올려 주세요」 멈춤', async () => {
+  it('memory_graph가 없는 orb(0.3.5 이하)는 「OpenOrbit을 올려 주세요」 멈춤', async () => {
     const f = fakeWorkCtx({memory_graph: () => { throw new Error('MCP error -32602: unknown tool "memory_graph"'); }});
     await assert.rejects(memoryGraph(f.ctx), (e: unknown) => e instanceof WorkPaused && e.kind === 'orbit-older');
   });
@@ -53,16 +53,16 @@ describe('그래프 상태', () => {
     const s = createGraphStore(f.ctx);
     await s.load();
     assert.equal(s.getState().status, 'error');
-    assert.match(s.getState().error ?? '', /Could not connect to oni/);
+    assert.match(s.getState().error ?? '', /Could not connect to orb/);
   });
 
-  it('Orbit이 새 판이면 멈춤과 문구', async () => {
+  it('OpenOrbit이 새 판이면 멈춤과 문구', async () => {
     const newer = {contract: {name: 'orbit.memory', major: 2, minor: 0, supportedMajors: [2]}, error: {code: 'UNSUPPORTED_MAJOR', message: 'x', supportedMajors: [2]}};
     const f = fakeWorkCtx({memory_graph: () => ({isError: true, text: '', structured: newer})});
     const s = createGraphStore(f.ctx);
     await s.load();
     assert.equal(s.getState().status, 'paused');
-    assert.match(s.getState().pause?.message ?? '', /Please update the Orbit app/);
+    assert.match(s.getState().pause?.message ?? '', /Please update the OpenOrbit app/);
   });
 
   it('다시 읽기가 실패해도 앞 그래프를 두고 알린다', async () => {

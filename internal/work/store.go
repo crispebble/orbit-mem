@@ -1,6 +1,6 @@
 // Package work keeps this PC's work graph: an append-only ledger of observed
 // host events and the current graph tables (works, steps, edges, runs,
-// evidence, sessions) rebuilt from it. Hooks write; oni mcp reads and serves
+// evidence, sessions) rebuilt from it. Hooks write; orb mcp reads and serves
 // the orbit.work contract. Nothing here talks to a network.
 package work
 
@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/sqlitedb"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/sqlitedb"
 )
 
 // Store is the work database (work.db).
@@ -123,7 +123,7 @@ func open(path string, busy time.Duration) (*Store, error) {
 }
 
 func (s *Store) migrate() error {
-	// 이미 이 판이면 읽기만 한다: 읽는 쪽(oni mcp --reader, 재개 문맥, doctor)이 쓰기 잠금을 다투지 않게.
+	// 이미 이 판이면 읽기만 한다: 읽는 쪽(orb mcp --reader, 재개 문맥, doctor)이 쓰기 잠금을 다투지 않게.
 	var v int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		return i18n.Errorf("work.err.db_open", err)

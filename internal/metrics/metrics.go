@@ -1,5 +1,5 @@
 // Package metrics turns the recorded events, retrospectives and proposals
-// into the numbers that say whether Orbit makes the AI's work better
+// into the numbers that say whether OpenOrbit makes the AI's work better
 // (설계 「측정」). A new metric reads a new event kind; nothing else changes.
 package metrics
 
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // Count is a thing and how often it came up.

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {approvalToDecideArgs, decideArgs, findArgs, memoryUpdateSteps, statusArgs} from '../src/requests.ts';
-import type {OniMemory, OniProposal} from '../src/model.ts';
+import type {OrbMemory, OrbProposal} from '../src/model.ts';
 
-const mem = (over: Partial<OniMemory> = {}): OniMemory => ({
+const mem = (over: Partial<OrbMemory> = {}): OrbMemory => ({
   id: 'm1', kind: 'rule', scope: 'global', state: 'candidate', title: '제목', body: '본문', tags: ['a'], version: 4, createdAt: 1, updatedAt: 2, ...over,
 });
 const value = (over = {}) => ({title: '제목', content: '본문', kind: 'rule' as const, scope: '전역', state: 'candidate' as const, tags: ['a'], stale: false, ...over});
@@ -30,7 +30,7 @@ describe('decideArgs', () => {
 });
 
 describe('approvalToDecideArgs', () => {
-  const p = (kind: string): OniProposal => ({id: 'p1', kind, title: 't', memoryIds: [], payload: {}, status: 'pending', createdAt: 1});
+  const p = (kind: string): OrbProposal => ({id: 'p1', kind, title: 't', memoryIds: [], payload: {}, status: 'pending', createdAt: 1});
   const a = (over = {}) => ({title: 't', text: 'x', edited: false, titleEdited: false, textEdited: false, ...over});
   it('고치지 않았으면 그대로 승인한다', () => {
     assert.deepEqual(approvalToDecideArgs(p('apply_file'), a()), {id: 'p1', decision: 'approve'});

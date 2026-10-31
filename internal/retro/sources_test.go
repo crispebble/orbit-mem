@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // fileMemory saves a confirmed memory standing on a file, as the old Knowledge

@@ -1,5 +1,5 @@
-// Package orbitplugin holds the Orbit plugin source (MCP, hooks and two
-// skills) built into each PC's marketplace with this PC's oni path.
+// Package orbitplugin holds the OpenOrbit plugin source (MCP, hooks and two
+// skills) built into each PC's marketplace with this PC's orb path.
 package orbitplugin
 
 import (
@@ -32,13 +32,13 @@ func Write(dir string) error {
 	})
 }
 
-// Vars are the build variables for an oni at path: {{oni}} for MCP commands
-// and {{onicmd}} for hook command lines (quoted only when the path has spaces,
+// Vars are the build variables for an orb at path: {{orb}} for MCP commands
+// and {{orbcmd}} for hook command lines (quoted only when the path has spaces,
 // so the same line works in sh, cmd and PowerShell).
-func Vars(oni string) map[string]string {
-	cmd := strings.ReplaceAll(oni, `\`, "/")
+func Vars(orb string) map[string]string {
+	cmd := strings.ReplaceAll(orb, `\`, "/")
 	if strings.ContainsAny(cmd, " \t") {
 		cmd = `"` + cmd + `"`
 	}
-	return map[string]string{"oni": oni, "onicmd": cmd}
+	return map[string]string{"orb": orb, "orbcmd": cmd}
 }

@@ -1,6 +1,6 @@
 // Package retro runs the retrospectives: once a day for the day before and
 // once a week, in the background, through a headless host (claude -p or codex
-// exec). Orbit gathers the material; the host reads it through the retro MCP
+// exec). OpenOrbit gathers the material; the host reads it through the retro MCP
 // tools and submits a journal, candidate memories, flags and proposals once.
 package retro
 
@@ -18,11 +18,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/transcript"
-	"github.com/onidot-labs/orbit/internal/work"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/transcript"
+	"github.com/onidot-labs/openorbit/internal/work"
 )
 
 // Kinds and statuses of a retrospective.
@@ -70,7 +70,7 @@ type Runner struct {
 	Roots transcript.Roots
 	Loc   *time.Location
 	Now   func() time.Time
-	Oni   string // MCP 서버로 띄울 oni 절대경로
+	Orb   string // MCP 서버로 띄울 orb 절대경로
 	Exec  func(context.Context, Cmd) (string, error)
 }
 
@@ -442,7 +442,7 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 		q := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 		args := []string{"exec", "--ephemeral", "--skip-git-repo-check", "-C", dir, "-s", "read-only",
 			"-c", `approval_policy="never"`,
-			"-c", "mcp_servers.orbit-retro.command=" + q(r.Oni),
+			"-c", "mcp_servers.orbit-retro.command=" + q(r.Orb),
 			"-c", `mcp_servers.orbit-retro.args=["mcp","--retro",` + q(id) + `]`,
 			"-c", "mcp_servers.orbit-retro.env={ORBIT_HOME=" + q(r.Paths.Home) + "}",
 			"-c", `mcp_servers.orbit-retro.default_tools_approval_mode="approve"`}
@@ -456,7 +456,7 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 		name = "claude"
 	}
 	mcpConfig, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"orbit-retro": map[string]any{
-		"type": "stdio", "command": r.Oni, "args": []string{"mcp", "--retro", id}, "env": map[string]string{"ORBIT_HOME": r.Paths.Home}}}})
+		"type": "stdio", "command": r.Orb, "args": []string{"mcp", "--retro", id}, "env": map[string]string{"ORBIT_HOME": r.Paths.Home}}}})
 	configPath := filepath.Join(r.Paths.RetroDir(), id, "mcp.json")
 	_ = os.MkdirAll(filepath.Dir(configPath), 0o700)
 	_ = os.WriteFile(configPath, mcpConfig, 0o600)

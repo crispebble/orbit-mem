@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/sqlitedb"
+	"github.com/onidot-labs/openorbit/internal/sqlitedb"
 )
 
 // SpoolEvent leaves an event the hook could not write (database locked or

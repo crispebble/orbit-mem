@@ -2,7 +2,7 @@
   "work.err.apply_event": "cannot apply the %s event: %w",
   "work.err.backup": "work log backup failed: %w",
   "work.err.db_create": "cannot create the work log DB: %w",
-  "work.err.db_newer": "the work log DB (version %d) is newer than this oni; upgrade oni",
+  "work.err.db_newer": "the work log DB (version %d) is newer than this orb; upgrade orb",
   "work.err.db_open": "cannot open the work log DB: %w",
   "work.err.db_upgrade": "cannot upgrade the work log DB: %w",
   "work.err.reapply_event": "cannot apply event %d (%s) again: %w"

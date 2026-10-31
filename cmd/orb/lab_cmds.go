@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/lab"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/lab"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 func newLab(s *memory.Store) (*lab.Lab, error) {
@@ -19,7 +19,7 @@ func newLab(s *memory.Store) (*lab.Lab, error) {
 	if cfg.PluginSource == "" {
 		return nil, i18n.Errorf("cli.lab.err.no_source")
 	}
-	return &lab.Lab{Store: s, Cfg: cfg, Paths: paths(), Oni: selfPath(), Source: cfg.PluginSource}, nil
+	return &lab.Lab{Store: s, Cfg: cfg, Paths: paths(), Orb: selfPath(), Source: cfg.PluginSource}, nil
 }
 
 func readArg(text, file string) (string, error) {

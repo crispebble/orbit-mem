@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // maxRulesRunes bounds the rule text added at session start, in characters,
@@ -91,7 +91,7 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 		}
 	}
 	if len(rules) > 0 {
-		b.WriteString("[Orbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n")
+		b.WriteString("[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n")
 		var titlesOnly []memory.Memory
 		for _, m := range rules { // 최근에 고친 규칙부터 전문으로
 			entry := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
@@ -136,7 +136,7 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 		b.WriteString(line + "\n")
 	}
 	if b.Len() > 0 {
-		b.WriteString("기억은 Orbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다.")
+		b.WriteString("기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다.")
 	}
 	return inj.done(&b)
 }
@@ -222,7 +222,7 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 	if budget <= 0 {
 		budget = config.Default().RecallChars
 	}
-	head := "[Orbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
+	head := "[OpenOrbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
 	used := utf8.RuneCountInString(head)
 	var entries strings.Builder
 	var domains []string // 요청과 맞은 분야, 맞은 순서

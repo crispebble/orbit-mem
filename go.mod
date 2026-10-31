@@ -1,4 +1,4 @@
-module github.com/onidot-labs/orbit
+module github.com/onidot-labs/openorbit
 
 go 1.27.1
 

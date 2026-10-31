@@ -4,11 +4,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // Outcomes of checking a memory whose source file changed (설계 · Orbit 3차
-// O3-1 「출처 파일 판정」). Each is kept as a source.check event for oni stats.
+// O3-1 「출처 파일 판정」). Each is kept as a source.check event for orb stats.
 const (
 	SourceKept   = "kept"   // 발췌가 바뀐 파일에 그대로 있음: 해시만 갱신
 	SourceAbsent = "absent" // 파일이 없어짐: 근거가 지워졌을 뿐이라 제안하지 않음(2026-10-30 사용자 결정)

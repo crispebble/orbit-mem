@@ -1,4 +1,4 @@
-// Command oni is Orbit: per-PC memory for AI hosts, background
+// Command orb is OpenOrbit: per-PC memory for AI hosts, background
 // retrospectives that propose what was learned, and a plugin builder that
 // writes Claude Code and Codex formats from one source.
 package main
@@ -14,8 +14,8 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 type app struct {
@@ -82,7 +82,7 @@ func (a *app) main(args []string) int {
 			fmt.Fprintln(a.stderr, i18n.T("cli.usage_line", i18n.T(c.usage)))
 			return 2
 		}
-		fmt.Fprintln(a.stderr, "oni "+c.name+": "+err.Error())
+		fmt.Fprintln(a.stderr, "orb "+c.name+": "+err.Error())
 		return 1
 	}
 	fmt.Fprintln(a.stderr, i18n.T("cli.unknown_command", args[0]))

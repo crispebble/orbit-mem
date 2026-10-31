@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // legacyEnv는 옛 기억 판정을 켠 환경에 기억을 심는다.
@@ -220,7 +220,7 @@ func TestLegacy_승인한_합치기는_원장에_남고_되돌린다(t *testing.
 	}
 }
 
-// 예약 회고(oni retro run)는 하루에 옛 기억 묶음을 legacyBatches개까지 돌린다. 같은 날 다시 돌려도 더 돌지 않고, 0이면 끈다.
+// 예약 회고(orb retro run)는 하루에 옛 기억 묶음을 legacyBatches개까지 돌린다. 같은 날 다시 돌려도 더 돌지 않고, 0이면 끈다.
 func TestLegacy_예약_회고는_하루_묶음_수까지_돈다(t *testing.T) {
 	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
 	e, _ := legacyEnv(t, now)

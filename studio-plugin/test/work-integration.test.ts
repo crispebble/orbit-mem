@@ -1,5 +1,5 @@
-// 통합 시험: 임시 ORBIT_HOME과 실제 `oni mcp --reader`(stdio MCP)로 계약 호출을 확인한다.
-// oni 실행 파일은 ONI_BIN(없으면 PATH의 oni). 없거나 --reader를 모르면 건너뛴다.
+// 통합 시험: 임시 ORBIT_HOME과 실제 `orb mcp --reader`(stdio MCP)로 계약 호출을 확인한다.
+// orb 실행 파일은 ORB_BIN(없으면 PATH의 orb). 없거나 --reader를 모르면 건너뛴다.
 import assert from 'node:assert/strict';
 import {spawn, spawnSync, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -10,13 +10,13 @@ import {sessionGet, sessionsList, workChanges, workGet, workList} from '../src/w
 import {WorkToolError} from '../src/work/contract.ts';
 import type {McpResultLike, WorkCtx} from '../src/work/types.ts';
 
-const ONI = process.env.ONI_BIN ?? 'oni';
-const help = spawnSync(ONI, ['mcp', '--help'], {encoding: 'utf8'});
+const ORB = process.env.ORB_BIN ?? 'orb';
+const help = spawnSync(ORB, ['mcp', '--help'], {encoding: 'utf8'});
 const available = !help.error && `${help.stdout}${help.stderr}`.includes('-reader');
 
 /** 최소 MCP stdio 클라이언트(JSON 줄 단위) */
 function startReader(home: string) {
-  const child: ChildProcessWithoutNullStreams = spawn(ONI, ['mcp', '--reader'], {env: {...process.env, ORBIT_HOME: home}, cwd: home});
+  const child: ChildProcessWithoutNullStreams = spawn(ORB, ['mcp', '--reader'], {env: {...process.env, ORBIT_HOME: home}, cwd: home});
   let id = 0;
   const pending = new Map<number, (v: {result?: Record<string, unknown>; error?: {message: string}}) => void>();
   let buf = '';
@@ -54,7 +54,7 @@ function startReader(home: string) {
   return {ctx, stop: () => child.kill()};
 }
 
-describe('실제 oni mcp --reader', {skip: available ? false : 'oni 실행 파일이 없거나 --reader를 모른다(ONI_BIN으로 지정)'}, () => {
+describe('실제 orb mcp --reader', {skip: available ? false : 'orb 실행 파일이 없거나 --reader를 모른다(ORB_BIN으로 지정)'}, () => {
   const home = mkdtempSync(join(tmpdir(), 'orbit-home-'));
   const reader = startReader(home);
   after(() => {

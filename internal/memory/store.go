@@ -15,8 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/sqlitedb"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/sqlitedb"
 )
 
 // Store is this PC's memory database (one SQLite file).
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS ledger_at ON ledger(at);
 PRAGMA user_version=2;
 `
 
-// addColumns adds the columns later versions put on tables an older Orbit made.
+// addColumns adds the columns later versions put on tables an older OpenOrbit made.
 func addColumns(db *sql.Tx) error {
 	for _, c := range []struct{ table, column, def string }{
 		{"retros", "session", "TEXT NOT NULL DEFAULT ''"},

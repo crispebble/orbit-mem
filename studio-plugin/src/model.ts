@@ -1,4 +1,4 @@
-// oni MCP 도구 결과(구조화 결과)를 화면 모델로 바꾸는 순수 함수들.
+// orb MCP 도구 결과(구조화 결과)를 화면 모델로 바꾸는 순수 함수들.
 // 도구 계약 원본: orbit/internal/mcpserver/server.go, orbit/internal/memory/{model,proposal}.go
 import type {InboxItem} from '@onidot-labs/studio-plugin';
 import {pick} from './i18n/index.ts';
@@ -16,9 +16,9 @@ import type {
   ProposalKind,
 } from './parts/index.ts';
 
-// ---------- oni가 주는 모양(Go JSON). 빈 목록은 null로 올 수 있다. ----------
+// ---------- orb가 주는 모양(Go JSON). 빈 목록은 null로 올 수 있다. ----------
 
-export interface OniSummary {
+export interface OrbSummary {
   id: string;
   kind: string;
   state: string;
@@ -30,7 +30,7 @@ export interface OniSummary {
   updatedAt: number;
 }
 
-export interface OniSource {
+export interface OrbSource {
   id?: string;
   kind: string;
   ref?: string;
@@ -39,7 +39,7 @@ export interface OniSource {
   at?: number;
 }
 
-export interface OniMemory {
+export interface OrbMemory {
   id: string;
   kind: string;
   scope: string;
@@ -54,12 +54,12 @@ export interface OniMemory {
   supersededBy?: string;
   staleReason?: string;
   days?: string[] | null;
-  sources?: OniSource[] | null;
-  links?: OniLink[] | null;
+  sources?: OrbSource[] | null;
+  links?: OrbLink[] | null;
 }
 
 /** memory_get의 살아 있는 명시 연결(orbit 0.3.6~) */
-export interface OniLink {
+export interface OrbLink {
   id: string;
   /** 상대 기억 */
   memoryId: string;
@@ -69,15 +69,15 @@ export interface OniLink {
   at?: number;
 }
 
-export interface OniVersion {
+export interface OrbVersion {
   version: number;
   action: string;
   reason?: string;
   at: number;
-  memory: OniMemory;
+  memory: OrbMemory;
 }
 
-export interface OniPayload {
+export interface OrbPayload {
   kind?: string;
   mergedTitle?: string;
   mergedBody?: string;
@@ -93,19 +93,19 @@ export interface OniPayload {
   toTags?: string[];
 }
 
-export interface OniProposal {
+export interface OrbProposal {
   id: string;
   kind: string;
   title: string;
   body?: string;
   memoryIds?: string[] | null;
-  payload: OniPayload | null;
+  payload: OrbPayload | null;
   status: string;
   createdAt: number;
   decidedAt?: number;
   retroId?: string;
   note?: string;
-  memories?: OniSummary[] | null;
+  memories?: OrbSummary[] | null;
 }
 
 // ---------- 글 ----------
@@ -146,7 +146,7 @@ export function scopeLabel(scope: string, project?: string): string {
 const asKind = (v: string): MemoryKind => (KINDS as readonly string[]).includes(v) ? (v as MemoryKind) : 'fact';
 const asState = (v: string): MemoryState => (STATES as readonly string[]).includes(v) ? (v as MemoryState) : 'candidate';
 
-export function toMemoryRecord(s: OniSummary, now: Date = new Date()): OrbitMemory {
+export function toMemoryRecord(s: OrbSummary, now: Date = new Date()): OrbitMemory {
   return {
     id: s.id,
     title: s.title,
@@ -160,7 +160,7 @@ export function toMemoryRecord(s: OniSummary, now: Date = new Date()): OrbitMemo
   };
 }
 
-function toSource(s: OniSource, now: Date): MemorySource {
+function toSource(s: OrbSource, now: Date): MemorySource {
   const kind: MemorySourceKind = (SOURCE_KINDS as readonly string[]).includes(s.kind) ? (s.kind as MemorySourceKind) : 'session';
   const when = formatDate(s.at, now);
   const out: MemorySource = {kind, label: when ? `${sourceLabel(kind)} · ${when}` : sourceLabel(kind)};
@@ -169,7 +169,7 @@ function toSource(s: OniSource, now: Date): MemorySource {
   return out;
 }
 
-function toVersions(history: readonly OniVersion[], now: Date): MemoryVersion[] {
+function toVersions(history: readonly OrbVersion[], now: Date): MemoryVersion[] {
   const asc = [...history].sort((a, b) => a.version - b.version);
   const out = asc.map((h, i): MemoryVersion => {
     const prev = asc[i - 1];
@@ -189,7 +189,7 @@ function toVersions(history: readonly OniVersion[], now: Date): MemoryVersion[] 
   return out.reverse();
 }
 
-export function toMemoryDetail(m: OniMemory, history: readonly OniVersion[] = [], now: Date = new Date()): OrbitMemory {
+export function toMemoryDetail(m: OrbMemory, history: readonly OrbVersion[] = [], now: Date = new Date()): OrbitMemory {
   const rec: OrbitMemory = {
     id: m.id,
     title: m.title,
@@ -219,7 +219,7 @@ export interface ProposalRow {
   pending: boolean;
 }
 
-export function toProposalRow(p: OniProposal, now: Date = new Date()): ProposalRow {
+export function toProposalRow(p: OrbProposal, now: Date = new Date()): ProposalRow {
   return {id: p.id, title: p.title, kind: p.kind, kindLabel: proposalKindLabel(p.kind), date: formatDate(p.createdAt, now), status: p.status, pending: p.status === 'pending'};
 }
 
@@ -244,7 +244,7 @@ export function groupProposalRows(rows: readonly ProposalRow[]): ProposalGroup[]
 const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link'];
 
 /**
- * Forma 0.9.0에 없는 Orbit 종류: 기억 고치기·변경 되돌리기·태그 정리는 가장 가까운 「기억 정리」로 그리고
+ * Forma 0.9.0에 없는 OpenOrbit 종류: 기억 고치기·변경 되돌리기·태그 정리는 가장 가까운 「기억 정리」로 그리고
  * 바뀔 내용(diff, 바뀔 태그)은 설명으로 보인다. 그 밖에 모르는 종류는 확정으로 본다.
  */
 const asProposalKind = (kind: string): ProposalKind => {
@@ -259,7 +259,7 @@ function addLines(text: string) {
 const MAX_EVIDENCE = 8;
 
 /** 근거: 대상 기억의 출처들. 출처가 없는 기억은 제목을 보인다. */
-function evidenceOf(memories: readonly OniMemory[], now: Date): ProposalEvidence[] {
+function evidenceOf(memories: readonly OrbMemory[], now: Date): ProposalEvidence[] {
   const out: ProposalEvidence[] = [];
   for (const m of memories) {
     const sources = m.sources ?? [];
@@ -275,7 +275,7 @@ function evidenceOf(memories: readonly OniMemory[], now: Date): ProposalEvidence
   return out.slice(0, MAX_EVIDENCE);
 }
 
-export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], now: Date = new Date()): Proposal {
+export function toProposal(p: OrbProposal, related: readonly OrbMemory[] = [], now: Date = new Date()): Proposal {
   const payload = p.payload ?? {};
   const date = formatDate(p.createdAt, now);
   const out: Proposal = {id: p.id, kind: asProposalKind(p.kind), title: p.title, source: p.retroId ? pick(proposalText).fromRetro(date) : date};
@@ -288,13 +288,13 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
   } else if (p.kind === 'merge') {
     const text = payload.mergedBody ?? '';
     out.diff = {path: pick(proposalText).mergedPath(payload.mergedTitle ?? ''), lines: addLines(text), text};
-    // 고친 제목은 합칠 기억의 제목이 된다(oni merge: title이 mergedTitle을 바꾼다).
+    // 고친 제목은 합칠 기억의 제목이 된다(orb merge: title이 mergedTitle을 바꾼다).
     if (payload.mergedTitle) out.title = payload.mergedTitle;
     if (p.body) out.explanation = p.body;
   } else if (p.kind === 'direction') {
     out.diff = {path: pick(proposalText).directionPath(p.title), lines: addLines(p.body ?? ''), text: p.body ?? ''};
   } else if (p.kind === 'link') {
-    // 잇기는 기억 내용을 바꾸지 않아 고쳐서 승인이 없다(oni가 거부한다). 두 기억은 근거에 보인다.
+    // 잇기는 기억 내용을 바꾸지 않아 고쳐서 승인이 없다(orb가 거부한다). 두 기억은 근거에 보인다.
     const why = [p.body, payload.note && pick(proposalText).linkReason(payload.note)].filter(Boolean).join('\n\n');
     if (why) out.explanation = why;
   } else {
@@ -313,7 +313,7 @@ export function toProposal(p: OniProposal, related: readonly OniMemory[] = [], n
 
 // ---------- 받은 일 ----------
 
-export function toInboxItems(proposals: readonly OniProposal[], now: Date = new Date()): InboxItem[] {
+export function toInboxItems(proposals: readonly OrbProposal[], now: Date = new Date()): InboxItem[] {
   const t = pick(proposalText);
   return proposals
     .filter(p => p.status === 'pending')
@@ -322,7 +322,7 @@ export function toInboxItems(proposals: readonly OniProposal[], now: Date = new 
       kind: 'proposal' as const,
       title: p.title,
       subtitle: `${proposalKindLabel(p.kind)} · ${formatDate(p.createdAt, now)}`,
-      group: 'Orbit',
+      group: 'OpenOrbit',
       unread: true,
       createdAt: p.createdAt,
       actions: [

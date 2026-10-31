@@ -3,7 +3,7 @@ import {readdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {describe, it} from 'node:test';
 
-// Orbit 전용 부품·어휘는 플러그인 안(src/parts)에 있다. Forma 0.10.0에서 빠지므로 `/ai`에서 받으면 안 된다.
+// OpenOrbit 전용 부품·어휘는 플러그인 안(src/parts)에 있다. Forma 0.10.0에서 빠지므로 `/ai`에서 받으면 안 된다.
 const MOVED = [
   'MemoryList', 'MemoryDetail', 'MemoryForm', 'ProposalDetail', 'RetroDay',
   'MemoryListProps', 'MemoryListState', 'MemoryDetailProps', 'MemoryFormProps', 'MemoryFormValue',
@@ -37,7 +37,7 @@ function importsOf(source: string): {from: string; names: string[]}[] {
   return out;
 }
 
-describe('Orbit 부품은 플러그인 안에 있다', () => {
+describe('OpenOrbit 부품은 플러그인 안에 있다', () => {
   const files = sourceFiles(srcDir);
 
   it('src를 찾는다', () => {

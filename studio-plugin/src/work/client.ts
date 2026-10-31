@@ -1,7 +1,7 @@
-// 읽는 쪽 연결(`work`)로 작업 도구를 부르고 응답을 검사해 돌려준다. oni 호출 경계 하나.
+// 읽는 쪽 연결(`work`)로 작업 도구를 부르고 응답을 검사해 돌려준다. orb 호출 경계 하나.
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
-import {errorMessage, OrbitError} from '../oni.ts';
+import {errorMessage, OrbitError} from '../orb.ts';
 import {
   checkContract, parseChanges, parseGet, parseList, parseSession, parseSessions, WorkPaused, WorkToolError,
 } from './contract.ts';

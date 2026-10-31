@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 func store(t *testing.T) *memory.Store {

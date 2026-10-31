@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/retro"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/retro"
 )
 
 const mark = "LABMARK 묻기 전에 무엇을 정하는지 한 줄로 풀어 쓴다"
@@ -59,7 +59,7 @@ func setup(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	rounds := map[string]int{}
-	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Oni: "/opt/oni", Source: e.src, Now: func() time.Time { return now },
+	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Orb: "/opt/orb", Source: e.src, Now: func() time.Time { return now },
 		Shuffle: func(round int) bool { return round%2 == 1 }, // 홀수 회차는 고침이 A
 		Exec: func(ctx context.Context, c retro.Cmd) (string, error) {
 			e.calls = append(e.calls, c)

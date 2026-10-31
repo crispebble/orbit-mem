@@ -1,4 +1,4 @@
-// 제안 화면(목록·상세·묶음·결정 알림)의 글. 제안의 제목·본문과 oni가 준 오류 글은 번역하지 않는다.
+// 제안 화면(목록·상세·묶음·결정 알림)의 글. 제안의 제목·본문과 orb가 준 오류 글은 번역하지 않는다.
 import {defineMessages} from '../index.ts';
 
 const proposals = (n: number) => `${n} ${n === 1 ? 'proposal' : 'proposals'}`;
@@ -18,7 +18,7 @@ export const proposalText = defineMessages({
       cleanup: 'Tidy up and merge memories',
       harness: 'Apply to harness',
     },
-    // 목록·받은 일이 쓰는 종류 이름(oni의 모든 종류)
+    // 목록·받은 일이 쓰는 종류 이름(orb의 모든 종류)
     rowKinds: {
       confirm: 'Confirm candidate',
       stale: 'Clean up stale memory',
@@ -58,7 +58,7 @@ export const proposalText = defineMessages({
       failed: 'Could not decide',
     },
     view: {
-      connectFailed: 'Could not connect to Orbit',
+      connectFailed: 'Could not connect to OpenOrbit',
       loading: 'Loading proposals…',
       filterLabel: 'Show proposals',
       pending: (n: number) => `Pending ${n}`,
@@ -71,7 +71,7 @@ export const proposalText = defineMessages({
     },
     pane: {
       notFound: 'Proposal not found',
-      notFoundHint: 'It was already handled, or oni has no such proposal.',
+      notFoundHint: 'It was already handled, or OpenOrbit has no such proposal.',
       reason: 'Reason:',
     },
     detail: {
@@ -175,7 +175,7 @@ export const proposalText = defineMessages({
       failed: '결정하지 못했습니다',
     },
     view: {
-      connectFailed: 'Orbit에 연결하지 못했습니다',
+      connectFailed: 'OpenOrbit에 연결하지 못했습니다',
       loading: '제안을 불러오는 중입니다',
       filterLabel: '제안 보기',
       pending: (n: number) => `대기 ${n}`,
@@ -188,7 +188,7 @@ export const proposalText = defineMessages({
     },
     pane: {
       notFound: '제안을 찾지 못했습니다',
-      notFoundHint: '이미 정리됐거나 oni에 없는 제안입니다.',
+      notFoundHint: '이미 정리됐거나 OpenOrbit에 없는 제안입니다.',
       reason: '사유:',
     },
     detail: {

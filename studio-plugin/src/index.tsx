@@ -59,7 +59,7 @@ export default definePlugin({
     const inbox = createInboxParts<InboxItem>(ctx.inbox);
     store = createStore(ctx, undefined, inbox);
     setStore(store);
-    // 작업 기록은 읽는 쪽 연결(`oni mcp --reader`)로 따로 읽는다. 판이 맞지 않으면 작업·세션 화면만 멈춘다.
+    // 작업 기록은 읽는 쪽 연결(`orb mcp --reader`)로 따로 읽는다. 판이 맞지 않으면 작업·세션 화면만 멈춘다.
     workStore = createWorkStore(ctx);
     setWorkStore(workStore);
     offWaiting = syncWaitingInbox(workStore, inbox);

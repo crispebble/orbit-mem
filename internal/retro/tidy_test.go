@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // tidyEnv는 그래프 정리를 켠 환경에 기억을 심는다.
@@ -167,7 +167,7 @@ func TestTidy_상한과_관계와_거절한_쌍(t *testing.T) {
 	}
 }
 
-// 「oni retro tidy」: 대화가 없어도 그래프 정리만 한 회 돈다. 일지는 받지 않는다.
+// 「orb retro tidy」: 대화가 없어도 그래프 정리만 한 회 돈다. 일지는 받지 않는다.
 // 하루 회고는 대화가 없으면 정리만으로는 돌지 않는다(정리는 하루 회고에 붙을 뿐이다).
 func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 	now := time.Date(2026, 10, 27, 4, 0, 0, 0, kst)

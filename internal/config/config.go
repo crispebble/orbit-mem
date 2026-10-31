@@ -1,4 +1,4 @@
-// Package config holds this PC's Orbit settings and file locations.
+// Package config holds this PC's OpenOrbit settings and file locations.
 package config
 
 import (
@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).
@@ -20,7 +20,7 @@ const (
 
 // Config is this PC's settings.
 type Config struct {
-	Language        string   `json:"language,omitempty"`     // en(기본) | ko: oni가 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
+	Language        string   `json:"language,omitempty"`     // en(기본) | ko: orb가 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
 	RetroHost       string   `json:"retroHost"`              // claude | codex
 	RetroModel      string   `json:"retroModel"`             // 비우면 호스트 기본값
 	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
@@ -31,7 +31,7 @@ type Config struct {
 	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
 	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
-	PluginSource    string   `json:"pluginSource,omitempty"` // Orbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
+	PluginSource    string   `json:"pluginSource,omitempty"` // OpenOrbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
 	// 작업 그래프(설계 · Orbit 2차 「구성」 PC 설정). 이름은 제안이다.
 	Work             string   `json:"work,omitempty"`             // on(기본) | off: 작업 기록 켜기
 	WorkTestCommands []string `json:"workTestCommands,omitempty"` // 기본 시험 명령 목록에 더할 명령(설계 O6)
@@ -50,7 +50,7 @@ type Config struct {
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
 
 	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. 예약 회고가 하루에
-	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(oni retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
+	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orb retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
 	// 첫 실행 실측(30개 묶음 2회, 약 50초·$0.27~0.40)을 보고 사용자가 정했다(2026-10-30, 남은 것은 한 번에 판정하고 예약은 하루 1묶음).
 	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
@@ -165,7 +165,7 @@ func Language(path string) string {
 	return c.Language
 }
 
-// Home is Orbit's data directory: ORBIT_HOME, else the OS config directory + /orbit.
+// Home is OpenOrbit's data directory: ORBIT_HOME, else the OS config directory + /orbit.
 func Home() string {
 	if h := os.Getenv("ORBIT_HOME"); h != "" {
 		return h

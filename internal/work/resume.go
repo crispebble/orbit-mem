@@ -20,7 +20,7 @@ func (s *Store) ResumeContext(projectScope string, budget int, opt ReadOptions) 
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("[Orbit 작업 · 열린 작업] 이 프로젝트에서 끝나지 않은 작업이다. 이어 하려면 work_get으로 읽는다.\n")
+	b.WriteString("[OpenOrbit 작업 · 열린 작업] 이 프로젝트에서 끝나지 않은 작업이다. 이어 하려면 work_get으로 읽는다.\n")
 	left := 0
 	for i, w := range rows {
 		g, err := rd.load(w)
@@ -63,5 +63,5 @@ var blockName = map[string]string{"waiting_user": "사용자 응답 대기", "ru
 // TitleRequest is the context a list tool's hook adds once when it opened a
 // work (설계 O2).
 func TitleRequest(workID string) string {
-	return fmt.Sprintf("[Orbit 작업] 작업 %s에 제목이 없다. work_title(workId=%q)로 무엇을 하는 작업인지 한 줄 제목을 정하라. 작업의 목표가 바뀌면 다시 불러 고친다.", workID, workID)
+	return fmt.Sprintf("[OpenOrbit 작업] 작업 %s에 제목이 없다. work_title(workId=%q)로 무엇을 하는 작업인지 한 줄 제목을 정하라. 작업의 목표가 바뀌면 다시 불러 고친다.", workID, workID)
 }

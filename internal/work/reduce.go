@@ -82,7 +82,7 @@ func (r *reducer) apply() error {
 	case KindTitle:
 		return r.title()
 	}
-	return nil // 모르는 종류는 원장에만 남긴다(새 oni가 쓴 사건을 옛 oni가 다시 적용할 때)
+	return nil // 모르는 종류는 원장에만 남긴다(새 orb가 쓴 사건을 옛 orb가 다시 적용할 때)
 }
 
 // flush stamps changed works and sessions with this event's position and

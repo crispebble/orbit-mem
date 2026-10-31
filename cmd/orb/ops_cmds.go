@@ -11,23 +11,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/install"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/migrate"
-	"github.com/onidot-labs/orbit/internal/orbitplugin"
-	"github.com/onidot-labs/orbit/internal/pluginbuild"
-	"github.com/onidot-labs/orbit/internal/retro"
-	"github.com/onidot-labs/orbit/internal/transcript"
-	"github.com/onidot-labs/orbit/internal/version"
-	"github.com/onidot-labs/orbit/internal/work"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/install"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/migrate"
+	"github.com/onidot-labs/openorbit/internal/orbitplugin"
+	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/openorbit/internal/retro"
+	"github.com/onidot-labs/openorbit/internal/transcript"
+	"github.com/onidot-labs/openorbit/internal/version"
+	"github.com/onidot-labs/openorbit/internal/work"
 )
 
 func selfPath() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return "oni"
+		return "orb"
 	}
 	if r, err := filepath.EvalSymlinks(exe); err == nil {
 		return r
@@ -36,7 +36,7 @@ func selfPath() string {
 }
 
 func newRunner(s *memory.Store, cfg config.Config) *retro.Runner {
-	return &retro.Runner{Store: s, Cfg: cfg, Paths: paths(), Roots: transcript.DefaultRoots(), Loc: time.Local, Oni: selfPath()}
+	return &retro.Runner{Store: s, Cfg: cfg, Paths: paths(), Roots: transcript.DefaultRoots(), Loc: time.Local, Orb: selfPath()}
 }
 
 func cmdRetro(a *app, args []string) error {
@@ -356,6 +356,7 @@ func cmdInstall(a *app, args []string) error {
 	dst := filepath.Join(*binDir, install.BinaryName())
 	steps := []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
+		i18n.T("cli.install.step_alias", install.AliasPath(dst)), // 4차 동안의 별칭(ONID-107)
 		i18n.T("cli.install.step_home", p.Home),
 		i18n.T("cli.install.step_build", p.Marketplace()),
 	}
@@ -380,6 +381,12 @@ func cmdInstall(a *app, args []string) error {
 	}
 	if copied {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.installed", dst))
+	}
+	// 4차 동안의 별칭(ONID-107): 두지 못해도 orb는 깔렸으니 알리고 이어 간다.
+	if alias, changed, err := install.InstallAlias(dst); err != nil {
+		fmt.Fprintln(a.stderr, i18n.T("cli.install.alias_failed", err))
+	} else if changed {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.alias", alias))
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -450,7 +457,7 @@ func cmdInstall(a *app, args []string) error {
 		if os.Getenv("ORBIT_HOME") != "" {
 			home = p.Home
 		}
-		where, err := install.ApplySchedule(install.Schedule{Oni: dst, Hour: cfg.RetroHour, Home: home, PathDirs: dirs, Logs: p.Logs()}, install.RunCommand)
+		where, err := install.ApplySchedule(install.Schedule{Orb: dst, Hour: cfg.RetroHour, Home: home, PathDirs: dirs, Logs: p.Logs()}, install.RunCommand)
 		if err != nil {
 			return i18n.Errorf("cli.install.err.schedule", err)
 		}
@@ -502,6 +509,9 @@ func cmdUninstall(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", paths().Home))
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.binary", selfPath()))
+	if alias := install.AliasPath(selfPath()); lexists(alias) { // 4차 동안의 별칭(ONID-107)
+		fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.alias", alias))
+	}
 	return nil
 }
 
@@ -631,4 +641,9 @@ func cmdDoctor(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.work", onOff(rep.Work.On), rep.Work.Open, rep.Work.Total, rep.Work.Spooled))
 	return nil
+}
+
+func lexists(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil
 }

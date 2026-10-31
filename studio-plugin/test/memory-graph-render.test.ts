@@ -47,7 +47,7 @@ describe('기억 그래프 탭', () => {
 
   it('멈춤: 판 문구와 다시 확인. 그래프는 그리지 않는다', () => {
     const t = text(h.renderBody(st({status: 'paused', pause: {kind: 'orbit-older', message: ''}})));
-    assert.match(t, /Please update Orbit\./);
+    assert.match(t, /Please update OpenOrbit\./);
     assert.match(t, /Check again/);
     assert.ok(!t.includes('Memory clusters'));
   });

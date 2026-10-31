@@ -1,5 +1,5 @@
 // Package pluginbuild turns one plugin source into the Claude Code and Codex
-// plugin formats and their marketplaces (oni plugin build).
+// plugin formats and their marketplaces (orb plugin build).
 //
 // Source layout:
 //
@@ -29,7 +29,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // Manifest is the source plugin.json.

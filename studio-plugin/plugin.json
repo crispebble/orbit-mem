@@ -1,17 +1,17 @@
 {
   "id": "orbit",
-  "name": "Orbit",
+  "name": "OpenOrbit",
   "version": "0.1.0",
   "studioApi": "^0.1.20",
   "main": "dist/index.js",
   "styles": [
     "dist/index.css"
   ],
-  "description": "View Orbit memories, the memory graph, proposals, and AI work graphs and sessions in Studio.",
+  "description": "View OpenOrbit memories, the memory graph, proposals, and AI work graphs and sessions in Orbit Studio.",
   "apps": [
     {
       "id": "orbit",
-      "title": "Orbit",
+      "title": "OpenOrbit",
       "icon": "icon.svg",
       "tabs": true,
       "split": true,
@@ -84,14 +84,14 @@
     "mcp": [
       {
         "id": "oni",
-        "command": "oni",
+        "command": "orb",
         "args": [
           "mcp"
         ]
       },
       {
         "id": "work",
-        "command": "oni",
+        "command": "orb",
         "args": [
           "mcp",
           "--reader"
@@ -101,7 +101,7 @@
   },
   "locales": {
     "ko": {
-      "description": "Orbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Studio에서 봅니다.",
+      "description": "OpenOrbit 기억·기억 그래프·제안과 AI 작업 그래프·세션을 Orbit Studio에서 봅니다.",
       "apps": {
         "orbit": {
           "views": {

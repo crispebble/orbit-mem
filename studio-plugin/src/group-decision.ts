@@ -2,7 +2,7 @@
 import type {PluginContext} from '@onidot-labs/studio-plugin';
 import {pick} from './i18n/index.ts';
 import {proposalText} from './i18n/messages/proposals.ts';
-import {errorMessage} from './oni.ts';
+import {errorMessage} from './orb.ts';
 import {decideManyArgs} from './requests.ts';
 import type {OrbitStore} from './store.ts';
 
@@ -51,7 +51,7 @@ export async function decideGroup(
     ctx.log.error(`Group ${decision} failed (${g.kind}): ${errorMessage(e)}`);
     const after = pick(proposalText).decision;
     ctx.notify({title: approve ? after.approveFailed(g.label, count) : after.rejectFailed(g.label, count), body: errorMessage(e), tone: 'danger'});
-    // oni가 결정한 뒤 응답만 늦었을 수 있다: 목록을 다시 읽는다
+    // orb가 결정한 뒤 응답만 늦었을 수 있다: 목록을 다시 읽는다
     await store.refresh();
     return 'failed';
   }

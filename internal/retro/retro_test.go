@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/transcript"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/transcript"
 )
 
 var kst = time.FixedZone("KST", 9*3600)
@@ -46,7 +46,7 @@ func setup(t *testing.T, now time.Time) *env {
 	t.Cleanup(func() { s.Close() })
 	s.Now = func() time.Time { return now }
 	e := &env{s: s, roots: transcript.Roots{Claude: t.TempDir(), Codex: t.TempDir()}}
-	e.r = &Runner{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }, Oni: "/opt/oni",
+	e.r = &Runner{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }, Orb: "/opt/orb",
 		Exec: func(ctx context.Context, c Cmd) (string, error) {
 			e.calls = append(e.calls, c)
 			if e.ai == nil {
