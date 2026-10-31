@@ -247,10 +247,29 @@ func TestWorkEmit_기록을_끄면_쓰지_않는다(t *testing.T) {
 	if err := config.Save(filepath.Join(h, "config.json"), cfg); err != nil {
 		t.Fatal(err)
 	}
-	o := emit(t, line("session.start", "P1", map[string]any{"listId": "L1", "source": "startup"}),
-		line("task.create", "P1", map[string]any{"list": "L1", "id": "a", "subject": "가"}))
-	if o.Events != 0 || o.WorkIDs == nil || len(o.WorkIDs) != 0 {
-		t.Errorf("꺼진 기록: %+v", o)
+	in := line("session.start", "P1", map[string]any{"listId": "L1", "source": "startup"}) + "\n" +
+		line("task.create", "P1", map[string]any{"list": "L1", "id": "a", "subject": "가"}) + "\n"
+	out, errOut, code := run(t, in, "work", "emit")
+	var o struct {
+		Events   int      `json:"events"`
+		WorkIDs  []string `json:"workIds"`
+		Disabled bool     `json:"disabled"`
+	}
+	if err := json.Unmarshal([]byte(out), &o); err != nil || code != 0 {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+	if o.Events != 0 || o.WorkIDs == nil || len(o.WorkIDs) != 0 || !o.Disabled {
+		t.Errorf("꺼진 기록: %s", out)
+	}
+	if !strings.Contains(errOut, "work") || !strings.Contains(errOut, "off") {
+		t.Errorf("꺼졌다는 경고가 없습니다: %q", errOut)
+	}
+	// 켜져 있을 때는 disabled 칸이 없다
+	cfg.Work = config.WorkOnValue
+	_ = config.Save(filepath.Join(h, "config.json"), cfg)
+	out, errOut, _ = run(t, in, "work", "emit")
+	if strings.Contains(out, "disabled") || strings.TrimSpace(errOut) != "" {
+		t.Errorf("켜진 기록: %q %q", out, errOut)
 	}
 }
 

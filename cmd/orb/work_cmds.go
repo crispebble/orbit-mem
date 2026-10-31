@@ -192,17 +192,25 @@ func (a *app) workEmit() error {
 	if err != nil {
 		return err
 	}
+	if !cfg.WorkOn() {
+		fmt.Fprintln(a.stderr, "orb work: "+i18n.T("cli.work.disabled"))
+	}
 	return a.json(recordEmit(cfg, evs))
 }
 
 type emitResult struct {
-	Events  int      `json:"events"`
-	WorkIDs []string `json:"workIds"`
+	Events   int      `json:"events"`
+	WorkIDs  []string `json:"workIds"`
+	Disabled bool     `json:"disabled,omitempty"` // 작업 기록이 꺼져 있어 아무것도 쓰지 않았다
 }
 
 func recordEmit(cfg config.Config, evs []work.Event) emitResult {
 	out := emitResult{WorkIDs: []string{}}
-	if !cfg.WorkOn() || len(evs) == 0 {
+	if !cfg.WorkOn() {
+		out.Disabled = true
+		return out
+	}
+	if len(evs) == 0 {
 		return out
 	}
 	seen := map[string]bool{}

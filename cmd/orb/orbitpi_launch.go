@@ -76,13 +76,22 @@ func envValue(env []string, key string) string {
 // both stdin and stdout are a terminal. Otherwise it prints the usage as before.
 func zeroArgTUI(stdinTTY, stdoutTTY bool) bool { return stdinTTY && stdoutTTY }
 
+// isTerminal says whether v is a terminal: a character device that is not the
+// null device (orb </dev/null must not open the TUI). It keeps to the standard
+// library; a serial port or another character device would still count.
 func isTerminal(v any) bool {
 	f, ok := v.(*os.File)
 	if !ok {
 		return false
 	}
 	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(fi, null) {
+		return false
+	}
+	return true
 }
 
 func cmdRun(a *app, args []string) error     { return a.orbitPi("run", args) }

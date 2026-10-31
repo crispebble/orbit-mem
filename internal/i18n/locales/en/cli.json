@@ -117,6 +117,7 @@
   "cli.work.bad_line": "line %d was refused (nothing was recorded): %v",
   "cli.work.bad_value": "%s value %q is not accepted",
   "cli.work.call_failed": "%s: %s",
+  "cli.work.disabled": "work recording is off (setting work=off), so nothing was recorded. To turn it on, set work to on in config.json.",
   "cli.work.missing": "%s is required",
   "cli.work.unknown_kind": "unknown event kind %q",
   "decision.approved": "%s approved.",

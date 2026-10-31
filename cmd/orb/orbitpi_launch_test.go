@@ -138,3 +138,24 @@ func TestOrbitPiCommand_ORBIT_LANG가_없으면_orb의_언어를_넘긴다(t *te
 		t.Errorf("언어를 모르면 넘기지 않습니다: %v", env)
 	}
 }
+
+// /dev/null도 문자 장치라 TTY로 보면 안 된다(orb </dev/null이 TUI를 열지 않게).
+func TestIsTerminal_null_장치와_파이프는_TTY가_아니다(t *testing.T) {
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Skip(err)
+	}
+	defer null.Close()
+	if isTerminal(null) {
+		t.Error("null 장치를 TTY로 봤습니다")
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	if isTerminal(r) || isTerminal(strings.NewReader("")) {
+		t.Error("파이프·Reader를 TTY로 봤습니다")
+	}
+}
