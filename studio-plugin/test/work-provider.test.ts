@@ -84,3 +84,23 @@ describe('프로젝트 이름', () => {
     assert.deepEqual(homeItems(state([w]), NOW).find(i => i.id === w.id)!.project, {id: 'project:/private/tmp/alpha-x', label: 'alpha-x'});
   });
 });
+
+describe('검토 지적', () => {
+  it('읽는 연결이 멈췄거나 실패해 보일 것이 없으면 list가 이유와 함께 던진다(Studio가 「답하지 않음」을 보인다)', async () => {
+    const make = (s: WorkState) => {
+      let provided: {list(sig: AbortSignal): Promise<readonly unknown[]>} | undefined;
+      registerWorkProvider({work: {provide: p => { provided = p as never; return () => {}; }}}, {getState: () => s, subscribe: () => () => {}, ensureDetails: () => {}, loadDetail: async () => task} as never);
+      return provided!;
+    };
+    await assert.rejects(make(state([], [], {status: 'paused', pause: {kind: 'orb-newer', message: '올려 주세요'}})).list(new AbortController().signal), /올려 주세요/);
+    await assert.rejects(make(state([], [], {status: 'error', error: '잠김'})).list(new AbortController().signal), /잠김/);
+    assert.ok((await make(state([task], sessions, {status: 'error', error: '잠김'})).list(new AbortController().signal)).length > 0, '읽어 둔 것이 있으면 보인다');
+  });
+
+  it('다른 세션이 이어 돌리는 작업도 도는 중이다(상세의 세션과 같은 묶음)', () => {
+    const other: Session = {...sessions[0], sessionId: 's-other', state: 'running', openWorkIds: [task.id]};
+    const quiet = sessions.map(s => (s.sessionId === task.origin!.sessionId ? {...s, state: 'idle'} : s));
+    const w: Work = {...task, steps: task.steps.map(s => ({...s, status: s.status === 'blocked' ? 'in_progress' : s.status, block: undefined}))};
+    assert.equal(homeItems(state([w], [...quiet, other]), NOW).find(i => i.id === task.id)!.running, true);
+  });
+});

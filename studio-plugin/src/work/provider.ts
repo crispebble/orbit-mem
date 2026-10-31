@@ -64,19 +64,19 @@ function recentOf(w: WorkSummary, detail: Work | undefined): string[] {
 
 /** work store의 상태를 홈 항목으로 옮긴다. 작업이 없는(할 일 목록을 만들지 않은) 세션은 세션 노드가 된다. */
 export function homeItems(state: WorkState, now: number): HomeWorkItem[] {
-  const bySession = new Map(state.sessions.map(s => [s.sessionId, s]));
   const workSessions = new Set(state.works.map(w => w.origin?.sessionId).filter((x): x is string => !!x));
   const items: HomeWorkItem[] = [];
   for (const w of state.works) {
-    const session = w.origin?.sessionId ? bySession.get(w.origin.sessionId) : undefined;
+    // 상세의 세션 목록과 같은 묶음: 작업을 연 세션과 이 작업을 열어 둔 세션
+    const related = state.sessions.filter(s => s.sessionId === w.origin?.sessionId || s.openWorkIds.includes(w.id));
     const detail = state.details[w.id];
     const open = w.state !== 'done';
     items.push({
       id: w.id, kind: 'work', title: w.title,
       ...projectOf(w.project),
       done: !open,
-      waiting: open && ((detail ? waitingSteps(detail).length > 0 : false) || session?.state === 'waiting_user'),
-      running: open && session?.state === 'running',
+      waiting: open && ((detail ? waitingSteps(detail).length > 0 : false) || related.some(s => s.state === 'waiting_user')),
+      running: open && related.some(s => s.state === 'running'),
       activeAt: time(w.updatedAt) ?? 0,
       ...(time(w.openedAt) ? {startedAt: time(w.openedAt)} : {}),
       ...(time(w.closedAt) ? {doneAt: time(w.closedAt)} : {}),
@@ -146,6 +146,9 @@ export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProvide
     id: 'orbit',
     async list() {
       const state = store.getState();
+      // 판이 맞지 않거나 읽지 못해 보일 것이 없으면 이유와 함께 던진다: Studio가 「공급자가 답하지 않음」을 보인다
+      if (state.status === 'paused' && state.pause) throw new Error(state.pause.message);
+      if (state.status === 'error' && !state.works.length && !state.sessions.length) throw new Error(state.error ?? 'OpenOrbit work history could not be read');
       // 지도 노드 아래 두 줄을 그리려고 열린 작업의 단계를 미리 읽어 둔다(읽으면 subscribe가 다시 부른다)
       store.ensureDetails(state.works.filter(w => w.state !== 'done').map(w => w.id));
       return homeItems(state, Date.now());
