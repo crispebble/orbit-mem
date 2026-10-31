@@ -351,6 +351,7 @@ type UpdateIn struct {
 	Body            *string    `json:"body,omitempty"`
 	Tags            *[]string  `json:"tags,omitempty"`
 	Scope           string     `json:"scope,omitempty" jsonschema:"global 또는 project로 범위를 옮긴다"`
+	Project         string     `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"관련 있는 기억과 잇는다. 연결만 바꾸면 판은 그대로다"`
@@ -391,12 +392,12 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	case "", "edit", "confirm", "restore", "stale":
 		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Reason: in.Reason, Action: in.Action}
 		if in.Scope != "" {
-			sc, _, serr := h.scope(in.Scope, "")
+			sc, label, serr := h.scope(in.Scope, in.Project)
 			if serr != nil {
 				r, _ := toolError(serr)
 				return r, MemoryOut{}, nil
 			}
-			u.Scope = &sc
+			u.Scope, u.Project = &sc, &label
 		}
 		state := map[string]string{"confirm": memory.StateConfirmed, "restore": memory.StateCandidate, "stale": memory.StateStale}[in.Action]
 		if state != "" {
