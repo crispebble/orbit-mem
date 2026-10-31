@@ -6,7 +6,7 @@ import {AgentTimeline} from '@onidot-labs/studio-plugin/ai';
 import {Badge, Button, StateView, PropertyList, TextLink, Tree, type TreeNode} from '@onidot-labs/studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workKitText, workText, workUiText} from '../i18n/messages/work.ts';
-import {errorMessage} from '../oni.ts';
+import {errorMessage} from '../orb.ts';
 import {WorkToolError} from '../work/contract.ts';
 import {formatTime} from '../work/display.ts';
 import {commitsOf} from '../work/evidence.ts';

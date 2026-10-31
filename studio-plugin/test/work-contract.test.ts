@@ -53,19 +53,19 @@ describe('예시 응답 읽기', () => {
 });
 
 describe('판 확인', () => {
-  it('UNSUPPORTED_MAJOR이고 supportedMajors에 1이 없으면 Orbit이 새 판', () => {
+  it('UNSUPPORTED_MAJOR이고 supportedMajors에 1이 없으면 OpenOrbit이 새 판', () => {
     const ex = example('error.unsupported-major').result;
     const newer = withContract(ex, {major: 2, supportedMajors: [2]});
     ((newer as {error: Record<string, unknown>}).error).supportedMajors = [2];
-    assert.throws(() => checkContract(newer, 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'oni-newer' && /Please update the Orbit app/.test(e.message));
+    assert.throws(() => checkContract(newer, 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'orb-newer' && /Please update the OpenOrbit app/.test(e.message));
   });
 
-  it('major가 1보다 높고 supportedMajors에 1이 없으면 Orbit이 새 판', () => {
-    assert.throws(() => checkContract(withContract(example('work_list.page1').result, {major: 2, supportedMajors: [2, 3]}), 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'oni-newer');
+  it('major가 1보다 높고 supportedMajors에 1이 없으면 OpenOrbit이 새 판', () => {
+    assert.throws(() => checkContract(withContract(example('work_list.page1').result, {major: 2, supportedMajors: [2, 3]}), 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'orb-newer');
   });
 
-  it('major가 1보다 낮으면 Orbit을 올려 주세요', () => {
-    assert.throws(() => checkContract(withContract(example('work_list.page1').result, {major: 0, supportedMajors: [0]}), 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'orbit-older' && e.message === 'Please update Orbit.');
+  it('major가 1보다 낮으면 OpenOrbit을 올려 주세요', () => {
+    assert.throws(() => checkContract(withContract(example('work_list.page1').result, {major: 0, supportedMajors: [0]}), 'work_list'), (e: unknown) => e instanceof WorkPaused && e.kind === 'orbit-older' && e.message === 'Please update OpenOrbit.');
   });
 
   it('minor가 높으면 그대로 읽고 모르는 칸은 무시한다', () => {

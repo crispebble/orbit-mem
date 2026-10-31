@@ -7,7 +7,7 @@ import {commonText} from './i18n/messages/common.ts';
 import {memoryText} from './i18n/messages/memory.ts';
 import {openMemoryGraph} from './memory-graph/open.ts';
 import {MemoryList, type MemoryKind, type MemoryListState, type OrbitMemory} from './parts/index.ts';
-import {errorMessage} from './oni.ts';
+import {errorMessage} from './orb.ts';
 import {useOrbit} from './runtime.ts';
 
 const DEBOUNCE_MS = 250;

@@ -158,7 +158,7 @@ describe('work store', () => {
     const store = createWorkStore(f.ctx, {sleep: noSleep});
     await store.start();
     await until(() => store.getState().status === 'paused');
-    assert.equal(store.getState().pause?.message, 'Orbit is newer than this Orbit app. Please update the Orbit app.');
+    assert.equal(store.getState().pause?.message, 'OpenOrbit is newer than this OpenOrbit app. Please update the OpenOrbit app.');
     assert.equal(f.calls.length, 1);
     store.dispose();
   });

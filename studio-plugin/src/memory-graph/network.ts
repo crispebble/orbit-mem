@@ -29,7 +29,7 @@ export interface MemoryNetwork {
 export const unknownLabel = () => pick(memoryText).unknown;
 export const OTHER_CLUSTER = 'other';
 export const otherLabel = () => pick(graphText).other;
-/** 클러스터가 되려면 새로 묶는 기억이 전체의 1% 이상, 최소 2개(oni memory.ClusterMinNew). 사람마다 클러스터 수가 다르다 */
+/** 클러스터가 되려면 새로 묶는 기억이 전체의 1% 이상, 최소 2개(orb memory.ClusterMinNew). 사람마다 클러스터 수가 다르다 */
 export const clusterMinNew = (memories: number) => Math.max(2, Math.floor((memories + 50) / 100));
 /** 고른 순서대로 색 칸 c1, c2, …. 칸마다 다른 색은 Studio 키트 그래프 부품이 정한다 */
 const clusterTone = (i: number) => `c${i + 1}`;
@@ -61,7 +61,7 @@ const MARKER_TAG = /^(imported|space|since|type|옛|superseded-by):/;
 // 태그는 사용자 데이터다: 종류 이름을 한국어로 붙인 기존 태그를 알아보는 값
 const KIND_TAGS = new Set(['규칙', '사실', '결정', '교훈', '일지', '회고', 'rule', 'fact', 'decision', 'lesson', 'journal']); // i18n:keep 사용자가 붙인 한국어 태그와 맞춰 보는 데이터
 
-/** 태그 열쇠: 전각·대소문자·앞뒤 공백·-와 _ 차이를 맞춘다(oni TagKey, orbit.memory 1.2와 같은 규칙) */
+/** 태그 열쇠: 전각·대소문자·앞뒤 공백·-와 _ 차이를 맞춘다(orb TagKey, orbit.memory 1.2와 같은 규칙) */
 const tagKey = (tag: string) => tag.normalize('NFKC').trim().toLowerCase().replace(/_/g, '-');
 
 /** 클러스터 기준과 「같은 태그」 선에서 빼는 태그 */

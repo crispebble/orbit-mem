@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {setLocale} from '../src/i18n/index.ts';
 import {createStore} from '../src/store.ts';
-import type {OniProposal} from '../src/model.ts';
+import type {OrbProposal} from '../src/model.ts';
 import {fail, fakeCtx, ok} from './fake-ctx.ts';
 
-const prop = (id: string, status = 'pending'): OniProposal => ({id, kind: 'confirm', title: `제안 ${id}`, memoryIds: [], payload: {}, status, createdAt: 1_780_000_000_000});
+const prop = (id: string, status = 'pending'): OrbProposal => ({id, kind: 'confirm', title: `제안 ${id}`, memoryIds: [], payload: {}, status, createdAt: 1_780_000_000_000});
 
 function timers() {
   const t = {fn: undefined as undefined | (() => void), ms: 0, cleared: false};
@@ -44,7 +44,7 @@ describe('store.refresh', () => {
     await store.refresh();
     const s = store.getState();
     assert.equal(s.status, 'error');
-    assert.match(s.error ?? '', /Could not connect to oni/);
+    assert.match(s.error ?? '', /Could not connect to orb/);
     assert.equal(f.logs.filter(l => l.level === 'error').length, 1);
   });
 

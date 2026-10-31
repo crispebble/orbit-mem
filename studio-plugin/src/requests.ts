@@ -1,6 +1,6 @@
 // 도구 호출 인자를 만드는 순수 함수들.
 import type {MemoryFormValue, MemoryKind, MemoryListState, ProposalApproval} from './parts/index.ts';
-import type {OniMemory, OniProposal} from './model.ts';
+import type {OrbMemory, OrbProposal} from './model.ts';
 import {isGlobalScope} from './parts/vocabulary.ts';
 
 export interface FindParams {
@@ -61,7 +61,7 @@ export function decideManyArgs(ids: readonly string[], decision: 'approve' | 're
 }
 
 /** ProposalDetail의 승인(고쳐서 승인 포함)을 proposal_decide 인자로. 고친 제목은 title, 고친 내용은 body로 보낸다(고친 것만). */
-export function approvalToDecideArgs(p: OniProposal, a: ProposalApproval): DecideArgs {
+export function approvalToDecideArgs(p: OrbProposal, a: ProposalApproval): DecideArgs {
   const o: DecideOptions = {};
   if (a.titleEdited) o.title = a.title;
   if (a.textEdited) o.body = a.text;
@@ -90,7 +90,7 @@ const sameTags = (a: readonly string[], b: readonly string[]) => a.length === b.
  * 상태 바꾸기는 편집과 같은 호출에 action으로 실어 보낸다. 대체는 편집 뒤 별도 호출이며,
  * 그 호출의 expectedVersion은 앞 호출 결과로 호출하는 쪽이 채운다.
  */
-export function memoryUpdateSteps(m: OniMemory, v: MemoryFormValue): UpdateArgs[] {
+export function memoryUpdateSteps(m: OrbMemory, v: MemoryFormValue): UpdateArgs[] {
   const step: UpdateArgs = {id: m.id, expectedVersion: m.version, action: 'edit'};
   let changed = false;
   if (v.title !== m.title) { step.title = v.title; changed = true; }
@@ -109,7 +109,7 @@ export function memoryUpdateSteps(m: OniMemory, v: MemoryFormValue): UpdateArgs[
   return steps;
 }
 
-export function statusArgs(m: OniMemory, action: 'confirm' | 'stale' | 'restore', reason?: string): UpdateArgs {
+export function statusArgs(m: OrbMemory, action: 'confirm' | 'stale' | 'restore', reason?: string): UpdateArgs {
   const args: UpdateArgs = {id: m.id, expectedVersion: m.version, action};
   if (reason) args.reason = reason;
   return args;

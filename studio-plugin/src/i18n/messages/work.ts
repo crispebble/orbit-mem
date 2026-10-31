@@ -1,5 +1,5 @@
 // 작업·세션 보기(src/work, src/work-ui)의 글. en이 기준이고 ko는 같은 모양이다.
-// 상태 코드·id·도구 이름 같은 기계 값은 여기에 없다. 작업 제목·단계 이름·oni가 준 글은 번역하지 않는다.
+// 상태 코드·id·도구 이름 같은 기계 값은 여기에 없다. 작업 제목·단계 이름·orb가 준 글은 번역하지 않는다.
 import {defineMessages} from '../index.ts';
 
 export const workText = defineMessages({
@@ -127,19 +127,19 @@ export const workText = defineMessages({
       agentRun: 'Run',
       stepPrefix: (title: string) => `Step: ${title}`,
     },
-    // 오류·판 안내(계약 검사, oni 호출)
+    // 오류·판 안내(계약 검사, orb 호출)
     error: {
-      oniNewer: 'Orbit is newer than this Orbit app. Please update the Orbit app.',
-      orbitOlder: 'Please update Orbit.',
-      shape: (tool: string, why: string) => `The ${tool} response from oni has an unexpected shape (${why}).`,
+      orbNewer: 'OpenOrbit is newer than this OpenOrbit app. Please update the OpenOrbit app.',
+      orbitOlder: 'Please update OpenOrbit.',
+      shape: (tool: string, why: string) => `The ${tool} response from orb has an unexpected shape (${why}).`,
       whyNoContract: 'no contract',
       whyUnsupportedMajor: 'UNSUPPORTED_MAJOR but supportedMajors includes 1',
       whyWork: 'work fields',
       whyStep: 'step fields',
       whySession: 'session fields',
       callFailed: (tool: string) => `The ${tool} call failed.`,
-      connect: (detail: string) => `Could not connect to oni: ${detail}`,
-      noStructured: (tool: string) => `The ${tool} response from oni has no structured result. Please update Orbit.`,
+      connect: (detail: string) => `Could not connect to orb: ${detail}`,
+      noStructured: (tool: string) => `The ${tool} response from orb has no structured result. Please update OpenOrbit.`,
     },
   },
   ko: {
@@ -256,17 +256,17 @@ export const workText = defineMessages({
       stepPrefix: (title: string) => `단계: ${title}`,
     },
     error: {
-      oniNewer: 'Orbit이 이 Orbit 앱보다 새 판입니다. Orbit 앱을 올려 주세요.',
-      orbitOlder: 'Orbit을 올려 주세요.',
-      shape: (tool: string, why: string) => `oni의 ${tool} 응답 모양이 맞지 않습니다(${why}).`,
+      orbNewer: 'OpenOrbit이 이 OpenOrbit 앱보다 새 판입니다. OpenOrbit 앱을 올려 주세요.',
+      orbitOlder: 'OpenOrbit을 올려 주세요.',
+      shape: (tool: string, why: string) => `orb의 ${tool} 응답 모양이 맞지 않습니다(${why}).`,
       whyNoContract: 'contract 없음',
       whyUnsupportedMajor: 'UNSUPPORTED_MAJOR인데 supportedMajors에 1이 있음',
       whyWork: '작업 칸',
       whyStep: '단계 칸',
       whySession: '세션 칸',
       callFailed: (tool: string) => `${tool} 호출이 실패했습니다.`,
-      connect: (detail: string) => `oni에 연결하지 못했습니다: ${detail}`,
-      noStructured: (tool: string) => `oni의 ${tool} 응답에 구조화 결과가 없습니다. Orbit을 올려 주세요.`,
+      connect: (detail: string) => `orb에 연결하지 못했습니다: ${detail}`,
+      noStructured: (tool: string) => `orb의 ${tool} 응답에 구조화 결과가 없습니다. OpenOrbit을 올려 주세요.`,
     },
   },
 });
@@ -334,7 +334,7 @@ export const workKitText = defineMessages({
 /** 작업·세션 화면(src/work-ui)의 글 */
 export const workUiText = defineMessages({
   en: {
-    starting: 'Starting Orbit',
+    starting: 'Starting OpenOrbit',
     paused: {
       recheck: 'Check again',
       sessionTitle: 'Session history is not being read',
@@ -347,7 +347,7 @@ export const workUiText = defineMessages({
       sessionId: 'session id',
     },
     openCommitFailed: 'Could not open the commit',
-    openCommitFailedBody: (repo: string) => `Studio is not viewing this repository, or the commit does not exist: ${repo}`,
+    openCommitFailedBody: (repo: string) => `Orbit Studio is not viewing this repository, or the commit does not exist: ${repo}`,
     openTerminalFailed: 'Could not open the terminal',
     // 단계 상세
     stage: {
@@ -394,7 +394,7 @@ export const workUiText = defineMessages({
       loading: 'Loading session',
       readFailed: 'Could not read the session',
       notFound: 'Session not found',
-      notFoundHint: 'This session is not in Orbit’s records.',
+      notFoundHint: 'This session is not in OpenOrbit’s records.',
       refreshFailed: 'Could not refresh. Showing what was read last.',
       reread: 'Read again',
       repo: 'Repo',
@@ -426,7 +426,7 @@ export const workUiText = defineMessages({
       loading: 'Loading work',
       readFailed: 'Could not read the work',
       notFound: 'Work not found',
-      notFoundHint: 'It was removed from Orbit’s records or belongs to another PC.',
+      notFoundHint: 'It was removed from OpenOrbit’s records or belongs to another PC.',
       stepNotFound: 'Step not found',
       parentPath: 'Parent work path',
       parentWork: 'Parent work',
@@ -453,7 +453,7 @@ export const workUiText = defineMessages({
       refreshFailed: 'Could not refresh. Showing the list read last.',
       noActive: 'No active sessions',
       none: 'No sessions',
-      noneHint: 'AI sessions with the Orbit hook turned on appear here.',
+      noneHint: 'AI sessions with the OpenOrbit hook turned on appear here.',
       listLabel: 'Sessions',
     },
     worksView: {
@@ -476,7 +476,7 @@ export const workUiText = defineMessages({
     },
   },
   ko: {
-    starting: 'Orbit을 켜는 중입니다',
+    starting: 'OpenOrbit을 켜는 중입니다',
     paused: {
       recheck: '다시 확인',
       sessionTitle: '세션 기록을 읽지 않습니다',
@@ -489,7 +489,7 @@ export const workUiText = defineMessages({
       sessionId: '세션 id',
     },
     openCommitFailed: '커밋을 열지 못했습니다',
-    openCommitFailedBody: (repo: string) => `Studio가 보고 있는 저장소가 아니거나 커밋이 없습니다: ${repo}`,
+    openCommitFailedBody: (repo: string) => `Orbit Studio가 보고 있는 저장소가 아니거나 커밋이 없습니다: ${repo}`,
     openTerminalFailed: '터미널을 열지 못했습니다',
     stage: {
       waitingGuideLabel: '사용자 확인 기다림',
@@ -534,7 +534,7 @@ export const workUiText = defineMessages({
       loading: '세션을 불러오는 중입니다',
       readFailed: '세션을 읽지 못했습니다',
       notFound: '세션을 찾지 못했습니다',
-      notFoundHint: 'Orbit 기록에 없는 세션입니다.',
+      notFoundHint: 'OpenOrbit 기록에 없는 세션입니다.',
       refreshFailed: '갱신하지 못했습니다. 마지막으로 읽은 내용입니다.',
       reread: '다시 읽기',
       repo: '레포',
@@ -565,7 +565,7 @@ export const workUiText = defineMessages({
       loading: '작업을 불러오는 중입니다',
       readFailed: '작업을 읽지 못했습니다',
       notFound: '작업을 찾지 못했습니다',
-      notFoundHint: 'Orbit 기록에서 지워졌거나 다른 PC의 작업입니다.',
+      notFoundHint: 'OpenOrbit 기록에서 지워졌거나 다른 PC의 작업입니다.',
       stepNotFound: '단계를 찾지 못했습니다',
       parentPath: '상위 작업 길',
       parentWork: '상위 작업',
@@ -591,7 +591,7 @@ export const workUiText = defineMessages({
       refreshFailed: '갱신하지 못했습니다. 마지막으로 읽은 목록입니다.',
       noActive: '진행 중인 세션이 없습니다',
       none: '세션이 없습니다',
-      noneHint: 'Orbit 훅이 켜진 AI 세션이 여기에 나타납니다.',
+      noneHint: 'OpenOrbit 훅이 켜진 AI 세션이 여기에 나타납니다.',
       listLabel: '세션 목록',
     },
     worksView: {

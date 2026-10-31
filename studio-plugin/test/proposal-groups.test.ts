@@ -1,17 +1,17 @@
-// 제안 묶어 보기와 묶음 결정(설계 · Orbit 3차 O3-1 「묶어 보기와 일괄 결정」 Studio Orbit 앱).
+// 제안 묶어 보기와 묶음 결정(설계 · Orbit 3차 O3-1 「묶어 보기와 일괄 결정」 Orbit Studio의 OpenOrbit 앱).
 import assert from 'node:assert/strict';
 import {mkdirSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {after, before, describe, it} from 'node:test';
 import {build} from 'esbuild';
 import {setLocale} from '../src/i18n/index.ts';
-import {groupProposalRows, toProposalRow, type OniProposal} from '../src/model.ts';
+import {groupProposalRows, toProposalRow, type OrbProposal} from '../src/model.ts';
 import {decideManyArgs} from '../src/requests.ts';
 import {createStore} from '../src/store.ts';
 import {decideGroup} from '../src/group-decision.ts';
 import {fail, fakeCtx, ok} from './fake-ctx.ts';
 
-const prop = (id: string, kind: string, status = 'pending', createdAt = 1_780_000_000_000): OniProposal =>
+const prop = (id: string, kind: string, status = 'pending', createdAt = 1_780_000_000_000): OrbProposal =>
   ({id, kind, title: `제안 ${id}`, memoryIds: [], payload: {}, status, createdAt});
 
 describe('groupProposalRows', () => {

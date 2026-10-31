@@ -6,8 +6,8 @@ import {useLocale, useMessages} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {proposalText} from './i18n/messages/proposals.ts';
 import {ProposalDetail} from './parts/index.ts';
-import {errorMessage} from './oni.ts';
-import {formatDate, proposalStatusLabel, toProposal, type OniMemory} from './model.ts';
+import {errorMessage} from './orb.ts';
+import {formatDate, proposalStatusLabel, toProposal, type OrbMemory} from './model.ts';
 import {approvalToDecideArgs, decideArgs} from './requests.ts';
 import {useOrbit} from './runtime.ts';
 
@@ -16,7 +16,7 @@ export function ProposalPane({ctx, proposalId}: {ctx: PluginContext; proposalId:
   const locale = useLocale();
   const t = useMessages(proposalText);
   const common = useMessages(commonText);
-  const [related, setRelated] = useState<OniMemory[]>([]);
+  const [related, setRelated] = useState<OrbMemory[]>([]);
   const proposal = state.proposals.find(p => p.id === proposalId);
   const memoryKey = proposal?.memoryIds?.join(',') ?? '';
 

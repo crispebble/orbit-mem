@@ -10,21 +10,21 @@ import {
   toMemoryRecord,
   toProposal,
   toProposalRow,
-  type OniMemory,
-  type OniProposal,
-  type OniSummary,
+  type OrbMemory,
+  type OrbProposal,
+  type OrbSummary,
 } from '../src/model.ts';
 
 const at = (m: number, d: number, h = 9, min = 5) => new Date(2026, m - 1, d, h, min).getTime();
 const now = new Date(2026, 9, 27, 12, 0);
 
-const summary: OniSummary = {id: 'm1', kind: 'rule', state: 'confirmed', scope: 'global', title: '경로를 명시한다', summary: '요약', tags: ['git'], version: 3, updatedAt: at(10, 26)};
-const memory: OniMemory = {
+const summary: OrbSummary = {id: 'm1', kind: 'rule', state: 'confirmed', scope: 'global', title: '경로를 명시한다', summary: '요약', tags: ['git'], version: 3, updatedAt: at(10, 26)};
+const memory: OrbMemory = {
   id: 'm1', kind: 'rule', scope: 'project:github.com/onidot-labs/orbit', project: 'onidot-labs/orbit', state: 'confirmed', title: '경로를 명시한다', body: '본문', tags: ['git'],
   version: 3, createdAt: at(10, 20), updatedAt: at(10, 26), supersededBy: 'm9',
   sources: [{kind: 'quote', excerpt: '경로를 적어 주세요', at: at(10, 20)}, {kind: 'file', ref: '/a/b.md'}],
 };
-const pending = (over: Partial<OniProposal> = {}): OniProposal => ({
+const pending = (over: Partial<OrbProposal> = {}): OrbProposal => ({
   id: 'p1', kind: 'confirm', title: '확정할까요?', body: '두 번 나왔습니다', memoryIds: ['m1'], payload: {}, status: 'pending', createdAt: at(10, 27, 7, 10), ...over,
 });
 
@@ -101,7 +101,7 @@ describe('제안 변환', () => {
     assert.equal(toProposalRow(pending({status: 'rejected'}), now).pending, false);
   });
 
-  // oni는 확정·재분류를 승인할 때 받은 제목·본문을 대상 기억(하나일 때)의 제목·본문으로 쓴다.
+  // orb는 확정·재분류를 승인할 때 받은 제목·본문을 대상 기억(하나일 때)의 제목·본문으로 쓴다.
   // 그래서 고칠 칸에는 제안 설명이 아니라 대상 기억의 제목·본문을 채우고, 제안 설명은 설명으로 보인다.
   it('확정 제안은 대상 기억의 제목·본문을 고칠 내용으로, 제안 글을 설명으로 준다', () => {
     const p = toProposal(pending(), [memory], now);
@@ -129,7 +129,7 @@ describe('제안 변환', () => {
     assert.equal(p.title, '경로를 명시한다');
   });
 
-  it('낡음 정리는 oni가 본문을 쓰지 않으니 고칠 내용 없이 설명만 준다', () => {
+  it('낡음 정리는 orb가 본문을 쓰지 않으니 고칠 내용 없이 설명만 준다', () => {
     const p = toProposal(pending({kind: 'stale', body: '출처 파일이 바뀌었습니다'}), [memory], now);
     assert.equal(p.body, undefined);
     assert.equal(p.explanation, '출처 파일이 바뀌었습니다');
@@ -194,7 +194,7 @@ describe('제안 변환', () => {
     assert.equal(p.diff, undefined);
   });
 
-  it('Orbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
+  it('OpenOrbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
     for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
     }
@@ -207,7 +207,7 @@ describe('받은 일 항목', () => {
     const items = toInboxItems([pending(), pending({id: 'p2', status: 'approved'})], now);
     assert.equal(items.length, 1);
     const [i] = items;
-    assert.deepEqual([i.id, i.kind, i.group, i.title, i.unread, i.createdAt], ['p1', 'proposal', 'Orbit', '확정할까요?', true, at(10, 27, 7, 10)]);
+    assert.deepEqual([i.id, i.kind, i.group, i.title, i.unread, i.createdAt], ['p1', 'proposal', 'OpenOrbit', '확정할까요?', true, at(10, 27, 7, 10)]);
     assert.equal(i.subtitle, 'Confirm candidate · Oct 27, 07:10');
     assert.deepEqual(i.actions?.map(a => [a.id, a.tone]), [['approve', 'primary'], ['reject', 'danger']]);
   });

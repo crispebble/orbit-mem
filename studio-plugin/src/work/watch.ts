@@ -1,10 +1,10 @@
 // 실시간 갱신: work_changes 장기 대기를 계속 건다. 이 플러그인에서 작업 쪽 타이머는 이 파일의 sleep 하나뿐이다.
-import {errorMessage} from '../oni.ts';
+import {errorMessage} from '../orb.ts';
 import {WorkPaused, type PauseKind} from './contract.ts';
 import {workChanges} from './client.ts';
 import type {WorkCtx} from './types.ts';
 
-/** 호출 실패(oni가 죽음) 뒤 다시 걸기 전에 쉬는 시간 */
+/** 호출 실패(orb가 죽음) 뒤 다시 걸기 전에 쉬는 시간 */
 export const RETRY_MS = 3_000;
 /** waitMax가 0이라 서버가 기다려 주지 않을 때의 확인 간격(바쁜 반복 방지) */
 export const NO_WAIT_POLL_MS = 5_000;

@@ -1,5 +1,5 @@
 // 작업·세션 공유 상태: 처음 읽기, 실시간 갱신(watch), 확인 전 표시. React에 기대지 않는다(ctx만 있으면 시험할 수 있다).
-import {errorMessage, OrbitError} from '../oni.ts';
+import {errorMessage, OrbitError} from '../orb.ts';
 import {pauseMessage, WorkPaused, WorkToolError, type PauseKind} from './contract.ts';
 import {sessionGet, sessionsList, workGet, workList} from './client.ts';
 import {defaultList, dismiss as dismissId, loadReview, saveReview, updatePending} from './review.ts';
@@ -21,7 +21,7 @@ export interface WorkState {
 }
 
 /**
- * 변경 대기가 이만큼 연달아 실패하면 오류로 알린다. 한 번의 실패는 oni가 다시 뜨는 정상 경로라 경고를 띄우지 않는다
+ * 변경 대기가 이만큼 연달아 실패하면 오류로 알린다. 한 번의 실패는 orb가 다시 뜨는 정상 경로라 경고를 띄우지 않는다
  * (설계 「정상 갱신에서 경고 표시가 튀지 않는다」). 2는 「다시 걸어도 실패」를 뜻하는 구현 값이다.
  */
 export const WATCH_FAILURES_TO_REPORT = 2;
@@ -275,7 +275,7 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     offScope = undefined;
   }
 
-  /** 판 때문에 멈춘 뒤 사용자가 Orbit을 올렸으면 다시 읽는다 */
+  /** 판 때문에 멈춘 뒤 사용자가 OpenOrbit을 올렸으면 다시 읽는다 */
   function recheck() {
     if (state.status !== 'paused' || !abort) return;
     const controller = new AbortController();

@@ -7,14 +7,14 @@ import {commonText} from './i18n/messages/common.ts';
 import {memoryText} from './i18n/messages/memory.ts';
 import {openMemoryGraph} from './memory-graph/open.ts';
 import {globalScope, MemoryDetail, MemoryForm, type MemoryFormValue, type MemoryKind, type MemoryLinkView, type OrbitMemory} from './parts/index.ts';
-import {errorMessage, OrbitError} from './oni.ts';
-import {toMemoryDetail, toMemoryRecord, type OniMemory, type OniVersion} from './model.ts';
+import {errorMessage, OrbitError} from './orb.ts';
+import {toMemoryDetail, toMemoryRecord, type OrbMemory, type OrbVersion} from './model.ts';
 import {memoryUpdateSteps, statusArgs, type UpdateArgs} from './requests.ts';
 import {useOrbit} from './runtime.ts';
 
 interface Loaded {
-  memory: OniMemory;
-  history: OniVersion[];
+  memory: OrbMemory;
+  history: OrbVersion[];
   related: OrbitMemory[];
   links: MemoryLinkView[];
 }

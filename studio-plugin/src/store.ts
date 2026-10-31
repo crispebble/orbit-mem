@@ -1,17 +1,17 @@
-// Orbit 앱의 공유 상태: 제안 목록, 받은 일·배지 동기화, 결정·기억 호출.
+// OpenOrbit 앱의 공유 상태: 제안 목록, 받은 일·배지 동기화, 결정·기억 호출.
 // React에 기대지 않는다(화면은 subscribe/getState로 읽는다). ctx만 있으면 시험할 수 있다.
 import type {InboxItem, PluginContext} from '@onidot-labs/studio-plugin';
 import {onLocale, pick} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 import {proposalText} from './i18n/messages/proposals.ts';
-import {callOni, errorMessage, itemsOf, OrbitError} from './oni.ts';
+import {callOrb, errorMessage, itemsOf, OrbitError} from './orb.ts';
 import {
   toInboxItems,
   toMemoryRecord,
-  type OniMemory,
-  type OniProposal,
-  type OniSummary,
-  type OniVersion,
+  type OrbMemory,
+  type OrbProposal,
+  type OrbSummary,
+  type OrbVersion,
 } from './model.ts';
 import {decideArgs, findArgs, type DecideArgs, type DecideManyArgs, type FindParams, type UpdateArgs} from './requests.ts';
 import type {OrbitMemory} from './parts/index.ts';
@@ -19,7 +19,7 @@ import {createInboxParts} from './inbox-parts.ts';
 
 export interface OrbitState {
   status: 'idle' | 'loading' | 'ready' | 'error';
-  proposals: OniProposal[];
+  proposals: OrbProposal[];
   error?: string;
 }
 
@@ -31,7 +31,7 @@ export interface Timers {
 export const REFRESH_MS = 60_000;
 
 export interface DecideResult {
-  proposal: OniProposal;
+  proposal: OrbProposal;
   changed?: string[];
   created?: string;
   file?: string;
@@ -74,8 +74,8 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   async function load(): Promise<void> {
     if (state.status !== 'ready') set({status: 'loading', error: undefined});
     try {
-      const out = await callOni<unknown>(ctx, 'proposals', {status: 'all'});
-      const proposals = itemsOf<OniProposal>(out, 'proposals');
+      const out = await callOrb<unknown>(ctx, 'proposals', {status: 'all'});
+      const proposals = itemsOf<OrbProposal>(out, 'proposals');
       lastLogged = undefined;
       set({status: 'ready', proposals, error: undefined});
       publishInbox();
@@ -94,14 +94,14 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   }
 
   async function decide(args: DecideArgs): Promise<DecideResult> {
-    const out = await callOni<DecideResult>(ctx, 'proposal_decide', {...args});
+    const out = await callOrb<DecideResult>(ctx, 'proposal_decide', {...args});
     await refresh();
     return out;
   }
 
-  /** 여럿을 한 번에 결정한다. 하나가 실패해도 나머지는 oni가 결정하고, 실패한 것은 이유와 함께 돌아온다. */
+  /** 여럿을 한 번에 결정한다. 하나가 실패해도 나머지는 orb가 결정하고, 실패한 것은 이유와 함께 돌아온다. */
   async function decideMany(args: DecideManyArgs): Promise<BatchOutcome> {
-    const out = await callOni<{decided?: unknown[] | null; failed?: BatchOutcome['failed'] | null}>(ctx, 'proposal_decide', {...args});
+    const out = await callOrb<{decided?: unknown[] | null; failed?: BatchOutcome['failed'] | null}>(ctx, 'proposal_decide', {...args});
     await refresh();
     return {decided: out.decided?.length ?? 0, failed: out.failed ?? []};
   }
@@ -120,23 +120,23 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   }
 
   async function findMemories(p: FindParams): Promise<OrbitMemory[]> {
-    const out = await callOni<unknown>(ctx, 'memory_find', findArgs(p));
+    const out = await callOrb<unknown>(ctx, 'memory_find', findArgs(p));
     const now = new Date();
-    return itemsOf<OniSummary>(out, 'memory_find').map(s => toMemoryRecord(s, now));
+    return itemsOf<OrbSummary>(out, 'memory_find').map(s => toMemoryRecord(s, now));
   }
 
-  async function getMemory(id: string): Promise<{memory: OniMemory; history: OniVersion[]}> {
-    const out = await callOni<{items?: OniMemory[]; history?: Record<string, OniVersion[]>}>(ctx, 'memory_get', {ids: [id], history: true});
-    const memory = itemsOf<OniMemory>(out, 'memory_get')[0];
-    if (!memory) throw new OrbitError(pick(commonText).oni.memoryNotFound);
+  async function getMemory(id: string): Promise<{memory: OrbMemory; history: OrbVersion[]}> {
+    const out = await callOrb<{items?: OrbMemory[]; history?: Record<string, OrbVersion[]>}>(ctx, 'memory_get', {ids: [id], history: true});
+    const memory = itemsOf<OrbMemory>(out, 'memory_get')[0];
+    if (!memory) throw new OrbitError(pick(commonText).orb.memoryNotFound);
     return {memory, history: out.history?.[id] ?? []};
   }
 
   /** 제안 근거·관련 기억용(20개까지). 함께 부르고, 일부가 없어도 있는 것만 순서대로 돌려준다. */
-  async function getMemories(ids: readonly string[]): Promise<OniMemory[]> {
+  async function getMemories(ids: readonly string[]): Promise<OrbMemory[]> {
     const each = await Promise.all(ids.slice(0, 20).map(async id => {
       try {
-        return itemsOf<OniMemory>(await callOni<unknown>(ctx, 'memory_get', {ids: [id]}), 'memory_get');
+        return itemsOf<OrbMemory>(await callOrb<unknown>(ctx, 'memory_get', {ids: [id]}), 'memory_get');
       } catch (e) {
         ctx.log.warn(`Could not read memory (${id}): ${errorMessage(e)}`);
         return [];
@@ -146,16 +146,16 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   }
 
   /** 단계를 차례로 부른다. 앞 호출의 결과 판본을 expectedVersion이 비어 있는 다음 단계에 채운다. */
-  async function updateMemory(steps: readonly UpdateArgs[]): Promise<OniMemory> {
-    let last: OniMemory | undefined;
+  async function updateMemory(steps: readonly UpdateArgs[]): Promise<OrbMemory> {
+    let last: OrbMemory | undefined;
     for (const step of steps) {
       const args: Record<string, unknown> = {...step};
       if (args.expectedVersion === undefined && last) args.expectedVersion = last.version;
-      const out = await callOni<{memory?: OniMemory}>(ctx, 'memory_update', args);
-      if (!out.memory) throw new OrbitError(pick(commonText).oni.badShape('memory_update'));
+      const out = await callOrb<{memory?: OrbMemory}>(ctx, 'memory_update', args);
+      if (!out.memory) throw new OrbitError(pick(commonText).orb.badShape('memory_update'));
       last = out.memory;
     }
-    if (!last) throw new OrbitError(pick(commonText).oni.nothingChanged);
+    if (!last) throw new OrbitError(pick(commonText).orb.nothingChanged);
     return last;
   }
 

@@ -79,10 +79,10 @@ describe('작업 탭', () => {
   });
 
   it('판이 맞지 않으면 작업 화면만 멈추고 안내를 보인다', () => {
-    h.useState(state({status: 'paused', pause: {kind: 'oni-newer', message: 'Orbit이 이 Orbit 앱보다 새 판입니다. Orbit 앱을 올려 주세요.'}}));
-    assert.match(text(h.renderWorkTab(task.id)), /Please update the Orbit app/);
-    assert.match(text(h.renderWorks()), /Please update the Orbit app/);
-    assert.match(text(h.renderSessions()), /Please update the Orbit app/);
+    h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: 'OpenOrbit이 이 OpenOrbit 앱보다 새 판입니다. OpenOrbit 앱을 올려 주세요.'}}));
+    assert.match(text(h.renderWorkTab(task.id)), /Please update the OpenOrbit app/);
+    assert.match(text(h.renderWorks()), /Please update the OpenOrbit app/);
+    assert.match(text(h.renderSessions()), /Please update the OpenOrbit app/);
     assert.match(text(h.renderWorks()), /Check again/);
   });
 });
@@ -113,7 +113,7 @@ describe('빈·로딩·오류·멈춤 화면', () => {
   });
 
   it('멈춤 안내도 StateView이고 「다시 확인」은 동작 자리에 있다', () => {
-    h.useState(state({status: 'paused', pause: {kind: 'oni-newer', message: '올려 주세요'}}));
+    h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: '올려 주세요'}}));
     const html = h.renderWorks();
     stateView(html);
     assert.match(html, /forma-state-view-actions[\s\S]*Check again/);
