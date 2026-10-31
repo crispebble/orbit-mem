@@ -25,7 +25,7 @@ var (
 	DefaultGraphStates = []string{StateCandidate, StateConfirmed, StateStale}
 )
 
-// 상한(제안). 근거는 계약 README 「oni가 정한 값」.
+// 상한(제안). 근거는 계약 README 「orb가 정한 값」.
 const (
 	GraphLimitMax = 1000
 	GraphDepthMax = 3

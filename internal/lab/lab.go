@@ -356,7 +356,7 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		}
 		plugins[cand], x.Hashes[cand] = p, h
 	}
-	// 실험 전용 Orbit 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
+	// 실험 전용 OpenOrbit 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
 	home := filepath.Join(dir, "home")
 	hc := config.Default()
 	hc.SessionRetro, hc.Work = false, config.WorkOff

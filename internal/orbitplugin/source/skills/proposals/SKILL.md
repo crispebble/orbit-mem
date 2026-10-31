@@ -1,6 +1,6 @@
 ---
 name: proposals
-description: Orbit 회고가 올린 제안을 사용자와 함께 검토할 때 쓴다. 사용자가 "제안 보여줘", "회고 결과 보여줘"라고 할 때.
+description: OpenOrbit 회고가 올린 제안을 사용자와 함께 검토할 때 쓴다. 사용자가 "제안 보여줘", "회고 결과 보여줘"라고 할 때.
 ---
 
 # 회고 제안 검토
@@ -13,7 +13,7 @@ description: Orbit 회고가 올린 제안을 사용자와 함께 검토할 때 
    - stale: 낡은 기억을 정리할지. 근거 파일에서 발췌가 사라진 제안은 사라진 발췌를 함께 보인다
    - merge: 겹치는 기억을 하나로 합칠지
    - reclassify: 옛 ISSUE·NOTE 기억의 종류를 바꿀지
-   - apply_file: 확정 규칙을 Orbit 스킬 원본이나 지침 파일에 반영할지(diff)
+   - apply_file: 확정 규칙을 OpenOrbit 스킬 원본이나 지침 파일에 반영할지(diff)
    - direction: 다음 방향 제안을 결정으로 남길지
    - edit: 기억 하나의 제목·본문·태그·범위를 고칠지(diff)
    - revert: 승인했던 변경을 되돌릴지(효과 판정과 diff)
@@ -27,4 +27,4 @@ description: Orbit 회고가 올린 제안을 사용자와 함께 검토할 때 
 4. 파일 반영을 승인하면 파일만 바뀐다. 커밋은 사용자가 한다. 바뀐 파일 경로를 알린다.
 5. 끝나면 결정한 수와 남은 제안 수를 알린다.
 
-터미널에서는 `oni proposals`로 같은 일을 할 수 있다.
+터미널에서는 `orb proposals`로 같은 일을 할 수 있다.

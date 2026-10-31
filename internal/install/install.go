@@ -1,4 +1,4 @@
-// Package install puts orb on this PC: the binary, the Orbit plugin in each
+// Package install puts orb on this PC: the binary, the OpenOrbit plugin in each
 // host's marketplace, the Codex role files of a built plugin and the OS
 // schedule for retrospectives (launchd on Mac, Task Scheduler on Windows).
 package install
@@ -124,7 +124,7 @@ func saveOwned(dir string, m map[string]string) error {
 
 // CopyCodexAgents copies a built plugin's codex/agents/*.toml into
 // <codexHome>/agents. Codex plugins cannot carry roles, so they are installed
-// as files. Only files Orbit wrote and nobody changed since are replaced or removed.
+// as files. Only files OpenOrbit wrote and nobody changed since are replaced or removed.
 func CopyCodexAgents(pluginDir, codexHome string) (CopyResult, error) {
 	var res CopyResult
 	srcs, err := filepath.Glob(filepath.Join(pluginDir, "codex", "agents", "*.toml"))
@@ -261,7 +261,7 @@ func TaskXML(s Schedule) []byte {
 	}
 	x := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Orbit 회고(하루·주간)</Description></RegistrationInfo>
+  <RegistrationInfo><Description>OpenOrbit 회고(하루·주간)</Description></RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
       <StartBoundary>2026-01-01T%02d:00:00</StartBoundary>
@@ -423,7 +423,7 @@ func CopyBinary(src, dst string) (bool, error) {
 		if _, err := os.Stat(dst); err == nil {
 			if err := os.Rename(dst, old); err != nil { // 실행 중인 exe는 지울 수 없어 이름만 바꾼다
 				os.Remove(tmp)
-				return false, i18n.Errorf("install.err.replace_oni", err)
+				return false, i18n.Errorf("install.err.replace_binary", err)
 			}
 			if err := os.Rename(tmp, dst); err != nil {
 				_ = os.Rename(old, dst)

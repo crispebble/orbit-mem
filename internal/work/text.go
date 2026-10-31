@@ -8,7 +8,7 @@ import (
 
 // Text limits. Titles and summaries are plain one-line text with secrets masked.
 const (
-	TitleMax     = 120 // work_title 제목(계약 titleMax). 근거는 계약 README 「oni가 정한 값」
+	TitleMax     = 120 // work_title 제목(계약 titleMax). 근거는 계약 README 「orb가 정한 값」
 	stepTitleMax = 200
 	summaryMax   = 200
 	commandMax   = 200

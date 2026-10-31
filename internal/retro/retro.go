@@ -1,6 +1,6 @@
 // Package retro runs the retrospectives: once a day for the day before and
 // once a week, in the background, through a headless host (claude -p or codex
-// exec). Orbit gathers the material; the host reads it through the retro MCP
+// exec). OpenOrbit gathers the material; the host reads it through the retro MCP
 // tools and submits a journal, candidate memories, flags and proposals once.
 package retro
 

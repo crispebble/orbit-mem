@@ -1,6 +1,6 @@
 // Package contract holds the orbit.work read contract: the tool input table,
 // the input and response JSON Schemas and example responses for each major
-// version. Readers (Studio, OpenClaw) copy the examples; oni's tests check
+// version. Readers (Studio, OpenClaw) copy the examples; orb's tests check
 // real responses against the schemas.
 package contract
 
@@ -13,13 +13,13 @@ import (
 // Name is the contract name in every response.
 const Name = "orbit.work"
 
-// Major and Minor are the version oni answers by default.
+// Major and Minor are the version orb answers by default.
 const (
 	Major = 1
 	Minor = 0
 )
 
-// SupportedMajors are the major versions oni answers.
+// SupportedMajors are the major versions orb answers.
 var SupportedMajors = []int{1}
 
 //go:embed v1

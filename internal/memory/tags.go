@@ -42,7 +42,7 @@ func DomainOf(m Memory) string {
 }
 
 // markerTag is a mark the old Knowledge and Claude memory imports left, and
-// kindTags are kind names: neither says what a memory is about (설계 · Orbit
+// kindTags are kind names: neither says what a memory is about (설계 · OpenOrbit
 // 2차 — 기억 그래프 「제외 태그」, the same rule as the Studio graph view).
 var (
 	markerTag = regexp.MustCompile(`^(imported|space|since|type|옛|superseded-by|분야):`)

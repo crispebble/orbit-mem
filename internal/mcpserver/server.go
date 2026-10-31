@@ -1,4 +1,4 @@
-// Package mcpserver is the Orbit MCP server: six tools to find, read, save and
+// Package mcpserver is the OpenOrbit MCP server: six tools to find, read, save and
 // fix memories and to see and decide proposals.
 package mcpserver
 
@@ -21,7 +21,7 @@ type Options struct {
 	Work         *WorkOptions // 있으면 작업 도구(work_list·work_get·work_title)를 연다
 }
 
-const instructions = `Orbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
+const instructions = `OpenOrbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다.
 저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.`
@@ -78,7 +78,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	return srv
 }
 
-// readHints and writeHints are the MCP annotations of a tool. Every Orbit tool
+// readHints and writeHints are the MCP annotations of a tool. Every OpenOrbit tool
 // stays on this PC. Without annotations a host such as Codex treats a tool as
 // destructive and open-world and asks for approval, which fails under approval
 // policy never.
@@ -310,7 +310,7 @@ func (h handlers) scope(scope, dir string) (string, string, error) {
 
 func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
 	if in.Source.Kind == memory.SourceLegacy {
-		r, _ := toolError(fmt.Errorf("legacy 출처는 oni migrate만 씁니다"))
+		r, _ := toolError(fmt.Errorf("legacy 출처는 orb migrate만 씁니다"))
 		return r, MemoryOut{}, nil
 	}
 	scope, label, err := h.scope(in.Scope, in.Project)

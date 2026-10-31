@@ -12,7 +12,7 @@ import (
 )
 
 // KindLegacy is a retrospective that judges memories moved from the old
-// Knowledge and Claude memory (설계 · Orbit 3차 O3-3, oni retro legacy).
+// Knowledge and Claude memory (설계 · Orbit 3차 O3-3, orb retro legacy).
 const KindLegacy = "legacy"
 
 // Verdicts on one old memory. confirm, merge and stale become proposals the

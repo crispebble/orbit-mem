@@ -1,8 +1,8 @@
 {
   "name": "orbit",
   "version": "0.3.15",
-  "displayName": "Orbit",
-  "description": "이 PC의 기억·회고 제안과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 함께 주는 Orbit 플러그인",
+  "displayName": "OpenOrbit",
+  "description": "이 PC의 기억·회고 제안과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 함께 주는 OpenOrbit 플러그인",
   "skills": [
     "memory",
     "proposals",

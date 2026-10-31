@@ -32,7 +32,7 @@ type SessionEnd struct {
 
 // Enqueue queues a session for its session-end retrospective. A session
 // already waiting is updated, not queued twice. Sessions without an id and
-// sessions run inside Orbit's own data directory (retrospectives) are not
+// sessions run inside OpenOrbit's own data directory (retrospectives) are not
 // queued; it says whether the session was queued.
 func Enqueue(s *memory.Store, p config.Paths, e SessionEnd) (bool, error) {
 	if strings.TrimSpace(e.Session) == "" || (e.Cwd != "" && transcript.Excluded(e.Cwd, []string{p.Home})) {

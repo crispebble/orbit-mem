@@ -16,7 +16,7 @@ import (
 // What an approved change touched (설계 「변경 효과 원장」).
 const (
 	TargetMemory      = "memory"      // 기억
-	TargetHarness     = "harness"     // Orbit 플러그인 원본(스킬·역할)
+	TargetHarness     = "harness"     // OpenOrbit 플러그인 원본(스킬·역할)
 	TargetInstruction = "instruction" // 지침 파일
 )
 

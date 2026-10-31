@@ -359,7 +359,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 				continue
 			}
 		case memory.ProposalConfirm:
-			notes = append(notes, in.Title+": 후보 확정 제안은 Orbit이 만듭니다")
+			notes = append(notes, in.Title+": 후보 확정 제안은 OpenOrbit이 만듭니다")
 			continue
 		case memory.ProposalApplyFile:
 			if !allowedTarget(mat.Targets, in.Path) {
@@ -403,7 +403,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	}
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	if labbed > 0 {
-		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(oni lab candidates)", labbed))
+		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(orb lab candidates)", labbed))
 	}
 	if mat.Kind == KindLegacy {
 		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))

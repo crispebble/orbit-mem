@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-// Page sizes and waits oni chose (계약 README 「oni가 정한 값」).
+// Page sizes and waits orb chose (계약 README 「orb가 정한 값」).
 const (
 	ListLimit     = 20
 	ListLimitMax  = 50
@@ -33,7 +33,7 @@ var WaitMax = 30 * time.Second
 // filtering by state. A variable so tests can lower it.
 var summaryScanMax = 5000
 
-// ErrBadCursor is a page cursor oni cannot read or from another database.
+// ErrBadCursor is a page cursor orb cannot read or from another database.
 var ErrBadCursor = errors.New("쪽 커서를 읽을 수 없습니다")
 
 // EncodeSeq is the opaque ledger position readers pass back (seq, after).

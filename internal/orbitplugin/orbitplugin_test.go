@@ -57,7 +57,7 @@ func TestVars_공백이_있는_경로만_따옴표(t *testing.T) {
 	}
 }
 
-func TestOrbit플러그인_버전은_oni_버전과_같다(t *testing.T) {
+func TestOrbit플러그인_버전은_orb_버전과_같다(t *testing.T) {
 	b, _ := source.ReadFile("source/plugin.json")
 	if !strings.Contains(string(b), `"version": "`+version.Version+`"`) {
 		t.Fatalf("plugin.json version must be %s", version.Version)

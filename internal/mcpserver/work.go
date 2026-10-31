@@ -25,11 +25,11 @@ type WorkOptions struct {
 	Read    work.ReadOptions // 응답 없음 시간 등
 }
 
-const readerInstructions = `Orbit 기록을 읽는다. 작업 기록(orbit.work 1판)은 work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
+const readerInstructions = `OpenOrbit 기록을 읽는다. 작업 기록(orbit.work 1판)은 work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
 기억 그래프(orbit.memory 1판)는 memory_graph로 읽는다.
 응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id·seq·커서는 받은 그대로 돌려준다.`
 
-// NewReader is oni mcp --reader: read tools for readers such as Studio — the
+// NewReader is orb mcp --reader: read tools for readers such as Studio — the
 // four work tools and memory_graph. It has no memory write tools and no
 // work_title. memDB is opened on the first memory_graph call.
 func NewReader(wo WorkOptions, memDB, version string) *mcp.Server {

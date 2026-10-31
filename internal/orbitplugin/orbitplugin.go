@@ -1,4 +1,4 @@
-// Package orbitplugin holds the Orbit plugin source (MCP, hooks and two
+// Package orbitplugin holds the OpenOrbit plugin source (MCP, hooks and two
 // skills) built into each PC's marketplace with this PC's orb path.
 package orbitplugin
 
