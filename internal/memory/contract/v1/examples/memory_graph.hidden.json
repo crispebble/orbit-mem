@@ -18,7 +18,7 @@
     "contract": {
       "name": "orbit.memory",
       "major": 1,
-      "minor": 2,
+      "minor": 3,
       "supportedMajors": [
         1
       ]
@@ -36,7 +36,11 @@
           "forma"
         ],
         "createdAt": "2026-10-25T02:00:00.000Z",
-        "updatedAt": "2026-10-28T05:00:00.000Z"
+        "updatedAt": "2026-10-28T05:00:00.000Z",
+        "importance": 0.521,
+        "sourceKinds": [
+          "session"
+        ]
       },
       {
         "id": "m-8293a4b5c6d7",
@@ -48,7 +52,11 @@
           "studio"
         ],
         "createdAt": "2026-10-12T01:00:00.000Z",
-        "updatedAt": "2026-10-20T01:00:00.000Z"
+        "updatedAt": "2026-10-20T01:00:00.000Z",
+        "importance": 0.892,
+        "sourceKinds": [
+          "session"
+        ]
       }
     ],
     "edges": [

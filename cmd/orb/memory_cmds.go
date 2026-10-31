@@ -150,11 +150,22 @@ func cmdHook(a *app, args []string) error {
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
 	skipLists := fs.Bool("skip-lists", false, i18n.T("flag.hook.skip_lists"))
+	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
+	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end" && pos[0] != "work") || (*host != "claude" && *host != "codex") {
+	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end" && pos[0] != "work") || (*host != "claude" && *host != "codex") ||
+		(*runtime != "" && *runtime != runtimeOrbitPi) {
 		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
 	}
+	// 설계 · Studio 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션에서는 기억 주입·작업 기록·
+	// 질문 카드를 orbit-pi가 맡는다. 플러그인 훅(--runtime 없음)은 아무것도 하지 않고,
+	// orbit-pi가 같은 입력으로 --runtime orbit-pi를 붙여 부른 훅만 기록한다.
+	if *runtime == "" && os.Getenv(runtimeEnv) == runtimeOrbitPi {
+		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
+		return nil
+	}
+	who := launcherOf(*runtime, *launcher)
 	start := time.Now()
 	deadline := time.After(hookDeadline)
 	until := start.Add(hookDeadline - hookExitMargin) // 이때까지 사건을 쓰거나 스풀에 남긴다
@@ -178,7 +189,7 @@ func cmdHook(a *app, args []string) error {
 		}
 		if pos[0] == "work" {
 			// 제목 요청 문맥은 기록 결과(연 작업)에 달려 있어 차례로 한다
-			opened, listTool := recordWork(*host, b, at, until, cfg, *skipLists)
+			opened, listTool := recordWork(*host, b, at, until, cfg, *skipLists, who)
 			close(recorded)
 			var ctx []string
 			if listTool {
@@ -193,7 +204,7 @@ func cmdHook(a *app, args []string) error {
 		go func() {
 			defer close(recorded)
 			defer func() { _ = recover() }()
-			recordWork(*host, b, at, until, cfg, *skipLists)
+			recordWork(*host, b, at, until, cfg, *skipLists, who)
 		}()
 		var in hookInput
 		_ = json.Unmarshal(b, &in)
@@ -226,13 +237,45 @@ const (
 	hookExitMargin = 300 * time.Millisecond
 )
 
+// Runtime marks (설계 · Studio 4차 「Claude 엔진 중복 규칙」). orbit-pi puts
+// ORBIT_RUNTIME=orbit-pi into the claude it starts and calls the hooks itself
+// with --runtime orbit-pi and --launcher (ORBIT_LAUNCHER) for origin.launcher.
+const (
+	runtimeEnv     = "ORBIT_RUNTIME"
+	runtimeOrbitPi = "orbit-pi"
+	launcherEnv    = "ORBIT_LAUNCHER"
+)
+
+// hookCaller is who called a hook: a person's own session or orbit-pi.
+type hookCaller struct {
+	launcher string
+	runtime  bool
+}
+
+// launcherOf is origin.launcher: human for a person's own session; for
+// orbit-pi the launcher it names (studio·telegram·workflow…), else orbit-pi.
+func launcherOf(runtime, launcher string) hookCaller {
+	if runtime == "" {
+		return hookCaller{launcher: "human"}
+	}
+	if launcher == "" {
+		launcher = os.Getenv(launcherEnv)
+	}
+	switch launcher {
+	case "studio", "telegram", "workflow":
+	default:
+		launcher = runtimeOrbitPi // 모르는 값은 짐작하지 않는다
+	}
+	return hookCaller{launcher: launcher, runtime: true}
+}
+
 // recordWork turns the hook input into work ledger events (설계 · Orbit 2차
 // 「훅」). It returns the works this call opened and whether it was a list tool.
-func recordWork(host string, raw []byte, at int64, until time.Time, cfg config.Config, skipLists bool) ([]string, bool) {
+func recordWork(host string, raw []byte, at int64, until time.Time, cfg config.Config, skipLists bool, who hookCaller) ([]string, bool) {
 	if !cfg.WorkOn() || os.Getenv("ORBIT_RETRO_ID") != "" {
 		return nil, false
 	}
-	env := hook.Env{Host: host, Getenv: os.Getenv, Git: hook.SystemGit{}, Now: at,
+	env := hook.Env{Host: host, Getenv: os.Getenv, Git: hook.SystemGit{}, Now: at, Launcher: who.launcher, NoDecisions: who.runtime,
 		TestCommands: append(append([]string{}, hook.DefaultTestCommands...), cfg.WorkTestCommands...),
 		Project: func(cwd string) work.Project {
 			p := project.Resolve(cwd)

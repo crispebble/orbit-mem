@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://onidot.dev/schemas/orbit.work/1/response.schema.json",
-  "title": "orbit.work 1.0 응답",
-  "description": "orb가 내는 1.0 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
+  "title": "orbit.work 1.1 응답",
+  "description": "orb가 내는 1.1 응답을 엄격하게 검사한다. 읽는 쪽은 이 Schema로 응답을 거르지 않고 판 규칙대로 모르는 칸·값을 견딘다.",
   "oneOf": [
     {"$ref": "#/$defs/work_list"},
     {"$ref": "#/$defs/work_get"},
@@ -43,6 +43,7 @@
     },
     "host": {"enum": ["claude", "codex"]},
     "surface": {"enum": ["cli", "desktop", "headless", "unknown"]},
+    "launcher": {"enum": ["human", "orbit-pi", "studio", "telegram", "workflow"], "description": "세션을 띄운 쪽(1.1). human은 사람이 직접 연 세션, 나머지는 orbit-pi가 띄운 세션과 orbit-pi에 일을 시킨 쪽"},
     "listKind": {"enum": ["claude-task", "claude-todo", "claude-app-plan", "codex-plan"]},
     "stepStatus": {"enum": ["pending", "ready", "in_progress", "blocked", "done", "cancelled"]},
     "blockReason": {"enum": ["waiting_user", "run_failed", "run_lost", "interrupted", "stale", "declared"]},
@@ -68,6 +69,7 @@
       "properties": {
         "host": {"$ref": "#/$defs/host"},
         "surface": {"$ref": "#/$defs/surface"},
+        "launcher": {"$ref": "#/$defs/launcher"},
         "sessionId": {"$ref": "#/$defs/id"},
         "list": {
           "type": "object",
@@ -273,6 +275,7 @@
         "sessionId": {"$ref": "#/$defs/id"},
         "host": {"$ref": "#/$defs/host"},
         "surface": {"$ref": "#/$defs/surface"},
+        "launcher": {"$ref": "#/$defs/launcher"},
         "cwd": {"$ref": "#/$defs/absPath"},
         "repo": {"$ref": "#/$defs/absPath"},
         "branch": {"$ref": "#/$defs/text"},

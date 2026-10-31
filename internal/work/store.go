@@ -31,7 +31,7 @@ type Store struct {
 	Spool string // 잠겨 있을 때 사건을 남기는 디렉터리. 비우면 쓰지 않는다
 }
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   started_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, ended_at INTEGER NOT NULL DEFAULT 0,
   end_reason TEXT NOT NULL DEFAULT '', end_detail TEXT NOT NULL DEFAULT '',
   turn TEXT NOT NULL DEFAULT '', turn_open INTEGER NOT NULL DEFAULT 0, updated_seq INTEGER NOT NULL DEFAULT 0,
+  launcher TEXT NOT NULL DEFAULT '',
   PRIMARY KEY(host, id));
 CREATE INDEX IF NOT EXISTS sessions_updated ON sessions(updated_seq);
 CREATE TABLE IF NOT EXISTS ended_turns (host TEXT NOT NULL, session TEXT NOT NULL, prompt TEXT NOT NULL, PRIMARY KEY(host, session, prompt));
@@ -60,7 +61,8 @@ CREATE TABLE IF NOT EXISTS works (
   list_kind TEXT NOT NULL, list_id TEXT NOT NULL, cwd TEXT NOT NULL DEFAULT '', project_scope TEXT NOT NULL DEFAULT '', project_label TEXT NOT NULL DEFAULT '',
   parent_work TEXT NOT NULL DEFAULT '', parent_step TEXT NOT NULL DEFAULT '',
   title TEXT NOT NULL DEFAULT '', title_at INTEGER NOT NULL DEFAULT 0,
-  opened_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, closed_at INTEGER NOT NULL DEFAULT 0, updated_seq INTEGER NOT NULL DEFAULT 0);
+  opened_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, closed_at INTEGER NOT NULL DEFAULT 0, updated_seq INTEGER NOT NULL DEFAULT 0,
+  launcher TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS works_updated ON works(updated_seq);
 CREATE INDEX IF NOT EXISTS works_parent ON works(parent_step) WHERE parent_step <> '';
 CREATE TABLE IF NOT EXISTS steps (
@@ -92,12 +94,22 @@ CREATE TABLE IF NOT EXISTS timeline (
   work_id TEXT NOT NULL DEFAULT '', step_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '',
   transcript TEXT NOT NULL DEFAULT '', agent_transcript TEXT NOT NULL DEFAULT '', PRIMARY KEY(seq, sub));
 CREATE INDEX IF NOT EXISTS timeline_session ON timeline(host, session, seq, sub);
-CREATE TABLE IF NOT EXISTS changes (seq INTEGER NOT NULL, work_id TEXT NOT NULL DEFAULT '', host TEXT NOT NULL DEFAULT '', session TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS changes (seq INTEGER NOT NULL, work_id TEXT NOT NULL DEFAULT '', host TEXT NOT NULL DEFAULT '', session TEXT NOT NULL DEFAULT '',
+  decision_id TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS decisions (
+  id TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'open', source TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '',
+  host TEXT NOT NULL DEFAULT '', session TEXT NOT NULL DEFAULT '', work_id TEXT NOT NULL DEFAULT '', step_id TEXT NOT NULL DEFAULT '', wait_key TEXT NOT NULL DEFAULT '',
+  binding_kind TEXT NOT NULL DEFAULT '', binding_ref TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '{}',
+  answer TEXT NOT NULL DEFAULT '', answered_by TEXT NOT NULL DEFAULT '', close_reason TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, closed_at INTEGER NOT NULL DEFAULT 0, expires_at INTEGER NOT NULL DEFAULT 0,
+  updated_seq INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS decisions_session ON decisions(host, session);
+CREATE INDEX IF NOT EXISTS decisions_created ON decisions(created_at);
 CREATE INDEX IF NOT EXISTS changes_seq ON changes(seq);
 `
 
 // graphTables are rebuilt from the ledger.
-var graphTables = []string{"sessions", "ended_turns", "waits", "lists", "works", "steps", "natives", "edges", "runs", "evidence", "timeline", "changes"}
+var graphTables = []string{"sessions", "ended_turns", "waits", "lists", "works", "steps", "natives", "edges", "runs", "evidence", "timeline", "changes", "decisions"}
 
 // BusyTimeout is how long a writer waits for another writer before giving up.
 // A hook that gives up spools the event (설계 「실패·중단·재개」).
@@ -215,14 +227,26 @@ type Result struct {
 
 // Append records the event and applies it to the graph in one transaction.
 func (s *Store) Append(e Event) (Result, error) {
-	if e.At == 0 {
-		e.At = s.nowMs()
-	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Result{}, err
 	}
 	defer tx.Rollback()
+	res, err := s.appendTx(tx, e)
+	if err != nil || res.Skipped {
+		return res, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Result{}, err
+	}
+	return res, nil
+}
+
+// appendTx records and applies the event inside tx.
+func (s *Store) appendTx(tx *sql.Tx, e Event) (Result, error) {
+	if e.At == 0 {
+		e.At = s.nowMs()
+	}
 	var key any
 	if e.Key != "" {
 		key = e.Key
@@ -245,9 +269,6 @@ func (s *Store) Append(e Event) (Result, error) {
 		return Result{}, i18n.Errorf("work.err.apply_event", e.Kind, err)
 	}
 	if err := r.flush(); err != nil {
-		return Result{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return Result{}, err
 	}
 	return Result{Seq: e.Seq, Opened: r.opened}, nil

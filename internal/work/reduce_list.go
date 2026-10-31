@@ -52,17 +52,17 @@ func (r *reducer) listWork(kind, listID string, open bool) (string, error) {
 
 func (r *reducer) openWork(kind, listID string) (string, error) {
 	id := hashID("w-", r.e.Host, kind, listID, r.e.Seq)
-	var surface, cwd, scope, label, pw, ps string
-	_ = r.tx.QueryRow(`SELECT surface, cwd, project_scope, project_label, parent_work, parent_step FROM sessions WHERE host=? AND id=?`, r.e.Host, r.e.Session).
-		Scan(&surface, &cwd, &scope, &label, &pw, &ps)
+	var surface, cwd, scope, label, pw, ps, launcher string
+	_ = r.tx.QueryRow(`SELECT surface, cwd, project_scope, project_label, parent_work, parent_step, launcher FROM sessions WHERE host=? AND id=?`, r.e.Host, r.e.Session).
+		Scan(&surface, &cwd, &scope, &label, &pw, &ps, &launcher)
 	if cwd == "" {
 		cwd = r.e.Cwd
 	}
 	if surface == "" {
 		surface = "unknown"
 	}
-	if err := r.exec(`INSERT INTO works(id,host,session,surface,list_kind,list_id,cwd,project_scope,project_label,parent_work,parent_step,opened_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, r.e.Host, r.e.Session, surface, kind, listID, cwd, scope, label, pw, ps, r.e.At, r.e.At); err != nil {
+	if err := r.exec(`INSERT INTO works(id,host,session,surface,list_kind,list_id,cwd,project_scope,project_label,parent_work,parent_step,opened_at,updated_at,launcher)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, r.e.Host, r.e.Session, surface, kind, listID, cwd, scope, label, pw, ps, r.e.At, r.e.At, launcher); err != nil {
 		return "", err
 	}
 	if err := r.exec(`INSERT INTO lists(host,kind,id,open_work,last_work) VALUES(?,?,?,?,?)

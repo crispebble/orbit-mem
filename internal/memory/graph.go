@@ -55,6 +55,8 @@ type GraphNode struct {
 	CreatedAt    string   `json:"createdAt"`
 	UpdatedAt    string   `json:"updatedAt"`
 	SupersededBy string   `json:"supersededBy,omitempty"`
+	Importance   float64  `json:"importance"`  // 0~1(1.3)
+	SourceKinds  []string `json:"sourceKinds"` // 원본 종류(1.3), 이름 순
 }
 
 // GraphEdge is a link (no direction, From < To) or a supersede (old → new).
@@ -155,10 +157,19 @@ func (s *Store) Graph(in GraphInput) (Graph, error) {
 		out.Truncated = true
 		ordered = keepRecent(ordered, limit, in.Focus)
 	}
+	imp, err := s.importanceInputs(links)
+	if err != nil {
+		return Graph{}, err
+	}
 	kept := make(map[string]bool, len(ordered))
 	for _, m := range ordered {
 		kept[m.ID] = true
-		out.Nodes = append(out.Nodes, graphNode(m))
+		n := graphNode(m)
+		n.Importance = imp.of(m)
+		if k := imp.kinds[m.ID]; k != nil {
+			n.SourceKinds = k
+		}
+		out.Nodes = append(out.Nodes, n)
 	}
 
 	rel := set(in.Relations, Relations)
@@ -285,7 +296,7 @@ func graphNode(m Memory) GraphNode {
 		tags = []string{}
 	}
 	return GraphNode{ID: m.ID, Kind: m.Kind, State: m.State, Scope: m.Scope, Project: m.Project, Title: MaskSecrets(m.Title),
-		Tags: tags, CreatedAt: GraphTime(m.CreatedAt), UpdatedAt: GraphTime(m.UpdatedAt), SupersededBy: m.SupersededBy}
+		Tags: tags, CreatedAt: GraphTime(m.CreatedAt), UpdatedAt: GraphTime(m.UpdatedAt), SupersededBy: m.SupersededBy, SourceKinds: []string{}}
 }
 
 // graphFilter is kinds·states·scopes·tags·기간. 빈 목록은 모두(상태는 숨김을 뺀 기본).

@@ -18,16 +18,16 @@ type ReadOptions struct {
 var ErrNotFound = errors.New("없습니다")
 
 type workRow struct {
-	id, host, session, surface, listKind, listID, cwd, scope, label, parentWork, parentStep, title string
-	titleAt, openedAt, updatedAt, closedAt, updatedSeq                                             int64
+	id, host, session, surface, listKind, listID, cwd, scope, label, parentWork, parentStep, title, launcher string
+	titleAt, openedAt, updatedAt, closedAt, updatedSeq                                                       int64
 }
 
-const workCols = `id,host,session,surface,list_kind,list_id,cwd,project_scope,project_label,parent_work,parent_step,title,title_at,opened_at,updated_at,closed_at,updated_seq`
+const workCols = `id,host,session,surface,list_kind,list_id,cwd,project_scope,project_label,parent_work,parent_step,title,title_at,opened_at,updated_at,closed_at,updated_seq,launcher`
 
 func scanWork(sc interface{ Scan(...any) error }) (workRow, error) {
 	var w workRow
 	err := sc.Scan(&w.id, &w.host, &w.session, &w.surface, &w.listKind, &w.listID, &w.cwd, &w.scope, &w.label, &w.parentWork, &w.parentStep,
-		&w.title, &w.titleAt, &w.openedAt, &w.updatedAt, &w.closedAt, &w.updatedSeq)
+		&w.title, &w.titleAt, &w.openedAt, &w.updatedAt, &w.closedAt, &w.updatedSeq, &w.launcher)
 	return w, err
 }
 
@@ -49,11 +49,11 @@ type evData struct {
 }
 
 type sessData struct {
-	host, id, surface, cwd, repo, branch, scope, label, model, parentHost, parentSession, endReason, endDetail string
-	startedAt, lastSeen, endedAt, updatedSeq                                                                   int64
-	turnOpen                                                                                                   bool
-	openWaits                                                                                                  int
-	waitSince                                                                                                  int64
+	host, id, surface, cwd, repo, branch, scope, label, model, parentHost, parentSession, endReason, endDetail, launcher string
+	startedAt, lastSeen, endedAt, updatedSeq                                                                             int64
+	turnOpen                                                                                                             bool
+	openWaits                                                                                                            int
+	waitSince                                                                                                            int64
 }
 
 // reader loads rows and derives the contract documents.
@@ -81,9 +81,9 @@ func (rd *reader) session(host, id string) *sessData {
 	var sd sessData
 	var turnOpen int
 	err := rd.q.QueryRow(`SELECT host,id,surface,cwd,repo,branch,project_scope,project_label,model,parent_host,parent_session,end_reason,end_detail,
-		started_at,last_seen,ended_at,updated_seq,turn_open FROM sessions WHERE host=? AND id=?`, host, id).Scan(
+		started_at,last_seen,ended_at,updated_seq,turn_open,launcher FROM sessions WHERE host=? AND id=?`, host, id).Scan(
 		&sd.host, &sd.id, &sd.surface, &sd.cwd, &sd.repo, &sd.branch, &sd.scope, &sd.label, &sd.model, &sd.parentHost, &sd.parentSession,
-		&sd.endReason, &sd.endDetail, &sd.startedAt, &sd.lastSeen, &sd.endedAt, &sd.updatedSeq, &turnOpen)
+		&sd.endReason, &sd.endDetail, &sd.startedAt, &sd.lastSeen, &sd.endedAt, &sd.updatedSeq, &turnOpen, &sd.launcher)
 	if err != nil {
 		rd.sessions[k] = nil
 		return nil
@@ -398,7 +398,7 @@ func (rd *reader) derive(g *graph) (WorkHead, []Step, VerificationCounts) {
 func (rd *reader) head(g *graph) WorkHead {
 	w := g.w
 	h := WorkHead{ID: w.id, Title: w.title, TitleSource: "ai", TitleUpdatedAt: Stamp(w.titleAt), State: "open", Cwd: w.cwd,
-		Origin:   Origin{Host: w.host, Surface: w.surface, SessionID: w.session, List: ListRef{Kind: w.listKind}},
+		Origin:   Origin{Host: w.host, Surface: w.surface, Launcher: w.launcher, SessionID: w.session, List: ListRef{Kind: w.listKind}},
 		OpenedAt: Stamp(w.openedAt), UpdatedAt: Stamp(w.updatedAt), ClosedAt: Stamp(w.closedAt)}
 	if w.listKind == ListClaudeTask {
 		h.Origin.List.ID = w.listID
@@ -524,7 +524,7 @@ func (rd *reader) summaryDoc(g *graph) WorkSummary {
 }
 
 func (rd *reader) sessionDoc(sd *sessData) Session {
-	s := Session{SessionID: sd.id, Host: sd.host, Surface: sd.surface, Cwd: sd.cwd, Repo: sd.repo, Branch: sd.branch, ParentSessionID: sd.parentSession,
+	s := Session{SessionID: sd.id, Host: sd.host, Surface: sd.surface, Launcher: sd.launcher, Cwd: sd.cwd, Repo: sd.repo, Branch: sd.branch, ParentSessionID: sd.parentSession,
 		Model: sd.model, State: rd.state(sd), StartedAt: Stamp(sd.startedAt), LastSeenAt: Stamp(sd.lastSeen), EndedAt: Stamp(sd.endedAt),
 		OpenWorkIDs: []string{}, ActiveStepIDs: []string{}}
 	if s.Surface == "" {
