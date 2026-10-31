@@ -14,16 +14,16 @@ import {ProposalsView} from './proposals-view.tsx';
 import {setStore} from './runtime.ts';
 import {createStore, type OrbitStore} from './store.ts';
 import {parseWaitingId, syncWaitingInbox} from './work/inbox.ts';
+import {registerWorkProvider} from './work/provider.ts';
 import {createWorkStore, type WorkStore} from './work/store.ts';
 import {setWorkStore} from './work-ui/runtime.ts';
 import {SessionTab} from './work-ui/session-tab.tsx';
-import {SessionsView} from './work-ui/sessions-view.tsx';
 import {WaitingStepDetail, WorkTab} from './work-ui/work-tab.tsx';
-import {WorksView} from './work-ui/works-view.tsx';
 
 let store: OrbitStore | undefined;
 let workStore: WorkStore | undefined;
 let offWaiting: (() => void) | undefined;
+let offProvider: (() => void) | undefined;
 let offLocale: (() => void) | undefined;
 
 function ProposalTab({ctx, tab}: TabProps) {
@@ -38,6 +38,8 @@ function OrbitInboxDetail({ctx, item}: InboxDetailProps) {
 }
 
 function stop() {
+  offProvider?.();
+  offProvider = undefined;
   offLocale?.();
   offLocale = undefined;
   offWaiting?.();
@@ -63,6 +65,8 @@ export default definePlugin({
     workStore = createWorkStore(ctx);
     setWorkStore(workStore);
     offWaiting = syncWaitingInbox(workStore, inbox);
+    // 작업 목록·세션 보기는 Orbit Studio 홈 작업 지도로 옮겼다(Studio 4차 S4-2). 홈에 작업을 공급한다.
+    offProvider = registerWorkProvider(ctx as Parameters<typeof registerWorkProvider>[0], workStore);
     // 첫 불러오기가 실패해도 켜기는 성공한다. 실패 이유는 화면(다시 시도)과 log.error에 남는다.
     await Promise.all([store.start(), workStore.start()]);
   },
@@ -72,8 +76,6 @@ export default definePlugin({
   views: {
     'orbit/proposals': ProposalsView,
     'orbit/memories': MemoriesView,
-    'orbit/works': WorksView,
-    'orbit/sessions': SessionsView,
   },
   tabs: {
     proposal: ProposalTab,
@@ -87,7 +89,5 @@ export default definePlugin({
     'orbit.find': ctx => ctx.app.show('orbit', 'memories'),
     'orbit.memory-graph': ctx => openMemoryGraph(ctx),
     'orbit.proposals': ctx => ctx.app.show('orbit', 'proposals'),
-    'orbit.works': ctx => ctx.app.show('orbit', 'works'),
-    'orbit.sessions': ctx => ctx.app.show('orbit', 'sessions'),
   },
 });

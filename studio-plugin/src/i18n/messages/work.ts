@@ -4,6 +4,13 @@ import {defineMessages} from '../index.ts';
 
 export const workText = defineMessages({
   en: {
+    // 홈 작업 지도에 주는 글(Studio 4차 S4-2)
+    home: {
+      progress: (done: number, total: number) => `${done}/${total} steps done`,
+      folder: 'Folder',
+      model: 'Model',
+      session: 'Session',
+    },
     unknown: 'Unknown',
     waitingUser: 'Waiting for user confirmation',
     failed: 'Failed',
@@ -143,6 +150,12 @@ export const workText = defineMessages({
     },
   },
   ko: {
+    home: {
+      progress: (done: number, total: number) => `단계 ${done}/${total} 끝`,
+      folder: '폴더',
+      model: '모델',
+      session: '세션',
+    },
     unknown: '알 수 없음',
     waitingUser: '사용자 확인 기다림',
     failed: '실패',
