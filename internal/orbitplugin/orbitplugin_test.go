@@ -95,6 +95,27 @@ func TestHarnessSentencesForWorkGraph(t *testing.T) {
 	}
 }
 
+// onidot 기본 규칙(사용자 2026-10-31): 아키텍처·구조·흐름은 글과 함께 그림으로 보인다.
+// 메인의 보고·설명(plain-writing)과 문서 작성자(writer)가 이 규칙을 따른다.
+func TestStructureIsExplainedWithADiagram(t *testing.T) {
+	read := func(parts ...string) string {
+		b, err := os.ReadFile(filepath.Join(append([]string{"source"}, parts...)...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	writing := read("skills", "plain-writing", "SKILL.md")
+	for _, want := range []string{"## 7. 구조와 흐름은 그림과 함께", "다이어그램", "Mermaid", "- [ ] 구조·흐름 설명에 그림이 있다."} {
+		if !strings.Contains(writing, want) {
+			t.Errorf("plain-writing에 %q가 없습니다", want)
+		}
+	}
+	if writer := read("agents", "writer.md"); !strings.Contains(writer, "plain-writing의 「구조와 흐름은 그림과 함께」") {
+		t.Error("writer에 그림 규칙을 따르라는 문장이 없습니다")
+	}
+}
+
 // 명세 · O3-5 「분야 지식 분리」(수용 기준 7): 스택 에이전트에는 일하는 방법만 남고, 분야 사실은 분야 묶음에 있다.
 // 에이전트는 자기 분야 묶음의 신호 목록을 가리키고, 빌드하면 그 경로가 설치 위치로 바뀐다.
 func TestOrbit플러그인_분야_지식이_분리된다(t *testing.T) {
