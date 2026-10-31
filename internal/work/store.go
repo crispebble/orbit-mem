@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/sqlitedb"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/sqlitedb"
 )
 
 // Store is the work database (work.db).

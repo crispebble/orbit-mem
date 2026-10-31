@@ -3,7 +3,7 @@ package memory
 import (
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // Write verdicts a retrospective gives each candidate memory (설계 「쓰기 판정 기록」).

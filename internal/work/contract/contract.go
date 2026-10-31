@@ -7,7 +7,7 @@ package contract
 import (
 	"embed"
 
-	"github.com/onidot-labs/orbit/internal/contractkit"
+	"github.com/onidot-labs/openorbit/internal/contractkit"
 )
 
 // Name is the contract name in every response.

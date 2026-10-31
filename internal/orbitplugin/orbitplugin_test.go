@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit/internal/pluginbuild"
-	"github.com/onidot-labs/orbit/internal/version"
+	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/openorbit/internal/version"
 )
 
 func TestOrbit플러그인_두_호스트로_빌드된다(t *testing.T) {

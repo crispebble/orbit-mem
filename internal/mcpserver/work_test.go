@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/work"
-	"github.com/onidot-labs/orbit/internal/work/contract"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/openorbit/internal/work/contract"
 )
 
 type workEnv struct {

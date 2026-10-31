@@ -11,17 +11,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/install"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/migrate"
-	"github.com/onidot-labs/orbit/internal/orbitplugin"
-	"github.com/onidot-labs/orbit/internal/pluginbuild"
-	"github.com/onidot-labs/orbit/internal/retro"
-	"github.com/onidot-labs/orbit/internal/transcript"
-	"github.com/onidot-labs/orbit/internal/version"
-	"github.com/onidot-labs/orbit/internal/work"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/install"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/migrate"
+	"github.com/onidot-labs/openorbit/internal/orbitplugin"
+	"github.com/onidot-labs/openorbit/internal/pluginbuild"
+	"github.com/onidot-labs/openorbit/internal/retro"
+	"github.com/onidot-labs/openorbit/internal/transcript"
+	"github.com/onidot-labs/openorbit/internal/version"
+	"github.com/onidot-labs/openorbit/internal/work"
 )
 
 func selfPath() string {

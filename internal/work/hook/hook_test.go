@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit/internal/work"
+	"github.com/onidot-labs/openorbit/internal/work"
 )
 
 type fakeGit struct{ head string }

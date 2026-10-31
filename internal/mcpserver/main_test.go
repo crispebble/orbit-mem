@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 // oni mcp는 언어 설정과 무관하게 한국어로 답한다(cmd/oni cmdMCP). 시험도 같은 언어로 돈다.

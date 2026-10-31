@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/lab"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/lab"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 func newLab(s *memory.Store) (*lab.Lab, error) {

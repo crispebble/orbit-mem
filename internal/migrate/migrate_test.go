@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 type rec map[string]any

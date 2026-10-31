@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // cleanupMaterial adds what the weekly cleanup looks at (설계 「주간 정리」):

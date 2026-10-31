@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/memory"
-	"github.com/onidot-labs/orbit/internal/project"
-	"github.com/onidot-labs/orbit/internal/transcript"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/project"
+	"github.com/onidot-labs/openorbit/internal/transcript"
 )
 
 // JournalIn is the day's journal: what was done, what blocked, what continues.

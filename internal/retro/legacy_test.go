@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit/internal/i18n"
-	"github.com/onidot-labs/orbit/internal/memory"
+	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/memory"
 )
 
 // legacyEnv는 옛 기억 판정을 켠 환경에 기억을 심는다.

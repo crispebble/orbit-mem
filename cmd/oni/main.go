@@ -14,8 +14,8 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/onidot-labs/orbit/internal/config"
-	"github.com/onidot-labs/orbit/internal/i18n"
+	"github.com/onidot-labs/openorbit/internal/config"
+	"github.com/onidot-labs/openorbit/internal/i18n"
 )
 
 type app struct {

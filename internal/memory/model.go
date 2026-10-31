@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/onidot-labs/orbit/internal/i18n"
+import "github.com/onidot-labs/openorbit/internal/i18n"
 
 // Kinds of memory (설계 「기억 모델」).
 const (
