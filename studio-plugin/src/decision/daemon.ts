@@ -14,6 +14,8 @@ export const DAEMON_CARD_PREFIX = 'daemon:';
 /** 한 번의 복원에서 history를 읽는 실행 수 한도 */
 const RESTORE_MAX = 20;
 const RUNS_LIMIT = 50;
+/** 기록(records) 수 한도: 넘으면 오래전에 닫힌 카드부터 버린다. 열린 카드는 버리지 않는다 */
+export const RECORDS_MAX = 500;
 /** orb 쪽이 실패해도 데몬이 되어 있을 때 다시 걸기 전에 쉬는 시간 */
 const RETRY_MS = 5_000;
 
@@ -158,6 +160,7 @@ export function daemonDecisionSource(client: DaemonClient, orb: DecisionSource, 
     const {runs: list} = await client.api.listRuns({limit: RUNS_LIMIT});
     runs.clear();
     for (const r of list) runs.set(r.runId, r);
+    const gone = new Set<string>();
     sessionIds = new Set(list.map(r => r.sessionId).filter(Boolean));
     const dayStart = startOfDay(now());
     const need = list.filter(r => {
@@ -166,17 +169,40 @@ export function daemonDecisionSource(client: DaemonClient, orb: DecisionSource, 
       return openUnknown || ms(r.startedAt) >= dayStart || ms(r.finishedAt) >= dayStart || r.state === 'running';
     }).slice(0, RESTORE_MAX);
     for (const r of need) await restore(r.runId);
+    // 최근 RUNS_LIMIT개 밖으로 밀린 실행의 열린 기록은 GetRun으로 직접 확인한다(없거나 끝났으면 아래에서 거둔다)
+    const missing = new Set([...records.values()].filter(r => r.state === 'open' && !runs.has(r.runId)).map(r => r.runId));
+    for (const runId of missing) {
+      try {
+        const {run: found} = await client.api.getRun({runId});
+        runs.set(runId, found);
+        if (found.sessionId) sessionIds.add(found.sessionId);
+      } catch (e) {
+        // 데몬이 모르는 실행이면 그 실행의 열린 카드는 거둔다. 그 밖의 오류는 다음에 다시 본다
+        if ((e as {code?: unknown}).code === 'RPC_NOT_FOUND') gone.add(runId);
+        else options.log?.warn(`Could not check run ${runId}: ${errorMessage(e)}`);
+      }
+    }
     // 열린 카드를 ListRuns와 맞춘다: 실행이 끝났거나 그 결정이 더는 열려 있지 않으면 거둔다.
     // askedSeq가 ListRuns 시점의 lastSeq보다 뒤인 카드는 목록이 읽힌 뒤에 생긴 것이라 건드리지 않는다.
     for (const [id, rec] of records) {
       if (rec.state !== 'open') continue;
       const run = runs.get(rec.runId);
+      if (!run && gone.has(rec.runId)) {
+        rec.state = 'withdrawn';
+        rec.closedAt = new Date(now()).toISOString();
+        rec.closeReason = 'run_ended';
+        continue;
+      }
       if (!run || rec.askedSeq > run.lastSeq) continue;
       if (run.state !== 'running' || !run.openDecisions.some(d => d.id === rec.decisionId)) {
         rec.state = 'withdrawn';
         rec.closedAt = run.finishedAt || new Date(now()).toISOString();
         rec.closeReason = 'run_ended';
       }
+    }
+    if (records.size > RECORDS_MAX) {
+      const closed = [...records].filter(([, r]) => r.state !== 'open').sort((a, b) => ms(a[1].closedAt) - ms(b[1].closedAt));
+      for (const [id] of closed.slice(0, records.size - RECORDS_MAX)) records.delete(id);
     }
     // ListRuns에는 열려 있는데 기록이 없는 카드(복원 실패)는 제목과 선택지만으로 만든다
     for (const run of list) {

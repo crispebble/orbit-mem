@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {formatMessage, type DaemonEvent, type DaemonStatus, type RunSummary} from '../src/daemon/api.ts';
 import type {DaemonClient} from '../src/daemon/client.ts';
-import {cardId, daemonDecisionSource, parseCardId} from '../src/decision/daemon.ts';
+import {RECORDS_MAX, cardId, daemonDecisionSource, parseCardId} from '../src/decision/daemon.ts';
 import {toStudioCard} from '../src/decision/provider.ts';
 import {createDecisionStore} from '../src/decision/store.ts';
 import type {AnswerOutcome, Decision, DecisionSource} from '../src/decision/types.ts';
@@ -35,6 +35,9 @@ function stubClient(init: {status?: Partial<DaemonStatus>; runs?: RunSummary[]; 
     answers: [] as {runId: string; decisionId: string; answer: string}[],
     accepted: true,
     historyCalls: [] as string[],
+    getRunCalls: [] as string[],
+    /** ListRuns(최근 50개)에는 없지만 GetRun으로는 아는 실행 */
+    extraRuns: {} as Record<string, RunSummary>,
     listRunsFails: false,
     setStatus(next: Partial<DaemonStatus>) {
       status = {...status, ...next};
@@ -51,6 +54,12 @@ function stubClient(init: {status?: Partial<DaemonStatus>; runs?: RunSummary[]; 
       history: async ({runId}: {runId: string}) => {
         s.historyCalls.push(runId);
         return {events: s.history[runId] ?? []};
+      },
+      getRun: async ({runId}: {runId: string}) => {
+        s.getRunCalls.push(runId);
+        const found = s.extraRuns[runId];
+        if (!found) throw Object.assign(new Error('run not found'), {code: 'RPC_NOT_FOUND'});
+        return {run: found};
       },
       answer: async (p: {runId: string; decisionId: string; answer: string}) => {
         s.answers.push(p);
@@ -231,6 +240,47 @@ describe('닫힌 카드', () => {
     assert.deepEqual(closed.map(d => d.id), ['daemon:r5:d1']);
     await source.list({state: ['answered'], updatedSince: SINCE});
     assert.deepEqual(t.historyCalls, ['r5']);
+  });
+});
+
+describe('최근 50개 밖의 실행', () => {
+  const pushedOut = (state: string, id = 'old') => run({runId: id, state, sessionId: 'S-old', lastSeq: 10, openDecisions: state === 'running' ? [{id: 'd1', title: 'x', options: ['approve'], askedAt: '2026-11-01T01:00:00.000Z'}] : []});
+
+  it('밀려난 실행이 아직 도는 중이고 그 결정이 열려 있으면 열린 채 두고, 그 세션의 orb 카드도 가린다', async () => {
+    const t = stubClient({runs: [run({runId: 'new', sessionId: 'S-new'})]});
+    t.state.extraRuns.old = pushedOut('running');
+    const {orb} = fakeOrb([orbCard({id: 'dup', work: {host: 'orbit-pi', sessionId: 'S-old'}})]);
+    const source = daemonDecisionSource(t.client, orb, {now: () => NOW});
+    t.fire(asked('old', 'd1'));
+    const items = (await source.list({state: ['open']})).items;
+    assert.deepEqual(items.map(d => d.id), ['daemon:old:d1']);
+    assert.deepEqual(t.state.getRunCalls, ['old']);
+  });
+
+  it('끝났거나 데몬이 모르는 실행의 열린 카드는 거둔다', async () => {
+    const t = stubClient({runs: [run({runId: 'new'})]});
+    t.state.extraRuns.done = pushedOut('completed', 'done');
+    const source = daemonDecisionSource(t.client, fakeOrb().orb, {now: () => NOW});
+    t.fire(asked('done', 'd1'));
+    t.fire(asked('ghost', 'd1', {}, 3));
+    assert.deepEqual((await source.list({state: ['open']})).items, []);
+    const closed = (await source.list({state: ['withdrawn'], updatedSince: SINCE})).items;
+    assert.deepEqual(closed.map(d => [d.id, d.closeReason]).sort(), [['daemon:done:d1', 'run_ended'], ['daemon:ghost:d1', 'run_ended']]);
+  });
+
+  it('기록이 한도를 넘으면 오래전에 닫힌 카드부터 버리고 열린 카드는 남긴다', async () => {
+    const t = stubClient({runs: [OPEN_RUN()], history: {r1: [asked('r1', 'd1')]}});
+    const source = daemonDecisionSource(t.client, fakeOrb().orb, {now: () => NOW});
+    for (let i = 0; i < RECORDS_MAX + 20; i++) {
+      t.fire(asked('c', `x${i}`, {}, 100 + i));
+      t.fire(ev(1000 + i, 'c', 'decision.answered', {id: `x${i}`, answer: 'approve'}, new Date(Date.UTC(2026, 10, 1, 1, 0, 0) + i * 1000).toISOString()));
+    }
+    const open = (await source.list({state: ['open']})).items;
+    assert.deepEqual(open.map(d => d.id), ['daemon:r1:d1']);
+    const closed = (await source.list({state: ['answered'], updatedSince: '2000-01-01T00:00:00.000Z'})).items;
+    assert.equal(closed.length, RECORDS_MAX - 1);
+    assert.ok(!closed.some(d => d.id === 'daemon:c:x0'));
+    assert.ok(closed.some(d => d.id === `daemon:c:x${RECORDS_MAX + 19}`));
   });
 });
 
