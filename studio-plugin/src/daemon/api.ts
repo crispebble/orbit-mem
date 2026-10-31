@@ -46,7 +46,7 @@ export type DaemonErrorCode =
   | `RPC_${string}`;
 
 export interface DaemonStatus {
-  /** down: no daemon; starting: `orb daemon start` in progress; up: Health answered with our token. */
+  /** down: no daemon; starting: `orb daemon start` in progress; up: the daemon answers Health (`paired` false: it refused our token or there is none yet). */
   daemon: 'down' | 'starting' | 'up';
   /** The global event stream is connected. */
   streaming: boolean;

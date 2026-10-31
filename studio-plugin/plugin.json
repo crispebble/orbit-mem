@@ -23,6 +23,10 @@
         {
           "id": "memories",
           "title": "Memories"
+        },
+        {
+          "id": "profiles",
+          "title": "Run profiles"
         }
       ]
     }
@@ -46,6 +50,10 @@
     },
     {
       "id": "memory-graph",
+      "app": "orbit"
+    },
+    {
+      "id": "profiles",
       "app": "orbit"
     }
   ],
@@ -89,7 +97,8 @@
         "orbit": {
           "views": {
             "proposals": "제안",
-            "memories": "기억"
+            "memories": "기억",
+            "profiles": "실행 프로필"
           }
         }
       },
@@ -97,7 +106,20 @@
         "orbit.find": "기억 찾기",
         "orbit.memory-graph": "기억 그래프 보기",
         "orbit.proposals": "제안 보기"
+      },
+      "toolWindows": {
+        "chat": "작업 대화"
       }
     }
-  }
+  },
+  "backend": {
+    "main": "dist/backend.js"
+  },
+  "secrets": true,
+  "toolWindows": [
+    {
+      "id": "chat",
+      "title": "Work chat"
+    }
+  ]
 }
