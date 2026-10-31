@@ -1,0 +1,32 @@
+/* 실행 프로필 화면의 배치. 색·글꼴은 Forma 토큰이 정한다(라이트·다크는 토큰이 바꾼다). 왼쪽 색 띠 강조는 쓰지 않는다. */
+.orbit-prof-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-xs); }
+.orbit-prof-item {
+  display: flex; flex-direction: column; gap: var(--forma-space-2xs); width: 100%; box-sizing: border-box; min-width: 0;
+  padding: var(--forma-space-sm) var(--forma-space-md); text-align: start; font: inherit; color: var(--forma-text);
+  background: var(--forma-bg-raised); border: 1px solid var(--forma-line); border-radius: var(--forma-radius-control); cursor: pointer;
+}
+.orbit-prof-item:hover { background: var(--forma-bg-hover); }
+.orbit-prof-item:focus-visible { outline: 2px solid var(--forma-accent); outline-offset: 1px; }
+.orbit-prof-name { font-size: var(--forma-text-body); font-weight: var(--forma-weight-semibold); overflow-wrap: anywhere; }
+.orbit-prof-usage { overflow-wrap: anywhere; }
+.orbit-prof-add { display: flex; flex-direction: column; gap: var(--forma-space-sm); }
+
+.orbit-prof-tab { gap: var(--forma-space-lg); }
+.orbit-prof-head { display: flex; flex-direction: column; gap: var(--forma-space-sm); }
+.orbit-prof-title { margin: 0; font-size: var(--forma-text-heading); font-weight: var(--forma-weight-semibold); overflow-wrap: anywhere; }
+.orbit-prof-sec { display: flex; flex-direction: column; gap: var(--forma-space-sm); padding-bottom: var(--forma-space-md); border-bottom: 1px solid var(--forma-line); min-width: 0; }
+.orbit-prof-h { margin: 0; font-size: var(--forma-text-body); font-weight: var(--forma-weight-semibold); }
+.orbit-prof-role { display: flex; flex-direction: column; gap: var(--forma-space-xs); padding: var(--forma-space-sm) var(--forma-space-md); border: 1px solid var(--forma-line); border-radius: var(--forma-radius-panel); }
+.orbit-prof-list { display: flex; flex-direction: column; gap: var(--forma-space-xs); min-width: 0; }
+.orbit-prof-chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-xs); }
+.orbit-prof-line { display: flex; align-items: flex-start; gap: var(--forma-space-xs); min-width: 0; }
+.orbit-prof-line > :first-child:not(.orbit-prof-index) { flex: 1; min-width: 0; }
+.orbit-prof-index { min-width: var(--forma-space-lg); padding-top: var(--forma-space-xs); text-align: end; }
+.orbit-prof-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(calc(20 * var(--forma-unit)), 1fr)); gap: var(--forma-space-sm); }
+.orbit-prof-foot { position: sticky; bottom: 0; display: flex; justify-content: flex-end; padding: var(--forma-space-sm) 0; background: var(--forma-bg); }
+.orbit-prof-keys { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-sm); }
+.orbit-prof-key { display: flex; flex-direction: column; gap: var(--forma-space-xs); padding: var(--forma-space-sm) var(--forma-space-md); border: 1px solid var(--forma-line); border-radius: var(--forma-radius-panel); }
+.orbit-prof-table { width: 100%; border-collapse: collapse; font-size: var(--forma-text-small); }
+.orbit-prof-table th, .orbit-prof-table td { padding: var(--forma-space-xs) var(--forma-space-sm); text-align: start; border-bottom: 1px solid var(--forma-line); overflow-wrap: anywhere; }
+.orbit-prof-table th { color: var(--forma-text-muted); font-weight: var(--forma-weight-medium); }
+.orbit-prof-table .orbit-num { text-align: end; font-variant-numeric: tabular-nums; }
