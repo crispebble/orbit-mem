@@ -62,8 +62,15 @@ function recentOf(w: WorkSummary, detail: Work | undefined): string[] {
   return [...active, ...done].slice(0, 2);
 }
 
+/** 열린 결정 카드가 묶인 작업·세션(Studio 4차 S4-3: 지도의 「답 기다림」은 열린 카드도 센다) */
+export interface OpenCardRefs {
+  workIds: ReadonlySet<string>;
+  sessionIds: ReadonlySet<string>;
+}
+const NO_CARDS: OpenCardRefs = {workIds: new Set(), sessionIds: new Set()};
+
 /** work store의 상태를 홈 항목으로 옮긴다. 작업이 없는(할 일 목록을 만들지 않은) 세션은 세션 노드가 된다. */
-export function homeItems(state: WorkState, now: number): HomeWorkItem[] {
+export function homeItems(state: WorkState, now: number, cards: OpenCardRefs = NO_CARDS): HomeWorkItem[] {
   const workSessions = new Set(state.works.map(w => w.origin?.sessionId).filter((x): x is string => !!x));
   const items: HomeWorkItem[] = [];
   for (const w of state.works) {
@@ -75,7 +82,7 @@ export function homeItems(state: WorkState, now: number): HomeWorkItem[] {
       id: w.id, kind: 'work', title: w.title,
       ...projectOf(w.project),
       done: !open,
-      waiting: open && ((detail ? waitingSteps(detail).length > 0 : false) || related.some(s => s.state === 'waiting_user')),
+      waiting: open && ((detail ? waitingSteps(detail).length > 0 : false) || related.some(s => s.state === 'waiting_user' || cards.sessionIds.has(s.sessionId)) || cards.workIds.has(w.id)),
       running: open && related.some(s => s.state === 'running'),
       activeAt: time(w.updatedAt) ?? 0,
       ...(time(w.openedAt) ? {startedAt: time(w.openedAt)} : {}),
@@ -89,18 +96,18 @@ export function homeItems(state: WorkState, now: number): HomeWorkItem[] {
     if (s.openWorkIds.length || workSessions.has(s.sessionId) || s.parentSessionId) continue;
     const ended = time(s.endedAt);
     if (s.state === 'ended' && (!ended || now - ended > SESSION_KEEP_MS)) continue;
-    items.push(sessionItem(s));
+    items.push(sessionItem(s, cards.sessionIds.has(s.sessionId)));
   }
   return items;
 }
 
-function sessionItem(s: Session): HomeWorkItem {
+function sessionItem(s: Session, card = false): HomeWorkItem {
   // 긴 경로보다 브랜치·폴더 이름이 한눈에 읽힌다
   const where = s.branch || s.cwd?.split('/').filter(Boolean).pop() || s.project?.label || s.sessionId.slice(0, 8);
   return {
     id: SESSION_PREFIX + s.sessionId, kind: 'session', title: `${hostName(s.host)} · ${where}`,
     ...projectOf(s.project),
-    done: s.state === 'ended', waiting: s.state === 'waiting_user', running: s.state === 'running',
+    done: s.state === 'ended', waiting: s.state !== 'ended' && (s.state === 'waiting_user' || card), running: s.state === 'running',
     activeAt: time(s.lastSeenAt) ?? 0,
     ...(time(s.startedAt) ? {startedAt: time(s.startedAt)} : {}),
     ...(time(s.endedAt) ? {doneAt: time(s.endedAt)} : {}),
@@ -138,8 +145,14 @@ export async function providerDetail(store: Pick<WorkStore, 'getState' | 'loadDe
   };
 }
 
+/** 열린 결정 카드(결정 저장소). 없으면 카드는 「답 기다림」에 세지 않는다 */
+interface CardRefsSource {
+  openRefs(): OpenCardRefs;
+  subscribe(listener: () => void): () => void;
+}
+
 /** Studio에 작업 공급자를 등록한다. ctx.work가 없는 옛 Studio에서는 아무것도 하지 않는다. 돌려받은 함수로 뺀다. */
-export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProviderLike): () => void}}, store: ProviderStore): () => void {
+export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProviderLike): () => void}}, store: ProviderStore, cards?: CardRefsSource): () => void {
   const work = ctx.work;
   if (!work || typeof work.provide !== 'function') return () => {};
   return work.provide({
@@ -151,9 +164,13 @@ export function registerWorkProvider(ctx: {work?: {provide(provider: WorkProvide
       if (state.status === 'error' && !state.works.length && !state.sessions.length) throw new Error(state.error ?? 'OpenOrbit work history could not be read');
       // 지도 노드 아래 두 줄을 그리려고 열린 작업의 단계를 미리 읽어 둔다(읽으면 subscribe가 다시 부른다)
       store.ensureDetails(state.works.filter(w => w.state !== 'done').map(w => w.id));
-      return homeItems(state, Date.now());
+      return homeItems(state, Date.now(), cards?.openRefs());
     },
-    subscribe: onChange => store.subscribe(onChange),
+    subscribe: onChange => {
+      const offWork = store.subscribe(onChange);
+      const offCards = cards?.subscribe(onChange);
+      return () => { offWork(); offCards?.(); };
+    },
     detail: id => providerDetail(store, id),
   });
 }

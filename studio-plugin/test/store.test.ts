@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
-import {setLocale} from '../src/i18n/index.ts';
 import {createStore} from '../src/store.ts';
 import type {OrbProposal} from '../src/model.ts';
 import {fail, fakeCtx, ok} from './fake-ctx.ts';
@@ -19,14 +18,14 @@ function timers() {
 }
 
 describe('store.refresh', () => {
-  it('제안을 불러와 받은 일과 배지를 채운다', async () => {
+  it('제안을 불러와 배지를 채우고, 받은 일(Needs you)에는 내지 않는다', async () => {
     const f = fakeCtx({proposals: () => ok({items: [prop('a'), prop('b', 'approved'), prop('c')]})});
     const store = createStore(f.ctx);
     await store.refresh();
     assert.deepEqual(f.calls, [{tool: 'proposals', args: {status: 'all'}}]);
     assert.equal(store.getState().status, 'ready');
     assert.equal(store.getState().proposals.length, 3);
-    assert.deepEqual(f.inbox.at(-1)?.map(i => i.id), ['a', 'c']);
+    assert.deepEqual(f.inbox, [], '회고 제안은 기억 정리에서 다룬다(Studio 4차 S4-3)');
     assert.equal(f.badges.at(-1), 2);
   });
 
@@ -35,7 +34,6 @@ describe('store.refresh', () => {
     const store = createStore(f.ctx);
     await store.refresh();
     assert.equal(f.badges.at(-1), null);
-    assert.deepEqual(f.inbox.at(-1), []);
   });
 
   it('연결 실패는 오류 상태와 이유를 남기고 log.error에 적는다', async () => {
@@ -115,51 +113,6 @@ describe('store.start', () => {
     assert.equal(f.calls.length, 2);
     store.dispose();
     assert.equal(tm.t.cleared, true);
-    assert.equal(f.actionDisposed, true);
-  });
-
-  it('받은 일의 승인·거절을 처리하고 결과를 알린다', async () => {
-    const calls: unknown[] = [];
-    const f = fakeCtx({
-      proposals: () => ok({items: [prop('a')]}),
-      proposal_decide: a => { calls.push(a); return ok({proposal: prop('a', 'approved')}); },
-    });
-    const store = createStore(f.ctx, timers().api);
-    await store.start();
-    const item = f.inbox.at(-1)![0];
-    await f.fireAction(item, 'approve');
-    await f.fireAction(item, 'reject');
-    assert.deepEqual(calls, [{id: 'a', decision: 'approve'}, {id: 'a', decision: 'reject'}]);
-    assert.equal(f.notices.length, 2);
-    assert.equal(f.notices[0].tone, 'success');
-    assert.deepEqual(f.notices.map(n => n.title), ['Proposal approved', 'Proposal rejected']);
-    assert.deepEqual(item.actions?.map(a => a.label), ['Approve', 'Reject']);
-  });
-
-  it('언어를 한국어로 바꾸면 받은 일을 다시 올리고 알림도 한국어다', async () => {
-    const f = fakeCtx({proposals: () => ok({items: [prop('a')]}), proposal_decide: () => ok({proposal: prop('a', 'approved')})});
-    const store = createStore(f.ctx, timers().api);
-    await store.start();
-    setLocale('ko');
-    try {
-      const item = f.inbox.at(-1)![0];
-      assert.deepEqual(item.actions?.map(a => a.label), ['승인', '거절']);
-      assert.match(item.subtitle ?? '', /^후보 확정 · /);
-      await f.fireAction(item, 'approve');
-      assert.equal(f.notices[0].title, '제안을 승인했습니다');
-    } finally {
-      setLocale('en');
-      store.dispose();
-    }
-  });
-
-  it('받은 일 동작이 실패하면 위험 알림을 낸다', async () => {
-    const f = fakeCtx({proposals: () => ok({items: [prop('a')]}), proposal_decide: () => fail('파일이 바뀌었습니다')});
-    const store = createStore(f.ctx, timers().api);
-    await store.start();
-    await f.fireAction(f.inbox.at(-1)![0], 'approve');
-    assert.equal(f.notices[0].tone, 'danger');
-    assert.match(f.notices[0].body ?? '', /파일이 바뀌었습니다/);
   });
 
   it('첫 불러오기가 실패해도 start는 던지지 않는다', async () => {
