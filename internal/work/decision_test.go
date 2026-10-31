@@ -3,6 +3,8 @@ package work
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -240,5 +242,94 @@ func TestLauncher(t *testing.T) {
 	}
 	if got := w.sessionDoc("claude", "S1").Launcher; got != "studio" {
 		t.Fatalf("세션 launcher = %q", got)
+	}
+}
+
+// 검토 지적: 턴 끝은 그 턴의 카드만 거두고, 사용자가 실제로 답했으면 도착 순서와 상관없이 answered로 끝난다.
+func TestDecisionTurnOrdering(t *testing.T) {
+	open := func(id, prompt string) DecisionInput {
+		return DecisionInput{ID: id, Source: "question", Owner: OwnerHuman, Questions: askQuestions()[:1], Work: &DecisionWork{Host: "claude", SessionID: "S1"}, Prompt: prompt}
+	}
+	answer := DecisionAnswerEvent{ID: "d-1", Answers: []DecisionAnswerItem{{OptionIDs: []string{"1"}}}, By: "terminal"}
+	type step struct {
+		kind    string
+		payload any
+	}
+	orders := map[string][]step{
+		"열기·답·턴끝": {{KindDecisionOpen, open("d-1", "P1")}, {KindDecisionAnswer, answer}, {KindTurnEnd, Turn{Prompt: "P1"}}},
+		"턴끝·열기·답": {{KindTurnEnd, Turn{Prompt: "P1"}}, {KindDecisionOpen, open("d-1", "P1")}, {KindDecisionAnswer, answer}},
+		"열기·턴끝·답": {{KindDecisionOpen, open("d-1", "P1")}, {KindTurnEnd, Turn{Prompt: "P1"}}, {KindDecisionAnswer, answer}},
+		"턴끝·답·열기": {{KindTurnEnd, Turn{Prompt: "P1"}}, {KindDecisionAnswer, answer}, {KindDecisionOpen, open("d-1", "P1")}},
+	}
+	for name, steps := range orders {
+		w := newTW(t)
+		w.start("claude", "S1", SessionStart{})
+		w.claude(KindTurnStart, Turn{Prompt: "P1"})
+		for _, s := range steps {
+			w.claude(s.kind, s.payload)
+		}
+		if d, _, _ := w.s.GetDecision("d-1"); d.State != "answered" || len(d.Questions) != 1 {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+	// 앞 턴의 늦은 Stop은 새 턴의 카드를 거두지 않는다
+	w := newTW(t)
+	w.start("claude", "S1", SessionStart{})
+	w.claude(KindTurnStart, Turn{Prompt: "P2"})
+	w.claude(KindDecisionOpen, open("d-2", "P2"))
+	w.claude(KindTurnEnd, Turn{Prompt: "P1"})
+	if d, _, _ := w.s.GetDecision("d-2"); d.State != "open" {
+		t.Fatalf("앞 턴 Stop이 새 턴 카드를 거뒀습니다: %+v", d)
+	}
+	// 자리만 있는 카드는 읽을 수 없다
+	w.claude(KindDecisionWithdraw, DecisionWithdrawEvent{ID: "d-ghost", Reason: "declined"})
+	if _, _, err := w.s.GetDecision("d-ghost"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("자리 카드 읽기 = %v", err)
+	}
+}
+
+// 검토 지적: 답 글은 비밀값을 가리고 자른다.
+func TestDecisionAnswerTextIsCleaned(t *testing.T) {
+	w := newTW(t)
+	d, _, _ := w.s.OpenDecision(DecisionInput{Source: "ops", Owner: OwnerOrbitPi, Questions: askQuestions()[:1]})
+	got, _, err := w.s.AnswerDecision(d.ID, []DecisionAnswerItem{{Text: "토큰은 ghp_abcdefghijklmnopqrstuvwxyz0123456789 입니다 " + strings.Repeat("가", 3000)}}, "studio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := got.Answer.Answers[0].Text
+	if strings.Contains(text, "ghp_abcdefghijklmnopqrstuvwxyz0123456789") || len([]rune(text)) > 2000 {
+		t.Fatalf("답 글 = %d자 %q", len([]rune(text)), text[:80])
+	}
+}
+
+// 검토 지적: 한 번에 다 담지 못하면 잘린 사건의 카드는 다음 부름에 다시 나온다.
+func TestDecisionChangesPageBoundary(t *testing.T) {
+	w := newTW(t)
+	w.start("claude", "S1", SessionStart{})
+	w.claude(KindTurnStart, Turn{Prompt: "P1"})
+	start := w.s.EncodeSeq(mustSeq(t, w.s))
+	n := ChangesMax + 3
+	for i := 0; i < n; i++ {
+		w.claude(KindDecisionOpen, DecisionInput{ID: fmt.Sprintf("d-%04d", i), Source: "question", Owner: OwnerHuman, Questions: askQuestions()[:1],
+			Work: &DecisionWork{Host: "claude", SessionID: "S1"}, Prompt: "P1"})
+	}
+	w.claude(KindTurnEnd, Turn{Prompt: "P1"}) // 한 사건이 카드 n개를 바꾼다
+	seen := map[string]int{}
+	cur := start
+	for i := 0; i < 10; i++ {
+		ch, err := w.s.DecisionChanges(context.Background(), cur, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range ch.IDs {
+			seen[id]++
+		}
+		cur = w.s.EncodeSeq(ch.Seq)
+		if !ch.More {
+			break
+		}
+	}
+	if len(seen) != n {
+		t.Fatalf("받은 카드 %d개, %d개여야 합니다", len(seen), n)
 	}
 }

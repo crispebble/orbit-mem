@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS decisions (
   id TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'open', source TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '',
   host TEXT NOT NULL DEFAULT '', session TEXT NOT NULL DEFAULT '', work_id TEXT NOT NULL DEFAULT '', step_id TEXT NOT NULL DEFAULT '', wait_key TEXT NOT NULL DEFAULT '',
   binding_kind TEXT NOT NULL DEFAULT '', binding_ref TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '{}',
-  answer TEXT NOT NULL DEFAULT '', answered_by TEXT NOT NULL DEFAULT '', close_reason TEXT NOT NULL DEFAULT '',
+  answer TEXT NOT NULL DEFAULT '', answered_by TEXT NOT NULL DEFAULT '', close_reason TEXT NOT NULL DEFAULT '', prompt TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, closed_at INTEGER NOT NULL DEFAULT 0, expires_at INTEGER NOT NULL DEFAULT 0,
   updated_seq INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS decisions_session ON decisions(host, session);

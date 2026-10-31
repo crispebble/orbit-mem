@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
 	"github.com/onidot-labs/openorbit/internal/work"
 )
 
@@ -83,6 +82,9 @@ func (t *translator) closeQuestion(failed bool) {
 	if t.env.NoDecisions {
 		return
 	}
+	if qs, _ := t.questions(); len(qs) == 0 {
+		return // 사전 훅도 카드를 열지 않았다
+	}
 	id := t.questionID()
 	if failed {
 		t.add(work.KindDecisionWithdraw, keyOf("decision-close", t.in.ToolUse), work.DecisionWithdrawEvent{ID: id, Reason: "declined"})
@@ -92,7 +94,7 @@ func (t *translator) closeQuestion(failed bool) {
 	if t.surface() == "cli" {
 		by = "terminal"
 	}
-	t.add(work.KindDecisionAnswer, keyOf("decision-close", t.in.ToolUse), work.DecisionAnswerEvent{ID: id, Answers: t.answers(), By: by})
+	t.add(work.KindDecisionAnswer, keyOf("decision-close", t.in.ToolUse), work.DecisionAnswerEvent{ID: id, Answers: work.CleanAnswers(t.answers()), By: by})
 }
 
 // answers reads the tool response into one answer per question: chosen
@@ -160,6 +162,6 @@ func answerItem(q work.DecisionQuestion, vals []string) work.DecisionAnswerItem 
 			text = append(text, v)
 		}
 	}
-	a.Text = memory.MaskSecrets(strings.Join(text, "\n"))
+	a.Text = strings.Join(text, "\n") // 가리기·자르기는 CleanAnswers
 	return a
 }

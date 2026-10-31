@@ -206,7 +206,7 @@ func CleanDecision(in DecisionInput) DecisionInput {
 		c := DecisionQuestion{Text: text(q.Text, decisionTextMax), Header: Clean(q.Header, decisionLabelMax), MultiSelect: q.MultiSelect,
 			Recommended: q.Recommended, Reason: text(q.Reason, decisionDetailMax), Options: []DecisionOption{}}
 		for i, o := range q.Options {
-			id := strings.TrimSpace(o.ID)
+			id := clip(strings.TrimSpace(o.ID), decisionLabelMax)
 			if id == "" {
 				id = itoa(i + 1)
 			}
@@ -218,8 +218,26 @@ func CleanDecision(in DecisionInput) DecisionInput {
 	in.Context = text(in.Context, decisionContextMax)
 	for i := range in.Links {
 		in.Links[i].Label = Clean(in.Links[i].Label, decisionLabelMax)
+		in.Links[i].Ref = clip(memory.MaskSecrets(strings.TrimSpace(in.Links[i].Ref)), decisionDetailMax)
+	}
+	if in.Binding != nil {
+		b := DecisionBinding{Kind: Clean(in.Binding.Kind, decisionLabelMax), Ref: clip(memory.MaskSecrets(strings.TrimSpace(in.Binding.Ref)), decisionDetailMax)}
+		in.Binding = &b
 	}
 	return in
+}
+
+// CleanAnswers masks secrets in written answers and clips them (질문과 같은 한도).
+func CleanAnswers(answers []DecisionAnswerItem) []DecisionAnswerItem {
+	out := make([]DecisionAnswerItem, len(answers))
+	for i, a := range answers {
+		c := DecisionAnswerItem{Text: clip(memory.MaskSecrets(strings.TrimSpace(a.Text)), decisionTextMax)}
+		for _, id := range a.OptionIDs {
+			c.OptionIDs = append(c.OptionIDs, clip(id, decisionLabelMax))
+		}
+		out[i] = c
+	}
+	return out
 }
 
 func itoa(n int) string {
@@ -288,13 +306,14 @@ func (r *reducer) decisionOpen() error {
 	}
 	// 사후(답·거절)가 먼저 와서 자리만 있는 카드는 내용만 채우고 상태는 그대로 둔다
 	res, err := r.tx.Exec(`INSERT INTO decisions(id,state,source,owner,host,session,work_id,step_id,wait_key,binding_kind,binding_ref,body,
-		created_at,updated_at,closed_at,expires_at,close_reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		created_at,updated_at,closed_at,expires_at,close_reason,prompt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET source=excluded.source, owner=excluded.owner, host=excluded.host, session=excluded.session,
 		work_id=excluded.work_id, step_id=excluded.step_id, wait_key=excluded.wait_key, binding_kind=excluded.binding_kind,
-		binding_ref=excluded.binding_ref, body=excluded.body, created_at=MIN(decisions.created_at, excluded.created_at), expires_at=excluded.expires_at
+		binding_ref=excluded.binding_ref, body=excluded.body, created_at=MIN(decisions.created_at, excluded.created_at), expires_at=excluded.expires_at,
+		prompt=excluded.prompt
 		WHERE decisions.body='{}'`,
 		p.ID, state, p.Source, p.Owner, w.Host, w.SessionID, w.WorkID, w.StepID, w.WaitKey, bk, br, string(body),
-		r.e.At, r.e.At, closed, p.ExpiresAt, reason)
+		r.e.At, r.e.At, closed, p.ExpiresAt, reason, p.Prompt)
 	if err != nil {
 		return err
 	}
@@ -313,9 +332,13 @@ func (r *reducer) turnEndedOf(host, session, prompt string) bool {
 // closeDecision answers or withdraws an open card. A card not yet opened (the
 // async post-call came first) gets a placeholder in that state, which the
 // late open fills in.
+//
+// An answer also closes a card the turn or session end withdrew first: the
+// user did answer, and the async hooks may arrive in any order (검토 지적).
 func (r *reducer) closeDecision(id, state, answer, by, reason string) error {
-	res, err := r.tx.Exec(`UPDATE decisions SET state=?, answer=?, answered_by=?, close_reason=?, closed_at=?, updated_at=? WHERE id=? AND state='open'`,
-		state, answer, by, reason, r.e.At, r.e.At, id)
+	res, err := r.tx.Exec(`UPDATE decisions SET state=?, answer=?, answered_by=?, close_reason=?, closed_at=?, updated_at=? WHERE id=? AND
+		(state='open' OR (?='answered' AND state='withdrawn' AND close_reason IN ('turn_ended','session_ended')))`,
+		state, answer, by, reason, r.e.At, r.e.At, id, state)
 	if err != nil {
 		return err
 	}
@@ -335,9 +358,15 @@ func (r *reducer) closeDecision(id, state, answer, by, reason string) error {
 }
 
 // withdrawSessionDecisions withdraws the open cards of this event's session
-// (턴 끝·세션 끝, 설계 「정리」).
-func (r *reducer) withdrawSessionDecisions(reason string) error {
-	rows, err := r.tx.Query(`SELECT id FROM decisions WHERE host=? AND session=? AND state='open' ORDER BY id`, r.e.Host, r.e.Session)
+// (턴 끝·세션 끝, 설계 「정리」). A turn end with a prompt id takes only that
+// turn's cards (and cards with no turn): a late Stop of an earlier turn
+// leaves the next turn's question open.
+func (r *reducer) withdrawSessionDecisions(reason, prompt string) error {
+	q, args := `SELECT id FROM decisions WHERE host=? AND session=? AND state='open'`, []any{r.e.Host, r.e.Session}
+	if prompt != "" {
+		q, args = q+` AND (prompt=? OR prompt='')`, append(args, prompt)
+	}
+	rows, err := r.tx.Query(q+` ORDER BY id`, args...)
 	if err != nil {
 		return err
 	}
@@ -383,6 +412,7 @@ func (s *Store) OpenDecision(in DecisionInput) (Decision, int64, error) {
 // AnswerDecision answers an open card (decision_answer): compare and swap,
 // the first answer wins and a late one gets DecisionConflict.
 func (s *Store) AnswerDecision(id string, answers []DecisionAnswerItem, by string) (Decision, int64, error) {
+	answers = CleanAnswers(answers)
 	e := NewEvent(KindDecisionAnswer, "", "", s.nowMs(), DecisionAnswerEvent{ID: id, Answers: answers, By: by})
 	return s.writeDecision(id, e, func(d Decision) error {
 		if d.Owner == OwnerHuman {
@@ -463,7 +493,8 @@ func checkAnswer(qs []DecisionQuestion, answers []DecisionAnswerItem) error {
 const decisionCols = `id,state,source,owner,host,session,work_id,step_id,wait_key,binding_kind,binding_ref,body,answer,answered_by,close_reason,created_at,updated_at,closed_at,expires_at`
 
 func (s *Store) decisionIn(q querier, id string) (Decision, error) {
-	d, err := s.scanDecision(q.QueryRow(`SELECT `+decisionCols+` FROM decisions WHERE id=?`, id))
+	// 사후 훅만 와서 자리만 있는 카드(body가 빔)는 아직 없는 카드다
+	d, err := s.scanDecision(q.QueryRow(`SELECT `+decisionCols+` FROM decisions WHERE id=? AND body<>'{}'`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Decision{}, ErrNotFound
 	}
@@ -641,6 +672,7 @@ func (s *Store) DecisionChanges(ctx context.Context, after string, wait time.Dur
 		out = DecisionChangeSet{Seq: last, IDs: []string{}}
 		seen := map[string]bool{}
 		var cur, complete int64 = -1, from
+		var curIDs []string // 지금 사건에서 처음 담은 카드
 		n := 0
 		for rows.Next() {
 			var seq int64
@@ -658,18 +690,21 @@ func (s *Store) DecisionChanges(ctx context.Context, after string, wait time.Dur
 					out.Seq, out.More = complete, true
 					return true, nil
 				}
-				cur = seq
+				cur, curIDs = seq, nil
 			}
 			if !seen[id] {
 				seen[id] = true
 				out.IDs = append(out.IDs, id)
+				curIDs = append(curIDs, id)
 			}
 		}
 		if err := rows.Err(); err != nil {
 			return false, err
 		}
 		if n == ChangesMax*4 {
-			out.Seq, out.More = cur, true
+			// 다 읽지 못한 마지막 사건은 다음 부름이 처음부터 다시 준다
+			out.Seq, out.More = complete, true
+			out.IDs = out.IDs[:len(out.IDs)-len(curIDs)]
 		}
 		return len(out.IDs) > 0, nil
 	})

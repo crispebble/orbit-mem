@@ -67,7 +67,7 @@
 | `expiresAt`, `closedAt`, `closeReason` | `closeReason`은 거둔 이유(`turn_ended`, `session_ended`, `declined`, 연 쪽이 준 글) |
 | `answer` | `answered`일 때만: `answers[]`(`optionIds`·`text`), `by`(`studio`·`telegram`·`terminal`·`host`·`orbit-pi`), `at` |
 
-글 칸은 비밀값을 가리고 길이를 자른다(질문 2000자, 설명·이유 1000자, 근거 4000자, 이름표 200자).
+글 칸은 비밀값을 가리고 길이를 자른다(질문·답 글 2000자, 설명·이유·연결·묶음 대상 1000자, 근거 4000자, 이름표·선택지 id 200자).
 
 ## 생명주기
 
@@ -76,8 +76,8 @@
 | 열기 | 사람이 직접 연 세션: OpenOrbit 플러그인 훅이 질문 도구(Claude Code `AskUserQuestion`, Codex `request_user_input`)의 사전 훅 입력에서 연다(`owner=human`, 추천 없음). orbit-pi가 띄운 세션: orbit-pi가 `decision_open`으로 연다(`owner=orbit-pi`). 운영 감시·플러그인도 `decision_open` |
 | 답하기 | `decision_answer`는 비교 후 교체다. 먼저 답한 쪽이 이기고 늦은 쪽은 `CONFLICT`와 지금의 카드(`answer.by`·`at`)를 받는다. `owner=human` 카드는 `CANNOT_RELAY`: 카드에 「그 앱에서 답하기」를 보이고, 그 앱에서 답하면 사후 훅이 카드를 `answered`(`by`는 터미널이면 `terminal`, 아니면 `host`)로 닫는다. 질문 도구가 실패하면(거절·중단) `withdrawn`(`declined`) |
 | 답 전달 | `owner`가 `decision_changes`로 `answered`를 보고 살아 있는 세션에 넘긴다 |
-| 정리 | 세션의 턴이 끝나거나 세션이 끝나면 그 세션의 열린 카드는 `withdrawn`(`turn_ended`·`session_ended`). 끝난 턴·세션의 늦은 열기는 거둔 채로 남는다. orbit-pi는 멈출 때 자기 카드를 `decision_withdraw`로 거둔다 |
-| 순서 | 비동기 훅이라 사후(답·거절)가 열기보다 먼저 올 수 있다. 그때 카드는 그 상태로 자리만 생기고, 늦은 열기가 질문을 채운다 |
+| 정리 | 턴이 끝나면 그 턴(훅의 요청 id)에 연 열린 카드, 세션이 끝나면 그 세션의 열린 카드는 `withdrawn`(`turn_ended`·`session_ended`). 앞 턴의 늦은 끝은 다음 턴의 카드를 거두지 않는다. 끝난 턴·세션의 늦은 열기는 거둔 채로 남는다. orbit-pi는 멈출 때 자기 카드를 `decision_withdraw`로 거둔다 |
+| 순서 | 비동기 훅이라 사후(답·거절)가 열기보다 먼저 올 수 있다. 그때 카드는 그 상태로 자리만 생기고(읽으면 `NOT_FOUND`), 늦은 열기가 질문을 채운다. 사후 훅의 답은 턴·세션 끝이 먼저 거둔 카드도 `answered`로 닫는다(사용자가 실제로 답했다). 그래서 도착 순서와 상관없이 같은 상태로 끝난다 |
 
 ## Claude 엔진 중복 규칙
 

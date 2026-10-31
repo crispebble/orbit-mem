@@ -329,7 +329,7 @@ func (r *reducer) turnEnd() error {
 			return err
 		}
 	}
-	if err := r.withdrawSessionDecisions("turn_ended"); err != nil {
+	if err := r.withdrawSessionDecisions("turn_ended", p.Prompt); err != nil {
 		return err
 	}
 	if p.Prompt == "" {
@@ -360,7 +360,7 @@ func (r *reducer) sessionEnd() error {
 	if err := r.mine("session.ended", "", "", "", summary); err != nil {
 		return err
 	}
-	if err := r.withdrawSessionDecisions("session_ended"); err != nil {
+	if err := r.withdrawSessionDecisions("session_ended", ""); err != nil {
 		return err
 	}
 	if err := r.resolveWaits(`1=1`); err != nil {
