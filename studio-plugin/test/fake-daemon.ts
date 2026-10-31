@@ -36,6 +36,8 @@ export interface FakeDaemon {
   setKeys: {profile: string; provider: string; value: string}[];
   /** answerDecision의 accepted 값 */
   accept: boolean;
+  /** GetProfiles가 돌려줄 json(기본: 정상 파일) */
+  profilesJson?: string;
   /** 다음 호출들에 오류를 낸다(메서드 이름 → 오류) */
   fail: Map<string, ConnectError>;
   /** 열린 WatchEvents를 모두 끊는다 */
@@ -149,7 +151,7 @@ export async function fakeDaemon(init: {lastSeq?: number} = {}): Promise<FakeDae
     },
     async getProfiles() {
       check('getProfiles');
-      return {json: JSON.stringify({version: 1, profiles: [{name: 'main'}]}), revision: 'r1', path: '/p/profiles.json', keys: [{profile: 'main', keys: [{provider: 'openrouter', set: true}]}], keyStore: 'file'};
+      return {json: d.profilesJson ?? JSON.stringify({version: 1, profiles: [{name: 'main'}]}), revision: 'r1', path: '/p/profiles.json', keys: [{profile: 'main', keys: [{provider: 'openrouter', set: true}]}], keyStore: 'file'};
     },
     async saveProfiles() {
       check('saveProfiles');

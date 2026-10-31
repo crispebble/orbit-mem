@@ -1,4 +1,5 @@
 // host.proto 메시지 ↔ 창이 보는 JSON 모양(src/daemon/api.ts). uint64·int64는 Number로 옮긴다(2^53보다 훨씬 작다).
+import {BackendError} from '@onidot-labs/orbit-studio-plugin/backend';
 import type {
   Event, GetProfilesResponse, GetUsageResponse, RunSummary as PbRunSummary,
 } from '../daemon/gen/host_pb.ts';
@@ -56,8 +57,15 @@ export function toUsage(r: GetUsageResponse): UsageReport {
 }
 
 export function toProfilesView(r: GetProfilesResponse): ProfilesView {
+  let file: ProfileFileJson;
+  try {
+    file = JSON.parse(r.json) as ProfileFileJson;
+    if (!file || typeof file !== 'object' || Array.isArray(file)) throw new Error('not a JSON object');
+  } catch (e) {
+    throw new BackendError('PROFILES_UNREADABLE', `The profile file ${r.path || '(unknown path)'} could not be read: ${e instanceof Error ? e.message : String(e)}`);
+  }
   return {
-    file: JSON.parse(r.json) as ProfileFileJson,
+    file,
     revision: r.revision,
     path: r.path,
     keys: r.keys.map(k => ({profile: k.profile, keys: k.keys.map(s => ({provider: s.provider, set: s.set}))})),

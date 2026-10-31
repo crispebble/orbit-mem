@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {Code, ConnectError} from '@connectrpc/connect';
 import {DAEMON_METHODS, type DaemonEvent, type DaemonStatus} from '../src/daemon/api.ts';
-import {TOKEN_SECRET} from '../src/backend/service.ts';
+import {TOKEN_SECRET, isLoopbackUrl} from '../src/backend/service.ts';
 import {rig, TOKEN, until} from './backend-rig.ts';
 
 describe('뒤쪽: 찾기와 상태', () => {
@@ -275,5 +275,76 @@ describe('뒤쪽: 메서드', () => {
     r.daemon.tokens.delete(TOKEN);
     await assert.rejects(r.m(DAEMON_METHODS.listRuns, {}), (e: any) => e.code === 'RPC_UNAUTHENTICATED');
     assert.equal(r.statuses().at(-1)?.paired, false);
+  });
+});
+
+describe('뒤쪽: 토큰 회수와 재짝짓기', () => {
+  it('회수 → 재짝짓기 뒤 새 토큰으로 스트림이 다시 열려 사건이 오고 paired·streaming이 유지된다', async () => {
+    const r = await rig({paired: true});
+    await r.backend.start();
+    await until(() => r.daemon.openStreams() === 1, '스트림 열림');
+    r.daemon.push('a', 'run.started');
+    await until(() => r.events().length === 1);
+    // 다른 곳에서 기기를 회수했다: 옛 토큰은 거절되고 열린 스트림은 끊긴다
+    r.daemon.tokens.delete(TOKEN);
+    r.daemon.dropStreams();
+    await until(() => r.statuses().at(-1)?.paired === false, '짝 풀림');
+    const NEW = 'tok-reissued-9876543210';
+    r.daemon.tokens.add(NEW);
+    r.home.issue(NEW);
+    const s = await r.m<DaemonStatus>(DAEMON_METHODS.ensure);
+    assert.equal(s.paired, true);
+    assert.equal(r.secrets.get(TOKEN_SECRET), NEW);
+    await until(() => r.daemon.openStreams() === 1 && r.statuses().at(-1)?.streaming === true, '새 토큰으로 다시 붙음');
+    r.daemon.push('a', 'step.started');
+    await until(() => r.events().length === 2, '새 스트림으로 사건');
+    assert.deepEqual(r.events().map(e => e.seq), [1, 2]);
+    const last = r.statuses().at(-1)!;
+    assert.equal(last.paired, true);
+    assert.equal(last.streaming, true);
+    // 한참 뒤에도 풀리지 않는다
+    await new Promise(res => setTimeout(res, 150));
+    assert.equal(r.statuses().at(-1)?.paired, true);
+    assert.deepEqual(await r.m(DAEMON_METHODS.listRuns, {}), {runs: []});
+  });
+
+  it('열려 있던 옛 스트림을 끊고 새 토큰으로 다시 연다(회수가 열린 스트림을 끊지 못한 경우도)', async () => {
+    const r = await rig();
+    r.secrets.set(TOKEN_SECRET, 'stale-token-000000');
+    await r.backend.start();
+    await new Promise(res => setTimeout(res, 100));
+    assert.equal(r.daemon.openStreams(), 0);
+    await r.m(DAEMON_METHODS.ensure);
+    await until(() => r.daemon.openStreams() === 1 && r.statuses().at(-1)?.streaming === true);
+    r.daemon.push('a', 'run.started');
+    await until(() => r.events().length === 1);
+  });
+});
+
+describe('뒤쪽: 프로필 파일과 주소', () => {
+  it('프로필 JSON이 읽히지 않으면 PROFILES_UNREADABLE이고 메시지에 경로가 있다', async () => {
+    const r = await rig({paired: true});
+    r.daemon.profilesJson = '{not json';
+    await assert.rejects(r.m(DAEMON_METHODS.getProfiles), (e: any) => e.code === 'PROFILES_UNREADABLE' && e.message.includes('/p/profiles.json'));
+    r.daemon.profilesJson = 'null';
+    await assert.rejects(r.m(DAEMON_METHODS.getProfiles), (e: any) => e.code === 'PROFILES_UNREADABLE');
+  });
+
+  it('daemon.json의 주소가 loopback이 아니면 토큰을 보내지 않는다', async () => {
+    const r = await rig({paired: true});
+    r.home.publish('http://203.0.113.9:7468');
+    const s = await r.m<DaemonStatus>(DAEMON_METHODS.status);
+    assert.equal(s.daemon, 'down');
+    assert.equal(s.error?.code, 'DAEMON_URL_REFUSED');
+    await assert.rejects(r.m(DAEMON_METHODS.listRuns, {}), (e: any) => e.code === 'DAEMON_DOWN');
+    for (const url of ['http://localhost:1', 'http://[::1]:1', 'http://127.0.0.1:1']) assert.equal(isLoopbackUrl(url), true, url);
+    for (const url of ['http://example.com', 'http://127.0.0.1.evil.test', 'not a url']) assert.equal(isLoopbackUrl(url), false, url);
+  });
+
+  it('거절 오류 글에 쓰인 토큰은 가려진다(토큰을 지우기 전에 가린다)', async () => {
+    const r = await rig({paired: true});
+    await r.m(DAEMON_METHODS.status);
+    r.daemon.fail.set('listRuns', new ConnectError(`unauthenticated: bad bearer ${TOKEN}`, Code.Unauthenticated));
+    await assert.rejects(r.m(DAEMON_METHODS.listRuns, {}), (e: any) => e.code === 'RPC_UNAUTHENTICATED' && !e.message.includes(TOKEN) && e.message.includes('***'));
   });
 });
