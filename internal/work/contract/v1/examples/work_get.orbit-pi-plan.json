@@ -1,0 +1,209 @@
+{
+  "tool": "work_get",
+  "args": {
+    "workId": "w-dff6a0a920a5"
+  },
+  "result": {
+    "contract": {
+      "name": "orbit.work",
+      "major": 1,
+      "minor": 2,
+      "supportedMajors": [
+        1
+      ]
+    },
+    "seq": "nEHnogAAAAAAAAUH",
+    "work": {
+      "counts": {
+        "blocked": 0,
+        "cancelled": 0,
+        "done": 1,
+        "in_progress": 1,
+        "pending": 1,
+        "ready": 0
+      },
+      "cwd": "/Users/me/app",
+      "evidence": [
+        {
+          "at": "2026-10-24T05:00:09.000Z",
+          "id": "ev-6ce9d79a4ce2",
+          "kind": "command",
+          "result": "ok",
+          "runId": "r-da1c5b02b771",
+          "stepId": "st-3e24457c73ce",
+          "summary": "go test ./internal/work/..."
+        },
+        {
+          "at": "2026-10-24T05:00:11.000Z",
+          "id": "ev-be70dcda5dd4",
+          "kind": "verdict",
+          "result": "needs_fix",
+          "runId": "r-bbe9a7b0f988",
+          "stepId": "st-85a6ea926ea6",
+          "summary": "worker 수정 필요"
+        }
+      ],
+      "id": "w-dff6a0a920a5",
+      "openedAt": "2026-10-24T05:00:01.000Z",
+      "origin": {
+        "host": "orbit-pi",
+        "launcher": "orbit-pi",
+        "list": {
+          "id": "plan-7f3a",
+          "kind": "orbit-pi-plan"
+        },
+        "sessionId": "pi-7f3a",
+        "surface": "unknown"
+      },
+      "project": {
+        "scope": "project:github.com/me/app",
+        "label": "github.com/me/app"
+      },
+      "runs": [
+        {
+          "agentId": "run-s1",
+          "cost": {
+            "cacheReadTokens": 40000,
+            "cacheWriteTokens": 3000,
+            "engine": "claude",
+            "inputTokens": 18200,
+            "model": "sonnet",
+            "outputTokens": 2100,
+            "turns": 9
+          },
+          "cwd": "/Users/me/app",
+          "endReason": "completed",
+          "finishedAt": "2026-10-24T05:00:10.000Z",
+          "host": "orbit-pi",
+          "id": "r-da1c5b02b771",
+          "kind": "subagent",
+          "lastSeenAt": "2026-10-24T05:00:10.000Z",
+          "link": "step",
+          "parentSessionId": "pi-7f3a",
+          "role": "worker",
+          "sessionId": "pi-7f3a",
+          "startedAt": "2026-10-24T05:00:07.000Z",
+          "state": "finished",
+          "stepId": "st-3e24457c73ce"
+        },
+        {
+          "agentId": "run-s2",
+          "cost": {
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "engine": "openai",
+            "inputTokens": 9100,
+            "model": "gpt-5",
+            "outputTokens": 1500,
+            "usd": 0.37
+          },
+          "cwd": "/Users/me/app",
+          "endReason": "completed",
+          "finishedAt": "2026-10-24T05:00:11.000Z",
+          "host": "orbit-pi",
+          "id": "r-bbe9a7b0f988",
+          "kind": "subagent",
+          "lastSeenAt": "2026-10-24T05:00:11.000Z",
+          "link": "step",
+          "parentSessionId": "pi-7f3a",
+          "role": "worker",
+          "sessionId": "pi-7f3a",
+          "startedAt": "2026-10-24T05:00:08.000Z",
+          "state": "finished",
+          "stepId": "st-85a6ea926ea6"
+        }
+      ],
+      "state": "open",
+      "steps": [
+        {
+          "after": [],
+          "assignee": {
+            "host": "orbit-pi",
+            "kind": "subagent",
+            "role": "worker"
+          },
+          "childWorkIds": [],
+          "detail": "orbit.work 1.2에 단계 detail과 실행 cost를 더한다.\n완료 기준: 계약 시험 통과",
+          "evidenceIds": [
+            "ev-6ce9d79a4ce2"
+          ],
+          "finishedAt": "2026-10-24T05:00:12.000Z",
+          "id": "st-3e24457c73ce",
+          "native": {
+            "id": "s1",
+            "kind": "orbit-pi-plan"
+          },
+          "order": 0,
+          "startedAt": "2026-10-24T05:00:05.000Z",
+          "status": "done",
+          "title": "계약 칸 정하기",
+          "verification": {
+            "evidenceId": "ev-6ce9d79a4ce2",
+            "outdated": false,
+            "state": "pass"
+          },
+          "wave": 0
+        },
+        {
+          "after": [],
+          "assignee": {
+            "host": "orbit-pi",
+            "kind": "subagent",
+            "role": "worker"
+          },
+          "childWorkIds": [],
+          "detail": "step이 있으면 그 단계에 직접 잇는다",
+          "evidenceIds": [
+            "ev-be70dcda5dd4"
+          ],
+          "id": "st-85a6ea926ea6",
+          "native": {
+            "id": "s2",
+            "kind": "orbit-pi-plan"
+          },
+          "order": 1,
+          "startedAt": "2026-10-24T05:00:06.000Z",
+          "status": "in_progress",
+          "title": "리듀서 고치기",
+          "verification": {
+            "evidenceId": "ev-be70dcda5dd4",
+            "outdated": false,
+            "state": "fail"
+          },
+          "wave": 0
+        },
+        {
+          "after": [
+            {
+              "source": "native",
+              "stepId": "st-3e24457c73ce"
+            },
+            {
+              "source": "native",
+              "stepId": "st-85a6ea926ea6"
+            }
+          ],
+          "childWorkIds": [],
+          "evidenceIds": [],
+          "id": "st-3788693434d6",
+          "native": {
+            "id": "s3",
+            "kind": "orbit-pi-plan"
+          },
+          "order": 2,
+          "status": "pending",
+          "title": "통합 검증",
+          "verification": {
+            "outdated": false,
+            "state": "none"
+          },
+          "wave": 1
+        }
+      ],
+      "title": "orbit.work 1.2 칸 더하기",
+      "titleSource": "ai",
+      "titleUpdatedAt": "2026-10-24T05:00:13.000Z",
+      "updatedAt": "2026-10-24T05:00:13.000Z"
+    }
+  }
+}
