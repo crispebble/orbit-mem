@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/config"
-	"github.com/onidot-labs/openorbit/internal/i18n"
-	"github.com/onidot-labs/openorbit/internal/orbitpi"
-	"github.com/onidot-labs/openorbit/internal/orbitplugin"
+	"github.com/onidot-labs/orbit-mem/internal/config"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/orbitpi"
+	"github.com/onidot-labs/orbit-mem/internal/orbitplugin"
 )
 
 // orbitPiLaunch builds the command that hands the terminal to orbit-pi's

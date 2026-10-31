@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/openorbit/internal/work"
-	"github.com/onidot-labs/openorbit/internal/work/contract"
+	"github.com/onidot-labs/orbit-mem/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work/contract"
 )
 
 // WorkOptions is where the work tools read (설계 · Orbit 2차 「기록 형식 계약」).

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // Outcomes of checking a memory whose source file changed (설계 · Orbit 3차

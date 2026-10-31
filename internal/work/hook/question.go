@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // Question tools as decision cards (orbit.decision, 설계 · Studio 4차 S4-0).

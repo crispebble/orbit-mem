@@ -1,4 +1,6 @@
-# OpenOrbit
+# orbit-mem
+
+저장소 `onidot-labs/orbit-mem`(옛 이름 `onidot-labs/openorbit`, 2026-11-01 N4-2 차례 1에서 바꿈)이다. 공유 기억 시스템 orbit-mem이 되는 Go 소스이고, N4-2 차례 5까지는 아래 `orb`(OpenOrbit 명령)와 OpenOrbit 플러그인 원본을 그대로 담는다. 새 OpenOrbit 하네스(TS)는 `onidot-labs/openorbit`이다. 구조: Atlas 설계 · OpenOrbit 4차 「구조 (2026-11-01 확정)」.
 
 PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·Codex)에 이 PC의 기억과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 붙이고, 대화 기록으로 회고해 배운 것을 제안하고, 플러그인을 Claude·Codex 두 형식으로 빌드한다. 서버와 상주 프로세스는 없다. 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
 

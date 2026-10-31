@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/onidot-labs/openorbit/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
 // execOrbitPi runs node with this terminal and exits with its code (Windows has no exec).

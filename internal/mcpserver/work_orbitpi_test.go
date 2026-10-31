@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // seedOrbitPi adds an orbit-pi plan: steps with detail, runs linked by step with cost (orbit.work 1.2).

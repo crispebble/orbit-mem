@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/openorbit/internal/work"
+	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 const runtimeAsk = `{"hook_event_name":"PreToolUse","session_id":"R1","cwd":"/tmp","prompt_id":"P1","tool_name":"AskUserQuestion","tool_use_id":"toolu_r1",

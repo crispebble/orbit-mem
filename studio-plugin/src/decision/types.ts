@@ -1,4 +1,4 @@
-// orbit.decision 1.0 카드(계약 정본: openorbit internal/decision/contract/v1/README.md)와 카드 출처 경계.
+// orbit.decision 1.0 카드(계약 정본: orbit-mem internal/decision/contract/v1/README.md)와 카드 출처 경계.
 
 export interface DecisionOption {
   id: string;

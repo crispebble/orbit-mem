@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // tidyEnv는 그래프 정리를 켠 환경에 기억을 심는다.

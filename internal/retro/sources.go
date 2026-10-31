@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/openorbit/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // SourceCheck is a changed source file whose memories hold no excerpt to look
