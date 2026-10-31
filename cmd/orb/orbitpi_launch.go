@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,19 +70,41 @@ func isTerminal(v any) bool {
 func cmdRun(a *app, args []string) error     { return a.orbitPi("run", args) }
 func cmdProfile(a *app, args []string) error { return a.orbitPi("profile", args) }
 
-// orbitPi writes the role sources, then replaces this process with orbit-pi (unix)
-// or runs it with this terminal and exits with its code (windows).
-func (a *app) orbitPi(sub string, args []string) error {
+// zeroArg is orb with no arguments on a terminal: orbit-pi's TUI, or the usage
+// and one line on installing orbit-pi when it is not there yet.
+func (a *app) zeroArg() int {
+	l, err := launcher()
+	if err == nil {
+		_, _, err = l.command("tui", nil)
+	}
+	if err != nil {
+		a.usage()
+		fmt.Fprintln(a.stderr, err.Error())
+		return 2
+	}
+	return a.exit("orb", a.orbitPi("tui", nil))
+}
+
+func launcher() (orbitPiLaunch, error) {
 	home := paths().Home
 	orb, err := os.Executable()
 	if err != nil {
-		return err
+		return orbitPiLaunch{}, err
 	}
 	if real, err := filepath.EvalSymlinks(orb); err == nil {
 		orb = real
 	}
-	l := orbitPiLaunch{home: home, orb: orb, roles: filepath.Join(home, "runtime", "roles"), base: os.Environ(), getenv: os.Getenv,
-		installed: func() bool { _, err := orbitpi.Status(home); return err == nil }}
+	return orbitPiLaunch{home: home, orb: orb, roles: filepath.Join(home, "runtime", "roles"), base: os.Environ(), getenv: os.Getenv,
+		installed: func() bool { _, err := orbitpi.Status(home); return err == nil }}, nil
+}
+
+// orbitPi writes the role sources, then replaces this process with orbit-pi (unix)
+// or runs it with this terminal and exits with its code (windows).
+func (a *app) orbitPi(sub string, args []string) error {
+	l, err := launcher()
+	if err != nil {
+		return err
+	}
 	argv, env, err := l.command(sub, args)
 	if err != nil {
 		return err

@@ -103,3 +103,14 @@ func TestOrb_run은_런타임이_없으면_실패한다(t *testing.T) {
 		t.Errorf("%d %q", code, errOut)
 	}
 }
+
+func TestOrb_TTY에서_런타임이_없으면_사용법과_설치_안내(t *testing.T) {
+	home(t)
+	t.Setenv("ORBIT_PI_DIR", "")
+	var out, errOut strings.Builder
+	a := &app{stdin: strings.NewReader(""), stdout: &out, stderr: &errOut}
+	code := a.zeroArg()
+	if code != 2 || !strings.Contains(errOut.String(), "orb run") || !strings.Contains(errOut.String(), "orb runtime install") {
+		t.Errorf("%d %q", code, errOut.String())
+	}
+}

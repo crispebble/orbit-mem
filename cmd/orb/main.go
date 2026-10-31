@@ -72,7 +72,7 @@ func (a *app) main(args []string) int {
 	i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), config.Language(paths().Config())))
 	if len(args) == 0 && zeroArgTUI(isTerminal(a.stdin), isTerminal(a.stdout)) {
 		// 터미널에서 인자 없이 부르면 orbit-pi TUI를 연다(설계 · OpenOrbit 4차 R4-5)
-		return a.exit("orb", a.orbitPi("tui", nil))
+		return a.zeroArg()
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		a.usage()
