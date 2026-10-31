@@ -328,17 +328,22 @@ func memoryHook(a *app, done chan<- string, which, host string, in hookInput, cf
 		inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
 		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
 	}
-	// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」). 넣지 않는 수준·빈 요청과
-	// 회고 실행 안에서 도는 훅은 사용이 아니므로 세지 않는다.
+	// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」).
+	recordInjection(s, cfg, kind, host, in.SessionID, scope, in.Prompt, inj)
+}
+
+// recordInjection counts one injection as a use event. Levels that inject nothing,
+// empty requests and hooks inside a retrospective run are not use, so they are not counted.
+func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
 	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
-		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(in.Prompt) == "")) {
+		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) {
 		return
 	}
 	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
 	if kind == memory.EventInjectSessionStart {
 		data["titleOnly"] = inj.TitleOnly
 	}
-	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: in.SessionID, Scope: scope}, data)
+	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: session, Scope: scope}, data)
 }
 
 // resumeContext is the open works of the project, only at the full injection level.

@@ -48,6 +48,8 @@ func commands() []command {
 		{"stats", "usage.stats", cmdStats},
 		{"lab", "usage.lab", cmdLab},
 		{"ledger", "usage.ledger", cmdLedger},
+		{"inject", "usage.inject", cmdInject},
+		{"runtime", "usage.runtime", cmdRuntime},
 	}
 }
 
