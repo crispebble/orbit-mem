@@ -5,7 +5,6 @@ import {
   formatDate,
   proposalKindLabel,
   scopeLabel,
-  toInboxItems,
   toMemoryDetail,
   toMemoryRecord,
   toProposal,
@@ -202,13 +201,3 @@ describe('제안 변환', () => {
   });
 });
 
-describe('받은 일 항목', () => {
-  it('대기 제안만 승인·거절 동작이 있는 항목으로 바꾼다', () => {
-    const items = toInboxItems([pending(), pending({id: 'p2', status: 'approved'})], now);
-    assert.equal(items.length, 1);
-    const [i] = items;
-    assert.deepEqual([i.id, i.kind, i.group, i.title, i.unread, i.createdAt], ['p1', 'proposal', 'OpenOrbit', '확정할까요?', true, at(10, 27, 7, 10)]);
-    assert.equal(i.subtitle, 'Confirm candidate · Oct 27, 07:10');
-    assert.deepEqual(i.actions?.map(a => [a.id, a.tone]), [['approve', 'primary'], ['reject', 'danger']]);
-  });
-});

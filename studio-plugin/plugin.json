@@ -7,7 +7,7 @@
   "styles": [
     "dist/index.css"
   ],
-  "description": "View OpenOrbit memories, the memory graph and proposals in Orbit Studio, and put AI work on the Orbit Studio home map.",
+  "description": "View OpenOrbit memories, the memory graph and proposals in Orbit Studio, put AI work on the Orbit Studio home map, and answer agents' decision cards in Needs you.",
   "apps": [
     {
       "id": "orbit",
@@ -63,7 +63,6 @@
       "title": "Show proposals"
     }
   ],
-  "inbox": true,
   "connections": {
     "mcp": [
       {
@@ -85,7 +84,7 @@
   },
   "locales": {
     "ko": {
-      "description": "OpenOrbit 기억·기억 그래프·제안을 Orbit Studio에서 보고, AI 작업을 Orbit Studio 홈 작업 지도에 올립니다.",
+      "description": "OpenOrbit 기억·기억 그래프·제안을 Orbit Studio에서 보고, AI 작업을 홈 작업 지도에 올리며, 에이전트의 결정 카드에 확인할 일에서 답합니다.",
       "apps": {
         "orbit": {
           "views": {

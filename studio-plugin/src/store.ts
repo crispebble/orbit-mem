@@ -1,12 +1,11 @@
-// OpenOrbit 앱의 공유 상태: 제안 목록, 받은 일·배지 동기화, 결정·기억 호출.
+// OpenOrbit 앱의 공유 상태: 제안 목록, 배지 동기화, 결정·기억 호출.
+// 회고 제안은 Orbit Studio Needs you(받은 일)에 내지 않는다(Studio 4차 S4-3: 기억 후보 정리는 에이전트의 질문과 별개다).
 // React에 기대지 않는다(화면은 subscribe/getState로 읽는다). ctx만 있으면 시험할 수 있다.
-import type {InboxItem, PluginContext} from '@onidot-labs/orbit-studio-plugin';
-import {onLocale, pick} from './i18n/index.ts';
+import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
+import {pick} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
-import {proposalText} from './i18n/messages/proposals.ts';
 import {callOrb, errorMessage, itemsOf, OrbitError} from './orb.ts';
 import {
-  toInboxItems,
   toMemoryRecord,
   type OrbMemory,
   type OrbProposal,
@@ -15,7 +14,6 @@ import {
 } from './model.ts';
 import {decideArgs, findArgs, type DecideArgs, type DecideManyArgs, type FindParams, type UpdateArgs} from './requests.ts';
 import type {OrbitMemory} from './parts/index.ts';
-import {createInboxParts} from './inbox-parts.ts';
 
 export interface OrbitState {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -49,14 +47,11 @@ const browserTimers: Timers = {
   clearInterval: id => clearInterval(id),
 };
 
-/** `inbox`는 받은 일 갈래 합치기. 작업의 확인 기다림 항목도 같은 것에 'waiting' 갈래로 넣어야 서로 지우지 않는다. */
-export function createStore(ctx: PluginContext, timers: Timers = browserTimers, inbox = createInboxParts<InboxItem>(ctx.inbox)) {
+export function createStore(ctx: PluginContext, timers: Timers = browserTimers) {
   let state: OrbitState = {status: 'idle', proposals: []};
   const listeners = new Set<() => void>();
   let inflight: Promise<void> | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
-  let offAction: (() => void) | undefined;
-  let offLocale: (() => void) | undefined;
   let lastLogged: string | undefined;
 
   const set = (next: Partial<OrbitState>) => {
@@ -64,11 +59,10 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     listeners.forEach(l => l());
   };
 
-  /** 받은 일·배지를 지금 제안과 언어로 다시 만든다 */
-  function publishInbox(): void {
-    const items: InboxItem[] = toInboxItems(state.proposals);
-    inbox.set('proposals', items);
-    ctx.app.setBadge('orbit', items.length > 0 ? items.length : null);
+  /** OpenOrbit 앱 배지: 대기 제안 수 */
+  function publishBadge(): void {
+    const pending = state.proposals.filter(p => p.status === 'pending').length;
+    ctx.app.setBadge('orbit', pending > 0 ? pending : null);
   }
 
   async function load(): Promise<void> {
@@ -78,7 +72,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
       const proposals = itemsOf<OrbProposal>(out, 'proposals');
       lastLogged = undefined;
       set({status: 'ready', proposals, error: undefined});
-      publishInbox();
+      publishBadge();
     } catch (e) {
       const message = errorMessage(e);
       // 같은 오류를 60초마다 되풀이해 적지 않는다
@@ -104,19 +98,6 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
     const out = await callOrb<{decided?: unknown[] | null; failed?: BatchOutcome['failed'] | null}>(ctx, 'proposal_decide', {...args});
     await refresh();
     return {decided: out.decided?.length ?? 0, failed: out.failed ?? []};
-  }
-
-  async function handleAction(item: InboxItem, actionId: string): Promise<void> {
-    if (actionId !== 'approve' && actionId !== 'reject') return;
-    const approve = actionId === 'approve';
-    try {
-      const out = await decide(decideArgs(item.id, approve ? 'approve' : 'reject'));
-      const t = pick(proposalText).notify;
-      ctx.notify({title: approve ? t.approved : t.rejected, body: out.file ? t.appliedToFile(item.title, out.file) : item.title, tone: 'success'});
-    } catch (e) {
-      ctx.log.error(`Proposal decision failed (${item.id}): ${errorMessage(e)}`);
-      ctx.notify({title: pick(proposalText).notify.failed, body: `${item.title} · ${errorMessage(e)}`, tone: 'danger'});
-    }
   }
 
   async function findMemories(p: FindParams): Promise<OrbitMemory[]> {
@@ -160,9 +141,6 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   }
 
   async function start(): Promise<void> {
-    offAction = ctx.inbox.onAction(handleAction);
-    // 언어가 바뀌면 이미 올린 받은 일 글도 새 언어로 다시 올린다
-    offLocale = onLocale(() => { if (state.status === 'ready') publishInbox(); });
     await refresh();
     timer = timers.setInterval(() => { void refresh(); }, REFRESH_MS);
   }
@@ -170,10 +148,6 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers, 
   function dispose(): void {
     if (timer !== undefined) timers.clearInterval(timer);
     timer = undefined;
-    offAction?.();
-    offAction = undefined;
-    offLocale?.();
-    offLocale = undefined;
     listeners.clear();
   }
 

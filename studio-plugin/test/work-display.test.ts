@@ -8,7 +8,6 @@ import {
 import {setLocale} from '../src/i18n/index.ts';
 import {parseGet, parseList} from '../src/work/contract.ts';
 import {defaultList, dismiss, PENDING_MAX, updatePending} from '../src/work/review.ts';
-import {waitingInboxItems} from '../src/work/inbox.ts';
 import {runningWorksData} from '../src/work/widgets.ts';
 import {inScope, summaryOf} from '../src/work/store.ts';
 import type {Run, WorkSummary} from '../src/work/types.ts';
@@ -214,16 +213,7 @@ describe('확인 전·정리', () => {
   });
 });
 
-describe('받은 일·홈 위젯·범위', () => {
-  it('blocked + waiting_user 단계만 waiting 항목으로(제목·사유·path=cwd)', () => {
-    const items = waitingInboxItems([task]);
-    assert.equal(items.length, 1);
-    assert.equal(items[0].kind, 'waiting');
-    assert.equal(items[0].path, task.cwd);
-    assert.match(items[0].subtitle ?? '', /Waiting for user confirmation/);
-    assert.equal(items[0].title, task.steps.find(s => s.id === 'st-4d5e6f708192')?.title);
-    assert.equal(waitingInboxItems([{...task, state: 'done'}]).length, 0);
-  });
+describe('홈 위젯·범위', () => {
 
   it('진행 중 작업 데이터: 열린 작업 수·진행 끝난 단계/전체·확인 기다림', () => {
     const w = summaryOf(task);
