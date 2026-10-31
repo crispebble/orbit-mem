@@ -58,6 +58,7 @@ func commands() []command {
 		{"work", "usage.work", cmdWork},
 		{"run", "usage.run", cmdRun},
 		{"profile", "usage.profile", cmdProfile},
+		{"daemon", "usage.daemon", cmdDaemon},
 	}
 }
 

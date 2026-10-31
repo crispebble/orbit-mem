@@ -222,5 +222,8 @@
   "verdict.helped": "helped",
   "verdict.mixed": "mixed",
   "verdict.no_effect": "no effect",
-  "verdict.pending": "observing"
+  "verdict.pending": "observing",
+  "usage.daemon": "orb daemon <start|status|stop|serve|enable|disable|device|call|watch>   # orbit-pi daemon: Connect RPC on loopback for Orbit Studio",
+  "cli.daemon.enabled": "The daemon now starts at login: %s (log %s)",
+  "cli.daemon.disabled": "The daemon no longer starts at login."
 }

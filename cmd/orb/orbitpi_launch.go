@@ -26,10 +26,18 @@ type orbitPiLaunch struct {
 // orchestraCLI is orbit-pi's orchestrator entry inside its checkout.
 var orchestraCLI = filepath.Join("packages", "orbit-orchestra", "src", "cli.ts")
 
+// hostCLI is orbit-pi's daemon entry (orb daemon …, R4-4).
+var hostCLI = filepath.Join("packages", "orbit-host", "src", "cli.ts")
+
 // command is node <orbit-pi>/packages/orbit-orchestra/src/cli.ts <sub> <args…>
 // with ORBIT_HOME, ORBIT_ORB and ORBIT_ROLES_DIR set. orbit-pi is ORBIT_PI_DIR
 // when set, otherwise the checkout orb runtime install made.
 func (l orbitPiLaunch) command(sub string, args []string) ([]string, []string, error) {
+	return l.commandFor(orchestraCLI, sub, args)
+}
+
+// commandFor is command for one of orbit-pi's entries (orchestraCLI, hostCLI).
+func (l orbitPiLaunch) commandFor(entry, sub string, args []string) ([]string, []string, error) {
 	dir := l.getenv("ORBIT_PI_DIR")
 	if dir == "" {
 		if !l.installed() {
@@ -37,7 +45,7 @@ func (l orbitPiLaunch) command(sub string, args []string) ([]string, []string, e
 		}
 		dir = orbitpi.Dir(l.home)
 	}
-	cli := filepath.Join(dir, orchestraCLI)
+	cli := filepath.Join(dir, entry)
 	if fi, err := os.Stat(cli); err != nil || fi.IsDir() {
 		return nil, nil, i18n.Errorf("cli.run.no_runtime", cli)
 	}
@@ -129,11 +137,15 @@ func launcher() (orbitPiLaunch, error) {
 // orbitPi writes the role sources, then replaces this process with orbit-pi (unix)
 // or runs it with this terminal and exits with its code (windows).
 func (a *app) orbitPi(sub string, args []string) error {
+	return a.orbitPiEntry(orchestraCLI, sub, args)
+}
+
+func (a *app) orbitPiEntry(entry, sub string, args []string) error {
 	l, err := launcher()
 	if err != nil {
 		return err
 	}
-	argv, env, err := l.command(sub, args)
+	argv, env, err := l.commandFor(entry, sub, args)
 	if err != nil {
 		return err
 	}
