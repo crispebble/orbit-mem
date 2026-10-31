@@ -33,7 +33,7 @@ export function ProfilesTab({ctx, tab}: TabProps) {
   const [name, setName] = useState(typeof tab.params.profile === 'string' ? tab.params.profile : tab.id);
   // 「다시 불러오기」를 누르면 편집기를 새로 세워 초안을 서버 값으로 돌린다
   const [epoch, setEpoch] = useState(0);
-  const up = status.daemon === 'up';
+  const up = status.daemon === 'up' && status.paired;
   const {data, reload} = useProfilesData(client, up);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string>();

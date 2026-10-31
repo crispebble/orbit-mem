@@ -22,7 +22,7 @@ export function ProfilesView({ctx}: ViewProps) {
   const t = useMessages(profilesText);
   const d = useMessages(daemonText);
   const {client, status} = useDaemon();
-  const up = status.daemon === 'up';
+  const up = status.daemon === 'up' && status.paired;
   const {data, reload} = useProfilesData(client, up);
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState<string>();

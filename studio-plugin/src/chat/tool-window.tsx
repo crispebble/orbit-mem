@@ -49,7 +49,7 @@ export function ChatToolWindow({ctx}: PanelProps) {
   const [view, setView] = useState<View>({kind: 'compose', form: emptyForm()});
   const [starting, setStarting] = useState(false);
   const [problem, setProblem] = useState<string>();
-  const {runs, reload} = useRuns(client, status.daemon === 'up');
+  const {runs, reload} = useRuns(client, status.daemon === 'up' && status.paired);
   const request = useSyncExternalStore(subscribeChat, pendingChat, pendingChat);
 
   // openChat이 남긴 대상을 화면에 맞춘다. 대상을 가져가면 request가 비어 이 효과가 다시 도므로, 늦게 온 결과는 번호로 가린다.
