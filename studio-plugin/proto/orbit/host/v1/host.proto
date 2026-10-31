@@ -1,0 +1,391 @@
+// Vendored from orbit-pi packages/orbit-host (contract commit 211ae6f82, branch feat/s4-5-studio-daemon or later).
+// Do not edit: run scripts/sync-host-contract.mjs to copy it again.
+// orbit-pi daemon contract (설계 · OpenOrbit 4차 「층별 기능」 ⑤ 호스트, D2; R4-4).
+//
+// Clients: Orbit Studio (work conversation S4-5, profile screen S4-8), `orb daemon`, later the phone app.
+// Transport: Connect RPC over HTTP/1.1 or HTTP/2. The daemon listens on loopback only in R4-4; Tailscale
+// addresses open in R4-8 with the same contract. Every call carries `Authorization: Bearer <device token>`.
+// Compatibility: `buf breaking` against main guards this file (packages/orbit-host/buf.yaml).
+syntax = "proto3";
+
+package orbit.host.v1;
+
+// What a device token may do. A phone gets READ and ANSWER; the local owner device gets all four.
+enum Scope {
+  SCOPE_UNSPECIFIED = 0;
+  // Health, WatchEvents, ListRuns, GetRun, GetUsage.
+  SCOPE_READ = 1;
+  // AnswerDecision.
+  SCOPE_ANSWER = 2;
+  // StartRun, StopRun.
+  SCOPE_RUN = 3;
+  // ListDevices, AddDevice, RevokeDevice.
+  SCOPE_ADMIN = 4;
+}
+
+service HostService {
+  // Daemon facts and the caller's own device and scopes. Any valid token.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Starts one work (plan, parallel steps, verification, review), or continues an earlier one (`resume`).
+  // The work runs in the daemon; follow it with WatchEvents(run_id, watch_after_seq).
+  rpc StartRun(StartRunRequest) returns (StartRunResponse);
+
+  // Stops a run like Ctrl-C does: running steps are aborted and the work is recorded as stopped
+  // (resumable later with StartRun.resume).
+  rpc StopRun(StopRunRequest) returns (StopRunResponse);
+
+  // Answers an open decision card of a run (plan approval, risky command, model question, repeated failure).
+  rpc AnswerDecision(AnswerDecisionRequest) returns (AnswerDecisionResponse);
+
+  // Events with seq > after_seq: the stored ones first, then live ones. A client that lost the stream calls
+  // again with the last seq it saw and misses nothing. With run_id the stream ends after that run's
+  // `run.finished`; without it the stream covers every run and stays open.
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
+
+  // Runs this daemon knows, newest first, with state and cost.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+
+  // Monthly spend per profile against its limits, with a per-model breakdown.
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+
+  // Issues a token for a new device. The token is returned once and only its hash is kept.
+  rpc AddDevice(AddDeviceRequest) returns (AddDeviceResponse);
+
+  // Revokes one device; its token stops working on the next call. Other devices are untouched.
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+
+  // The run profile file and, per profile, which API keys are stored. Key values never leave the daemon. READ.
+  rpc GetProfiles(GetProfilesRequest) returns (GetProfilesResponse);
+
+  // Replaces the profile file after the same validation `orb profile` uses. ADMIN.
+  rpc SaveProfiles(SaveProfilesRequest) returns (SaveProfilesResponse);
+
+  // Keeps an API key in the OS credential store and lists the provider in the profile's `apiKeys`. ADMIN.
+  rpc SetApiKey(SetApiKeyRequest) returns (SetApiKeyResponse);
+
+  // Forgets an API key and removes the provider from the profile's `apiKeys`. ADMIN.
+  rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
+
+  // Message templates for the `key` of event JSON (warning, decision.asked, limit.reached, run.finished) and the
+  // labels of card option ids, in one language, so a client draws events in its own language. READ.
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  // orbit-pi version.
+  string version = 1;
+  // RFC 3339.
+  string started_at = 2;
+  int32 pid = 3;
+  // The caller's device name and scopes.
+  string device = 4;
+  repeated Scope scopes = 5;
+  // Newest event seq (0 when there is none).
+  uint64 last_seq = 6;
+  int32 active_runs = 7;
+  // Address the daemon listens on, e.g. 127.0.0.1:7468.
+  string listen = 8;
+}
+
+// Per-work limits. Zero means the profile's value.
+message Limits {
+  int32 max_turns = 1;
+  double max_cost_usd = 2;
+  double max_minutes = 3;
+}
+
+// Continue an earlier work from orbit.work. Empty work_id: the latest open orbit-pi work of cwd.
+message Resume {
+  string work_id = 1;
+}
+
+message StartRunRequest {
+  // The user's words. Mode keywords (`ulw`, `ulw plan`, profile `keywords`) work as in `orb run`.
+  // May be empty when resume is set.
+  string request = 1;
+  // Absolute work folder. It also picks the profile when profile is empty.
+  string cwd = 2;
+  string profile = 3;
+  // `--ultrawork`: no plan approval, run to the end.
+  bool ultrawork = 4;
+  // `--plan`: write and record the plan only.
+  bool plan = 5;
+  Resume resume = 6;
+  Limits limits = 7;
+  // Where the work comes from, for the profile's run rules: studio (default), terminal, workflow, schedule.
+  string source = 8;
+}
+
+message StartRunResponse {
+  string run_id = 1;
+  // Watch from here to see the run from its first event.
+  uint64 watch_after_seq = 2;
+}
+
+message StopRunRequest {
+  string run_id = 1;
+}
+
+message StopRunResponse {
+  // False when the run had already finished.
+  bool stopping = 1;
+}
+
+message AnswerDecisionRequest {
+  string run_id = 1;
+  // `decision.asked` event id (d1, d2, …).
+  string decision_id = 2;
+  // An option id from the card (approve, revise, cancel, allow, deny, retry, replan, stop, accept, or a
+  // model question's own option) or free text.
+  string answer = 3;
+}
+
+message AnswerDecisionResponse {
+  // False when the card was already answered elsewhere (terminal, orb card) or withdrawn.
+  bool accepted = 1;
+}
+
+message WatchEventsRequest {
+  // Empty: every run.
+  string run_id = 1;
+  uint64 after_seq = 2;
+}
+
+message WatchEventsResponse {
+  Event event = 1;
+}
+
+// One orchestra event. `json` is the event exactly as `runWork` emitted it (orbit-orchestra
+// src/core/events.ts, type OrchestraEvent), with API key values masked. New event types may appear;
+// clients skip types they do not know.
+message Event {
+  // Daemon-wide, strictly increasing, kept across daemon restarts.
+  uint64 seq = 1;
+  string run_id = 2;
+  // OrchestraEvent.type, e.g. run.started, plan.proposed, step.finished, decision.asked, run.finished.
+  string type = 3;
+  // RFC 3339.
+  string at = 4;
+  string json = 5;
+}
+
+message Totals {
+  double cost_usd = 1;
+  // At least one run reported no cost (subscription).
+  bool subscription = 2;
+  int32 turns = 3;
+  double minutes = 4;
+  int64 input_tokens = 5;
+  int64 output_tokens = 6;
+  double month_spent_usd = 7;
+  // 0 when the profile has no monthly limit.
+  double month_limit_usd = 8;
+}
+
+message OpenDecision {
+  string id = 1;
+  string title = 2;
+  // Option ids; the client shows them in the user's language.
+  repeated string options = 3;
+  string asked_at = 4;
+}
+
+message RunSummary {
+  string run_id = 1;
+  string request = 2;
+  string cwd = 3;
+  string profile = 4;
+  // default, ultrawork or plan.
+  string mode = 5;
+  // running, completed, failed, stopped, planned, or interrupted (the daemon ended while it ran; resume it).
+  string state = 6;
+  // Stop reason when stopped: turns, cost, time, month, needs_user, cancelled, repeat_failure, no_answer.
+  string reason = 7;
+  int32 exit_code = 8;
+  // orbit.work work id, once recorded.
+  string work_id = 9;
+  string message = 10;
+  string started_at = 11;
+  string finished_at = 12;
+  Totals totals = 13;
+  repeated OpenDecision open_decisions = 14;
+  string source = 15;
+  // Device that started the run.
+  string device = 16;
+  // Seq of the run's last event.
+  uint64 last_seq = 17;
+  // orbit-pi session id of the run. An orb decision card the run opens carries the same id in `work.sessionId`.
+  string session_id = 18;
+}
+
+message ListRunsRequest {
+  // 50 when 0.
+  int32 limit = 1;
+  bool active_only = 2;
+}
+
+message ListRunsResponse {
+  repeated RunSummary runs = 1;
+}
+
+message GetRunRequest {
+  string run_id = 1;
+}
+
+message GetRunResponse {
+  RunSummary run = 1;
+}
+
+message GetUsageRequest {
+  // Empty: every profile of the profile file.
+  string profile = 1;
+  // YYYY-MM; empty: this month.
+  string month = 2;
+}
+
+message ModelUsage {
+  string engine = 1;
+  string model = 2;
+  // subscription (claude, codex) or api (pi engine).
+  string billing = 3;
+  double cost_usd = 4;
+  int64 input_tokens = 5;
+  int64 output_tokens = 6;
+  int32 runs = 7;
+}
+
+message ProfileUsage {
+  string profile = 1;
+  // Everything recorded, subscription estimates included.
+  double spent_usd = 2;
+  // monthlyLimitUsd; 0 when unset.
+  double limit_usd = 3;
+  bool reached = 4;
+  // API-billed part only.
+  double api_spent_usd = 5;
+  // monthlyApiLimitUsd; 0 when unset.
+  double api_limit_usd = 6;
+  bool api_reached = 7;
+  repeated ModelUsage models = 8;
+}
+
+message GetUsageResponse {
+  string month = 1;
+  repeated ProfileUsage profiles = 2;
+}
+
+message Device {
+  string name = 1;
+  repeated Scope scopes = 2;
+  string created_at = 3;
+  // Empty when never used.
+  string last_used_at = 4;
+}
+
+message ListDevicesRequest {}
+
+message ListDevicesResponse {
+  repeated Device devices = 1;
+}
+
+message AddDeviceRequest {
+  // Letters, digits, dot, dash, underscore; unique.
+  string name = 1;
+  // READ and ANSWER when empty.
+  repeated Scope scopes = 2;
+}
+
+message AddDeviceResponse {
+  Device device = 1;
+  // Shown once; store it in the device's OS credential store.
+  string token = 2;
+}
+
+message RevokeDeviceRequest {
+  string name = 1;
+}
+
+message RevokeDeviceResponse {
+  bool revoked = 1;
+}
+
+message GetProfilesRequest {}
+
+message KeyState {
+  // API key provider as pi names it, e.g. openrouter, google, anthropic.
+  string provider = 1;
+  // A key is stored for this profile and provider.
+  bool set = 2;
+}
+
+message ProfileKeys {
+  string profile = 1;
+  // Every provider the profile lists in `apiKeys` or needs for a model of its chains (`pi:<provider>/<model>`),
+  // in name order.
+  repeated KeyState keys = 2;
+}
+
+message GetProfilesResponse {
+  // The profile file as JSON (orbit-profiles `ProfileFile`, version 1); the built-in default when there is no file.
+  string json = 1;
+  // Opaque revision of the file; pass it back to SaveProfiles. Empty when the file does not exist yet.
+  string revision = 2;
+  // Absolute path of the file.
+  string path = 3;
+  repeated ProfileKeys keys = 4;
+  // Where key values live: keyring (OS credential store) or file (a test or temporary ORBIT_HOME).
+  string key_store = 5;
+}
+
+message SaveProfilesRequest {
+  // The whole profile file as JSON. Invalid content fails with invalid_argument naming the field.
+  string json = 1;
+  // The revision the client edited; a different current revision fails with aborted. Empty: no check.
+  string expected_revision = 2;
+}
+
+message SaveProfilesResponse {
+  string revision = 1;
+}
+
+message SetApiKeyRequest {
+  string profile = 1;
+  string provider = 2;
+  // The key. Never stored in a file, a log or an event.
+  string value = 3;
+}
+
+message SetApiKeyResponse {
+  // Revision of the profile file after `apiKeys` was updated.
+  string revision = 1;
+}
+
+message DeleteApiKeyRequest {
+  string profile = 1;
+  string provider = 2;
+}
+
+message DeleteApiKeyResponse {
+  // False when no key was stored.
+  bool deleted = 1;
+  string revision = 2;
+}
+
+message GetMessagesRequest {
+  // en or ko; anything else gives en.
+  string lang = 1;
+}
+
+message GetMessagesResponse {
+  string lang = 1;
+  // key → template. `%s` and `%d` take the event's `args` in order; `%%` is a percent sign. Option labels are under
+  // `option.<id>`.
+  map<string, string> messages = 2;
+}

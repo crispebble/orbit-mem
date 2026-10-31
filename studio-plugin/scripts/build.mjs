@@ -14,3 +14,16 @@ await build({
   external: sharedModules,
   logLevel: 'info',
 });
+
+// 뒤쪽 프로세스: Studio가 플러그인마다 Node 프로세스(utilityProcess)로 띄운다. 의존성을 모두 묶고 네이티브 모듈은 쓰지 않는다.
+await build({
+  entryPoints: {backend: 'src/backend/index.ts'},
+  outdir: 'dist',
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'node22',
+  // ESM 번들 안의 CJS 의존성(require)을 위해
+  banner: {js: "import {createRequire as __createRequire} from 'node:module';const require = __createRequire(import.meta.url);"},
+  logLevel: 'info',
+});
