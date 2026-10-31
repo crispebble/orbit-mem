@@ -13,7 +13,7 @@ E=$(cd "$E" && pwd -P)
 model=${E2E_MODEL:-sonnet}
 
 go build -o "$E/bin/orb" "$root/cmd/orb"
-"$E/bin/orb" plugin build "$root/internal/orbitplugin/source" --out "$E/market" --var "oni=$E/bin/orb" --var "onicmd=$E/bin/orb" >/dev/null
+"$E/bin/orb" plugin build "$root/internal/orbitplugin/source" --out "$E/market" --var "orb=$E/bin/orb" --var "orbcmd=$E/bin/orb" >/dev/null
 echo '{"enabledPlugins":{"orbit@orbit":false}}' >"$E/settings.json"
 
 repo() { # $1: 디렉터리

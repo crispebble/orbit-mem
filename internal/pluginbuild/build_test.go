@@ -95,17 +95,17 @@ func TestBuild_MCP와_훅은_호스트별로_변수를_채운다(t *testing.T) {
 	src, out := t.TempDir(), t.TempDir()
 	write(t, src, map[string]string{
 		"plugin.json": `{"name":"orbit","version":"0.1.0","description":"d","skills":["memory"],
-		  "mcpServers":{"orbit":{"command":"{{oni}}","args":["mcp"],"envVars":["ORBIT_HOME"]}},
-		  "hooks":{"SessionStart":[{"matcher":"startup|resume","command":"{{oniq}} hook session-start --host {{host}}","timeout":10}],
-		           "UserPromptSubmit":[{"command":"{{oniq}} hook prompt --host {{host}}","timeout":5}]}}`,
+		  "mcpServers":{"orbit":{"command":"{{orb}}","args":["mcp"],"envVars":["ORBIT_HOME"]}},
+		  "hooks":{"SessionStart":[{"matcher":"startup|resume","command":"{{orbq}} hook session-start --host {{host}}","timeout":10}],
+		           "UserPromptSubmit":[{"command":"{{orbq}} hook prompt --host {{host}}","timeout":5}]}}`,
 		"skills/memory/SKILL.md": "---\nname: memory\ndescription: d\n---\nx",
 	})
-	if _, err := Build(Options{Source: src, Out: out, Vars: map[string]string{"oni": "/opt/oni", "oniq": `"/opt/oni"`}}); err != nil {
+	if _, err := Build(Options{Source: src, Out: out, Vars: map[string]string{"orb": "/opt/orb", "orbq": `"/opt/orb"`}}); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(out, "plugins", "orbit")
 	mcp := read(t, filepath.Join(p, ".mcp.json"))
-	if !strings.Contains(mcp, `"command": "/opt/oni"`) || strings.Contains(mcp, "ORBIT_HOME") {
+	if !strings.Contains(mcp, `"command": "/opt/orb"`) || strings.Contains(mcp, "ORBIT_HOME") {
 		t.Fatal(mcp)
 	}
 	// Codex는 MCP 서버에 정해 둔 환경 변수만 넘기므로, 훅과 같은 ORBIT_HOME을 보게 env_vars로 넘긴다.
@@ -116,12 +116,12 @@ func TestBuild_MCP와_훅은_호스트별로_변수를_채운다(t *testing.T) {
 		} `json:"mcpServers"`
 	}
 	json.Unmarshal([]byte(read(t, filepath.Join(p, "codex", "mcp.json"))), &xm)
-	if s := xm.MCPServers["orbit"]; s.Command != "/opt/oni" || strings.Join(s.EnvVars, ",") != "ORBIT_HOME" {
+	if s := xm.MCPServers["orbit"]; s.Command != "/opt/orb" || strings.Join(s.EnvVars, ",") != "ORBIT_HOME" {
 		t.Fatalf("codex mcp %+v", xm)
 	}
 	ch := read(t, filepath.Join(p, "hooks", "claude.json"))
 	xh := read(t, filepath.Join(p, "hooks", "codex.json"))
-	if !strings.Contains(ch, `hook session-start --host claude`) || !strings.Contains(xh, `hook prompt --host codex`) || !strings.Contains(ch, `\"/opt/oni\"`) {
+	if !strings.Contains(ch, `hook session-start --host claude`) || !strings.Contains(xh, `hook prompt --host codex`) || !strings.Contains(ch, `\"/opt/orb\"`) {
 		t.Fatalf("hooks:\n%s\n%s", ch, xh)
 	}
 	var codex map[string]any
@@ -181,11 +181,11 @@ func TestBuild_훅은_호스트별로_나누고_비동기를_표시한다(t *tes
 	write(t, src, map[string]string{
 		"plugin.json": `{"name":"orbit","version":"0.1.0","description":"d","skills":["memory"],
 		  "hooks":{"PostToolUse":[
-		     {"hosts":["claude"],"matcher":"TaskCreate|TaskUpdate","command":"oni hook work --host {{host}}","timeout":10},
-		     {"hosts":["codex"],"matcher":"update_plan","command":"oni hook work --host {{host}}","timeout":10},
-		     {"matcher":".*","command":"oni hook work --host {{host}} --skip-lists","async":true}],
-		   "PostToolUseFailure":[{"hosts":["claude"],"matcher":".*","command":"oni hook work --host {{host}}","async":true}],
-		   "PermissionRequest":[{"command":"oni hook work --host {{host}}","async":true}]}}`,
+		     {"hosts":["claude"],"matcher":"TaskCreate|TaskUpdate","command":"orb hook work --host {{host}}","timeout":10},
+		     {"hosts":["codex"],"matcher":"update_plan","command":"orb hook work --host {{host}}","timeout":10},
+		     {"matcher":".*","command":"orb hook work --host {{host}} --skip-lists","async":true}],
+		   "PostToolUseFailure":[{"hosts":["claude"],"matcher":".*","command":"orb hook work --host {{host}}","async":true}],
+		   "PermissionRequest":[{"command":"orb hook work --host {{host}}","async":true}]}}`,
 		"skills/memory/SKILL.md": "---\nname: memory\ndescription: d\n---\nx",
 	})
 	if _, err := Build(Options{Source: src, Out: out}); err != nil {

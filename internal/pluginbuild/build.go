@@ -1,5 +1,5 @@
 // Package pluginbuild turns one plugin source into the Claude Code and Codex
-// plugin formats and their marketplaces (oni plugin build).
+// plugin formats and their marketplaces (orb plugin build).
 //
 // Source layout:
 //

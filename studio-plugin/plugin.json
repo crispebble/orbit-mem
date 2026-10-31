@@ -84,14 +84,14 @@
     "mcp": [
       {
         "id": "oni",
-        "command": "oni",
+        "command": "orb",
         "args": [
           "mcp"
         ]
       },
       {
         "id": "work",
-        "command": "oni",
+        "command": "orb",
         "args": [
           "mcp",
           "--reader"
