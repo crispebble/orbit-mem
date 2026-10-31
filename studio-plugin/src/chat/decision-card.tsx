@@ -53,6 +53,9 @@ export function DecisionCard({entry, question, optionLabel, onAnswer}: DecisionC
   useEffect(() => {
     const active = document.activeElement;
     if (!active || active === document.body) ref.current?.focus({preventScroll: true});
+    // 아래 기록을 보고 있어도 새 카드를 놓치지 않게 화면 안으로 옮긴다(움직임 줄이기를 따른다)
+    const calm = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    ref.current?.scrollIntoView?.({block: 'nearest', behavior: calm ? 'auto' : 'smooth'});
   }, []);
 
   const onKeyDown = (event: React.KeyboardEvent) => {

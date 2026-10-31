@@ -155,3 +155,54 @@ describe('저장 실패 분류', () => {
     assert.ok(!fieldWithin('rolesX', 'roles'));
   });
 });
+
+describe('리뷰 수정: apiKeys·이름 바꾸기·삭제·빠진 칸', () => {
+  it('저장 페이로드의 apiKeys는 draft가 아니라 최신 파일 값이다(키 저장 뒤에도)', () => {
+    const stale = base(); // 편집기를 연 시점: apiKeys ['openrouter']
+    const draft = {...stale, folders: ['/x'], apiKeys: ['openrouter']};
+    const latest = sampleProfiles().file;
+    latest.profiles[0] = {...latest.profiles[0], apiKeys: ['openrouter', 'groq']}; // 그 사이 키 저장으로 데몬이 바꿈
+    const out = toSaveFile(latest, 'work', draft);
+    assert.deepEqual(out.profiles[0].apiKeys, ['openrouter', 'groq']);
+    assert.deepEqual(out.profiles[0].folders, ['/x'], '다른 편집은 그대로');
+  });
+  it('저장된 키가 있으면 이름 바꾸기를 막는다', async () => {
+    const { renameBlocked } = await import('../src/profiles/edit-model.ts');
+    assert.ok(renameBlocked([{set: true}], 'work', 'job'));
+    assert.ok(!renameBlocked([{set: true}], 'work', ' work '));
+    assert.ok(!renameBlocked([{set: false}], 'work', 'job'));
+    assert.ok(!renameBlocked(undefined, 'work', 'job'));
+  });
+  it('삭제는 set=true 키를 먼저 지우고, 최신 파일·revision으로 프로필을 뺀다', async () => {
+    const { deleteProfileWithKeys } = await import('../src/profiles/edit-model.ts');
+    const order: string[] = [];
+    const file = sampleProfiles();
+    const api = {
+      deleteApiKey: async (p: {profile: string; provider: string}) => { order.push(`del:${p.provider}`); return {deleted: true, revision: 'r2'}; },
+      getProfiles: async () => { order.push('get'); return {...file, revision: 'r2'}; },
+      saveProfiles: async (p: {file: {profiles: {name: string}[]}; expectedRevision: string}) => { order.push(`save:${p.expectedRevision}:${p.file.profiles.map(x => x.name)}`); return {revision: 'r3'}; },
+    };
+    await deleteProfileWithKeys(api, 'work', [{provider: 'openrouter', set: true}, {provider: 'groq', set: false}, {provider: 'openai', set: true}]);
+    assert.deepEqual(order, ['del:openrouter', 'del:openai', 'get', 'save:r2:side']);
+  });
+  it('키 지우기가 실패하면 프로필을 지우지 않는다', async () => {
+    const { deleteProfileWithKeys } = await import('../src/profiles/edit-model.ts');
+    let saved = false;
+    const api = {deleteApiKey: async () => { throw new Error('x'); }, getProfiles: async () => sampleProfiles(), saveProfiles: async () => { saved = true; return {revision: 'r'}; }};
+    await assert.rejects(deleteProfileWithKeys(api, 'work', [{provider: 'a', set: true}]));
+    assert.equal(saved, false);
+  });
+  it('필수 칸이 빠진 파일도 기본값으로 채워 연다', async () => {
+    const { normalizeProfile, normalizeView } = await import('../src/profiles/edit-model.ts');
+    const p = normalizeProfile({name: 'broken'});
+    assert.deepEqual(p.keywords, {ultrawork: [], plan: []});
+    assert.deepEqual(p.roles, {});
+    assert.deepEqual(p.limits, {turns: 60, costUsd: 5, minutes: 60});
+    assert.deepEqual(p.folders, []);
+    assert.deepEqual(validateProfile(p), []);
+    assert.equal(normalizeProfile({name: 'x', limits: {turns: 3} as never}).limits.turns, 3);
+    const v = normalizeView({file: {version: 1} as never, revision: 'r', path: '', keys: undefined as never, keyStore: 'file'});
+    assert.deepEqual(v.file.profiles, []);
+    assert.deepEqual(v.keys, []);
+  });
+});

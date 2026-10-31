@@ -163,6 +163,13 @@ describe('프로필 편집기', () => {
     assert.ok(text(html).includes('키 넣기'));
     h.setLocale('en');
   });
+  it('폴더 목록에 제목(Project folders / 프로젝트 폴더)이 있다', () => {
+    h.setLocale('en');
+    assert.match(h.renderEditor('work'), /<strong[^>]*>Project folders<\/strong>/);
+    h.setLocale('ko');
+    assert.match(h.renderEditor('work'), /<strong[^>]*>프로젝트 폴더<\/strong>/);
+    h.setLocale('en');
+  });
   it('키를 이미 가진 공급처는 건너뜀 표시가 없고 「Replace key」', () => {
     // 키 상태는 sampleProfiles에서 바꿀 수 없어 렌더 결과로만 확인: 기본(키 없음)에서 Replace key는 나오지 않는다
     const t = text(h.renderEditor('work'));

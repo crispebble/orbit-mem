@@ -14,8 +14,8 @@ import {askConfirm} from './confirm.ts';
 import {notifyProfilesChanged, useProfilesData} from './data.ts';
 import {ChainEditor, FieldError, StringList} from './editor-parts.tsx';
 import {
-  RUN_RULES, RUN_SOURCES, ROLE_NAMES, chainOf, defaultName, fieldWithin, keysSet, neededProviders, parseFieldError, removeProfile, setCheap, setDefaultProfile, setRole,
-  toSaveFile, validateProfile, classifySaveError, type Issue, type RunRule, type RunSource, type SaveProblem,
+  RUN_RULES, RUN_SOURCES, ROLE_NAMES, chainOf, defaultName, fieldWithin, keysSet, neededProviders, parseFieldError, setCheap, setDefaultProfile, setRole,
+  toSaveFile, validateProfile, normalizeProfile, renameBlocked, deleteProfileWithKeys, classifySaveError, type Issue, type RunRule, type RunSource, type SaveProblem,
 } from './edit-model.ts';
 import {KeySection} from './key-section.tsx';
 import {createKeyEntry} from './keys.ts';
@@ -71,7 +71,7 @@ export function ProfileEditor({ctx, tabId, client, view, profile, usage, reload,
   const t = useMessages(profilesText);
   const d = useMessages(daemonText);
   const [savedName, setSavedName] = useState(profile.name);
-  const [draft, setDraft] = useState<ProfileJson>(profile);
+  const [draft, setDraft] = useState<ProfileJson>(normalizeProfile(profile));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
@@ -82,6 +82,7 @@ export function ProfileEditor({ctx, tabId, client, view, profile, usage, reload,
   const have = useMemo(() => keysSet(keys), [keys]);
   const others = view.file.profiles.map(p => p.name).filter(n => n !== savedName);
   const issues = useMemo(() => validateProfile(draft, others), [draft, others.join('\n')]);
+  const blocked = renameBlocked(keys, savedName, draft.name);
   const isDefault = defaultName(view.file) === savedName;
 
   useEffect(() => {
@@ -126,7 +127,7 @@ export function ProfileEditor({ctx, tabId, client, view, profile, usage, reload,
     setShowIssues(true);
     setServer(undefined);
     setDone(false);
-    if (issues.length > 0) return;
+    if (issues.length > 0 || blocked) return;
     setBusy(true);
     try {
       const file = toSaveFile(view.file, savedName, draft);
@@ -181,7 +182,19 @@ export function ProfileEditor({ctx, tabId, client, view, profile, usage, reload,
           {!isDefault && <Button size="sm" variant="secondary" disabled={busy || dirty} onClick={() => void mutateFile(setDefaultProfile(view.file, savedName))}>{t.tab.setDefault}</Button>}
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void reloadFromDaemon()} aria-label={t.tab.reloadLabel}>{t.tab.reload}</Button>
           <Button size="sm" variant="danger" disabled={busy || view.file.profiles.length <= 1} title={view.file.profiles.length <= 1 ? t.tab.deleteLast : undefined} onClick={async () => {
-            if (await askConfirm(ctx, t.tab.deleteConfirm(savedName), t.tab.deleteAction, t.tab.cancel)) await mutateFile(removeProfile(view.file, savedName), () => ctx.tabs.close('profiles', tabId));
+            const n = (keys ?? []).filter(k => k.set).length;
+            if (!(await askConfirm(ctx, t.tab.deleteConfirm(savedName) + (n ? ` ${t.tab.deleteKeys(n)}` : ''), t.tab.deleteAction, t.tab.cancel))) return;
+            setBusy(true);
+            setServer(undefined);
+            try {
+              await deleteProfileWithKeys(client.api, savedName, keys);
+              notifyProfilesChanged();
+              ctx.tabs.close('profiles', tabId);
+            } catch (error) {
+              setServer(classifySaveError(error, daemonErrorText(error, d.errors)));
+            } finally {
+              setBusy(false);
+            }
           }}>{t.tab.delete}</Button>
         </div>
         {view.keyStore === 'file' && <p className="orbit-meta">{t.view.fileStore}</p>}
@@ -198,7 +211,8 @@ export function ProfileEditor({ctx, tabId, client, view, profile, usage, reload,
 
       <section className="orbit-prof-sec" aria-labelledby="orbit-prof-basics">
         <h3 id="orbit-prof-basics" className="orbit-prof-h">{t.section.basics}</h3>
-        <InputLine label={t.section.name} value={draft.name} error={errorOf('name')} onChange={v => edit({...draft, name: v})} />
+        <InputLine label={t.section.name} value={draft.name} error={errorOf('name') ?? (blocked ? t.tab.renameBlocked : undefined)} onChange={v => edit({...draft, name: v})} />
+        <strong className="orbit-field-label">{t.section.folders}</strong>
         <p className="orbit-meta">{t.section.foldersHint}</p>
         <StringList label={t.section.folders} values={draft.folders} onChange={v => edit({...draft, folders: v})} errors={listErrors('folders', draft.folders.length)} />
         <InputLine label={t.section.claudeConfigDir} value={draft.claudeConfigDir ?? ''} error={errorOf('claudeConfigDir')} onChange={v => edit({...draft, claudeConfigDir: v})} />

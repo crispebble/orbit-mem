@@ -1,7 +1,7 @@
 // 프로필 편집기의 모델: 사슬 편집, 검증, 저장 페이로드, 키 판정. 순수 함수만 있다.
 // 형식의 기준은 orbit-profiles(types.ts·file.ts). 여기 검증은 저장 전에 빠르게 알려 주는 것이고, 최종 판정은 데몬이다.
 import {errorParts} from '../chat/errors.ts';
-import {requiredKey, type ProfileFileJson, type ProfileJson} from '../daemon/api.ts';
+import {requiredKey, type DaemonApi, type ProfileFileJson, type ProfileJson, type ProfilesView} from '../daemon/api.ts';
 
 export type Chain = string | string[] | undefined;
 export type RunSource = 'terminal' | 'studio' | 'workflow' | 'schedule';
@@ -176,6 +176,9 @@ export function cleanProfile(profile: ProfileJson): ProfileJson {
 /** 저장할 파일: 같은 이름(originalName)의 프로필을 편집본으로 바꾼다(이름을 바꾸면 default도 따라간다). */
 export function toSaveFile(file: ProfileFileJson, originalName: string, draft: ProfileJson): ProfileFileJson {
   const cleaned = cleanProfile(draft);
+  // apiKeys는 키 넣기·지우기로 데몬이 바꾼다: 편집 대상이 아니므로 항상 최신 파일의 값을 쓴다
+  const current = file.profiles.find(p => p.name === originalName);
+  if (current) cleaned.apiKeys = [...(current.apiKeys ?? [])];
   const next: ProfileFileJson = {...file, profiles: file.profiles.map(p => (p.name === originalName ? cleaned : p))};
   if (file.default === originalName) next.default = cleaned.name;
   return next;
@@ -264,4 +267,51 @@ export function classifySaveError(error: unknown, fallback: string): SaveProblem
     return f.field ? {kind: 'field', field: f.field, text: f.text} : {kind: 'other', text: f.text};
   }
   return {kind: 'other', text: fallback};
+}
+
+// ----- 이름 바꾸기·삭제와 키 -----
+
+/** 저장된 키(set)가 있는 프로필은 이름을 바꿀 수 없다(키 계정이 `<프로필>:<공급처>`라 키를 잃고 옛 키가 남는다). */
+export function renameBlocked(keys: readonly {set: boolean}[] | undefined, savedName: string, draftName: string): boolean {
+  return draftName.trim() !== savedName && (keys ?? []).some(k => k.set);
+}
+
+/** 삭제: 저장된 키를 먼저 모두 지운 다음, 최신 파일·revision으로 프로필을 뺀다. */
+export async function deleteProfileWithKeys(
+  api: Pick<DaemonApi, 'deleteApiKey' | 'getProfiles' | 'saveProfiles'>,
+  name: string,
+  keys: readonly {provider: string; set: boolean}[] | undefined,
+): Promise<void> {
+  for (const k of keys ?? []) if (k.set) await api.deleteApiKey({profile: name, provider: k.provider});
+  const fresh = normalizeView(await api.getProfiles());
+  await api.saveProfiles({file: removeProfile(fresh.file, name), expectedRevision: fresh.revision});
+}
+
+// ----- 빠진 칸 채우기 -----
+
+/** 데몬은 깨진 파일의 원문도 돌려줄 수 있다: 필수 칸이 빠져도 편집기가 깨지지 않게 기본값으로 채운다. */
+export function normalizeProfile(raw: Partial<ProfileJson> & {name?: string}): ProfileJson {
+  const d = newProfile(raw.name ?? '');
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  const lim = (raw.limits ?? {}) as Partial<ProfileJson['limits']>;
+  const kw = (raw.keywords ?? {}) as Partial<ProfileJson['keywords']>;
+  return {
+    ...raw,
+    name: typeof raw.name === 'string' ? raw.name : '',
+    folders: list(raw.folders),
+    apiKeys: list(raw.apiKeys),
+    allowedModels: list(raw.allowedModels),
+    roles: raw.roles && typeof raw.roles === 'object' && !Array.isArray(raw.roles) ? raw.roles : {},
+    limits: {turns: lim.turns ?? d.limits.turns, costUsd: lim.costUsd ?? d.limits.costUsd, minutes: lim.minutes ?? d.limits.minutes},
+    keywords: {ultrawork: list(kw.ultrawork), plan: list(kw.plan)},
+  };
+}
+
+export function normalizeView(view: ProfilesView): ProfilesView {
+  const file = (view.file ?? {version: 1, profiles: []}) as ProfileFileJson;
+  return {
+    ...view,
+    file: {...file, profiles: (Array.isArray(file.profiles) ? file.profiles : []).map(normalizeProfile)},
+    keys: Array.isArray(view.keys) ? view.keys.map(k => ({...k, keys: Array.isArray(k.keys) ? k.keys : []})) : [],
+  };
 }

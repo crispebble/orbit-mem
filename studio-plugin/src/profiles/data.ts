@@ -3,6 +3,7 @@
 import {useCallback, useEffect, useState} from 'react';
 import type {ProfilesView, UsageReport} from '../daemon/api.ts';
 import type {DaemonClient} from '../daemon/client.ts';
+import {normalizeView} from './edit-model.ts';
 
 const waiting = new Set<() => void>();
 
@@ -27,7 +28,7 @@ export function useProfilesData(client: DaemonClient | undefined, up: boolean): 
     setData(d => ({...d, loading: true, error: undefined}));
     try {
       const [view, usage] = await Promise.all([client.api.getProfiles(), client.api.getUsage({})]);
-      setData({view, usage, loading: false});
+      setData({view: normalizeView(view), usage, loading: false});
     } catch (error) {
       setData(d => ({...d, loading: false, error}));
     }
