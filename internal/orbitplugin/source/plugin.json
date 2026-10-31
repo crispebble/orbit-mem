@@ -18,7 +18,10 @@
     "review",
     "delegate",
     "git-commit",
-    "pull-request"
+    "pull-request",
+    "run",
+    "all-in",
+    "resume"
   ],
   "mcpServers": {
     "orbit": {

@@ -63,7 +63,7 @@ go build -o dist/orb ./cmd/orb
 | `internal/migrate` | 옛 Knowledge 이전 |
 | `internal/lab` | 하네스 실험실: 과제, 후보 빌드·실행, 익명 고르기, 원장 실험 줄과 제안 |
 | `internal/pluginbuild` | 두 호스트 플러그인 빌드 |
-| `internal/orbitplugin/source` | OpenOrbit 플러그인 원본: MCP·훅, 스킬 15개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`), 분야 묶음(`knowledge/<분야>/`: 한 줄 신호 목록 `SIGNALS.md`와 항목. 에이전트에는 일하는 방법만 두고 분야 사실은 여기에) |
+| `internal/orbitplugin/source` | OpenOrbit 플러그인 원본: MCP·훅, 스킬 18개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request, 그리고 orbit-pi 오케스트레이터용 run, all-in, resume — 새 스킬은 영어 기본·한국어 지원), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`), 분야 묶음(`knowledge/<분야>/`: 한 줄 신호 목록 `SIGNALS.md`와 항목. 에이전트에는 일하는 방법만 두고 분야 사실은 여기에) |
 | `internal/install` | 바이너리·플러그인 등록·Codex 역할 복사·OS 예약 |
 | `internal/i18n` | 사람이 읽는 문구 카탈로그(en·ko)와 언어 고르기(`language` 설정, `ORBIT_LANG`) |
 
