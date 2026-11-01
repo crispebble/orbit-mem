@@ -376,3 +376,50 @@ func TestLab_과제_명령과_설정(t *testing.T) {
 		t.Fatalf("닫은 제안 %+v", got)
 	}
 }
+
+// 끝 기준: 시작 훅은 --plugin-version이 자기 판과 다르면 문맥 끝에 맞추라는 한 줄을 더한다. 같으면 없고,
+// 다른 훅과 hook work는 이 플래그를 받고 무시한다.
+func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T) {
+	home(t)
+	s := seed(t)
+	in := `{"cwd":"/tmp","session_id":"s1","hook_event_name":"SessionStart","source":"startup"}`
+	ctx := func(args ...string) string {
+		t.Helper()
+		out, _, code := run(t, in, args...)
+		if code != 0 {
+			t.Fatalf("code %d", code)
+		}
+		if out == "" {
+			return ""
+		}
+		var v struct {
+			HookSpecificOutput struct{ AdditionalContext string }
+		}
+		if err := json.Unmarshal([]byte(out), &v); err != nil {
+			t.Fatalf("%q %v", out, err)
+		}
+		return v.HookSpecificOutput.AdditionalContext
+	}
+	line := "orbit-mem 판(0.4.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	// 기억이 없어도 그 한 줄은 낸다
+	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
+		t.Fatalf("빈 문맥 %q", got)
+	}
+	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.3.9")
+	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
+		t.Fatalf("다른 판 %q", got)
+	}
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.4.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+		t.Fatalf("같은 판 %q", got)
+	}
+	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
+		t.Fatalf("요청 훅 %q", got)
+	}
+	if out, _, code := run(t, in, "hook", "work", "--host", "codex", "--plugin-version", "0.3.9"); code != 0 || out != "" {
+		t.Fatalf("hook work %d %q", code, out)
+	}
+	if out, _, code := run(t, in, "hook", "session-start", "--plugin-version"); code != 0 || out != "" {
+		t.Fatalf("값 없는 플래그 %d %q", code, out)
+	}
+}

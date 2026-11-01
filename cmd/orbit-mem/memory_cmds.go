@@ -134,6 +134,7 @@ func cmdHook(a *app, args []string) error {
 	fs.Bool("skip-lists", false, "") // 옛 작업 기록 훅의 인자: 받고 버린다
 	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
 	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
+	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
 	pos, err := parse(fs, args)
 	if err == nil && len(pos) == 1 && pos[0] == "work" {
 		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 OpenOrbit으로 옮겼다: 입력을 버리고 끝낸다.
@@ -189,7 +190,7 @@ func cmdHook(a *app, args []string) error {
 		if in.Cwd != "" {
 			p = project.Resolve(in.Cwd)
 		}
-		memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg)
+		memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
 		recordActivity(s, pos[0], *host, in, p, who, at)
 	}()
 	select {
@@ -256,7 +257,7 @@ func recordActivity(s *memory.Store, which, host string, in hookInput, p project
 }
 
 // memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config) {
+func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config, pluginVersion string) {
 	if which == "session-end" {
 		a.sessionEnd(s, in, host, cfg)
 		done <- ""
@@ -266,7 +267,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 	kind := memory.EventInjectSessionStart
 	if which == "session-start" {
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
-		done <- inject.HookOutput("SessionStart", inj.Text)
+		done <- inject.HookOutput("SessionStart", withVersionNote(inj.Text, pluginVersion))
 	} else {
 		kind = memory.EventInjectPrompt
 		inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
@@ -274,6 +275,21 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 	}
 	// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」).
 	recordInjection(s, cfg, kind, host, in.SessionID, scope, in.Prompt, inj)
+}
+
+// withVersionNote adds one line at the end of the session-start context when the plugin
+// that called the hook is another version than this orbit-mem (the plugin from GitHub and
+// the installed binary can drift apart). The context is for the AI, so it is Korean like
+// the rest of it.
+func withVersionNote(text, pluginVersion string) string {
+	if pluginVersion == "" || pluginVersion == version.Version {
+		return text
+	}
+	line := fmt.Sprintf("orbit-mem 판(%s)과 플러그인 판(%s)이 다릅니다: `orbit-mem install`로 맞추세요.", version.Version, pluginVersion) // i18n:keep AI가 읽는 세션 문맥
+	if text = strings.TrimRight(text, "\n"); text == "" {
+		return line
+	}
+	return text + "\n" + line
 }
 
 // recordInjection counts one injection as a use event. Levels that inject nothing,
