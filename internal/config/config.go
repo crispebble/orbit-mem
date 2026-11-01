@@ -27,7 +27,8 @@ type Config struct {
 	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
 	Inject          string   `json:"inject"`                 // full | rules | off
 	RecentDecisions int      `json:"recentDecisions"`        // 세션 시작에 넣을 최근 결정 제목 수
-	BackupKeep      int      `json:"backupKeep"`             // 남길 일일 백업 수
+	BackupKeep      int      `json:"backupKeep"`             // 남길 하루 사본 수(넘는 memory-YYYYMMDD·work-YYYYMMDD 사본만 지운다)
+	AutoBackup      bool     `json:"autoBackup"`             // 세션 시작 훅이 마지막 사본이 24시간보다 오래됐으면 뒤에서 사본을 만든다
 	Hosts           []string `json:"hosts"`                  // 연결한 호스트(claude, codex)
 	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
@@ -77,7 +78,7 @@ const maxRecallChars = 9000
 
 // Default is the starting configuration.
 func Default() Config {
-	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
+	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
 		LegacyMemories: 30, LegacyBatches: 1,
 		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus",

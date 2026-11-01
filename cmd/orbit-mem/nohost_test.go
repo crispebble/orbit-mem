@@ -17,6 +17,9 @@ var execAllowed = map[string]string{
 	"cmd/orbit-mem/ops_cmds.go":       "LookPath only: which orbit-mem is on PATH (install, doctor)",
 	"internal/memplugin/memplugin.go": "LookPath only: finds the hosts to register with",
 	"internal/project/project.go":     "git: resolves a working directory to its project",
+	"cmd/orbit-mem/backup_cmd.go":     "starts itself (orbit-mem backup auto) for the session-start hook's daily copy (ONID-136)",
+	"cmd/orbit-mem/detach_unix.go":    "detaches that orbit-mem backup auto process from the hook",
+	"cmd/orbit-mem/detach_windows.go": "detaches that orbit-mem backup auto process from the hook",
 	// The lab (orbit-mem lab) is the one documented exception that still runs a headless
 	// host: its candidates and its judge. ONID-124 removes the lab and these entries.
 	"internal/lab/host.go":         "lab: runs the host (exception until ONID-124)",

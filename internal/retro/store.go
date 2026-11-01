@@ -11,7 +11,6 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
@@ -343,21 +342,25 @@ func (r *Keeper) Sessions(day string) ([]DaySession, int, error) {
 	return out, len(transcript.CodexSummaries(r.Roots, day)), nil
 }
 
-// Backup copies the memory database (a failure stops it) and, once a day, the
-// old work database (a failure is only reported).
+// Backup is the backup before a retrospective (orb retro): the same daily rule as the
+// session-start hook (ONID-136). While the last memory copy is less than 24 hours old it
+// copies nothing and gives the newest copies; otherwise it copies the memory database
+// (a failure stops it) and the old work database (a failure is only reported). A backup
+// another process is making is waited for.
 func (r *Keeper) Backup() (memoryPath, workPath string, errs []string, err error) {
-	keep := max(r.Cfg.BackupKeep, 1)
-	if memoryPath, err = r.Store.Backup(r.Paths.Backups(), keep); err != nil {
+	res, err := r.Store.DailyBackup(memory.BackupOptions{Dir: r.Paths.Backups(), WorkDB: r.Paths.WorkDB(), Keep: max(r.Cfg.BackupKeep, 1), Wait: backupWait})
+	if err != nil {
 		return "", "", nil, err
 	}
 	errs = []string{}
-	// 옛 작업 기록 DB(work.db)도 같은 날 함께 복사한다(읽기 전용으로 연다).
-	workPath, werr := sqlitedb.BackupDaily(r.Paths.WorkDB(), r.Paths.Backups(), "work", keep, r.now())
-	if werr != nil {
-		errs = append(errs, i18n.Errorf("retro.err.backup", werr).Error())
+	if res.WorkErr != nil {
+		errs = append(errs, i18n.Errorf("retro.err.backup", res.WorkErr).Error())
 	}
-	return memoryPath, workPath, errs, nil
+	return res.Memory, res.Work, errs, nil
 }
+
+// backupWait is how long the retrospective's backup waits for one another process is making.
+const backupWait = time.Minute
 
 // Judge judges the changes whose observation window ended, then reverts the
 // automatic changes judged harmful (A2). The weekly retrospective reads the verdicts.
