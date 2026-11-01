@@ -27,6 +27,9 @@ const (
 	SourceSession    = "session"     // 대화 기록
 	SourceHostMemory = "host_memory" // 호스트 기억
 	SourceLegacy     = "legacy"      // 옛 Knowledge
+	// SourceVerification is a fact the work's own verification checked (a test
+	// or build run): a project fact with it is confirmed at once (A2 증거 ③).
+	SourceVerification = "verification"
 )
 
 // ScopeGlobal is the scope of a memory that applies everywhere.
@@ -35,7 +38,7 @@ const ScopeGlobal = "global"
 var (
 	Kinds       = []string{KindRule, KindFact, KindDecision, KindLesson, KindJournal}
 	States      = []string{StateCandidate, StateConfirmed, StateStale, StateHidden}
-	SourceKinds = []string{SourceQuote, SourceFile, SourceCommand, SourceSession, SourceHostMemory, SourceLegacy}
+	SourceKinds = []string{SourceQuote, SourceFile, SourceCommand, SourceSession, SourceHostMemory, SourceLegacy, SourceVerification}
 )
 
 var (

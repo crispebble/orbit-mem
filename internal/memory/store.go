@@ -24,6 +24,9 @@ type Store struct {
 	db   *sql.DB
 	path string
 	Now  func() time.Time
+	// Policy holds the counts of the confirmation rules (A2). Open sets the
+	// defaults; the command line sets the configured ones.
+	Policy Policy
 }
 
 const schema = `
@@ -122,7 +125,7 @@ func migrate(db *sql.DB) error {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
@@ -141,7 +144,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, path: path, Now: time.Now}, nil
+	return &Store{db: db, path: path, Now: time.Now, Policy: DefaultPolicy()}, nil
 }
 
 // Close closes the database.
@@ -182,6 +185,8 @@ type SaveInput struct {
 	Day      string   // 후보가 나온 날. 비우면 오늘
 	At       int64    // 만든 시각. 비우면 지금
 	Extra    []Source // 같은 트랜잭션에 함께 붙일 출처
+
+	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
 
 func validKind(k string) bool { return contains(Kinds, k) }
@@ -236,10 +241,23 @@ func (in *SaveInput) validate() error {
 
 // Save stores a memory with its source. A direct quote of the user is
 // confirmed at once; anything else starts as a candidate. Saving the same
-// title (same kind and scope) again adds the source and the day: a candidate
-// seen on two different days is confirmed. A hidden (rejected) candidate stays
-// hidden unless the new source is the user's own quote.
+// title (same kind and scope) again adds the source and the day. A candidate
+// with evidence (seen on different days, followed in verified work, a project
+// fact the work's verification checked) is then confirmed automatically and
+// the confirmation kept in the ledger (A2). A hidden (rejected) candidate
+// stays hidden unless the new source is the user's own quote.
 func (s *Store) Save(in SaveInput) (Memory, error) {
+	m, err := s.save(in)
+	if err != nil || in.noEvidence || m.State != StateCandidate {
+		return m, err
+	}
+	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
+		return m, nil // 확정하지 못해도 저장은 됐다
+	}
+	return s.Get(m.ID)
+}
+
+func (s *Store) save(in SaveInput) (Memory, error) {
 	if err := in.validate(); err != nil {
 		return Memory{}, err
 	}
@@ -318,7 +336,8 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 }
 
 // sightTx records that memory id came up again on day with src. A quote of
-// the user confirms it; a candidate seen on two different days is confirmed.
+// the user confirms it; the evidence of the other days is checked after the
+// transaction (ConfirmByEvidence), so the confirmation is in the ledger.
 func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	m, err := getTx(tx, id)
 	if err != nil {
@@ -331,17 +350,8 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 		return err
 	}
 	next := m.State
-	switch {
-	case src.Kind == SourceQuote && m.State == StateCandidate:
+	if src.Kind == SourceQuote && m.State == StateCandidate {
 		next = StateConfirmed
-	case m.State == StateCandidate:
-		var days int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM sightings WHERE memory_id=?`, m.ID).Scan(&days); err != nil {
-			return err
-		}
-		if days >= 2 {
-			next = StateConfirmed
-		}
 	}
 	action := "seen"
 	if next != m.State {
@@ -372,6 +382,7 @@ func (s *Store) Seen(id string, src Source, day string) (Memory, error) {
 	if err := tx.Commit(); err != nil {
 		return Memory{}, err
 	}
+	_, _, _ = s.ConfirmByEvidence(id)
 	return s.Get(id)
 }
 
@@ -517,9 +528,13 @@ type UpdateInput struct {
 	State           *string
 	Reason          string
 	Action          string
+	Who             Who // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
 }
 
-// Update edits a memory and records a new version.
+// Update edits a memory and records a new version. A writer other than the
+// person changes a memory with the user's words only with the user's words,
+// and confirms a candidate only with them (automatic confirmation goes through
+// ConfirmByEvidence).
 func (s *Store) Update(in UpdateInput) (Memory, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -532,6 +547,12 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	}
 	if in.ExpectedVersion != 0 && in.ExpectedVersion != m.Version {
 		return m, ErrVersionConflict
+	}
+	if !in.Who.human() && in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" {
+		return m, fmt.Errorf("%w: %s", ErrProtected, in.ID)
+	}
+	if err := guardTx(tx, in.Who, s.nowMs(), in.ID); err != nil {
+		return m, err
 	}
 	if in.Kind != nil {
 		if !validKind(*in.Kind) {
@@ -584,6 +605,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	if err := tx.Commit(); err != nil {
 		return m, err
 	}
+	if m.State != StateCandidate {
+		s.closeFlagsOf(m.ID, m.State)
+	}
 	return s.Get(m.ID)
 }
 
@@ -592,10 +616,19 @@ func (s *Store) SetState(id, state, reason string) (Memory, error) {
 	return s.Update(UpdateInput{ID: id, State: &state, Reason: reason, Action: state})
 }
 
-// Supersede marks old as stale, replaced by newID.
+// Supersede marks old as stale, replaced by newID (by the person).
 func (s *Store) Supersede(oldID, newID, reason string) (Memory, error) {
+	return s.SupersedeAs(oldID, newID, reason, Who{})
+}
+
+// SupersedeAs marks old as stale, replaced by newID, by writer w: a writer
+// other than the person needs the user's words to replace what the user said.
+func (s *Store) SupersedeAs(oldID, newID, reason string, w Who) (Memory, error) {
 	if _, err := getTx(s.db, newID); err != nil {
 		return Memory{}, err
+	}
+	if oldID == newID {
+		return Memory{}, ErrInvalid
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -604,6 +637,9 @@ func (s *Store) Supersede(oldID, newID, reason string) (Memory, error) {
 	defer tx.Rollback()
 	m, err := getTx(tx, oldID)
 	if err != nil {
+		return m, err
+	}
+	if err := guardTx(tx, w, s.nowMs(), oldID); err != nil {
 		return m, err
 	}
 	m.State, m.SupersededBy, m.StaleReason = StateStale, newID, reason
@@ -702,6 +738,10 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 		a, b := hits[i], hits[j]
 		if a.r.Score != b.r.Score {
 			return a.r.Score > b.r.Score
+		}
+		// 후보는 회상에 쓰되 확정보다 뒤에 둔다(A2).
+		if ca, cb := a.m.State == StateConfirmed, b.m.State == StateConfirmed; ca != cb {
+			return ca
 		}
 		if a.r.Title != b.r.Title {
 			return a.r.Title > b.r.Title

@@ -255,3 +255,30 @@ func TestPrompt_분야_신호가_넘치면_알린다(t *testing.T) {
 		t.Fatalf("넘친 신호 알림:\n%s", inj.Text)
 	}
 }
+
+// AU-6 AC-6(A2): 후보는 회상에 쓰되 확정보다 뒤에 두고 「후보」로 표시한다.
+func TestPromptInjection_후보는_확정_뒤에_후보로_표시한다(t *testing.T) {
+	s := store(t)
+	cand := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 전에 plist 지우기", "후보 본문", memory.ScopeGlobal, false)
+	conf := save(t, s, memory.KindLesson, "launchd 예약 회고", "확정 본문", memory.ScopeGlobal, true)
+	inj := PromptInjection(s, config.Default(), here, "launchd 예약 회고 다시 걸기 전에 plist 지우기")
+	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != conf.ID || inj.MemoryIDs[1] != cand.ID {
+		t.Fatalf("확정이 먼저가 아닙니다: %v (conf=%s cand=%s)\n%s", inj.MemoryIDs, conf.ID, cand.ID, inj.Text)
+	}
+	if !strings.Contains(inj.Text, cand.ID+" · 교훈 후보") {
+		t.Fatalf("후보 표시가 없습니다:\n%s", inj.Text)
+	}
+}
+
+// AU-6 AC-4: 해로움 판정으로 자동 되돌린 변경을 세션 시작에 알린다.
+func TestSessionStart_자동_되돌림을_알린다(t *testing.T) {
+	s := store(t)
+	save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
+	if err := s.RecordEvent(memory.Event{Kind: memory.EventAutoReverted}, map[string]any{"ledgerId": "l-1", "revertId": "l-2", "error": ""}); err != nil {
+		t.Fatal(err)
+	}
+	got := SessionStart(s, config.Default(), here)
+	if !strings.Contains(got, "자동 변경 1건을 되돌림") {
+		t.Fatalf("알림이 없습니다:\n%s", got)
+	}
+}

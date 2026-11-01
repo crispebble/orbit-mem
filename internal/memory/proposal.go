@@ -28,6 +28,7 @@ const (
 	ProposalRevert     = "revert"     // 원장 한 줄의 변경 되돌리기
 	ProposalLink       = "link"       // 관련 기억 둘 잇기
 	ProposalRetag      = "retag"      // 뜻이 같은 태그 묶기, 주제 태그 달기
+	ProposalSupersede  = "supersede"  // 대체: 앞 기억을 뒤 기억이 대신한다(앞 기억은 낡음)
 )
 
 // Proposal statuses.
@@ -39,7 +40,7 @@ const (
 	StatusLab      = "lab"     // 실험실 대기: 하네스 변경은 실험실이 도움됨으로 판정해야 대기로 올라간다(설계 · Orbit 개선 3차 「스킬 제안」)
 )
 
-var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag}
+var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag, ProposalSupersede}
 
 // SettledNoteKeys are the catalog keys of the reasons a proposal is settled
 // with, stored in Korean (see Decide).
@@ -74,6 +75,8 @@ type Payload struct {
 	Note        string   `json:"note,omitempty"`        // link: 잇는 근거(연결에 남는다)
 	FromTags    []string `json:"fromTags,omitempty"`    // retag: 뺄 태그(표기 차이 무시)
 	ToTags      []string `json:"toTags,omitempty"`      // retag: 넣을 태그
+	Evidence    string   `json:"evidence,omitempty"`    // 자동 확정의 증거(seen_days·followed_verified·verified_fact)
+	Actor       string   `json:"actor,omitempty"`       // 자동 변경·되돌리기를 한 쪽(user·ai·automation)
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -165,92 +168,8 @@ func (s *Store) SameProposal(in ProposalInput) (Proposal, bool) {
 // Propose stores a pending proposal. The same proposal is not stacked while
 // pending, and one the user rejected does not come back.
 func (s *Store) Propose(in ProposalInput) (Proposal, error) {
-	in.Title = strings.TrimSpace(in.Title)
-	if !contains(ProposalKinds, in.Kind) || in.Title == "" {
-		return Proposal{}, i18n.Errorf("memory.err.proposal_kind_title", ErrInvalid, strings.Join(ProposalKinds, "|"))
-	}
-	for _, id := range in.MemoryIDs {
-		if _, err := getTx(s.db, id); err != nil {
-			return Proposal{}, err
-		}
-	}
-	switch in.Kind {
-	case ProposalConfirm, ProposalStale, ProposalReclassify:
-		if len(in.MemoryIDs) == 0 {
-			return Proposal{}, i18n.Errorf("memory.err.need_target_id", ErrInvalid)
-		}
-		if in.Kind == ProposalReclassify && !validKind(in.Payload.Kind) {
-			return Proposal{}, i18n.Errorf("memory.err.need_new_kind", ErrInvalid)
-		}
-	case ProposalMerge:
-		if len(in.MemoryIDs) < 2 || strings.TrimSpace(in.Payload.MergedTitle) == "" {
-			return Proposal{}, i18n.Errorf("memory.err.merge_needs", ErrInvalid)
-		}
-		if in.Payload.Kind == "" {
-			first, _ := getTx(s.db, in.MemoryIDs[0])
-			in.Payload.Kind = first.Kind
-		}
-	case ProposalApplyFile:
-		if !filepath.IsAbs(in.Payload.Path) {
-			return Proposal{}, i18n.Errorf("memory.err.file_abs_path", ErrInvalid)
-		}
-		old, _ := os.ReadFile(in.Payload.Path)
-		in.Payload.BaseHash = FileHash(in.Payload.Path)
-		diff := LineDiff(string(old), in.Payload.Content, 3)
-		if strings.TrimSpace(diff) == "" {
-			return Proposal{}, i18n.Errorf("memory.err.no_change", ErrInvalid)
-		}
-		in.Body = strings.TrimSpace(in.Body + "\n\n파일: " + in.Payload.Path + "\n```diff\n" + diff + "```")
-	case ProposalEdit:
-		if len(in.MemoryIDs) != 1 {
-			return Proposal{}, i18n.Errorf("memory.err.need_one_memory", ErrInvalid)
-		}
-		if in.Payload.Scope != "" && !validScope(in.Payload.Scope) {
-			return Proposal{}, i18n.Errorf("memory.err.scope_is", ErrInvalid)
-		}
-		old, _ := getTx(s.db, in.MemoryIDs[0])
-		next := editedMemory(old, in.Payload, nil, nil)
-		diff := LineDiff(memoryText(old), memoryText(next), 2)
-		if strings.TrimSpace(diff) == "" {
-			return Proposal{}, i18n.Errorf("memory.err.no_change", ErrInvalid)
-		}
-		in.Body = strings.TrimSpace(in.Body + "\n\n```diff\n" + diff + "```")
-	case ProposalLink:
-		if len(in.MemoryIDs) != 2 || in.MemoryIDs[0] == in.MemoryIDs[1] {
-			return Proposal{}, i18n.Errorf("memory.err.need_two_memories", ErrInvalid)
-		}
-		if linked, err := s.linked(in.MemoryIDs[0], in.MemoryIDs[1]); err != nil || linked {
-			if err != nil {
-				return Proposal{}, err
-			}
-			return Proposal{}, i18n.Errorf("memory.err.already_linked", ErrInvalid)
-		}
-		in.Payload.Note = ClipRunes(MaskSecrets(strings.TrimSpace(in.Payload.Note)), 300)
-	case ProposalRetag:
-		if err := s.prepareRetag(&in); err != nil {
-			return Proposal{}, err
-		}
-		if busy, err := s.retagBusy(in.Payload.FromTags, in.Payload.ToTags); err != nil || busy != "" {
-			if err != nil {
-				return Proposal{}, err
-			}
-			return Proposal{}, i18n.Errorf("memory.err.duplicate_pending", ErrDuplicateProposal, busy)
-		}
-	case ProposalRevert:
-		e, err := s.LedgerEntry(in.Payload.LedgerID)
-		if err != nil {
-			return Proposal{}, err
-		}
-		if e.RevertedBy != "" {
-			return Proposal{}, i18n.Errorf("memory.err.already_reverted", ErrInvalid, e.RevertedBy)
-		}
-		if b := e.Before; len(b.Memories) == 0 && len(b.Created) == 0 && b.File == nil && b.Link == "" {
-			return Proposal{}, i18n.Errorf("memory.err.nothing_to_revert", ErrInvalid, e.ID)
-		}
-		if e.TargetKind == TargetMemory {
-			in.MemoryIDs = e.Targets
-		}
-		in.Body = strings.TrimSpace(in.Body + "\n\n되돌릴 변경(" + e.ID + ", 판정 " + e.Verdict + "):\n```diff\n" + e.Change + "```")
+	if err := s.prepare(&in); err != nil {
+		return Proposal{}, err
 	}
 	fp := fingerprint(in)
 	var status string
@@ -261,16 +180,108 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, err
 	}
-	p := Proposal{ID: NewID("p-"), Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload,
-		Status: StatusPending, CreatedAt: s.nowMs(), RetroID: in.RetroID}
+	st := StatusPending
 	if in.Lab {
-		p.Status = StatusLab
+		st = StatusLab
 	}
-	ids, _ := json.Marshal(nonNil(p.MemoryIDs))
-	payload, _ := json.Marshal(p.Payload)
-	_, err = s.db.Exec(`INSERT INTO proposals(id,kind,title,body,memory_ids,payload,fingerprint,status,created_at,retro_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		p.ID, p.Kind, p.Title, p.Body, string(ids), string(payload), fp, p.Status, p.CreatedAt, p.RetroID)
-	return p, err
+	return s.insertProposal(in, st)
+}
+
+// prepare checks a proposal and fills in what it shows (diffs, the memories a
+// retag changes). Propose and AutoApply share it.
+func (s *Store) prepare(in *ProposalInput) error {
+	in.Title = strings.TrimSpace(in.Title)
+	if !contains(ProposalKinds, in.Kind) || in.Title == "" {
+		return i18n.Errorf("memory.err.proposal_kind_title", ErrInvalid, strings.Join(ProposalKinds, "|"))
+	}
+	for _, id := range in.MemoryIDs {
+		if _, err := getTx(s.db, id); err != nil {
+			return err
+		}
+	}
+	switch in.Kind {
+	case ProposalConfirm, ProposalStale, ProposalReclassify:
+		if len(in.MemoryIDs) == 0 {
+			return i18n.Errorf("memory.err.need_target_id", ErrInvalid)
+		}
+		if in.Kind == ProposalReclassify && !validKind(in.Payload.Kind) {
+			return i18n.Errorf("memory.err.need_new_kind", ErrInvalid)
+		}
+	case ProposalMerge:
+		if len(in.MemoryIDs) < 2 || strings.TrimSpace(in.Payload.MergedTitle) == "" {
+			return i18n.Errorf("memory.err.merge_needs", ErrInvalid)
+		}
+		if in.Payload.Kind == "" {
+			first, _ := getTx(s.db, in.MemoryIDs[0])
+			in.Payload.Kind = first.Kind
+		}
+	case ProposalApplyFile:
+		if !filepath.IsAbs(in.Payload.Path) {
+			return i18n.Errorf("memory.err.file_abs_path", ErrInvalid)
+		}
+		old, _ := os.ReadFile(in.Payload.Path)
+		in.Payload.BaseHash = FileHash(in.Payload.Path)
+		diff := LineDiff(string(old), in.Payload.Content, 3)
+		if strings.TrimSpace(diff) == "" {
+			return i18n.Errorf("memory.err.no_change", ErrInvalid)
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n파일: " + in.Payload.Path + "\n```diff\n" + diff + "```")
+	case ProposalEdit:
+		if len(in.MemoryIDs) != 1 {
+			return i18n.Errorf("memory.err.need_one_memory", ErrInvalid)
+		}
+		if in.Payload.Scope != "" && !validScope(in.Payload.Scope) {
+			return i18n.Errorf("memory.err.scope_is", ErrInvalid)
+		}
+		old, _ := getTx(s.db, in.MemoryIDs[0])
+		next := editedMemory(old, in.Payload, nil, nil)
+		diff := LineDiff(memoryText(old), memoryText(next), 2)
+		if strings.TrimSpace(diff) == "" {
+			return i18n.Errorf("memory.err.no_change", ErrInvalid)
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n```diff\n" + diff + "```")
+	case ProposalLink:
+		if len(in.MemoryIDs) != 2 || in.MemoryIDs[0] == in.MemoryIDs[1] {
+			return i18n.Errorf("memory.err.need_two_memories", ErrInvalid)
+		}
+		if linked, err := s.linked(in.MemoryIDs[0], in.MemoryIDs[1]); err != nil || linked {
+			if err != nil {
+				return err
+			}
+			return i18n.Errorf("memory.err.already_linked", ErrInvalid)
+		}
+		in.Payload.Note = ClipRunes(MaskSecrets(strings.TrimSpace(in.Payload.Note)), 300)
+	case ProposalRetag:
+		if err := s.prepareRetag(in); err != nil {
+			return err
+		}
+		if busy, err := s.retagBusy(in.Payload.FromTags, in.Payload.ToTags); err != nil || busy != "" {
+			if err != nil {
+				return err
+			}
+			return i18n.Errorf("memory.err.duplicate_pending", ErrDuplicateProposal, busy)
+		}
+	case ProposalSupersede:
+		if len(in.MemoryIDs) != 2 || in.MemoryIDs[0] == in.MemoryIDs[1] {
+			return i18n.Errorf("memory.err.need_old_new", ErrInvalid)
+		}
+	case ProposalRevert:
+		e, err := s.LedgerEntry(in.Payload.LedgerID)
+		if err != nil {
+			return err
+		}
+		if e.RevertedBy != "" {
+			return i18n.Errorf("memory.err.already_reverted", ErrInvalid, e.RevertedBy)
+		}
+		if b := e.Before; len(b.Memories) == 0 && len(b.Created) == 0 && b.File == nil && b.Link == "" {
+			return i18n.Errorf("memory.err.nothing_to_revert", ErrInvalid, e.ID)
+		}
+		if e.TargetKind == TargetMemory {
+			in.MemoryIDs = e.Targets
+		}
+		in.Body = strings.TrimSpace(in.Body + "\n\n되돌릴 변경(" + e.ID + ", 판정 " + e.Verdict + "):\n```diff\n" + e.Change + "```")
+	}
+	return nil
 }
 
 func nonNil(s []string) []string {
@@ -517,8 +528,17 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if p.Kind == ProposalMerge && len(tags) == 0 {
 			tags = mergedTags(s, p.MemoryIDs)
 		}
-		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: StateConfirmed,
-			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}})
+		// 자동화가 합친 기억은 합친 기억이 모두 확정일 때만 확정이다. 후보가 섞이면 후보로 남아 증거를 기다린다.
+		state := StateConfirmed
+		if p.Status == StatusAuto {
+			for _, id := range p.MemoryIDs {
+				if m, err := getTx(s.db, id); err == nil && m.State == StateCandidate {
+					state = StateCandidate
+				}
+			}
+		}
+		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: state,
+			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}, noEvidence: true})
 		if err != nil {
 			return err
 		}
@@ -539,7 +559,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		} else {
 			res.Created = m.ID
 		}
-		if m.State != StateConfirmed {
+		if m.State != state && state == StateConfirmed {
 			if m, err = s.SetState(m.ID, StateConfirmed, "제안 승인 "+p.ID); err != nil {
 				return err
 			}
@@ -564,6 +584,11 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			return err
 		}
 		res.Changed = append(res.Changed, m.ID)
+	case ProposalSupersede:
+		if _, err := s.Supersede(p.MemoryIDs[0], p.MemoryIDs[1], "대체 "+p.ID+": "+p.Title); err != nil {
+			return err
+		}
+		res.Changed = append(res.Changed, p.MemoryIDs[0])
 	case ProposalRevert:
 		if given(in.Title) || given(in.Body) {
 			return i18n.Errorf("memory.err.revert_no_edit", ErrInvalid)
