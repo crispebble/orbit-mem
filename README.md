@@ -162,7 +162,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/orbit-mem.exe ./cmd/orbit-mem
 | `internal/mcpserver` | MCP 서버(기억·활동 기록 도구, `memory_graph`, 회고용 도구)와 얇은 CLI가 부르는 `Tools` |
 | `internal/inject` | 세션 시작 묶음·요청 회상 |
 | `internal/retro`, `internal/transcript` | 회고 저장: 재료(호스트 대화 기록) 만들기·제출 받기·실행 기록·세션 끝 대기열. 모델은 부르지 않는다(실행은 OpenOrbit) |
-| `internal/memplugin` | 플러그인 원본(`source/`, go:embed)과 Claude·Codex 꼴·마켓 빌드, OpenOrbit `orb` 찾기(실험실) |
+| `internal/memplugin` | 플러그인 원본(`source/`, go:embed)과 Claude·Codex 꼴·마켓 빌드 |
 | `internal/install` | 실행 파일 복사, 예전 `orbit-mem` 회고 예약 지우기(`legacy.go`), 호스트 플러그인 등록·해제·상태(`hosts.go`) |
 | `internal/config`, `internal/i18n`, `internal/sqlitedb`, `internal/project` | 설정, 문구, SQLite 열기·옛 `work.db` 하루 사본, 프로젝트 범위 |
 | `internal/backup` | 백업 폴더의 사본 이름·목록·보관 정리·24시간 규칙·잠금 |

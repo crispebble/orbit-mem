@@ -370,14 +370,15 @@ func storeExperimentDrop(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Conf
 }
 
 // storeExperimentSave records an experiment (memory.LabSave on stdin) and prints it as stored.
+// File proposals are kept only for files inside this PC's plugin source (pluginSource).
 func storeExperimentSave(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
-	return func(a *app, k *retro.Keeper, _ config.Config) (any, error) {
+	return func(a *app, k *retro.Keeper, cfg config.Config) (any, error) {
 		var in memory.LabSave
 		dec := json.NewDecoder(io.LimitReader(a.stdin, maxWorkMetricsInput))
 		if err := dec.Decode(&in); err != nil {
 			return nil, i18n.Errorf("cli.retro_store.err.stdin", err)
 		}
-		return k.Store.SaveLab(in)
+		return k.Store.SaveLab(in, []string{cfg.PluginSource})
 	}
 }
 

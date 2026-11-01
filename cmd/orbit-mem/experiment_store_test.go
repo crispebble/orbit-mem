@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
@@ -55,6 +56,11 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 	skill := filepath.Join(src, "skills", "plain-writing", "SKILL.md")
 	os.MkdirAll(filepath.Dir(skill), 0o755)
 	os.WriteFile(skill, []byte("원래\n"), 0o644)
+	cfg := config.Default()
+	cfg.PluginSource = src
+	if err := config.Save(paths().Config(), cfg); err != nil {
+		t.Fatal(err)
+	}
 	waiting := []string{}
 	for _, title := range []string{"묻기 규칙", "버릴 것", "닫힐 것"} {
 		p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: title, Lab: true,
@@ -128,6 +134,44 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 	p0, _ := s.GetProposal(waiting[0])
 	if p0.Status != memory.StatusPending || !strings.Contains(p0.Body, "도움됨") {
 		t.Fatalf("풀린 제안 %+v", p0)
+	}
+	s.Close()
+
+	// 같은 판정을 다시 보내도 원장 줄을 또 만들지 않는다(끝난 실험은 다시 쓰지 않는다).
+	if _, errOut, code := run(t, body, "retro-store", "experiment", "save"); code != 1 || !strings.Contains(errOut, "already done") {
+		t.Fatalf("다시 저장 code=%d %q", code, errOut)
+	}
+	s, _ = openStore()
+	if es, _ := s.Ledger(memory.LedgerFilter{Limit: 10}); len(es) != 1 {
+		t.Fatalf("원장 줄 %d", len(es))
+	}
+	s.Close()
+
+	// 판정과 맞지 않는 제안 처리, 둘 이상의 처리, 대기 제안이 아닌 것, 원본 밖 파일은 아무것도 쓰기 전에 거절한다.
+	exp := func(id, verdict string) map[string]any {
+		return map[string]any{"id": id, "taskId": x.TaskID, "status": "done", "verdict": verdict, "runs": 1, "createdAt": 7000}
+	}
+	led := map[string]any{"targets": []string{skill}, "change": "d", "basis": "b"}
+	outside := filepath.Join(t.TempDir(), "AGENTS.md")
+	for name, bad := range map[string]map[string]any{
+		"해로움인데 풀기":   {"experiment": exp("x-bad1", "harmful"), "ledger": led, "release": map[string]any{"proposalId": waiting[2], "summary": "s"}},
+		"도움됨인데 닫기":   {"experiment": exp("x-bad2", "helped"), "ledger": led, "close": map[string]any{"proposalId": waiting[2], "note": "n"}},
+		"효과 없음인데 제안": {"experiment": exp("x-bad3", "no_effect"), "ledger": led, "propose": []map[string]any{{"title": "t", "path": skill, "content": "c"}}},
+		"처리 둘":       {"experiment": exp("x-bad4", "helped"), "ledger": led, "release": map[string]any{"proposalId": waiting[0], "summary": "s"}, "propose": []map[string]any{{"title": "t", "path": skill, "content": "c2"}}},
+		"대기 아닌 제안":   {"experiment": exp("x-bad5", "helped"), "ledger": led, "release": map[string]any{"proposalId": waiting[0], "summary": "s"}},
+		"원본 밖 파일":    {"experiment": exp("x-bad6", "helped"), "ledger": led, "propose": []map[string]any{{"title": "t", "path": outside, "content": "c"}}},
+		"상대 경로":      {"experiment": exp("x-bad7", "helped"), "ledger": led, "propose": []map[string]any{{"title": "t", "path": "skills/x.md", "content": "c"}}},
+	} {
+		if _, errOut, code := run(t, marshalString(t, bad), "retro-store", "experiment", "save"); code != 1 {
+			t.Fatalf("%s: code=%d %q", name, code, errOut)
+		}
+	}
+	s, _ = openStore()
+	if es, _ := s.Ledger(memory.LedgerFilter{Limit: 10}); len(es) != 1 {
+		t.Fatalf("거절한 기록이 원장에 남았습니다: %d", len(es))
+	}
+	if xs, _ := s.LabExperiments(0, 0); len(xs) != 1 {
+		t.Fatalf("거절한 기록이 실험으로 남았습니다: %d", len(xs))
 	}
 	s.Close()
 

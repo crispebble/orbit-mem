@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -292,24 +293,100 @@ func labID(id string) bool {
 	return true
 }
 
-// SaveLab records what the lab sends (ONID-124: the lab is OpenOrbit's dev tool and
-// reaches the records only through this). The runs are kept first; a ledger line is
-// written only for a done experiment with a verdict, then the proposal is released or
-// closed, or the helped files are proposed; the experiment is written last with the
-// ledger and proposal ids. It returns the experiment as stored.
-func (s *Store) SaveLab(in LabSave) (LabExperiment, error) {
+// inRoots says whether path (absolute, after following symlinks) is inside one of roots.
+func inRoots(roots []string, path string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		if d, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
+			return filepath.Join(d, filepath.Base(p))
+		}
+		return filepath.Clean(p)
+	}
+	real := resolve(path)
+	for _, r := range roots {
+		if r == "" {
+			continue
+		}
+		r = resolve(r)
+		if strings.HasPrefix(real, r+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkLab refuses a record before anything is written: a bad experiment, a ledger line
+// that does not match the status, a proposal action that does not match the verdict, a
+// proposal that is not waiting for the lab, or a file outside the plugin source.
+func (s *Store) checkLab(in LabSave, sources []string) error {
 	x := in.Experiment
+	bad := func() error { return i18n.Errorf("memory.err.lab_record", ErrInvalid) }
 	if !labID(x.ID) || !labID(x.TaskID) || x.Runs < 1 || x.CreatedAt <= 0 ||
 		(x.Status != LabRunning && x.Status != LabDone && x.Status != LabFailed) {
-		return x, i18n.Errorf("memory.err.lab_record", ErrInvalid)
+		return bad()
 	}
-	if (in.Ledger != nil) != (x.Status == LabDone) || (in.Ledger == nil && (in.Release != nil || in.Close != nil || len(in.Propose) > 0)) {
-		return x, i18n.Errorf("memory.err.lab_record", ErrInvalid)
+	if old, err := s.LabExperiment(x.ID); err == nil && (old.Status != LabRunning || old.TaskID != x.TaskID) {
+		return i18n.Errorf("memory.err.lab_finished", ErrInvalid, x.ID, old.Status)
 	}
-	if in.Ledger != nil {
-		if x.Verdict != VerdictHelped && x.Verdict != VerdictHarmful && x.Verdict != VerdictNoEffect {
-			return x, i18n.Errorf("memory.err.experiment_verdict", ErrInvalid)
+	actions := 0
+	if in.Release != nil {
+		actions++
+	}
+	if in.Close != nil {
+		actions++
+	}
+	if len(in.Propose) > 0 {
+		actions++
+	}
+	if (in.Ledger != nil) != (x.Status == LabDone) || (in.Ledger == nil && actions > 0) || actions > 1 {
+		return bad()
+	}
+	if in.Ledger == nil {
+		return nil
+	}
+	if x.Verdict != VerdictHelped && x.Verdict != VerdictHarmful && x.Verdict != VerdictNoEffect {
+		return i18n.Errorf("memory.err.experiment_verdict", ErrInvalid)
+	}
+	helped := x.Verdict == VerdictHelped
+	if (in.Release != nil || len(in.Propose) > 0) && !helped || in.Close != nil && helped {
+		return i18n.Errorf("memory.err.lab_action", ErrInvalid, x.Verdict)
+	}
+	for _, n := range []*LabProposalNote{in.Release, in.Close} {
+		if n == nil {
+			continue
 		}
+		p, err := s.GetProposal(n.ProposalID)
+		if err != nil || p.Status != StatusLab || p.Kind != ProposalApplyFile {
+			return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, n.ProposalID)
+		}
+	}
+	for _, f := range in.Propose {
+		if !inRoots(sources, f.Path) {
+			return i18n.Errorf("memory.err.lab_outside_source", ErrInvalid, f.Path)
+		}
+		if _, dup := s.SameProposal(ProposalInput{Kind: ProposalApplyFile, Title: f.Title, Payload: Payload{Path: f.Path, Content: f.Content}}); dup {
+			return fmt.Errorf("%s: %w", f.Path, ErrDuplicateProposal)
+		}
+	}
+	return nil
+}
+
+// SaveLab records what the lab sends (ONID-124: the lab is OpenOrbit's dev tool and
+// reaches the records only through this). Everything is checked first (checkLab); an
+// experiment already done or failed is not written again, so a repeated save makes no
+// second ledger line. Then the runs are kept, a done experiment's ledger line is written,
+// the waiting proposal is released or closed or the helped files are proposed (only
+// inside sources, the plugin source), and the experiment is written last with the ledger
+// and proposal ids. It returns the experiment as stored.
+func (s *Store) SaveLab(in LabSave, sources []string) (LabExperiment, error) {
+	x := in.Experiment
+	if err := s.checkLab(in, sources); err != nil {
+		return x, err
 	}
 	for _, r := range in.Runs {
 		r.Experiment = x.ID

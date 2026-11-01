@@ -77,8 +77,8 @@ func TestNoHostCalls(t *testing.T) {
 				}
 			}
 			codexExec = codexExec || s == "exec"
-			if s == "orb" {
-				t.Errorf("%s:%d has the literal \"orb\": orbit-mem does not call OpenOrbit's orb", rel, fset.Position(lit.Pos()).Line)
+			if s == "orb" || s == "orb.exe" || strings.Contains(s, "ORBIT_ORB") {
+				t.Errorf("%s:%d has the literal %q: orbit-mem does not call OpenOrbit's orb", rel, fset.Position(lit.Pos()).Line, s)
 			}
 			return true
 		})

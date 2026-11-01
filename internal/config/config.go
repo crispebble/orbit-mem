@@ -56,9 +56,6 @@ type Config struct {
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
 	RetiredNames   []string `json:"retiredNames,omitempty"` // 보관한 저장소·옛 제품 이름(낡음 판정의 근거로 보인다)
 
-	// 하네스 실험실(명세 · Orbit 3차 O3-5). 지금 하네스와 고친 하네스를 같은 과제로 돌려 익명으로 고른다.
-	// 기본값은 사용자가 정했다(2026-10-30, U13~U15): 후보마다 3회, 실행 $1·실험 $10, 실행 sonnet·고르기 opus.
-
 	// 확정 규칙(A2, 계획 · AU-6). 후보가 스스로 확정되는 증거의 횟수와 반복 교정 표시 기준.
 	// confirmFollowedVerified·correctionRepeatSessions는 E2: 이 PC 기억 DB 사본(2026-10-26~11-01)으로 잰
 	// 추천값이며 사용자 결정 대기다. 근거는 Atlas 계획 · AU-6 「E2 측정」.
