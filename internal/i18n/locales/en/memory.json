@@ -54,6 +54,7 @@
   "memory.err.not_lab_pending": "%w: not a pending lab proposal: %s",
   "memory.err.not_topic_tag": "%w: %q is not a topic tag (marker tags and kind names are not changed)",
   "memory.err.nothing_to_revert": "%w: this change has nothing to revert (%s)",
+  "memory.err.work_record": "a work record needs a work id and an end time: %w",
   "memory.err.observe_days": "%w: the observation period is at least 1 day",
   "memory.err.proposal_kind_title": "%w: a proposal kind (%s) and a title are required",
   "memory.err.protected": "this memory holds the user's own words; only the user changes it, or bring the user's words (userQuote) that ask for the change",

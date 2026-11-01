@@ -6,6 +6,8 @@ export {setLocale} from '../src/i18n/index.ts';
 import {setWorkStore, stepTitleMap} from '../src/work-ui/runtime.ts';
 import {SessionBody, type Loaded} from '../src/work-ui/session-tab.tsx';
 import {WaitingStepDetail, WorkTab, workNav} from '../src/work-ui/work-tab.tsx';
+import {LearningSection} from '../src/work-ui/learning.tsx';
+import type {MetricsResult} from '../src/work/types.ts';
 import type {WorkState, WorkStore} from '../src/work/store.ts';
 
 const noop = () => {};
@@ -35,3 +37,4 @@ export const renderWorkTab = (id: string, params: Record<string, unknown> = {}) 
 export const renderWaiting = (workId: string, stepId: string) => renderToStaticMarkup(<WaitingStepDetail ctx={ctx} workId={workId} stepId={stepId} />);
 export const renderSession = (loaded: Loaded, state: WorkState, now: number) =>
   renderToStaticMarkup(<SessionBody ctx={ctx} loaded={loaded} now={now} titles={stepTitleMap(state)} state={state} nav={workNav(ctx, noop)} onReload={noop} onMore={noop} />);
+export const renderLearning = (result: MetricsResult) => renderToStaticMarkup(<LearningSection result={result} />);

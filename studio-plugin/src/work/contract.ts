@@ -3,7 +3,8 @@
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import type {
-  Assumption, ChangesResult, ContractInfo, Discovery, GetResult, ListPage, SessionPage, SessionsPage, StepRecall,
+  Assumption, ChangesResult, ContractInfo, Discovery, GetResult, ListPage, MetricsResult, SessionPage, SessionsPage, StepRecall,
+  TrendKey, TrendSide, WorkMetricsDoc,
 } from './types.ts';
 
 export const READ_MAJOR = 1;
@@ -271,5 +272,58 @@ export function parseChanges(out: unknown): ChangesResult {
     waitMax: isInt(o.waitMax) && o.waitMax >= 0 ? o.waitMax : 0,
     workIds: strList(o.workIds),
     sessionIds: strList(o.sessionIds),
+  };
+}
+
+// ---- AU-7 work_metrics(orbit.work 1.5) ----
+
+const TREND_KEYS: readonly TrendKey[] = ['asked', 'overturned', 'corrections', 'repeats', 'replans', 'firstPass', 'cost', 'turns', 'minutes'];
+const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const keys = (v: unknown): TrendKey[] => (Array.isArray(v) ? v.filter((k): k is TrendKey => TREND_KEYS.includes(k as TrendKey)) : []);
+
+function metricsDoc(v: unknown, tool: string): WorkMetricsDoc {
+  need(isObj(v) && str(v.workId) && isObj(v.metrics), tool, 'workId·metrics');
+  const o = v as Record<string, unknown>;
+  const m = o.metrics as Record<string, unknown>;
+  const fp = isObj(m.firstPass) ? m.firstPass : {};
+  return {
+    workId: o.workId as string,
+    title: str(o.title) ? o.title : '',
+    state: str(o.state) ? o.state : '',
+    project: str(o.project) ? o.project : '',
+    kind: str(o.kind) ? o.kind : 'other',
+    size: str(o.size) ? o.size : '',
+    endedAt: num(o.endedAt),
+    metrics: {
+      asked: num(m.asked), assumed: num(m.assumed), overturned: num(m.overturned), corrections: numOrNull(m.corrections),
+      repeats: num(m.repeats), replans: num(m.replans), firstPass: {passed: num(fp.passed), steps: num(fp.steps)},
+      costUsd: num(m.costUsd), turns: num(m.turns), minutes: num(m.minutes),
+    },
+  };
+}
+
+function trendSide(v: unknown): TrendSide {
+  const o = isObj(v) ? v : {};
+  return {
+    works: num(o.works), asked: num(o.asked), assumed: num(o.assumed), overturned: num(o.overturned), corrections: numOrNull(o.corrections),
+    repeats: num(o.repeats), replans: num(o.replans), firstPassRate: numOrNull(o.firstPassRate), costUsd: num(o.costUsd), turns: num(o.turns), minutes: num(o.minutes),
+  };
+}
+
+export function parseMetrics(out: unknown): MetricsResult {
+  const tool = 'work_metrics';
+  throwIfError(out, tool);
+  need(isObj(out) && str(out.seq) && isObj(out.work), tool, 'seq·work');
+  const o = out as Record<string, unknown>;
+  const similar = isObj(o.similar) ? o.similar : {};
+  const trend = isObj(similar.trend) ? similar.trend : {};
+  return {
+    seq: o.seq as string,
+    work: metricsDoc(o.work, tool),
+    similar: {
+      works: Array.isArray(similar.works) ? similar.works.map(w => metricsDoc(w, tool)) : [],
+      trend: {earlier: trendSide(trend.earlier), later: trendSide(trend.later), better: keys(trend.better), worse: keys(trend.worse)},
+    },
   };
 }

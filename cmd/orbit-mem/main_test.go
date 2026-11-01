@@ -398,7 +398,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.8.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.9.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -408,7 +408,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.8.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.9.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
@@ -419,5 +419,25 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	}
 	if out, _, code := run(t, in, "hook", "session-start", "--plugin-version"); code != 0 || out != "" {
 		t.Fatalf("값 없는 플래그 %d %q", code, out)
+	}
+}
+
+// AU-7: 판정한 줄에 작업 지표가 있으면 관찰 아래 작업 줄을 보인다.
+func TestLedger_판정에_든_작업_지표를_보여_준다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "교훈", Source: memory.Source{Kind: "session"}})
+	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "고치기", MemoryIDs: []string{m.ID}, Payload: memory.Payload{Title: "고친 교훈"}})
+	res, err := s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := `{"before":{"bad":0,"irrelevant":0,"sessions":0,"works":2,"trouble":3,"firstPassed":1,"firstSteps":4},"after":{"bad":0,"irrelevant":0,"sessions":0,"works":1,"trouble":0,"firstPassed":2,"firstSteps":2}}`
+	if _, err := s.DB().Exec(`UPDATE ledger SET verdict='helped', evidence=1, observation=? WHERE id=?`, obs, res.LedgerID); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := run(t, "", "ledger")
+	if code != 0 || !strings.Contains(out, "Works: before 2 (trouble 3 · first-try verified 1/4) → after 1 (trouble 0 · 2/2)") {
+		t.Fatalf("ledger: %s", out)
 	}
 }

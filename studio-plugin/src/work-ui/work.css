@@ -56,3 +56,7 @@
 .orbit-lin-dot[data-ended] { background: var(--forma-line-strong); }
 .orbit-lin-meta { color: var(--forma-text-muted); font-size: var(--forma-font-small); white-space: nowrap; }
 .orbit-lin-ended { color: var(--forma-text-faint); }
+
+/* 능숙해짐(AU-7): 비슷한 일 목록에서 이 작업 줄을 굵게 */
+.orbit-work-learning-row[data-current] .orbit-work-text { font-weight: 650; }
+.orbit-work-learning-trend { flex-wrap: wrap; }

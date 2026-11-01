@@ -149,3 +149,58 @@ func TestHook_세션_시작에_작업_문맥이_없다(t *testing.T) {
 		t.Fatalf("주입 %q", out)
 	}
 }
+
+// AU-7 L7: 단계 회상이 지시에 기억을 이미 붙인 실행(orbit-pi claude 엔진)은 요청 훅을 --record-only로 부른다.
+// 활동만 남고, 기억 문맥도 「넣음」 사건(inject.prompt)도 없다. 넣지 않은 기억이 넣음으로 세지지 않게.
+func TestHook_record_only_요청은_활동만_남기고_넣음_사건이_없다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	if _, err := s.Save(memory.SaveInput{Kind: "lesson", Title: "format.mjs에 export를 더하면 index.mjs도 고친다", Body: "slugify를 format.mjs에 더하면 index.mjs 공개 목록에도 더한다", Source: memory.Source{Kind: "session", Ref: "s-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORBIT_RUNTIME", "orbit-pi")
+	out := hook(t, hookIn("R9", "/tmp", "format.mjs에 slugify export를 더해"), "prompt", "--host", "claude", "--runtime", "orbit-pi", "--record-only")
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("--record-only는 문맥을 내지 않는다: %q", out)
+	}
+	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range evs {
+		if e.Kind == memory.EventInjectPrompt {
+			t.Fatalf("넣지 않았는데 넣음 사건: %+v %s", e, e.Data)
+		}
+	}
+	as := activities(t)
+	if len(as) != 1 || as[0].Session != "R9" || as[0].Prompts != 1 {
+		t.Fatalf("활동은 남긴다: %+v", as)
+	}
+	// 같은 요청을 인자 없이 부르면 지금처럼 넣고 센다
+	if out := hook(t, hookIn("R9", "/tmp", "format.mjs에 slugify export를 더해"), "prompt", "--host", "claude", "--runtime", "orbit-pi"); !strings.Contains(out, "index.mjs") {
+		t.Fatalf("인자 없는 요청 훅: %q", out)
+	}
+	evs, _ = s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
+	n := 0
+	for _, e := range evs {
+		if e.Kind == memory.EventInjectPrompt {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("inject.prompt %d건, 1건이어야", n)
+	}
+}
+
+// --record-only는 요청 훅의 인자다. 시작·끝 훅에 주면 인자 오류로 아무것도 하지 않는다(종료 0).
+func TestHook_record_only는_요청_훅에만(t *testing.T) {
+	home(t)
+	seed(t)
+	_, errOut, code := run(t, hookIn("R8", "/tmp", ""), "hook", "session-start", "--host", "claude", "--record-only")
+	if code != 0 || !strings.Contains(errOut, "orbit-mem hook") {
+		t.Fatalf("시작 훅 --record-only: %d %q", code, errOut)
+	}
+	if as := activities(t); len(as) != 0 {
+		t.Fatalf("인자 오류인데 기록했습니다: %+v", as)
+	}
+}

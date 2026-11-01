@@ -1,10 +1,10 @@
 // 작업·세션 공유 상태: 처음 읽기, 실시간 갱신(watch), 확인 전 표시. React에 기대지 않는다(ctx만 있으면 시험할 수 있다).
 import {errorMessage, OrbitError} from '../orb.ts';
 import {pauseMessage, WorkPaused, WorkToolError, type PauseKind} from './contract.ts';
-import {sessionGet, sessionsList, workGet, workList} from './client.ts';
+import {sessionGet, sessionsList, workGet, workList, workMetrics} from './client.ts';
 import {defaultList, dismiss as dismissId, loadReview, saveReview, updatePending} from './review.ts';
 import {abortableSleep, RETRY_MS, watchChanges} from './watch.ts';
-import type {Session, SessionPage, StudioScope, Work, WorkCtx, WorkSummary} from './types.ts';
+import type {MetricsResult, Session, SessionPage, StudioScope, Work, WorkCtx, WorkSummary} from './types.ts';
 
 export interface WorkState {
   status: 'idle' | 'loading' | 'ready' | 'error' | 'paused';
@@ -313,6 +313,11 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     }
   }
 
+  /** AU-7: 작업의 능숙해짐 지표와 비슷한 일의 추이. 화면이 그때그때 읽는다(목록에 두지 않는다) */
+  function loadMetrics(workId: string): Promise<MetricsResult> {
+    return workMetrics(ctx, workId);
+  }
+
   /** 세션 한 쪽(사건·실행·증거). 화면이 쪽 넘김을 한다 */
   function loadSession(sessionId: string, cursor?: string): Promise<SessionPage> {
     return sessionGet(ctx, sessionId, cursor);
@@ -326,6 +331,7 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     loadDetail,
     ensureDetails,
     loadSession,
+    loadMetrics,
     visibleWorks: () => defaultList(state.works, state.pendingReview),
     getState: () => state,
     subscribe(l: () => void) {
