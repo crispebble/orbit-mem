@@ -22,7 +22,7 @@ describe('store.refresh', () => {
     const f = fakeCtx({proposals: () => ok({items: [prop('a'), prop('b', 'approved'), prop('c')]})});
     const store = createStore(f.ctx);
     await store.refresh();
-    assert.deepEqual(f.calls, [{tool: 'proposals', args: {status: 'all'}}]);
+    assert.deepEqual(f.calls, [{tool: 'proposals', args: {status: 'all'}}, {tool: 'proposals', args: {status: 'audit'}}]);
     assert.equal(store.getState().status, 'ready');
     assert.equal(store.getState().proposals.length, 3);
     assert.deepEqual(f.inbox, [], '회고 제안은 기억 정리에서 다룬다(Studio 4차 S4-3)');
@@ -87,7 +87,7 @@ describe('store.decide', () => {
     const store = createStore(f.ctx);
     await store.refresh();
     await store.decide({id: 'a', decision: 'approve'});
-    assert.deepEqual(f.calls.map(c => c.tool), ['proposals', 'proposal_decide', 'proposals']);
+    assert.deepEqual(f.calls.map(c => c.tool), ['proposals', 'proposals', 'proposal_decide', 'proposals', 'proposals']);
     assert.equal(f.badges.at(-1), null);
   });
 
@@ -96,7 +96,7 @@ describe('store.decide', () => {
     const store = createStore(f.ctx);
     await store.refresh();
     await assert.rejects(store.decide({id: 'a', decision: 'reject'}), /이미 결정한 제안입니다/);
-    assert.deepEqual(f.calls.map(c => c.tool), ['proposals', 'proposal_decide']);
+    assert.deepEqual(f.calls.map(c => c.tool), ['proposals', 'proposals', 'proposal_decide']);
   });
 });
 
@@ -107,10 +107,10 @@ describe('store.start', () => {
     const store = createStore(f.ctx, tm.api);
     await store.start();
     assert.equal(tm.t.ms, 60_000);
-    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls.length, 2, 'proposals all + audit');
     tm.t.fn?.();
     await new Promise(r => setImmediate(r));
-    assert.equal(f.calls.length, 2);
+    assert.equal(f.calls.length, 4);
     store.dispose();
     assert.equal(tm.t.cleared, true);
   });

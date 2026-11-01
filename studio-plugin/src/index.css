@@ -65,3 +65,25 @@
   gap: var(--forma-space-2);
   padding: var(--forma-space-1) 0 var(--forma-space-2);
 }
+/* 감사 목록: 항목 아래 판정·단추 줄과 빈 글 */
+.orbit-audit-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--forma-space-1);
+  min-width: 0;
+  padding-bottom: var(--forma-space-2);
+}
+.orbit-audit-meta {
+  padding-inline: var(--forma-space-3);
+}
+.orbit-audit-quote {
+  margin: 0;
+  padding-inline: var(--forma-space-3);
+  overflow-wrap: anywhere;
+  font-size: var(--forma-font-small);
+}
+.orbit-audit-empty {
+  margin: 0;
+  padding: var(--forma-space-1) var(--forma-space-3) var(--forma-space-2);
+  font-size: var(--forma-font-small);
+}

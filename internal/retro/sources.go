@@ -309,7 +309,7 @@ func applySources(s *memory.Store, mat Material, readOf func(string) (hash strin
 		vs := stale[path]
 		var ids []string
 		var body strings.Builder
-		fmt.Fprintf(&body, "근거 파일 %s 이 바뀌어, 회고가 아래 기억을 낡았다고 판정했습니다. 낡음으로 정리할지 정해 주세요.\n", path)
+		fmt.Fprintf(&body, "근거 파일 %s 이 바뀌어, 회고가 아래 기억을 낡았다고 판정했습니다(자동 정리, 감사 목록에서 되돌릴 수 있음).\n", path)
 		for _, v := range vs {
 			ids = append(ids, v.MemoryID)
 			fmt.Fprintf(&body, "\n- %s (%s)", titles[v.MemoryID], v.MemoryID)
@@ -318,8 +318,8 @@ func applySources(s *memory.Store, mat Material, readOf func(string) (hash strin
 			}
 		}
 		sort.Strings(ids)
-		_, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 파일이 바뀌어 낡음", path, ids, titles),
-			Body: body.String(), MemoryIDs: ids, RetroID: retroID, Payload: memory.Payload{Path: path}})
+		_, err := s.SubmitChange(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 파일이 바뀌어 낡음", path, ids, titles),
+			Body: body.String(), MemoryIDs: ids, RetroID: retroID, Payload: memory.Payload{Path: path}}, memory.Who{Actor: memory.ActorAutomation})
 		if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) {
 			notes = append(notes, fmt.Sprintf("%s: %v", path, err))
 			continue

@@ -7,17 +7,23 @@ import {commonText} from './i18n/messages/common.ts';
 import {callOrb, errorMessage, itemsOf, OrbitError} from './orb.ts';
 import {
   toMemoryRecord,
+  auditAttention,
+  type OrbAudit,
   type OrbMemory,
   type OrbProposal,
   type OrbSummary,
   type OrbVersion,
 } from './model.ts';
-import {decideArgs, findArgs, type DecideArgs, type DecideManyArgs, type FindParams, type UpdateArgs} from './requests.ts';
+import {decideArgs, dismissArgs, findArgs, revertArgs, type DecideArgs, type DecideManyArgs, type FindParams, type UpdateArgs} from './requests.ts';
 import type {OrbitMemory} from './parts/index.ts';
 
 export interface OrbitState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   proposals: OrbProposal[];
+  /** 감사 목록. 아직 못 읽었거나 옛 orbit-mem이면 비어 있다 */
+  audit?: OrbAudit;
+  /** 감사 목록만 읽지 못했을 때의 이유(제안 목록은 읽었다) */
+  auditError?: string;
   error?: string;
 }
 
@@ -59,19 +65,31 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
     listeners.forEach(l => l());
   };
 
-  /** OpenOrbit 앱 배지: 대기 제안 수 */
+  /** OpenOrbit 앱 배지: 사람이 볼 것(대기 제안 + 어긋남 + 확인 전 반복 교정) */
   function publishBadge(): void {
     const pending = state.proposals.filter(p => p.status === 'pending').length;
-    ctx.app.setBadge('orbit', pending > 0 ? pending : null);
+    const n = auditAttention(pending, state.audit);
+    ctx.app.setBadge('orbit', n > 0 ? n : null);
   }
 
   async function load(): Promise<void> {
     if (state.status !== 'ready') set({status: 'loading', error: undefined});
     try {
-      const out = await callOrb<unknown>(ctx, 'proposals', {status: 'all'});
+      // 감사 목록을 못 읽어도(옛 orbit-mem 등) 제안 목록은 보여 준다
+      const [out, auditOut] = await Promise.all([
+        callOrb<unknown>(ctx, 'proposals', {status: 'all'}),
+        callOrb<{audit?: OrbAudit}>(ctx, 'proposals', {status: 'audit'}).catch((e: unknown) => e as Error),
+      ]);
       const proposals = itemsOf<OrbProposal>(out, 'proposals');
       lastLogged = undefined;
-      set({status: 'ready', proposals, error: undefined});
+      if (auditOut instanceof Error) {
+        ctx.log.warn(`Could not load the audit list: ${errorMessage(auditOut)}`);
+        set({status: 'ready', proposals, auditError: errorMessage(auditOut), error: undefined});
+      } else if (auditOut.audit && typeof auditOut.audit === 'object') {
+        set({status: 'ready', proposals, audit: auditOut.audit, auditError: undefined, error: undefined});
+      } else {
+        set({status: 'ready', proposals, auditError: pick(commonText).orb.badShape('proposals'), error: undefined});
+      }
       publishBadge();
     } catch (e) {
       const message = errorMessage(e);
@@ -91,6 +109,18 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
     const out = await callOrb<DecideResult>(ctx, 'proposal_decide', {...args});
     await refresh();
     return out;
+  }
+
+  /** 자동 변경 되돌리기(id는 proposalId 또는 ledgerId) */
+  async function revert(id: string, note?: string): Promise<void> {
+    await callOrb<unknown>(ctx, 'proposal_decide', {...revertArgs(id, note)});
+    await refresh();
+  }
+
+  /** 어긋남(f-…)·반복 교정(correction:…)을 확인함으로 닫기 */
+  async function dismiss(id: string): Promise<void> {
+    await callOrb<unknown>(ctx, 'proposal_decide', {...dismissArgs(id)});
+    await refresh();
   }
 
   /** 여럿을 한 번에 결정한다. 하나가 실패해도 나머지는 orb가 결정하고, 실패한 것은 이유와 함께 돌아온다. */
@@ -157,7 +187,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
       listeners.add(l);
       return () => { listeners.delete(l); };
     },
-    refresh, decide, decideMany, findMemories, getMemory, getMemories, updateMemory, start, dispose,
+    refresh, decide, decideMany, revert, dismiss, findMemories, getMemory, getMemories, updateMemory, start, dispose,
   };
 }
 

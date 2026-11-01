@@ -392,6 +392,10 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	if _, err := r.Store.JudgeLedger(max(r.Cfg.LedgerWindowDays, 1)); err != nil {
 		errs = append(errs, i18n.Errorf("retro.err.effect", err))
 	}
+	// 해로움으로 판정된 자동 변경은 저장 계층이 되돌리고 알린다(A2).
+	if _, err := r.Store.RevertHarmfulAuto(); err != nil {
+		errs = append(errs, err)
+	}
 	week := lastWeekStart(today)
 	res, err := r.Run(ctx, KindWeekly, week)
 	if res.Status != StatusSkipped {
@@ -404,6 +408,10 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	lres, err := r.legacyDaily(ctx)
 	results = append(results, lres...)
 	if err != nil {
+		errs = append(errs, err)
+	}
+	// 그 사이 쌓인 교정·사용 판정으로 증거가 생긴 후보를 확정한다(A2).
+	if _, err := r.Store.ConfirmCandidates(); err != nil {
 		errs = append(errs, err)
 	}
 	if _, err := r.Store.CloseSettled(); err != nil {

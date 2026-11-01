@@ -104,11 +104,12 @@ func TestSave_찾기_읽기_고치기(t *testing.T) {
 	}
 
 	var upd MemoryOut
-	call(t, cs, "memory_update", map[string]any{"id": saved.Memory.ID, "expectedVersion": 1, "body": "git add -A·git commit -a 금지", "reason": "보강"}, &upd)
+	call(t, cs, "memory_update", map[string]any{"id": saved.Memory.ID, "expectedVersion": 1, "body": "git add -A·git commit -a 금지", "reason": "보강",
+		"userQuote": "git commit -a도 금지라고 더해"}, &upd)
 	if upd.Memory.Version != 2 {
 		t.Fatalf("upd = %+v", upd.Memory)
 	}
-	res := call(t, cs, "memory_update", map[string]any{"id": saved.Memory.ID, "expectedVersion": 1, "body": "x"}, nil)
+	res := call(t, cs, "memory_update", map[string]any{"id": saved.Memory.ID, "expectedVersion": 1, "body": "x", "userQuote": "x로 바꿔"}, nil)
 	if !res.IsError || !strings.Contains(text(res), "먼저 고쳤습니다") {
 		t.Fatalf("conflict not reported: %s", text(res))
 	}

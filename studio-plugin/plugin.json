@@ -1,7 +1,7 @@
 {
   "id": "orbit",
   "name": "OpenOrbit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "studioApi": "^0.1.20",
   "main": "dist/index.js",
   "styles": [
@@ -18,7 +18,7 @@
       "views": [
         {
           "id": "proposals",
-          "title": "Proposals"
+          "title": "Audit"
         },
         {
           "id": "memories",
@@ -68,7 +68,7 @@
     },
     {
       "id": "orbit.proposals",
-      "title": "Show proposals"
+      "title": "Show audit list"
     }
   ],
   "connections": {
@@ -77,7 +77,9 @@
         "id": "memory",
         "command": "orbit-mem",
         "args": [
-          "mcp"
+          "mcp",
+          "--actor",
+          "user"
         ]
       },
       {
@@ -104,7 +106,7 @@
       "apps": {
         "orbit": {
           "views": {
-            "proposals": "제안",
+            "proposals": "감사",
             "memories": "기억",
             "profiles": "실행 프로필"
           }
@@ -113,7 +115,7 @@
       "commands": {
         "orbit.find": "기억 찾기",
         "orbit.memory-graph": "기억 그래프 보기",
-        "orbit.proposals": "제안 보기"
+        "orbit.proposals": "감사 목록 보기"
       },
       "toolWindows": {
         "chat": "작업 대화"

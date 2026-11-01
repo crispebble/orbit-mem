@@ -141,7 +141,8 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	return inj.done(&b)
 }
 
-// retroLine says whether a recent retrospective left results and how many proposals wait.
+// retroLine says whether a recent retrospective left results, how many proposals wait
+// and how many harmful automatic changes were undone lately.
 func retroLine(s *memory.Store) string {
 	var parts []string
 	var period, journal string
@@ -157,6 +158,10 @@ func retroLine(s *memory.Store) string {
 	if n := s.PendingCount(); n > 0 {
 		parts = append(parts, fmt.Sprintf("제안 %d건 대기 — \"제안 보여줘\"로 확인", n))
 	}
+	// 효과 원장이 해로움으로 판정해 스스로 되돌린 자동 변경을 알린다(A2).
+	if n := s.RecentAutoReverts(since); n > 0 {
+		parts = append(parts, fmt.Sprintf("해로움 판정으로 자동 변경 %d건을 되돌림 — 감사 목록(proposals status=audit)에서 확인", n))
+	}
 	return strings.Join(parts, " · ")
 }
 
@@ -171,7 +176,7 @@ func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 const recallBodyRunes = 200
 
 // PromptInjection is the work recall (설계 「작업 기준 회상」): memories that
-// match the request strongly, ordered by match score, this project's scope
+// match the request strongly, confirmed before candidates (A2), then by match score, this project's scope
 // first, then net usage (followed − irrelevant) over the ledger window, then
 // the most recently edited, packed as title and body excerpt within
 // cfg.RecallChars. A body that does not fit is left out; a title that does
@@ -207,6 +212,10 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 	local := func(id string) bool { return scope != "" && byID[id].Scope == scope }
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, c := hits[i], hits[j]
+		// 후보(AI가 배운 것)는 회상에 쓰되 확정보다 뒤에 둔다(A2 확정 규칙).
+		if ca, cc := byID[a.Doc.ID].State == memory.StateConfirmed, byID[c.Doc.ID].State == memory.StateConfirmed; ca != cc {
+			return ca
+		}
 		if a.Score != c.Score {
 			return a.Score > c.Score
 		}

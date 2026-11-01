@@ -54,7 +54,18 @@ func section(text, heading string) string {
 
 func pendingOf(t *testing.T, e *env, kind string) []memory.Proposal {
 	t.Helper()
-	all, _ := e.s.Proposals(memory.StatusPending)
+	return proposalsOf(t, e, memory.StatusPending, kind)
+}
+
+// autoOf is the changes an automation applied without approval (A2), kept as proposals with status auto.
+func autoOf(t *testing.T, e *env, kind string) []memory.Proposal {
+	t.Helper()
+	return proposalsOf(t, e, memory.StatusAuto, kind)
+}
+
+func proposalsOf(t *testing.T, e *env, status, kind string) []memory.Proposal {
+	t.Helper()
+	all, _ := e.s.Proposals(status)
 	var out []memory.Proposal
 	for _, p := range all {
 		if p.Kind == kind {
@@ -98,7 +109,8 @@ func TestTidy_하루_회고에_클러스터_한_묶음씩_붙는다(t *testing.T
 	if t.Failed() {
 		t.Fatalf("재료:\n%s", text)
 	}
-	links, retags := pendingOf(t, e, memory.ProposalLink), pendingOf(t, e, memory.ProposalRetag)
+	// 정리(link·retag)는 승인 없이 적용되고 원장에 남는다(A2).
+	links, retags := autoOf(t, e, memory.ProposalLink), autoOf(t, e, memory.ProposalRetag)
 	if len(links) != 1 || links[0].Payload.Note != "앞뒤 절차: 정한 시각을 바꾸는 절차" || len(retags) != 1 {
 		t.Fatalf("제안 link %+v retag %+v (%s)", links, retags, report)
 	}
@@ -153,11 +165,11 @@ func TestTidy_상한과_관계와_거절한_쌍(t *testing.T) {
 	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
 		t.Fatalf("daily %+v %v", res, err)
 	}
-	links := pendingOf(t, e, memory.ProposalLink)
+	links := autoOf(t, e, memory.ProposalLink)
 	if len(links) != 1 || links[0].Title != "결정과 근거" {
 		t.Errorf("link: %+v", links)
 	}
-	if len(pendingOf(t, e, memory.ProposalRetag)) != 0 || len(pendingOf(t, e, memory.ProposalDirection)) != 1 {
+	if len(autoOf(t, e, memory.ProposalRetag)) != 0 || len(pendingOf(t, e, memory.ProposalDirection)) != 1 {
 		t.Errorf("상한을 넘은 retag는 빠지고 direction은 남아야 합니다")
 	}
 	for _, want := range []string{"같은 태그라서: 잇는 관계", "넘치는 태그 달기: 회당 정리 제안 상한 1건"} {
@@ -195,9 +207,9 @@ func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 	if !strings.Contains(e.calls[0].Stdin+strings.Join(e.calls[0].Args, " "), "그래프 정리") {
 		t.Errorf("정리 지시문이어야 합니다: %+v", e.calls[0])
 	}
-	retags := pendingOf(t, e, memory.ProposalRetag)
-	if len(retags) != 2 || len(retags[1].MemoryIDs) != 3 {
-		t.Fatalf("retag: %+v", retags)
+	retags, applied := pendingOf(t, e, memory.ProposalRetag), autoOf(t, e, memory.ProposalRetag)
+	if len(retags) != 1 || len(applied) != 1 || len(applied[0].MemoryIDs) != 3 {
+		t.Fatalf("retag: pending %+v applied %+v", retags, applied)
 	}
 	_ = ms
 }
@@ -288,8 +300,8 @@ func TestTidy_제출_상한을_넘친_정리_제안만_뺀다(t *testing.T) {
 	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
 		t.Fatalf("daily %+v %v", res, err)
 	}
-	if len(pendingOf(t, e, memory.ProposalDirection)) != 3 || len(pendingOf(t, e, memory.ProposalRetag)) != 17 {
-		t.Errorf("방향 %d, 태그 %d (%s)", len(pendingOf(t, e, memory.ProposalDirection)), len(pendingOf(t, e, memory.ProposalRetag)), report)
+	if len(pendingOf(t, e, memory.ProposalDirection)) != 3 || len(autoOf(t, e, memory.ProposalRetag)) != 17 {
+		t.Errorf("방향 %d, 태그 %d (%s)", len(pendingOf(t, e, memory.ProposalDirection)), len(autoOf(t, e, memory.ProposalRetag)), report)
 	}
 	if !strings.Contains(report, "제출 상한 20건") || !strings.Contains(text, "일반 제안과 합쳐 20건") {
 		t.Errorf("보고·안내:\n%s\n%s", report, text)

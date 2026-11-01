@@ -139,16 +139,11 @@ func TestSession_세션_발화만_읽어_요약_판정_교정_사용판정을_�
 	if hold.State != memory.StateCandidate || keep.State != memory.StateCandidate {
 		t.Fatalf("hold=%+v keep=%+v", hold, keep)
 	}
-	pending, _ := e.s.Proposals(memory.StatusPending)
-	for _, p := range pending {
-		if p.MemoryIDs[0] == hold.ID {
-			t.Fatal("hold candidate got a confirm proposal")
-		}
-	}
-	if len(pending) != 1 || pending[0].MemoryIDs[0] != keep.ID {
+	// 유지(keep)도 확정 제안을 내지 않는다(A2): 후보로 회상에 쓰이고 증거가 쌓이면 스스로 확정된다.
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
 		t.Fatalf("pending = %+v", pending)
 	}
-	if js, _ := e.s.JudgmentsFor(keep.ID); len(js) != 1 || js[0].ProposalID != pending[0].ID || js[0].Session != "claude:sess-x" {
+	if js, _ := e.s.JudgmentsFor(keep.ID); len(js) != 1 || js[0].Verdict != memory.VerdictKeep || js[0].Session != "claude:sess-x" {
 		t.Fatalf("keep judgment = %+v", js)
 	}
 	rej, _ := e.s.RecentRejections(5)
@@ -393,10 +388,15 @@ func TestWeekly_정리_재료와_교훈_제출(t *testing.T) {
 	for _, p := range pending {
 		kinds[p.Kind]++
 	}
-	if kinds["edit"] != 1 || kinds["revert"] != 1 || kinds["link"] != 1 {
+	if kinds["edit"] != 1 || kinds["revert"] != 1 {
 		t.Fatalf("proposals = %v (%s)", kinds, report)
 	}
-	for _, p := range pending {
+	// 잇기는 승인 없이 적용되고 원장에 남는다(A2).
+	links := autoOf(t, e, memory.ProposalLink)
+	if len(links) != 1 {
+		t.Fatalf("auto link = %+v (%s)", links, report)
+	}
+	for _, p := range append(pending, links...) {
 		if p.Kind == "link" && (p.Payload.Note != "앞뒤 절차: 같은 배포 절차의 앞뒤" || len(p.MemoryIDs) != 2) {
 			t.Errorf("link 제안: %+v", p)
 		}

@@ -114,7 +114,14 @@ func TestLegacy_옛_기억을_클러스터별로_판정해_제안과_사건을_�
 		t.Fatalf("재료:\n%s", text)
 	}
 
-	confirms, merges, stales := pendingOf(t, e, memory.ProposalConfirm), pendingOf(t, e, memory.ProposalMerge), pendingOf(t, e, memory.ProposalStale)
+	// 합치기·낡음은 승인 없이 적용되고 원장에 남는다(A2). 증거 없는 확정은 사용자 결정을 기다린다.
+	confirms, merges, stales := pendingOf(t, e, memory.ProposalConfirm), autoOf(t, e, memory.ProposalMerge), autoOf(t, e, memory.ProposalStale)
+	if got, _ := e.s.Get(old.ID); got.State != memory.StateStale {
+		t.Errorf("낡음이 적용되지 않았습니다: %s", got.State)
+	}
+	if all, _ := e.s.Ledger(memory.LedgerFilter{}); len(all) != 2 {
+		t.Errorf("원장 %d줄(합치기·낡음 둘이어야 함)", len(all))
+	}
 	if len(confirms) != 1 || confirms[0].MemoryIDs[0] != cand.ID || !strings.HasPrefix(confirms[0].Title, "옛 기억 확정: ") || !strings.Contains(confirms[0].Body, "지금 회고 시각과 같다") {
 		t.Errorf("확정 %+v", confirms)
 	}
@@ -183,17 +190,25 @@ func TestLegacy_받지_못한_판정과_겹치는_제안(t *testing.T) {
 	}
 }
 
-// 설계 · Orbit 3차 O3-3 끝 기준 2: 승인한 정리는 원장에 남고 되돌릴 수 있다. 합친 기억은 옛 표식만 빼고 태그를 잇는다.
+// 설계 · Orbit 3차 O3-3 끝 기준 2(A2로 바뀜): 자동 정리는 원장에 남고 되돌릴 수 있다. 합친 기억은 옛 표식만 빼고 태그를 잇는다.
 func TestLegacy_승인한_합치기는_원장에_남고_되돌린다(t *testing.T) {
 	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
 	e, ms := legacyEnv(t, now)
 	cur, dup := ms["커밋은 경로를 명시해서 스테이징한다"], ms["커밋할 때 경로를 명시해서 스테이징한다 git add 금지"]
 	runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
 		{MemoryID: dup.ID, Verdict: "merge", With: []string{cur.ID}, MergedTitle: "커밋은 경로를 명시해서 스테이징한다", MergedBody: "git add -A 금지", Reason: "같은 말"}}})
-	merge := pendingOf(t, e, memory.ProposalMerge)[0]
-	res, err := e.s.Decide(memory.DecideInput{ID: merge.ID, Decision: "approve"})
-	if err != nil {
-		t.Fatal(err)
+	// 합치기는 승인 없이 적용되고 원장에 남는다(A2).
+	merges := autoOf(t, e, memory.ProposalMerge)
+	if len(merges) != 1 {
+		t.Fatalf("자동 합치기 %+v", merges)
+	}
+	var res struct{ Created, LedgerID string }
+	all, _ := e.s.Ledger(memory.LedgerFilter{})
+	for _, l := range all {
+		if l.ProposalID == merges[0].ID {
+			res.LedgerID = l.ID
+			res.Created = strings.Join(l.Before.Created, ",")
+		}
 	}
 	// 지금 기억의 제목을 살려 합치면 그 기억에 합친 본문·태그가 새 판으로 쌓인다.
 	merged, _ := e.s.Get(cur.ID)
@@ -203,11 +218,7 @@ func TestLegacy_승인한_합치기는_원장에_남고_되돌린다(t *testing.
 	if res.LedgerID == "" {
 		t.Fatal("원장 줄이 없습니다")
 	}
-	rv, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalRevert, Title: "옛 기억 합치기 되돌리기", Payload: memory.Payload{LedgerID: res.LedgerID}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.s.Decide(memory.DecideInput{ID: rv.ID, Decision: "approve"}); err != nil {
+	if _, err := e.s.RevertChange(res.LedgerID, memory.Who{}, "감사 목록에서 되돌림"); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{cur.ID, dup.ID} {
@@ -274,7 +285,7 @@ func TestLegacy_겹치는_합치기와_빈_본문은_받지_않는다(t *testing
 		{MemoryID: old.ID, Verdict: "merge", With: []string{other.ID}, MergedTitle: "회고 결과", Reason: "본문 없음"},
 		{MemoryID: other.ID, Verdict: "stale", With: nil, Reason: "합치기에 든 기억"},
 	}})
-	if merges := pendingOf(t, e, memory.ProposalMerge); len(merges) != 1 || merges[0].MemoryIDs[1] != dup.ID {
+	if merges := autoOf(t, e, memory.ProposalMerge); len(merges) != 1 || merges[0].MemoryIDs[1] != dup.ID {
 		t.Fatalf("합치기 %+v (%s)", merges, report)
 	}
 	for _, want := range []string{cand.ID + ": 합칠 기억 " + cur.ID + "는 이미 다른 합치기", old.ID + ": 합치기는 합칠 기억(with)과 합친 제목(mergedTitle)·본문(mergedBody)이 필요합니다"} {
@@ -286,10 +297,10 @@ func TestLegacy_겹치는_합치기와_빈_본문은_받지_않는다(t *testing
 		t.Errorf("판정 사건 %+v", ev)
 	}
 
-	// 다음 묶음에서: 앞 합치기가 대기 중이면 같은 지금 기억에 또 합치지 않는다.
+	// 다음 묶음에서: 앞 합치기는 이미 적용됐으므로(A2) 같은 지금 기억에 다시 합칠 수 있다(앞 본문을 덮지 않고 새 판으로 쌓인다).
 	_, report, _ = runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
 		{MemoryID: cand.ID, Verdict: "merge", With: []string{cur.ID}, MergedTitle: "커밋 규칙", MergedBody: "본문", Reason: "다시"}}})
-	if n := len(pendingOf(t, e, memory.ProposalMerge)); n != 1 || !strings.Contains(report, "대기 중인 합치기") {
+	if n := len(autoOf(t, e, memory.ProposalMerge)); n != 2 {
 		t.Fatalf("합치기 %d건 (%s)", n, report)
 	}
 }
@@ -303,8 +314,8 @@ func TestLegacy_합치기에_든_기억의_다른_판정(t *testing.T) {
 		{MemoryID: b.ID, Verdict: "stale", Reason: "낡음"},
 		{MemoryID: a.ID, Verdict: "merge", With: []string{b.ID}, MergedTitle: "회고", MergedBody: "합친 본문", Reason: "같은 회고 이야기"},
 	}})
-	if len(pendingOf(t, e, memory.ProposalStale)) != 0 || len(pendingOf(t, e, memory.ProposalMerge)) != 1 {
-		t.Fatalf("낡음 %d, 합치기 %d (%s)", len(pendingOf(t, e, memory.ProposalStale)), len(pendingOf(t, e, memory.ProposalMerge)), report)
+	if len(autoOf(t, e, memory.ProposalStale)) != 0 || len(autoOf(t, e, memory.ProposalMerge)) != 1 {
+		t.Fatalf("낡음 %d, 합치기 %d (%s)", len(autoOf(t, e, memory.ProposalStale)), len(autoOf(t, e, memory.ProposalMerge)), report)
 	}
 	if !strings.Contains(report, b.ID+": 다른 합치기("+a.ID+")에 든 기억이라 keep만 받습니다") {
 		t.Errorf("보고:\n%s", report)
@@ -404,23 +415,29 @@ func TestLegacy_다른_언어로_남은_로그아웃_실패도_몫에서_뺀다(
 	}
 }
 
-// 끝 기준 2: 승인한 옛 기억 확정·낡음도 원장에 남고 되돌리면 옛 상태로 돌아온다.
+// 끝 기준 2: 옛 기억 확정(증거가 없어 사람이 승인)·낡음(자동 적용)도 원장에 남고 되돌리면 옛 상태로 돌아온다.
 func TestLegacy_승인한_확정과_낡음도_되돌린다(t *testing.T) {
 	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
 	e, ms := legacyEnv(t, now)
 	cand, old := ms["회고는 새벽 네 시에 돈다"], ms["onidot-orbit-plugin 저장소에서 스킬을 고친다"]
 	runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
 		{MemoryID: cand.ID, Verdict: "confirm", Reason: "맞다"}, {MemoryID: old.ID, Verdict: "stale", Reason: "보관한 저장소"}}})
-	for _, p := range append(pendingOf(t, e, memory.ProposalConfirm), pendingOf(t, e, memory.ProposalStale)...) {
+	var lines []string
+	for _, p := range pendingOf(t, e, memory.ProposalConfirm) {
 		res, err := e.s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
 		if err != nil || res.LedgerID == "" {
 			t.Fatalf("승인 %+v %v", res, err)
 		}
-		rv, err := e.s.Propose(memory.ProposalInput{Kind: memory.ProposalRevert, Title: "되돌리기", Payload: memory.Payload{LedgerID: res.LedgerID}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := e.s.Decide(memory.DecideInput{ID: rv.ID, Decision: "approve"}); err != nil {
+		lines = append(lines, res.LedgerID)
+	}
+	for _, p := range autoOf(t, e, memory.ProposalStale) {
+		lines = append(lines, p.ID)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("확정 승인·자동 낡음 %v", lines)
+	}
+	for _, ref := range lines {
+		if _, err := e.s.RevertChange(ref, memory.Who{}, "되돌리기"); err != nil {
 			t.Fatal(err)
 		}
 	}

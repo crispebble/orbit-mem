@@ -61,8 +61,14 @@ func (h handlers) activity(_ context.Context, _ *mcp.CallToolRequest, in Activit
 // handlers the MCP server calls, without the use events a host's calls record.
 type Tools struct{ h handlers }
 
-// NewTools gives the tools over the store for a connection like o.
-func NewTools(s *memory.Store, o Options) Tools { return Tools{handlers{s: s, o: o}} }
+// NewTools gives the tools over the store for a connection like o. The thin
+// CLI is the person at a terminal: without an actor it writes as user.
+func NewTools(s *memory.Store, o Options) Tools {
+	if o.Actor == "" {
+		o.Actor = memory.ActorUser
+	}
+	return Tools{handlers{s: s, o: o}}
+}
 
 // asError turns a tool error result into an error.
 func asError(res *mcp.CallToolResult) error {
