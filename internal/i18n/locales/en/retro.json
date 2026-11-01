@@ -8,7 +8,13 @@
   "retro.err.no_session_retro": "no such session retrospective: %s",
   "retro.err.not_running": "retrospective %s is %s and cannot be finished",
   "retro.err.weekly_monday": "a weekly retrospective runs with the Monday of a finished week: %s",
+  "retro.err.work_cwd": "%w: cwd must be an absolute path",
+  "retro.err.work_ended": "%w: no endedAt",
+  "retro.err.work_input": "the work record is not usable",
+  "retro.err.work_ref": "%w: no ref",
+  "retro.err.work_status": "%w: status is %s",
   "retro.host_no_result": "the host did not submit a result",
   "retro.no_material": "no material",
-  "retro.signed_out_note": "It runs again on the next run once you are signed in"
+  "retro.signed_out_note": "It runs again on the next run once you are signed in",
+  "retro.work_abandoned": "abandoned run: it did not finish in time, so the next prepare runs it again"
 }

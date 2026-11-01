@@ -50,6 +50,13 @@ const (
 	TargetKindRole   = "role"
 )
 
+// TargetKindProcedure is a procedure (a lesson tagged TagProcedure) that came
+// out of several works: a harness improvement candidate, not a correction target.
+const TargetKindProcedure = "procedure"
+
+// TagProcedure marks a lesson as a procedure (how a kind of work is done).
+const TagProcedure = "procedure"
+
 // TargetKinds are what a correction can point at.
 var TargetKinds = []string{TargetKindMemory, TargetKindSkill, TargetKindRole}
 
@@ -333,23 +340,128 @@ func (s *Store) RepeatedCorrections(all bool) ([]RepeatedCorrection, error) {
 		}
 		out = append(out, r)
 	}
+	return sortRepeated(out), nil
+}
+
+// HarnessCandidates are the skills and roles corrected over the threshold and
+// the procedures that came out of that many works: the harness improvement
+// candidates the openorbit lab reads (it only reads).
+func (s *Store) HarnessCandidates() ([]RepeatedCorrection, error) {
+	over, err := s.RepeatedCorrections(false)
+	if err != nil {
+		return nil, err
+	}
+	over = slices.DeleteFunc(over, func(r RepeatedCorrection) bool { return !r.Harness })
+	procs, err := s.RepeatedProcedures(false)
+	if err != nil {
+		return nil, err
+	}
+	return sortRepeated(append(over, procs...)), nil
+}
+
+func sortRepeated(out []RepeatedCorrection) []RepeatedCorrection {
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Sessions != out[j].Sessions {
 			return out[i].Sessions > out[j].Sessions
 		}
 		return out[i].Last > out[j].Last
 	})
-	return out, nil
+	return out
 }
 
-// HarnessCandidates are the skills and roles corrected over the threshold:
-// the harness improvement candidates the openorbit lab reads (it only reads).
-func (s *Store) HarnessCandidates() ([]RepeatedCorrection, error) {
-	over, err := s.RepeatedCorrections(false)
+// RepeatedProcedures counts, for each live lesson tagged TagProcedure, the
+// different works (refs of its work sources) it came out of since the person
+// last marked it reviewed (key correction:procedure:<id>). Sessions is that
+// number of works. With all false only those at or over the threshold
+// (Policy.CorrectionSessions) come back.
+func (s *Store) RepeatedProcedures(all bool) ([]RepeatedCorrection, error) {
+	rows, err := s.db.Query(`SELECT m.id, m.title, m.tags, src.ref, src.at FROM memories m JOIN sources src ON src.memory_id=m.id
+		WHERE m.kind=? AND m.state IN (?,?) AND src.kind=? AND src.ref<>'' ORDER BY src.at, src.rowid`,
+		KindLesson, StateCandidate, StateConfirmed, SourceWork)
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(over, func(r RepeatedCorrection) bool { return !r.Harness }), nil
+	type agg struct {
+		r     RepeatedCorrection
+		works map[string]bool
+	}
+	byID := map[string]*agg{}
+	var order []string
+	for rows.Next() {
+		var id, title, tags, ref string
+		var at int64
+		if rows.Scan(&id, &title, &tags, &ref, &at) != nil {
+			continue
+		}
+		a := byID[id]
+		if a == nil {
+			var tt []string
+			_ = json.Unmarshal([]byte(tags), &tt)
+			if !slices.Contains(tt, TagProcedure) {
+				continue
+			}
+			a = &agg{r: RepeatedCorrection{Key: correctionKey(TargetKindProcedure, id), TargetKind: TargetKindProcedure, Target: id, Title: title,
+				Harness: true}, works: map[string]bool{}}
+			byID[id] = a
+			order = append(order, id)
+		}
+		a.r.Corrections++ // 데려온 작업 출처 수(같은 작업이 두 번이면 둘)
+		if a.r.First == 0 || at < a.r.First {
+			a.r.First = at
+		}
+		a.r.Last = max(a.r.Last, at)
+		a.works[ref] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	threshold := s.Policy.orDefault().CorrectionSessions
+	var out []RepeatedCorrection
+	for _, id := range order {
+		a := byID[id]
+		var acked int64
+		_ = s.db.QueryRow(`SELECT at FROM audit_acks WHERE key=?`, a.r.Key).Scan(&acked)
+		if acked > 0 { // 확인함 뒤에 붙은 출처만 다시 센다
+			if err := s.countProcedureSince(&a.r, a.works, acked); err != nil {
+				return nil, err
+			}
+		}
+		r := a.r
+		r.Sessions, r.Threshold, r.AckedAt = len(a.works), threshold, acked
+		r.Over = r.Sessions >= threshold
+		if r.Sessions == 0 || (!all && !r.Over) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return sortRepeated(out), nil
+}
+
+// countProcedureSince recounts a procedure's work sources added after since.
+func (s *Store) countProcedureSince(r *RepeatedCorrection, works map[string]bool, since int64) error {
+	clear(works)
+	r.Corrections, r.First, r.Last = 0, 0, 0
+	rows, err := s.db.Query(`SELECT ref, at FROM sources WHERE memory_id=? AND kind=? AND ref<>'' AND at>?`, r.Target, SourceWork, since)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ref string
+		var at int64
+		if rows.Scan(&ref, &at) != nil {
+			continue
+		}
+		works[ref] = true
+		r.Corrections++
+		if r.First == 0 || at < r.First {
+			r.First = at
+		}
+		r.Last = max(r.Last, at)
+	}
+	return rows.Err()
 }
 
 // Acknowledge marks an audit item reviewed: a repeated correction counts again
@@ -468,6 +580,11 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 	if a.Corrections, err = s.RepeatedCorrections(false); err != nil {
 		return a, err
 	}
+	procs, err := s.RepeatedProcedures(false)
+	if err != nil {
+		return a, err
+	}
+	a.Corrections = sortRepeated(append(a.Corrections, procs...))
 	if a.Corrections == nil {
 		a.Corrections = []RepeatedCorrection{}
 	}

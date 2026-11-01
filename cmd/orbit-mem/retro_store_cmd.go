@@ -103,7 +103,7 @@ func storePrepare(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (an
 	cwd := fs.String("cwd", "", "")
 	endedAt := fs.Int64("ended-at", 0, "")
 	dailyMax := fs.Int("daily-max", 0, "")
-	return func(_ *app, k *retro.Keeper, cfg config.Config) (any, error) {
+	return func(a *app, k *retro.Keeper, cfg config.Config) (any, error) {
 		h := *host
 		if h == "" {
 			h = cfg.RetroHost
@@ -112,6 +112,12 @@ func storePrepare(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (an
 			return nil, storeUsage("prepare")
 		}
 		switch *kind {
+		case retro.KindWork:
+			in, err := readWork(a.stdin)
+			if err != nil {
+				return nil, err
+			}
+			return k.PrepareWork(h, in)
 		case retro.KindTidy:
 			return k.PrepareTidy(h)
 		case retro.KindLegacy:
@@ -124,6 +130,25 @@ func storePrepare(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (an
 		}
 		return k.Prepare(*kind, *period, h)
 	}
+}
+
+// maxWorkInput is how much of a work record prepare --kind work reads from stdin.
+const maxWorkInput = 4 << 20
+
+// readWork reads the one work record JSON object of prepare --kind work.
+func readWork(r io.Reader) (retro.WorkIn, error) {
+	var in retro.WorkIn
+	dec := json.NewDecoder(io.LimitReader(r, maxWorkInput))
+	if err := dec.Decode(&in); err != nil {
+		return in, i18n.Errorf("cli.retro_store.err.work_stdin", err)
+	}
+	if dec.More() {
+		return in, i18n.Errorf("cli.retro_store.err.work_stdin", i18n.T("cli.retro_store.err.one_object"))
+	}
+	if err := in.Validate(); err != nil {
+		return in, storeError{i18n.T("cli.retro_store.usage", "prepare") + " — " + err.Error()}
+	}
+	return in, nil
 }
 
 func storeFinish(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
