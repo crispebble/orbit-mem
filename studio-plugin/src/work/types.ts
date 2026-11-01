@@ -54,6 +54,16 @@ export interface Step {
   childWorkIds: string[];
   /** 호스트의 단계 이름표(계획 id 등). 없을 수 있다. 가정의 `steps`는 이 값이나 `id`로 단계를 가리킨다. */
   native?: {kind: string; id: string};
+  /** 단계를 내줄 때 붙인 기억(AU-4, orbit.work 1.4). 마지막 시도 것. 없으면 칸이 없다. */
+  recall?: StepRecall;
+}
+
+/** 단계별 회상(AU-4, orbit.work 1.4): 질의와 붙인 기억. 기억의 text는 기억 소스가 단계 지시에 넣은 글 그대로다. */
+export interface StepRecall {
+  attempt?: number;
+  query?: string;
+  memories: {id: string; kind?: string; text?: string}[];
+  at: string;
 }
 
 export interface Run {
