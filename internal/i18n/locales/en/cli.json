@@ -166,6 +166,7 @@
   "flag.export.all": "include hidden (rejected) memories",
   "flag.export.out": "file (jsonl) or folder (md); without it jsonl goes to stdout",
   "flag.hook.launcher": "with --runtime: who asked orbit-pi for the session (studio, telegram, workflow…); default ORBIT_LAUNCHER or orbit-pi",
+  "flag.hook.record_only": "prompt hook only: record the activity alone, inject no memories and record no injection (a run whose instruction already carries its step recall)",
   "flag.hook.runtime": "orbit-pi only: the runtime that started this session calls the hook itself (ORBIT_RUNTIME=orbit-pi turns the plugin hooks off)",
   "flag.import.dry_run": "only check what would be imported",
   "flag.inject.cwd": "working directory that picks the project scope",

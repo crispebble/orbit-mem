@@ -119,6 +119,9 @@ func cmdHook(a *app, args []string) error {
 	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
 	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
 	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
+	// AU-7: 지시에 단계 회상이 이미 든 실행(orbit-pi claude 엔진)의 요청 훅. 활동만 남기고
+	// 기억을 찾지도, 「넣음」 사건(inject.prompt)을 남기지도 않는다.
+	recordOnly := fs.Bool("record-only", false, i18n.T("flag.hook.record_only"))
 	pos, err := parse(fs, args)
 	if err == nil && len(pos) == 1 && pos[0] == "work" {
 		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 OpenOrbit으로 옮겼다: 입력을 버리고 끝낸다.
@@ -126,7 +129,7 @@ func cmdHook(a *app, args []string) error {
 		return nil
 	}
 	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end") || (*host != "claude" && *host != "codex") ||
-		(*runtime != "" && *runtime != runtimeOrbitPi) {
+		(*runtime != "" && *runtime != runtimeOrbitPi) || (*recordOnly && pos[0] != "prompt") {
 		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
 	}
@@ -174,7 +177,11 @@ func cmdHook(a *app, args []string) error {
 		if in.Cwd != "" {
 			p = project.Resolve(in.Cwd)
 		}
-		memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
+		if *recordOnly {
+			done <- ""
+		} else {
+			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
+		}
 		recordActivity(s, pos[0], *host, in, p, who, at)
 		if pos[0] == "session-start" {
 			autoBackup(cfg)

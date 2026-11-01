@@ -166,6 +166,7 @@
   "flag.export.all": "숨긴(거절한) 기억도 넣는다",
   "flag.export.out": "파일(jsonl) 또는 폴더(md). 없으면 jsonl은 stdout으로",
   "flag.hook.launcher": "--runtime과 함께: orbit-pi에 세션을 시킨 쪽(studio·telegram·workflow 등). 기본은 ORBIT_LAUNCHER, 없으면 orbit-pi",
+  "flag.hook.record_only": "prompt 훅만: 활동만 남기고 기억을 넣지 않으며 넣음 사건도 남기지 않는다(지시에 단계 회상이 이미 든 실행)",
   "flag.hook.runtime": "orbit-pi만: 세션을 띄운 런타임이 훅을 직접 부른다(ORBIT_RUNTIME=orbit-pi면 플러그인 훅은 끈다)",
   "flag.import.dry_run": "들여올 것만 확인한다",
   "flag.inject.cwd": "프로젝트 범위를 정하는 작업 폴더",
