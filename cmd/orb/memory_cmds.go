@@ -54,6 +54,11 @@ func cmdMCP(a *app, args []string) error {
 	}
 	// MCP 응답 글은 AI가 읽는다(ONID-61 대상 아님). 공유 오류(기억·제안)도 언어 설정과 무관하게 한국어로 낸다.
 	i18n.Set(i18n.KO)
+	if *reader { // 기억 그래프만. 작업·결정 카드 도구는 orb work mcp(openorbit-work)
+		ctx, cancel := signalContext()
+		defer cancel()
+		return mcpserver.NewReader(paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -64,11 +69,6 @@ func cmdMCP(a *app, args []string) error {
 		cwd, _ = os.Getwd()
 	}
 	wo := &mcpserver.WorkOptions{DB: paths().WorkDB(), Spool: paths().WorkSpool(), Cwd: cwd, Project: p.Scope, Read: work.ReadOptions{StaleAfter: cfg.StaleAfter()}}
-	if *reader {
-		ctx, cancel := signalContext()
-		defer cancel()
-		return mcpserver.NewReader(*wo, paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
-	}
 	if !cfg.WorkOn() {
 		wo = nil
 	}

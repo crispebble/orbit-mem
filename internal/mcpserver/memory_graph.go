@@ -20,9 +20,20 @@ func unavailable(err error) *callError {
 	return &callError{Code: "UNAVAILABLE", Message: "기억 기록을 읽지 못했습니다: " + err.Error()}
 }
 
+const readerInstructions = `OpenOrbit 기억 그래프(orbit.memory 1판)를 memory_graph로 읽는다.
+응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id는 받은 그대로 돌려준다.`
+
+// NewReader is orb mcp --reader: memory_graph for apps such as Orbit Studio and orbit-pi.
+// The work and decision card tools for apps are openorbit-work's (orb work mcp). memDB is
+// opened on the first memory_graph call. The server name stays orbit-work (an outside name).
+func NewReader(memDB, version string) *mcp.Server {
+	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
+	addMemoryGraphTool(srv, &memoryGraphTool{path: memDB})
+	return srv
+}
+
 // memoryGraphTool is the reader's memory_graph (orbit.memory 1판). It opens the
-// memory store on the first call so a reader that only reads work never
-// touches memory.db.
+// memory store on the first call.
 type memoryGraphTool struct {
 	path string
 	mu   sync.Mutex

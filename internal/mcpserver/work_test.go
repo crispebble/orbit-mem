@@ -59,7 +59,7 @@ func aiHost(t *testing.T, e workEnv) *mcp.ClientSession {
 }
 
 func readerHost(t *testing.T, e workEnv) *mcp.ClientSession {
-	return connectServer(t, NewReader(e.opts(), e.memDB(), "test"))
+	return connectServer(t, NewReader(e.memDB(), "test"))
 }
 
 // seedWork fills work.db with a graph that touches most states.
@@ -137,7 +137,8 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
 	return names
 }
 
-// 끝 기준: AI 호스트에는 work_list·work_get·work_title만, --reader에는 work_title이 없고 memory_graph가 있다.
+// 끝 기준: AI 호스트에는 work_list·work_get·work_title만, --reader에는 기억 그래프(memory_graph)만 있다.
+// 작업·결정 카드 읽기 도구는 openorbit-work(orb work mcp)로 옮겼다(설계 · OpenOrbit 4차 「구조 (2026-11-01 확정)」).
 func TestWorkToolLists(t *testing.T) {
 	e := newWorkEnv(t)
 	ai := strings.Join(toolNames(t, aiHost(t, e)), ",")
@@ -149,8 +150,11 @@ func TestWorkToolLists(t *testing.T) {
 	if strings.Contains(ai, "work_sessions") || strings.Contains(ai, "work_changes") || strings.Contains(ai, "decision_") {
 		t.Errorf("AI 호스트에 읽는 쪽 도구가 섞였습니다: %s", ai)
 	}
-	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "decision_answer,decision_changes,decision_get,decision_list,decision_open,decision_withdraw,memory_graph,work_changes,work_get,work_list,work_sessions" {
+	if got := strings.Join(toolNames(t, readerHost(t, e)), ","); got != "memory_graph" {
 		t.Errorf("읽는 쪽 도구: %s", got)
+	}
+	if ins := readerHost(t, e).InitializeResult().Instructions; !strings.Contains(ins, "memory_graph") || strings.Contains(ins, "work_") || strings.Contains(ins, "decision_") {
+		t.Errorf("읽는 쪽 안내는 기억 그래프만: %s", ins)
 	}
 }
 
@@ -158,7 +162,7 @@ func TestWorkToolLists(t *testing.T) {
 // Codex는 주석이 없으면 파괴적·바깥 세계 도구로 보고 승인을 요구해, 승인 정책 never에서 work_title이 실패했다(ONID-8).
 func TestWorkToolAnnotations(t *testing.T) {
 	e := newWorkEnv(t)
-	for _, cs := range []*mcp.ClientSession{aiHost(t, e), readerHost(t, e)} {
+	for _, cs := range []*mcp.ClientSession{aiHost(t, e)} {
 		res, err := cs.ListTools(context.Background(), nil)
 		if err != nil {
 			t.Fatal(err)
@@ -187,7 +191,7 @@ func TestWorkToolAnnotations(t *testing.T) {
 func TestWorkResponsesMatchContract(t *testing.T) {
 	e := newWorkEnv(t)
 	seedWork(t, e)
-	cs := readerHost(t, e)
+	cs := aiHost(t, e)
 	list := validate(t, "work_list", callRaw(t, cs, "work_list", nil))
 	items := list["items"].([]any)
 	if len(items) != 2 {
@@ -196,27 +200,6 @@ func TestWorkResponsesMatchContract(t *testing.T) {
 	for _, it := range items {
 		id := it.(map[string]any)["id"].(string)
 		validate(t, "work_get", callRaw(t, cs, "work_get", map[string]any{"workId": id, "includeChildren": true}))
-	}
-	sess := validate(t, "work_sessions", callRaw(t, cs, "work_sessions", map[string]any{"limit": 1}))
-	if sess["nextCursor"] == nil {
-		t.Error("작은 limit에 nextCursor가 없습니다")
-	}
-	validate(t, "work_sessions", callRaw(t, cs, "work_sessions", map[string]any{"limit": 1, "cursor": sess["nextCursor"]}))
-	one := validate(t, "work_sessions", callRaw(t, cs, "work_sessions", map[string]any{"sessionId": "S1", "limit": 3}))
-	if one["runs"] == nil || one["evidence"] == nil || one["nextCursor"] == nil {
-		t.Errorf("세션 첫 쪽: %v", one)
-	}
-	two := validate(t, "work_sessions", callRaw(t, cs, "work_sessions", map[string]any{"sessionId": "S1", "cursor": one["nextCursor"]}))
-	if two["runs"] != nil {
-		t.Error("뒤 쪽에 runs가 있습니다")
-	}
-	ch := validate(t, "work_changes", callRaw(t, cs, "work_changes", nil))
-	if ch["reset"] != true || ch["waitMax"].(float64) != float64(work.WaitMax.Milliseconds()) {
-		t.Errorf("처음 붙을 때: %v", ch)
-	}
-	ch = validate(t, "work_changes", callRaw(t, cs, "work_changes", map[string]any{"after": ch["seq"]}))
-	if ch["reset"] != false || len(ch["workIds"].([]any)) != 0 {
-		t.Errorf("바뀐 것 없음: %v", ch)
 	}
 	// 시각 모양은 Schema가 검사한다. 한 번 더 직접 본다
 	b, _ := json.Marshal(callRaw(t, cs, "work_get", map[string]any{"workId": items[0].(map[string]any)["id"]}).StructuredContent)
@@ -229,8 +212,8 @@ func TestWorkResponsesMatchContract(t *testing.T) {
 func TestWorkMajorAndArgs(t *testing.T) {
 	e := newWorkEnv(t)
 	seedWork(t, e)
-	cs := readerHost(t, e)
-	for _, tool := range []string{"work_list", "work_get", "work_sessions", "work_changes"} {
+	cs := aiHost(t, e)
+	for _, tool := range []string{"work_list", "work_get"} {
 		res := callRaw(t, cs, tool, map[string]any{"major": 2, "workId": "x"})
 		m := validate(t, "error", res)
 		er := m["error"].(map[string]any)
@@ -248,16 +231,12 @@ func TestWorkMajorAndArgs(t *testing.T) {
 		code  string
 		field string
 	}{
-		{"work_changes", map[string]any{"wait": "long"}, "INVALID_ARGUMENT", "wait"},
-		{"work_changes", map[string]any{"wait": -1}, "INVALID_ARGUMENT", "wait"},
 		{"work_list", map[string]any{"state": "closed"}, "INVALID_ARGUMENT", "state"},
 		{"work_list", map[string]any{"limit": 1.5}, "INVALID_ARGUMENT", "limit"},
 		{"work_list", map[string]any{"cwdPrefix": "/a"}, "INVALID_ARGUMENT", "cwdPrefix"},
 		{"work_list", map[string]any{"cursor": "망가짐"}, "INVALID_ARGUMENT", "cursor"},
-		{"work_list", map[string]any{"scope": "project"}, "INVALID_ARGUMENT", "project"},
 		{"work_get", map[string]any{}, "INVALID_ARGUMENT", "workId"},
 		{"work_get", map[string]any{"workId": "w-없음"}, "NOT_FOUND", "workId"},
-		{"work_sessions", map[string]any{"sessionId": "없음"}, "NOT_FOUND", "sessionId"},
 	} {
 		res := callRaw(t, cs, c.tool, c.args)
 		er := validate(t, "error", res)["error"].(map[string]any)
@@ -265,7 +244,7 @@ func TestWorkMajorAndArgs(t *testing.T) {
 			t.Errorf("%s %v: %v", c.tool, c.args, er)
 		}
 	}
-	// 읽는 쪽에서도 scope=project에 project를 주면 거른다. 세션 시작을 보지 못한 Codex 세션의 작업은 프로젝트를 모른다
+	// scope=project에 project를 주면 그 프로젝트로 거른다. 세션 시작을 보지 못한 Codex 세션의 작업은 프로젝트를 모른다
 	m = validate(t, "work_list", callRaw(t, cs, "work_list", map[string]any{"scope": "project", "project": "project:github.com/me/app"}))
 	if len(m["items"].([]any)) != 1 {
 		t.Errorf("프로젝트 거르기: %d", len(m["items"].([]any)))
@@ -335,7 +314,7 @@ func TestWorkReadDrainsSpool(t *testing.T) {
 	if err := work.SpoolEvent(e.spool, work.NewEvent(work.KindTaskCreate, "claude", "S9", 1, work.TaskCreate{List: "S9", ID: "1", Subject: "스풀 단계"})); err != nil {
 		t.Fatal(err)
 	}
-	m := validate(t, "work_list", callRaw(t, readerHost(t, e), "work_list", nil))
+	m := validate(t, "work_list", callRaw(t, aiHost(t, e), "work_list", nil))
 	found := false
 	for _, it := range m["items"].([]any) {
 		if it.(map[string]any)["title"] == "스풀 단계" {
@@ -344,29 +323,5 @@ func TestWorkReadDrainsSpool(t *testing.T) {
 	}
 	if !found {
 		t.Error("스풀 사건이 첫 조회에 없습니다")
-	}
-}
-
-// 끝 기준: work_changes에 waitMax보다 큰 wait를 넘기면 waitMax 안에 답하고, wait를 넘기지 않으면 바로 답한다.
-func TestWorkChangesWaitCap(t *testing.T) {
-	old := work.WaitMax
-	work.WaitMax = 400 * time.Millisecond
-	t.Cleanup(func() { work.WaitMax = old })
-	e := newWorkEnv(t)
-	seedWork(t, e)
-	cs := readerHost(t, e)
-	first := validate(t, "work_changes", callRaw(t, cs, "work_changes", nil))
-	start := time.Now()
-	m := validate(t, "work_changes", callRaw(t, cs, "work_changes", map[string]any{"after": first["seq"], "wait": 60000}))
-	if el := time.Since(start); el > 2*time.Second || el < 400*time.Millisecond {
-		t.Errorf("wait 상한: %v", el)
-	}
-	if m["waitMax"].(float64) != 400 || m["seq"] != first["seq"] {
-		t.Errorf("응답: %v", m)
-	}
-	start = time.Now()
-	validate(t, "work_changes", callRaw(t, cs, "work_changes", map[string]any{"after": first["seq"]}))
-	if el := time.Since(start); el > 300*time.Millisecond {
-		t.Errorf("wait 없이 %v 걸렸습니다", el)
 	}
 }
