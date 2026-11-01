@@ -387,4 +387,3 @@ func TestSession_훅이_준_경로가_틀리면_세션_id로_찾는다(t *testin
 		t.Fatalf("pending=%v rows=%d", p, n)
 	}
 }
-

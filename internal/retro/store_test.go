@@ -246,3 +246,26 @@ func TestBackup_작업_기록_백업이_실패해도_기억_백업은_남는다(
 		t.Fatalf("memory backup: %v", err)
 	}
 }
+
+// 사건을 남기지 못해도(사건 표 문제) 마침은 멈추지 않는다: 재료는 이미 지웠으니 실패 줄을 닫는다.
+func TestFinish_사건을_남기지_못해도_실패로_닫는다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "안녕"))
+	p, err := e.r.Prepare(KindDaily, "2026-10-26", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.DB().Exec(`DROP TABLE events`); err != nil {
+		t.Fatal(err)
+	}
+	f, err := e.r.Finish(p.ID, HostResult{ExecError: "exit status 1"})
+	if err != nil || f.Status != StatusFailed {
+		t.Fatalf("finish = %+v %v", f, err)
+	}
+	if st, _ := getStatus(e.s, p.ID); st.Status != StatusFailed || st.Error != f.Error {
+		t.Fatalf("row = %+v", st)
+	}
+	if _, err := os.Stat(filepath.Join(e.r.Paths.RetroDir(), p.ID)); !os.IsNotExist(err) {
+		t.Fatalf("material left: %v", err)
+	}
+}

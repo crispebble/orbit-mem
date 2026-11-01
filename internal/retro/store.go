@@ -206,9 +206,8 @@ func (r *Keeper) Finish(id string, h HostResult) (Finished, error) {
 	if h.CostKnown {
 		run["costUsd"], run["inputTokens"], run["outputTokens"] = h.CostUSD, h.InputTokens, h.OutputTokens
 	}
-	if err := r.Store.RecordEvent(memory.Event{Kind: memory.EventRetroRun, Host: st.Host, Session: st.Session}, run); err != nil {
-		return res, err
-	}
+	// 사건을 남기지 못해도 마침은 이어 간다: 재료는 이미 지웠으니 실행 줄을 닫아야 한다.
+	_ = r.Store.RecordEvent(memory.Event{Kind: memory.EventRetroRun, Host: st.Host, Session: st.Session}, run)
 	if status == StatusDone {
 		res.Status = StatusDone
 		return res, nil

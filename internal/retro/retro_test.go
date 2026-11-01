@@ -383,4 +383,3 @@ func TestWeekly_재료에_그_주_지표가_들어간다(t *testing.T) {
 		t.Fatalf("material: %s", all)
 	}
 }
-
