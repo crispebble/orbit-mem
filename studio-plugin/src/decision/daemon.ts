@@ -238,8 +238,10 @@ export function daemonDecisionSource(client: DaemonClient, orb: DecisionSource, 
     };
   }
 
-  /** orb 카드 가림: 데몬이 아는 실행의 세션이 연 orbit-pi 카드는 데몬 카드로 이미 보인다 */
-  /** 가정 카드(AU-3)는 일을 막지 않는 카드라 데몬 카드와 겹쳐도 가리지 않는다 */
+  /**
+   * orb 카드 가림: 데몬이 아는 실행의 세션이 연 orbit-pi 카드는 데몬 카드로 이미 보인다.
+   * 가정 카드(AU-3)는 데몬 이벤트에 없으므로 가리지 않는다.
+   */
   const hiddenOrb = (d: Decision) => d.source !== 'assumption' && d.work?.host === 'orbit-pi' && !!d.work.sessionId && sessionIds.has(d.work.sessionId);
   const seqOf = (orbSeq: string, c: number) => `${orbSeq}|${c}`;
   const splitSeq = (after: string | undefined) => {
