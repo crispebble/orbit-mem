@@ -52,16 +52,17 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem export [--format jsonl\|md] [--out 경로] [--all]` | 사람이 읽고 옮길 수 있게 내보낸다. jsonl은 한 줄에 기억 하나(출처·나온 날·연결 포함), `--out`이 없으면 stdout. md는 폴더에 `<id>.md`와 `index.md`. 기본은 숨김 빼고 전부, `--all`은 숨김(거절한 후보)까지 |
 | `orbit-mem import <jsonl> [--dry-run]` | export한 jsonl을 들여온다. 아래 「들여오기 규칙」 |
 | `orbit-mem activity [질의] [--host H] [--project all\|DIR] [--since 날짜] [-n N]` | 활동 기록 찾기(`activity_find`) |
-| `orbit-mem proposals` | 회고 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
+| `orbit-mem proposals` | 사람의 결정을 기다리는 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
+| `orbit-mem audit [--days N] [--json]`, `audit revert <원장·제안 id> [--note]`, `audit dismiss <f-…\|correction:…>`, `audit harness [--json]` | 감사 목록(아래 「확정 규칙과 감사 목록」): 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정. 틀린 것만 되돌리거나 확인함으로 닫는다. `harness --json`은 하네스 개선 후보(스킬·역할 반복 교정)를 openorbit 실험실(개발 도구)이 읽기만 하는 꼴로 준다 |
 | `orbit-mem retro run` | 세션 끝 회고 대기열을 비우고, 밀린 하루 회고(최대 7일, 근거 파일이 바뀐 기억 판정 포함), 효과 판정, 지난주 주간 회고를 헤드리스 호스트로 돌린다. 예약이 부른다 |
 | `orbit-mem retro sessions\|tidy\|legacy\|status\|material` | 세션 끝 회고 대기열 비우기(세션 끝 훅이 띄운다), 기억 그래프 정리, 옛 기억 한 묶음 판정(`legacyMemories`·`legacyBatches`·`retiredNames`), 상태, 재료 보기 |
-| `orbit-mem mcp [--retro ID \| --reader]` | 호스트가 띄우는 MCP 서버(stdio). 아래 「MCP 도구」 |
+| `orbit-mem mcp [--actor ai\|user\|automation] [--retro ID \| --reader]` | 호스트가 띄우는 MCP 서버(stdio). 아래 「MCP 도구」. `--actor`는 이 서버로 쓰는 쪽(기본 ai, Orbit Studio는 user) |
 | `orbit-mem hook session-start\|prompt\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서, 세션이 끝나면 세션 끝 회고 대기열에 넣고 `orbit-mem retro sessions`를 뒤에서 띄운다. 셋 다 활동 기록을 남긴다. 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). `hook work`(옛 플러그인의 작업 기록 훅)는 입력을 버리고 아무것도 하지 않는다 |
 | `orbit-mem inject session-start\|prompt [--cwd D] [--session S]` | orbit-pi에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 요청 글은 stdin |
 | `orbit-mem plugin build [--out D \| --repo R]` | 내장 원본으로 플러그인을 만든다. `--out`(기본 `$ORBIT_HOME/plugins/orbit-mem`)에는 Claude·Codex 꼴과 두 로컬 마켓을, `--repo`에는 GitHub 마켓(`.claude-plugin/marketplace.json`과 `plugin/`, Claude 꼴만)을 쓴다. `plugin/` 안의 남은 파일은 지운다 |
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `orbit-mem stats [--days N \| --week 월요일]` | 지표: 반복 교정, 요청 적중, 사용 판정, 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정, 효과 원장, 회고 비용, 기억 그래프, 옛 기억 정리 |
-| `orbit-mem ledger [--all]` | 승인한 기억·하네스·지침 변경과 효과 판정 |
+| `orbit-mem ledger [--all]` | 승인한 변경과 자동 변경(기억·하네스·지침)의 효과 판정 |
 | `orbit-mem lab` | 하네스 실험실. 지금 플러그인과 고친 플러그인을 `labRuns`번씩 실험 전용 `ORBIT_HOME`에서 돌리고 결과물을 익명으로 고른다. 후보 플러그인은 OpenOrbit `orb plugin build <원본> --out <폴더>`로 하네스 플러그인만 빌드한다(`orb`는 `ORBIT_ORB`, PATH, `~/.local/bin/orb` 순으로 찾는다). 실행은 실험 전용 빈 `ORBIT_HOME`과 `--setting-sources project`로 돌아 이 PC에 깔린 플러그인(`orbit-mem` 포함)을 싣지 않으므로 기억은 비교에 끼지 않는다. 플러그인 원본(`pluginSource`)을 쓰는 PC에서만 돈다 |
 | `orbit-mem config`, `orbit-mem backup`, `orbit-mem version` | 설정 보기·바꾸기, 즉시 백업(기억 DB와 옛 `work.db`), 판 |
 
@@ -73,7 +74,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 
 ## 활동 기록
 
-순수 Claude Code·Codex 세션은 작업 현황 없이 활동 기록만 남긴다: 언제·어느 호스트·어느 프로젝트에서 무엇을 요청했는지다. `memory.db`의 `activity` 표(스키마 판 `user_version` 3)에 세션 하나가 한 줄이다.
+순수 Claude Code·Codex 세션은 작업 현황 없이 활동 기록만 남긴다: 언제·어느 호스트·어느 프로젝트에서 무엇을 요청했는지다. `memory.db`의 `activity` 표(스키마 판 `user_version` 3부터, 지금 4)에 세션 하나가 한 줄이다.
 
 | 칸 | 뜻 |
 | --- | --- |
@@ -95,10 +96,22 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 
 `orbit-mem mcp`(서버 이름 `orbit-mem`, 응답 글은 AI가 읽으므로 한국어):
 
-- 기억 6개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`. `memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다.
+- 기억 6개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`. `memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다. `memory_save`는 `conflictsWith`(어긋나는 사용자 규칙 id)와 출처 `verification`을, `memory_update`는 `userQuote`(사용자 인용 기억을 바꾸라는 사용자 말)를 받는다. `proposals`는 감사·교정용이다: `status=audit`이면 감사 목록(`audit`)을, 기본은 대기 제안을 준다. `proposal_decide`는 `approve`·`reject` 말고도 `revert`(자동 변경 되돌리기)·`dismiss`(어긋남·반복 교정 확인함)를 받는다.
+- 쓰는 쪽(actor)은 도구 인자가 아니라 서버가 정한다: `--actor`, 없으면 환경 `ORBIT_ACTOR`, 회고 실행 안(`ORBIT_RETRO_ID`)이면 언제나 `automation`, 기본 `ai`. Orbit Studio 플러그인은 `--actor user`로 띄운다.
 - 활동 기록: `activity_find` — 입력 `query`·`host`·`project`(비우면 이 프로젝트, `all`이면 전부, 아니면 프로젝트 디렉터리 절대경로)·`since`(`YYYY-MM-DD`, RFC 3339, `7d`·`12h`)·`limit`(기본 20, 최대 100). 출력 `{"items":[{source, host, session, project, projectScope, cwd, launcher, parent, startedAt, lastAt, endedAt, prompts, firstPrompt, lastPrompt, works}], "legacyError"?}`.
 - `--reader`: Orbit Studio 같은 앱 전용으로 기억 그래프 `memory_graph`만 연다(계약 `orbit.memory`, `internal/memory/contract/v1`).
 - `--retro ID`: 그 회고 실행의 도구만 연다.
+
+## 확정 규칙과 감사 목록
+
+2026-11-01 사용자 결정 A2(Atlas 설계 · OpenOrbit 자율 완수와 학습 「확정 규칙」, 계획 · AU-6). 규칙은 저장 계층(`internal/memory`, MCP, CLI)에 있어, 회고든 다른 자동화든 이 API를 거치면 같은 규칙을 지킨다. 옛 「승인 없는 자동 쓰기 금지」·「확정은 인용이나 승인으로만」을 대신한다.
+
+- 사용자 인용 보호: 출처에 사용자 말(`quote`)이 있는 기억은 사람(`user`)이 아니면 고치기·확정·낡음·대체·합치기·(자동화의) 연결·태그를 하지 못한다(`ErrProtected`). 사용자 말(`userQuote`)을 주면 되고, 그 말이 새 출처로 남는다.
+- 증거 확정: 후보는 회상에 쓰되 확정 뒤에 두고 「후보」로 표시한다. 증거가 하나라도 있으면 스스로 확정하고 원장에 남긴다. ① 서로 다른 날 다시 나옴(`confirmSeenDays`, 기본 2) ② 회상돼 따랐고 그 일이 검증을 통과했으며 그 세션에 교정·어김이 없는 세션 수(`confirmFollowedVerified`, 기본 2) ③ 작업 검증이 직접 확인한 프로젝트 사실(출처 `verification`, 종류 `fact`, 범위 프로젝트). 열린 어긋남 표시가 있거나 사람이 자동 확정을 되돌린 기억은 다시 자동 확정하지 않는다.
+- 자동 변경: 자동화의 확정·합치기·낡음·대체(`supersede`)·연결·태그는 승인 없이 적용되고, 제안 표에 상태 `auto`로, 효과 원장에 한 줄로 남는다(`SubmitChange`·`AutoApply`). 고치기·재분류·파일 반영·방향, 사용자 인용 기억에 닿는 정리, 증거 없는 확정은 대기 제안이다. 사람이 거절한 제안과 되돌린 자동 변경은 자동화가 다시 하지 않는다. 효과 판정이 「해로움」인 자동 변경은 예약 회고가 되돌리고(`RevertHarmfulAuto`) 사건 `audit.auto_reverted`와 세션 시작 한 줄로 알린다.
+- 반복 교정: 교정 사건에 대상(`memory`·`skill`·`role`)을 둔다. 대상마다 교정이 나온 세션 수가 `correctionRepeatSessions`(기본 3) 이상이면 감사 목록에 보이고, 스킬·역할이면 하네스 개선 후보다. 확인함을 누르면 그 뒤 교정만 다시 센다.
+- 기준 횟수 `confirmFollowedVerified`·`correctionRepeatSessions`는 E2로 이 PC 기억 DB 사본(2026-10-26~11-01)을 재서 정한 추천값이며 사용자 결정 대기다(근거는 계획 · AU-6). `orbit-mem config set <키> <1-30>`으로 바꾼다.
+- 표: `audit_flags`(어긋남 표시), `audit_acks`(반복 교정 확인함). 스키마 판 4.
 
 ## 언어
 
@@ -109,7 +122,7 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 ## 데이터
 
 - 위치: `ORBIT_HOME`, 없으면 Mac `~/Library/Application Support/orbit`, Windows `%AppData%\orbit`.
-- `memory.db`(SQLite: 기억·제안·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록), `config.json`, `backups/`(매일 사본 기본 14개: `memory-*`와 옛 `work-*`, 옮기기·들여오기 전 사본은 따로), `retro/`(진행 중 회고 재료), `logs/`, `lab/`(실험실).
+- `memory.db`(SQLite: 기억·제안(자동 변경 포함)·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록·감사 표시), `config.json`, `backups/`(매일 사본 기본 14개: `memory-*`와 옛 `work-*`, 옮기기·들여오기 전 사본은 따로), `retro/`(진행 중 회고 재료), `logs/`, `lab/`(실험실).
 - `work.db`: 옛 작업 기록. 읽기 전용으로 활동 기록 찾기에 보이고 하루 백업만 이어 간다. 새로 쓰지 않는다.
 - 옛 설정 키 `work`·`workStaleAfter`·`workTestCommands`는 읽을 때 무시하고 다시 저장하면 빠진다.
 - PC끼리 공유하지 않는다.
