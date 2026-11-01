@@ -32,7 +32,7 @@ describe('plugin.json', () => {
   it('MCP 연결 id와 명령: memory·mem은 `orbit-mem`, work는 OpenOrbit 앱 `orb work mcp`', () => {
     const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {id: string; command: string; args: string[]}[]}};
     assert.deepEqual(full.connections.mcp.map(c => [c.id, c.command, c.args.join(' ')]), [
-      ['memory', 'orbit-mem', 'mcp'],
+      ['memory', 'orbit-mem', 'mcp --actor user'],
       ['work', 'orb', 'work mcp'],
       ['mem', 'orbit-mem', 'mcp --reader'],
     ]);

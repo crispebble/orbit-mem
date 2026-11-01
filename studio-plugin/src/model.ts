@@ -107,6 +107,82 @@ export interface OrbProposal {
   memories?: OrbSummary[] | null;
 }
 
+// ---------- 감사 목록(proposals {status:'audit'}) ----------
+
+export type AuditVerdict = 'pending' | 'helped' | 'harmful' | 'no_effect' | 'mixed';
+export type AuditEvidence = 'seen_days' | 'followed_verified' | 'verified_fact';
+
+export interface OrbAuditChange {
+  ledgerId: string;
+  proposalId: string;
+  kind: string;
+  title: string;
+  evidence?: string;
+  actor?: string;
+  at: number;
+  targets?: string[] | null;
+  change?: string;
+  verdict: string;
+  revertedBy?: string;
+  revertOf?: string;
+  autoReverted?: boolean;
+}
+
+export interface OrbAuditConflict {
+  id: string;
+  kind: 'conflict';
+  memoryId: string;
+  otherId: string;
+  note?: string;
+  actor?: string;
+  at: number;
+  title: string;
+  state: string;
+  otherTitle?: string;
+}
+
+export interface OrbRepeatedCorrection {
+  key: string;
+  targetKind: string;
+  target: string;
+  title?: string;
+  sessions: number;
+  corrections: number;
+  threshold: number;
+  over: boolean;
+  harness: boolean;
+  first: number;
+  last: number;
+  quotes?: string[] | null;
+  ackedAt?: number;
+}
+
+export interface OrbAudit {
+  changes: OrbAuditChange[] | null;
+  conflicts: OrbAuditConflict[] | null;
+  corrections: OrbRepeatedCorrection[] | null;
+  pending: number;
+  policy?: {confirmSeenDays: number; confirmFollowedVerified: number; correctionRepeatSessions: number};
+  policyPending?: string[] | null;
+}
+
+/** 빈 목록이 null로 와도 화면은 배열만 본다 */
+export interface AuditView {
+  changes: OrbAuditChange[];
+  conflicts: OrbAuditConflict[];
+  corrections: OrbRepeatedCorrection[];
+}
+
+export function toAuditView(a: OrbAudit | undefined): AuditView {
+  return {changes: a?.changes ?? [], conflicts: a?.conflicts ?? [], corrections: a?.corrections ?? []};
+}
+
+/** 사람이 볼 것: 대기 제안 + 어긋남 + 아직 확인하지 않은 반복 교정 */
+export function auditAttention(pending: number, a: OrbAudit | undefined): number {
+  const v = toAuditView(a);
+  return pending + v.conflicts.length + v.corrections.filter(c => !c.ackedAt).length;
+}
+
 // ---------- 글 ----------
 
 const KINDS: readonly MemoryKind[] = ['rule', 'fact', 'decision', 'lesson', 'journal'];

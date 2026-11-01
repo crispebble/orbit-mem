@@ -46,6 +46,25 @@ export function decideArgs(id: string, decision: 'approve' | 'reject', o: Decide
   return args;
 }
 
+export interface RevertArgs {
+  id: string;
+  decision: 'revert';
+  note?: string;
+}
+
+/** 자동 변경 되돌리기(id는 proposalId 또는 ledgerId) */
+export function revertArgs(id: string, note?: string): RevertArgs {
+  const args: RevertArgs = {id, decision: 'revert'};
+  const n = note?.trim();
+  if (n) args.note = n;
+  return args;
+}
+
+/** 어긋남(f-…)·반복 교정(correction:…)을 확인함으로 닫기 */
+export function dismissArgs(id: string): {id: string; decision: 'dismiss'} {
+  return {id, decision: 'dismiss'};
+}
+
 export interface DecideManyArgs {
   ids: string[];
   decision: 'approve' | 'reject';
