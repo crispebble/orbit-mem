@@ -630,7 +630,7 @@ func cmdDoctor(a *app, args []string) error {
 			add("codex-hooks-untrusted", i18n.T("cli.doctor.fix.codex_hooks"))
 		}
 	}
-	if *asJSON {
+	if a.wantJSON(*asJSON) {
 		return a.json(rep)
 	}
 	yes := func(b bool) string {

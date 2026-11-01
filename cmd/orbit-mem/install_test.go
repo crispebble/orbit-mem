@@ -352,3 +352,41 @@ func TestPluginBuild(t *testing.T) {
 		t.Fatal("저장소에 Codex 마켓")
 	}
 }
+
+// OpenOrbit이 같은 config.json에서 읽는 작업 설정(work·workStaleAfter·workTestCommands)은
+// config set과 install이 다시 저장해도 남는다.
+func TestConfig_set과_install은_모르는_키를_지우지_않는다(t *testing.T) {
+	f := newFakePC(t, "claude", "codex")
+	cfgPath := filepath.Join(f.home, "config.json")
+	os.WriteFile(cfgPath, []byte(`{"work":"off","workStaleAfter":"72h","workTestCommands":{"go":"go test ./..."}}`), 0o600)
+	has := func(when string) {
+		b, _ := os.ReadFile(cfgPath)
+		for _, k := range []string{`"work": "off"`, `"workStaleAfter": "72h"`, `"workTestCommands"`} {
+			if !strings.Contains(string(b), k) {
+				t.Fatalf("%s: %s가 사라졌습니다\n%s", when, k, b)
+			}
+		}
+	}
+	if _, errOut, code := run(t, "", "config", "set", "language", "ko"); code != 0 {
+		t.Fatalf("%d %s", code, errOut)
+	}
+	has("config set")
+	if _, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir()); code != 0 {
+		t.Fatalf("%d %s", code, errOut)
+	}
+	has("install")
+}
+
+// 파이프(터미널이 아닌 stdout)면 doctor도 --json 없이 JSON을 낸다.
+func TestDoctor_파이프는_JSON(t *testing.T) {
+	newFakePC(t, "claude", "codex")
+	seed(t)
+	out, errOut, code := run(t, "", "doctor")
+	if code != 0 {
+		t.Fatalf("%d %s", code, errOut)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("파이프인데 JSON이 아닙니다: %v\n%s", err, out)
+	}
+}
