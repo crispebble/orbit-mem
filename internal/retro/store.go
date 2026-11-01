@@ -107,16 +107,11 @@ func (r *Keeper) begin(mat Material, host string) (Prepared, error) {
 	if mat.empty() {
 		res.Status = StatusEmpty
 		_, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary,session) VALUES(?,?,?,?,?,?,?,?,?)`,
-			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, i18n.T("retro.no_material"), mat.Session)
+			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, emptySummary(), mat.Session)
 		return res, err
 	}
-	dir := filepath.Join(r.Paths.RetroDir(), res.ID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return res, err
-	}
-	b, _ := json.Marshal(mat)
-	if err := os.WriteFile(filepath.Join(dir, "material.json"), b, 0o600); err != nil {
-		os.RemoveAll(dir)
+	dir, err := r.keepMaterial(mat)
+	if err != nil {
 		return res, err
 	}
 	if _, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,session) VALUES(?,?,?,?,?,?,?)`,
@@ -126,6 +121,23 @@ func (r *Keeper) begin(mat Material, host string) (Prepared, error) {
 	}
 	res.Status, res.SourceChecks = StatusRunning, len(mat.SourceChecks)
 	return res, nil
+}
+
+func emptySummary() string { return i18n.T("retro.no_material") }
+
+// keepMaterial writes mat (its ID set) to retro/<id>/material.json for the host
+// and returns that directory.
+func (r *Keeper) keepMaterial(mat Material) (string, error) {
+	dir := filepath.Join(r.Paths.RetroDir(), mat.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(mat)
+	if err := os.WriteFile(filepath.Join(dir, "material.json"), b, 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
 }
 
 // HostResult is what OpenOrbit tells finish about the host run.

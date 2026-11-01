@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,6 +37,17 @@ type MemoryIn struct {
 	Reason     string   `json:"reason,omitempty" jsonschema:"판정 사유. reject에는 필수"`
 	// ConflictsWith marks the candidate as going against these rules of the user (A2): it is not confirmed automatically.
 	ConflictsWith []string `json:"conflictsWith,omitempty" jsonschema:"이 후보와 어긋나는 사용자 규칙(확정·인용) id. 어긋남이 표시된 후보는 자동 확정되지 않는다"`
+	// Evidence is, in a work retrospective, the verification evidence that checked a project fact (A2 ③).
+	Evidence string `json:"evidence,omitempty" jsonschema:"프로젝트 관례(fact)를 이 작업의 검증이 직접 확인했으면 재료 「검증 증거」의 글을 그대로"`
+	// Links are the existing memories to read together with this one, made as automatic link changes.
+	Links []LinkIn `json:"links,omitempty" jsonschema:"함께 읽어야 할 기존 기억(같은 결정의 근거·앞뒤 절차·예외). 같은 태그·같은 작업이라는 것만으로는 잇지 않는다"`
+}
+
+// LinkIn is an existing memory a submitted memory should be read with.
+type LinkIn struct {
+	ID       string `json:"id" jsonschema:"이을 기존 기억 id"`
+	Relation string `json:"relation" jsonschema:"basis(같은 결정의 근거)·sequence(앞뒤 절차)·exception(예외)"`
+	Note     string `json:"note,omitempty" jsonschema:"잇는 근거 한 줄"`
 }
 
 // ProposalIn is a proposal from the retrospective.
@@ -212,27 +224,48 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			sub.Proposals = nil
 		}
 	}
+	work := mat.Work // 작업 회고면 그 작업
+	if mat.Kind == KindWork && work == nil {
+		return "", errors.New("작업 회고 재료에 작업이 없습니다")
+	}
+	workScope := project.Project{}
+	if work != nil {
+		workScope = project.Resolve(work.Cwd)
+	}
 	journalID := ""
 	if sub.Journal != nil && strings.TrimSpace(sub.Journal.Title) != "" {
 		title := sub.Journal.Title
-		if mat.Kind == KindDaily {
+		scope, label := memory.ScopeGlobal, ""
+		src := memory.Source{Kind: memory.SourceSession, Ref: "retro:" + id}
+		switch mat.Kind {
+		case KindDaily:
 			title = mat.Period + " 일지: " + title
-		} else {
+		case KindWork:
+			title = mat.Period + " 작업: " + title
+			scope, label, src = workScope.Scope, workScope.Label, memory.Source{Kind: memory.SourceWork, Ref: work.Ref}
+			if journalTaken(s, scope, title) { // 같은 날 같은 제목 일지가 있으면 그 일지에 붙지 않게 작업 id를 단다
+				title += " (" + work.Ref + ")"
+			}
+		default:
 			title = mat.Period + " 주간: " + title
 		}
-		m, err := s.Save(memory.SaveInput{Kind: memory.KindJournal, Title: title, Body: sub.Journal.Body, Scope: memory.ScopeGlobal,
-			State: memory.StateConfirmed, Day: day, Source: memory.Source{Kind: memory.SourceSession, Ref: "retro:" + id}})
+		m, err := s.Save(memory.SaveInput{Kind: memory.KindJournal, Title: title, Body: sub.Journal.Body, Scope: scope, Project: label,
+			State: memory.StateConfirmed, Day: day, Source: src})
 		if err != nil {
 			return "", fmt.Errorf("일지를 남기지 못했습니다: %w", err)
 		}
 		journalID = m.ID
 		report = append(report, "일지 "+m.ID)
 	}
-	created, seen, held, rejected := 0, 0, 0, 0
+	created, seen, held, rejected, linked := 0, 0, 0, 0, 0
 	for _, in := range sub.Memories {
 		ref := in.SessionRef
 		if ref == "" {
 			ref = "retro:" + id
+		}
+		if work != nil {
+			ref = work.Ref
+			in.Tags = workTags(in.Tags)
 		}
 		verdict := strings.TrimSpace(in.Verdict)
 		if verdict == "" {
@@ -255,8 +288,28 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		src := memory.Source{Kind: memory.SourceSession, Ref: ref, Excerpt: in.Quote}
+		if work != nil {
+			src.Kind = memory.SourceWork
+		}
 		if in.Quote != "" && quoteFound(mat, in.Quote, in.Title, in.Body) {
 			src.Kind = memory.SourceQuote
+		}
+		// 작업 회고: 어느 작업에서 나왔는지는 늘 남긴다(인용이어도). 검증 증거가 재료에 그대로 있으면 검증 출처도.
+		var extra []memory.Source
+		verifiedBy := ""
+		if work != nil {
+			if src.Kind != memory.SourceWork {
+				extra = append(extra, memory.Source{Kind: memory.SourceWork, Ref: work.Ref})
+			}
+			if ev := strings.TrimSpace(in.Evidence); ev != "" {
+				if workEvidenceFound(work, ev) {
+					verifiedBy = ev
+				} else {
+					notes = append(notes, fmt.Sprintf("%s: 증거 %q는 재료 「검증 증거」에 없어 후보로 남김", in.Title, memory.ClipRunes(ev, 60)))
+				}
+			}
+		} else if strings.TrimSpace(in.Evidence) != "" {
+			notes = append(notes, in.Title+": evidence는 작업 회고에서만 받습니다")
 		}
 		if in.SameAs != "" {
 			// 어긋남은 다시 나옴(증거 ①)보다 먼저 단다: 표시가 늦으면 이 저장으로 확정된다.
@@ -280,6 +333,11 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			judgment.MemoryID, judgment.Verdict = in.SameAs, memory.VerdictKeep
 			_, _ = s.RecordJudgment(judgment)
 			seen++
+			if cur, err := s.Get(in.SameAs); err == nil {
+				notes = append(notes, attachWorkSources(s, cur, extra, verifiedBy, ref)...)
+			}
+			n, lnotes := submitLinks(s, id, in.SameAs, in.Title, in.Links)
+			linked, notes = linked+n, append(notes, lnotes...)
 			continue
 		}
 		if in.Kind == memory.KindJournal {
@@ -287,7 +345,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		scope, label := memory.ScopeGlobal, ""
-		if in.Scope == "project" {
+		if in.Scope == "project" && work != nil && in.Project == "" {
+			scope, label = workScope.Scope, workScope.Label // 작업 회고의 프로젝트는 그 작업 폴더다
+		} else if in.Scope == "project" {
 			if in.Project == "" {
 				notes = append(notes, in.Title+": project 범위에는 project 경로가 필요해 전역으로 남김")
 			} else {
@@ -304,8 +364,12 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			conflicts = append(conflicts, rule)
 		}
 		before, _ := s.Count()
+		newExtra := extra
+		if verifiedBy != "" && in.Kind == memory.KindFact && scope != memory.ScopeGlobal {
+			newExtra = append(slices.Clone(extra), memory.Source{Kind: memory.SourceVerification, Ref: ref, Excerpt: verifiedBy})
+		}
 		m, err := s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label, Source: src, Day: day,
-			ConflictsWith: conflicts, Who: memory.Who{Actor: memory.ActorAutomation}})
+			Extra: newExtra, ConflictsWith: conflicts, Who: memory.Who{Actor: memory.ActorAutomation}})
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s: %v", in.Title, err))
 			continue
@@ -314,9 +378,19 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		isNew := after > before
 		if isNew {
 			created++
+			if verifiedBy != "" && len(newExtra) == len(extra) {
+				notes = append(notes, in.Title+": 검증 증거는 프로젝트 범위 사실(fact)에만 붙입니다")
+			}
 		} else {
 			seen++
+			// 같은 제목이 이미 있었다: 함께 붙일 출처는 Save가 붙이지 않으니 여기서 붙인다.
+			notes = append(notes, attachWorkSources(s, m, extra, verifiedBy, ref)...)
+			if cur, err := s.Get(m.ID); err == nil {
+				m = cur
+			}
 		}
+		n, lnotes := submitLinks(s, id, m.ID, in.Title, in.Links)
+		linked, notes = linked+n, append(notes, lnotes...)
 		if m.State != memory.StateCandidate {
 			judgment.Verdict = memory.VerdictKeep // 인용으로 바로 확정됐다
 		}
@@ -333,6 +407,9 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		report = append(report, fmt.Sprintf("보류 %d건, 거절 %d건", held, rejected))
 	}
 	report = append(report, fmt.Sprintf("새 기억 %d건, 다시 나옴 %d건", created, seen))
+	if linked > 0 {
+		report = append(report, fmt.Sprintf("연결 %d건", linked))
+	}
 	proposed := 0
 	if mat.Kind == KindSession && len(sub.Proposals) > 0 {
 		notes = append(notes, "세션 끝 회고는 제안을 내지 않습니다. 하루·주간 회고가 냅니다")
@@ -344,6 +421,10 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			Payload: memory.Payload{Kind: in.NewKind, MergedTitle: in.MergedTitle, MergedBody: in.MergedBody, Path: in.Path, Content: in.Content,
 				Title: in.NewTitle, Body: in.NewBody, Tags: in.NewTags, LedgerID: in.LedgerID, Note: in.Note, FromTags: in.FromTags, ToTags: in.ToTags}}
 		tidy := in.Kind == memory.ProposalLink || in.Kind == memory.ProposalRetag
+		if mat.Kind == KindWork && !slices.Contains(workProposalKinds, in.Kind) {
+			notes = append(notes, fmt.Sprintf("%s: 작업 회고는 %s 제안만 냅니다(%s 뺌)", in.Title, strings.Join(workProposalKinds, "·"), proposalKindName(in.Kind)))
+			continue
+		}
 		if mat.Kind == KindTidy && !tidy {
 			notes = append(notes, in.Title+": 그래프 정리는 link·retag 제안만 냅니다")
 			continue
@@ -459,21 +540,21 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	advanceTidy(s, mat.Tidy, day)
 	// 교정과 사용 판정은 완료 표시 뒤에 남긴다: 실패한 제출을 다시 받을 때 두 번 세지 않는다.
 	// 그 사이에 프로세스가 죽으면 그 회고의 교정·판정만 빠진다(감수한다).
-	if mat.Kind == KindDaily || mat.Kind == KindSession {
+	if mat.Kind == KindDaily || mat.Kind == KindSession || mat.Kind == KindWork {
 		n, corrected, cnotes := recordCorrections(s, mat, id, sub.Corrections)
 		notes = append(notes, cnotes...)
 		report = append(report, fmt.Sprintf("교정 %d건", n))
-		if mat.Kind == KindSession {
+		if mat.Kind == KindSession || mat.Kind == KindWork {
 			u, unotes := recordUsage(s, mat, id, sub.Usage, corrected)
 			notes = append(notes, unotes...)
 			report = append(report, fmt.Sprintf("사용 판정 %d건", u))
 		}
 	} else if len(sub.Corrections) > 0 {
-		notes = append(notes, "교정은 하루·세션 끝 회고에서만 받습니다")
+		notes = append(notes, "교정은 하루·세션 끝·작업 회고에서만 받습니다")
 		sub.Corrections = nil
 	}
-	if mat.Kind != KindSession && len(sub.Usage) > 0 {
-		notes = append(notes, "사용 판정은 세션 끝 회고에서만 받습니다")
+	if mat.Kind != KindSession && mat.Kind != KindWork && len(sub.Usage) > 0 {
+		notes = append(notes, "사용 판정은 세션 끝·작업 회고에서만 받습니다")
 	}
 	if mat.Kind == KindWeekly {
 		n, lnotes := recordLessons(s, mat, id, sub.Lessons)
@@ -552,6 +633,8 @@ func recordCorrections(s *memory.Store, mat Material, retroID string, cs []Corre
 		}
 		if memoryID != "" {
 			switch yes, known := s.InjectedIn(sess.ID, memoryID); {
+			case mat.Kind == KindWork && slices.ContainsFunc(mat.Injected, func(b Brief) bool { return b.ID == memoryID }):
+				injected = "yes" // 작업에 붙인 기억(recalled)
 			case !known:
 				injected = "unknown"
 			case yes:
@@ -644,7 +727,11 @@ func recordUsage(s *memory.Store, mat Material, retroID string, us []UsageIn, co
 	n := 0
 	for _, id := range order {
 		u := verdicts[id]
-		if err := s.RecordUsage(memory.UsageInput{MemoryID: id, Verdict: u.Verdict, Verified: u.Verified && u.Verdict == memory.UsageFollowed,
+		verified := u.Verified && u.Verdict == memory.UsageFollowed
+		if mat.Work != nil && !mat.Work.Verified {
+			verified = false // 검증을 통과하지 못한 작업의 따름은 증거 ②가 아니다
+		}
+		if err := s.RecordUsage(memory.UsageInput{MemoryID: id, Verdict: u.Verdict, Verified: verified,
 			Note: u.Note, Host: sess.Host, Session: sess.ID, Day: mat.Period, RetroID: retroID, OccurredAt: last.UnixMilli()}); err != nil {
 			notes = append(notes, "사용 판정 기록 실패: "+err.Error())
 			continue
@@ -715,4 +802,77 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// workProposalKinds are the proposals a work retrospective may make.
+var workProposalKinds = []string{memory.ProposalLink, memory.ProposalStale, memory.ProposalSupersede, memory.ProposalMerge, memory.ProposalEdit}
+
+func proposalKindName(k string) string {
+	if k == memory.ProposalReclassify {
+		return "재분류(reclassify)"
+	}
+	return k
+}
+
+// journalTaken says whether a journal of title already lives in scope.
+func journalTaken(s *memory.Store, scope, title string) bool {
+	var n int
+	_ = s.DB().QueryRow(`SELECT COUNT(*) FROM memories WHERE kind=? AND scope=? AND title_key=?`, memory.KindJournal, scope, memory.TitleKey(title)).Scan(&n)
+	return n > 0
+}
+
+// attachWorkSources adds a work retrospective's extra sources to memory m that
+// was already there and, with verification evidence on a project fact,
+// confirms it by that evidence (A2 ③).
+func attachWorkSources(s *memory.Store, m memory.Memory, extra []memory.Source, verifiedBy, ref string) []string {
+	var notes []string
+	for _, src := range extra {
+		if err := s.AddSource(m.ID, src); err != nil {
+			notes = append(notes, fmt.Sprintf("%s: 출처를 붙이지 못함: %v", m.ID, err))
+		}
+	}
+	if verifiedBy == "" {
+		return notes
+	}
+	if m.Kind != memory.KindFact || m.Scope == memory.ScopeGlobal {
+		return append(notes, m.Title+": 검증 증거는 프로젝트 범위 사실(fact)에만 붙입니다")
+	}
+	if err := s.AddSource(m.ID, memory.Source{Kind: memory.SourceVerification, Ref: ref, Excerpt: verifiedBy}); err != nil {
+		return append(notes, fmt.Sprintf("%s: 검증 출처를 붙이지 못함: %v", m.ID, err))
+	}
+	if _, _, err := s.ConfirmByEvidence(m.ID); err != nil {
+		notes = append(notes, fmt.Sprintf("%s: 증거 확정 실패: %v", m.ID, err))
+	}
+	return notes
+}
+
+// submitLinks makes each link of a submitted memory an automatic link change
+// (kept in the ledger; one touching the user's words waits for the user).
+func submitLinks(s *memory.Store, retroID, memoryID, title string, links []LinkIn) (int, []string) {
+	var notes []string
+	n := 0
+	for _, l := range links {
+		label, ok := linkRelations[l.Relation]
+		switch {
+		case !ok:
+			notes = append(notes, fmt.Sprintf("%s: 연결 %s의 관계 %q는 basis·sequence·exception이 아니라 뺐습니다", title, l.ID, l.Relation))
+			continue
+		case l.ID == memoryID:
+			continue
+		}
+		if _, err := s.Get(l.ID); err != nil {
+			notes = append(notes, fmt.Sprintf("%s: 이을 기억 %s가 없어 뺐습니다", title, l.ID))
+			continue
+		}
+		_, err := s.SubmitChange(memory.ProposalInput{Kind: memory.ProposalLink, Title: "연결: " + title, MemoryIDs: []string{memoryID, l.ID}, RetroID: retroID,
+			Payload: memory.Payload{Note: label + ": " + strings.TrimSpace(l.Note)}}, memory.Who{Actor: memory.ActorAutomation})
+		if err != nil {
+			if !errors.Is(err, memory.ErrDuplicateProposal) && !errors.Is(err, memory.ErrAutoSkip) {
+				notes = append(notes, fmt.Sprintf("%s: 연결 %s: %v", title, l.ID, err))
+			}
+			continue
+		}
+		n++
+	}
+	return n, notes
 }
