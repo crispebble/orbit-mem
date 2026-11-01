@@ -64,9 +64,9 @@ export function ComposerView({ctx, client, form, setForm, onStarted}: {ctx: Plug
 
   const err = (issue: ComposerIssue) => (issues.includes(issue) ? c.issue[issue] : undefined);
   const modeOptions: {value: string; label: React.ReactNode}[] = [
-    {value: 'default', label: <span title={c.modeTip.default}>{c.modeDefault}</span>},
     {value: 'ultrawork', label: <span title={c.modeTip.ultrawork}>{c.modeUltrawork}</span>},
     {value: 'plan', label: <span title={c.modeTip.plan}>{c.modePlan}</span>},
+    {value: 'plan-approve', label: <span title={c.modeTip['plan-approve']}>{c.modePlanApprove}</span>},
   ];
 
   return (
@@ -92,7 +92,8 @@ export function ComposerView({ctx, client, form, setForm, onStarted}: {ctx: Plug
         />
         {err('request') && <p className="orbit-alert" role="alert">{err('request')}</p>}
       </div>
-      <SegmentedControl label={c.mode} value={form.mode} options={modeOptions} onValueChange={v => set({mode: (v === 'ultrawork' || v === 'plan' ? v : 'default') as RunMode})} />
+      <SegmentedControl label={c.mode} value={form.mode} options={modeOptions} onValueChange={v => set({mode: (v === 'plan' || v === 'plan-approve' ? v : 'ultrawork') as RunMode})} />
+      <p className="orbit-meta">{c.modeTip[form.mode]}</p>
       <Select
         label={c.profile}
         showLabel

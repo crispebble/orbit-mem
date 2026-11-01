@@ -60,7 +60,7 @@ export interface DaemonStatus {
   error?: {code: string; message: string};
 }
 
-export type RunMode = 'default' | 'ultrawork' | 'plan';
+export type RunMode = 'ultrawork' | 'plan' | 'plan-approve';
 
 export interface StartRunInput {
   request: string;

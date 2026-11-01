@@ -15,7 +15,7 @@ const ev = (seq: number, runId: string, type: string, body: Record<string, unkno
   ({seq, runId, type, at, event: {type, at, ...body}});
 
 const run = (over: Partial<RunSummary> = {}): RunSummary => ({
-  runId: 'r1', request: 'do it', cwd: '/w', profile: 'main', mode: 'default', state: 'running', reason: '', exitCode: 0, workId: 'w-1',
+  runId: 'r1', request: 'do it', cwd: '/w', profile: 'main', mode: 'ultrawork', state: 'running', reason: '', exitCode: 0, workId: 'w-1',
   message: '', startedAt: '2026-11-01T01:00:00.000Z', finishedAt: '', source: 'studio', device: 'orbit-studio', lastSeq: 10, sessionId: 'S-1',
   totals: {costUsd: 0, subscription: false, turns: 0, minutes: 0, inputTokens: 0, outputTokens: 0, monthSpentUsd: 0, monthLimitUsd: 0},
   openDecisions: [], ...over,

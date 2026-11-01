@@ -17,7 +17,7 @@ export interface ComposerForm {
 export type ComposerIssue = 'request' | 'cwd' | 'cost' | 'turns' | 'minutes';
 
 export const emptyForm = (over: Partial<ComposerForm> = {}): ComposerForm => ({
-  request: '', mode: 'default', profile: '', cwd: '', maxCostUsd: '', maxTurns: '', maxMinutes: '', ...over,
+  request: '', mode: 'ultrawork', profile: '', cwd: '', maxCostUsd: '', maxTurns: '', maxMinutes: '', ...over,
 });
 
 export const isAbsolutePath = (p: string) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
@@ -55,7 +55,7 @@ export function buildStartInput(form: ComposerForm): {ok: true; input: StartRunI
 
 /** 「이어가기」: 같은 폴더·프로필, 모드는 default, 그 작업(workId)을 이어간다. */
 export function resumeInput(run: Pick<RunSummary, 'cwd' | 'profile' | 'workId' | 'request'>): StartRunInput {
-  const input: StartRunInput = {request: '', cwd: run.cwd, mode: 'default', resume: {workId: run.workId}};
+  const input: StartRunInput = {request: '', cwd: run.cwd, mode: 'ultrawork', resume: {workId: run.workId}};
   if (run.profile) input.profile = run.profile;
   return input;
 }

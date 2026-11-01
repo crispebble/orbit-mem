@@ -1,5 +1,5 @@
 // 작업 대화 도구 창(src/chat)의 글. en이 기준이고 ko는 같은 모양이다.
-// 모드 식별자(Default·ultrawork·plan)와 엔진·모델·역할 이름, 사용자가 쓴 요청, 모델이 쓴 글은 번역하지 않는다.
+// 모드 식별자(ultrawork·plan·plan-approve)와 엔진·모델·역할 이름, 사용자가 쓴 요청, 모델이 쓴 글은 번역하지 않는다.
 import {defineMessages} from '../index.ts';
 
 export const chatText = defineMessages({
@@ -18,13 +18,13 @@ export const chatText = defineMessages({
       requestHint: 'What should the agents do?',
       requestResume: 'Request (optional when continuing a work)',
       mode: 'Mode',
-      modeDefault: 'Default',
       modeUltrawork: 'ultrawork',
       modePlan: 'plan',
+      modePlanApprove: 'plan-approve',
       modeTip: {
-        default: 'Plans first and asks you to approve the plan.',
-        ultrawork: 'Runs to the end without asking for plan approval.',
-        plan: 'Writes the plan only and stops.',
+        ultrawork: 'Runs to the end without asking for plan approval (default).',
+        plan: 'Writes and records the plan only; run it later.',
+        'plan-approve': 'Shows the plan and waits for your approval before running it.',
       },
       profile: 'Profile',
       profileAuto: 'Auto (by folder)',
@@ -153,13 +153,13 @@ export const chatText = defineMessages({
       requestHint: '에이전트가 무엇을 해야 하나요?',
       requestResume: '요청 (작업을 이어갈 때는 비워도 됩니다)',
       mode: '모드',
-      modeDefault: 'Default',
       modeUltrawork: 'ultrawork',
       modePlan: 'plan',
+      modePlanApprove: 'plan-approve',
       modeTip: {
-        default: '계획을 먼저 세우고 계획 승인을 요청합니다.',
-        ultrawork: '계획 승인을 묻지 않고 끝까지 실행합니다.',
-        plan: '계획만 작성하고 멈춥니다.',
+        ultrawork: '계획 승인을 묻지 않고 끝까지 실행합니다(기본).',
+        plan: '계획만 작성해 기록합니다. 실행은 나중에 합니다.',
+        'plan-approve': '계획을 보여 주고 승인을 받은 뒤 실행합니다.',
       },
       profile: '프로필',
       profileAuto: '자동 (폴더 기준)',
