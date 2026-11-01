@@ -1,18 +1,16 @@
 package retro
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // KindLegacy is a retrospective that judges memories moved from the old
-// Knowledge and Claude memory (설계 · Orbit 3차 O3-3, orbit-mem retro legacy).
+// Knowledge and Claude memory (설계 · Orbit 3차 O3-3). OpenOrbit `orb retro legacy`가 돌린다.
 const KindLegacy = "legacy"
 
 // Verdicts on one old memory. confirm, merge and stale become proposals the
@@ -89,7 +87,7 @@ func (l *Legacy) size() int {
 // is judged. The batch walks the graph's clusters in picked order (then 「그
 // 밖」) so memories on one topic are judged together, and fills up from the
 // next cluster when one runs out.
-func (r *Runner) legacyMaterial() (*Legacy, error) {
+func (r *Keeper) legacyMaterial() (*Legacy, error) {
 	judged, err := r.Store.LegacyJudged()
 	if err != nil {
 		return nil, err
@@ -182,63 +180,36 @@ func (r *Runner) legacyMaterial() (*Legacy, error) {
 	return l, nil
 }
 
-// RunLegacy judges one batch of old memories now. With nothing left to judge
-// it returns StatusEmpty without calling the host or keeping a run. Callers
-// hold the lock (RunLegacyOne takes it).
-func (r *Runner) RunLegacy(ctx context.Context) (Result, error) {
+// PrepareLegacy prepares one batch of old memories to judge for host. With
+// nothing left to judge it returns StatusEmpty and keeps no run.
+func (r *Keeper) PrepareLegacy(host string) (Prepared, error) {
 	mat := Material{Kind: KindLegacy, Period: dayOf(r.now())}
 	l, err := r.legacyMaterial()
 	if err != nil || l == nil {
-		return Result{Kind: KindLegacy, Period: mat.Period, Status: StatusEmpty}, err
+		return Prepared{Kind: KindLegacy, Period: mat.Period, Status: StatusEmpty}, err
 	}
 	mat.Legacy = l
 	// 끝 기준 3(정리 전후 수): 첫 묶음을 돌리기 전에 상태별 기억 수를 한 번 남긴다.
 	if err := r.Store.KeepLegacyBaseline(); err != nil {
-		return Result{Kind: KindLegacy, Period: mat.Period}, err
+		return Prepared{Kind: KindLegacy, Period: mat.Period}, err
 	}
 	if err := r.commonMaterial(&mat); err != nil {
-		return Result{Kind: KindLegacy, Period: mat.Period}, err
+		return Prepared{Kind: KindLegacy, Period: mat.Period}, err
 	}
 	mat.Existing = nil // 겹칠 수 있는 기억은 「지금 있는 기억」에 따로 싣는다
-	return r.launch(ctx, mat, r.Cfg.RetroModel)
+	return r.begin(mat, host)
 }
 
-// RunLegacyOne takes the lock and judges one batch of old memories.
-func (r *Runner) RunLegacyOne(ctx context.Context) (Result, error) {
-	unlock, err := r.lock()
-	if err != nil {
-		return Result{Kind: KindLegacy, Period: dayOf(r.now())}, err
-	}
-	defer unlock()
-	return r.RunLegacy(ctx)
-}
-
-// legacyDaily runs the day's old-memory batches up to legacyBatches, counting
-// the runs already made today (a failed run counts: it is not retried the
-// same day, unless the host was signed out). It stops when nothing is left or
-// a run fails.
-func (r *Runner) legacyDaily(ctx context.Context) ([]Result, error) {
-	today := dayOf(r.now())
+// legacyRunsToday counts today's old-memory batches: a failed run counts (it
+// is not retried the same day) unless the host was signed out and never
+// reached the model.
+func (r *Keeper) legacyRunsToday() (int, error) {
 	var ran int
-	// 호스트가 로그인되어 있지 않아 모델에 닿지 못한 실행은 몫으로 세지 않는다(로그인 뒤 같은 날 다시 돈다).
 	notes := signedOutNotes()
 	like := strings.TrimSuffix(strings.Repeat("error LIKE ? OR ", len(notes)), " OR ")
-	if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=? AND NOT (status=? AND (`+like+`))`,
-		append([]any{KindLegacy, today, StatusFailed}, notes...)...).Scan(&ran); err != nil {
-		return nil, err
-	}
-	var results []Result
-	for ; ran < r.Cfg.LegacyBatches; ran++ {
-		res, err := r.RunLegacy(ctx)
-		if res.Status == StatusEmpty && err == nil {
-			break
-		}
-		results = append(results, res)
-		if err != nil {
-			return results, i18n.Errorf("retro.err.legacy", err)
-		}
-	}
-	return results, nil
+	err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND period=? AND NOT (status=? AND (`+like+`))`,
+		append([]any{KindLegacy, dayOf(r.now()), StatusFailed}, notes...)...).Scan(&ran)
+	return ran, err
 }
 
 // applyLegacy turns the judgments on the batch into proposals and keeps each

@@ -1,20 +1,18 @@
-// Package install puts orbit-mem on this PC: the binary, the OS schedule for
-// retrospectives (launchd on Mac, Task Scheduler on Windows) and orbit-mem's own plugin
-// in the hosts (hosts.go: Claude Code and Codex plugin commands, Codex's config.toml).
+// Package install puts orbit-mem on this PC: the binary and orbit-mem's own plugin in the
+// hosts (hosts.go: Claude Code and Codex plugin commands, Codex's config.toml). It schedules
+// nothing: the retrospectives and their schedule are OpenOrbit's (orb install); it only
+// takes out the retrospective schedule orbit-mem itself registered before (legacy.go).
 package install
 
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
-	"unicode/utf16"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
@@ -48,197 +46,6 @@ func FindHosts() Hosts {
 		h.Codex = p
 	}
 	return h
-}
-
-// Schedule is the retrospective schedule of this PC.
-type Schedule struct {
-	Bin      string   // orbit-mem 절대경로
-	Hour     int      // 하루 회고 시각
-	Home     string   // ORBIT_HOME(기본 위치가 아니면)
-	PathDirs []string // claude·codex가 있는 디렉터리
-	Logs     string
-}
-
-// LaunchdLabel names the Mac schedule.
-const LaunchdLabel = "dev.onidot.orbit.retro"
-
-// WindowsTask names the Windows schedule.
-const WindowsTask = "Orbit Retro"
-
-func xmlEscape(s string) string { return html.EscapeString(s) }
-
-// LaunchdPlist is the launchd agent: daily at Hour (a missed run during sleep
-// runs on wake) and at login (catches up after the PC was off).
-func LaunchdPlist(s Schedule) string {
-	path := strings.Join(append(append([]string{}, s.PathDirs...), "/usr/bin", "/bin", "/usr/sbin", "/sbin"), ":")
-	env := fmt.Sprintf("\t\t<key>PATH</key>\n\t\t<string>%s</string>\n", xmlEscape(path))
-	if s.Home != "" {
-		env += fmt.Sprintf("\t\t<key>ORBIT_HOME</key>\n\t\t<string>%s</string>\n", xmlEscape(s.Home))
-	}
-	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>%s</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>%s</string>
-		<string>retro</string>
-		<string>run</string>
-	</array>
-	<key>StartCalendarInterval</key>
-	<dict>
-		<key>Hour</key>
-		<integer>%d</integer>
-		<key>Minute</key>
-		<integer>0</integer>
-	</dict>
-	<key>RunAtLoad</key>
-	<true/>
-	<key>EnvironmentVariables</key>
-	<dict>
-%s	</dict>
-	<key>StandardOutPath</key>
-	<string>%s</string>
-	<key>StandardErrorPath</key>
-	<string>%s</string>
-	<key>ProcessType</key>
-	<string>Background</string>
-</dict>
-</plist>
-`, LaunchdLabel, xmlEscape(s.Bin), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
-}
-
-// TaskXML is the Windows Task Scheduler definition (UTF-16LE with BOM, as
-// schtasks /XML expects): daily at Hour, at this user's logon, and as soon as
-// possible after a missed start. It runs through cmd.exe to set ORBIT_HOME and
-// keep a log.
-func TaskXML(s Schedule) []byte {
-	user := os.Getenv("USERNAME")
-	if d := os.Getenv("USERDOMAIN"); d != "" && user != "" {
-		user = d + `\` + user
-	}
-	userID := ""
-	if user != "" {
-		userID = "<UserId>" + xmlEscape(user) + "</UserId>"
-	}
-	inner := ""
-	if s.Home != "" {
-		inner = `set "ORBIT_HOME=` + s.Home + `" && `
-	}
-	inner += `"` + s.Bin + `" retro run`
-	if s.Logs != "" {
-		inner += ` >> "` + filepath.Join(s.Logs, "retro.log") + `" 2>&1`
-	}
-	x := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>OpenOrbit 회고(하루·주간)</Description></RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2026-01-01T%02d:00:00</StartBoundary>
-      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>
-    </CalendarTrigger>
-    <LogonTrigger>%s<Delay>PT5M</Delay></LogonTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>cmd.exe</Command>
-      <Arguments>/d /c %s</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-`, s.Hour, userID, xmlEscape(inner))
-	u := utf16.Encode([]rune(x))
-	b := make([]byte, 2+2*len(u))
-	b[0], b[1] = 0xFF, 0xFE
-	for i, c := range u {
-		b[2+2*i], b[3+2*i] = byte(c), byte(c>>8)
-	}
-	return b
-}
-
-// LaunchAgentPath is where the Mac schedule lives.
-func LaunchAgentPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", LaunchdLabel+".plist")
-}
-
-// ApplySchedule registers the schedule with the OS.
-func ApplySchedule(s Schedule, run func(string, ...string) (string, error)) (string, error) {
-	if err := os.MkdirAll(s.Logs, 0o700); err != nil {
-		return "", err
-	}
-	switch runtime.GOOS {
-	case "darwin":
-		path := LaunchAgentPath()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(path, []byte(LaunchdPlist(s)), 0o644); err != nil {
-			return "", err
-		}
-		domain := fmt.Sprintf("gui/%d", os.Getuid())
-		_, _ = run("launchctl", "bootout", domain+"/"+LaunchdLabel)
-		var err error
-		for attempt := 0; attempt < 5; attempt++ { // bootout은 비동기라 곧바로 bootstrap하면 실패할 수 있다
-			if _, err = run("launchctl", "bootstrap", domain, path); err == nil {
-				return path, nil
-			}
-			time.Sleep(time.Second)
-		}
-		return path, err
-	case "windows":
-		dir, err := os.MkdirTemp("", "orbit-task")
-		if err != nil {
-			return "", err
-		}
-		defer os.RemoveAll(dir)
-		file := filepath.Join(dir, "task.xml")
-		if err := os.WriteFile(file, TaskXML(s), 0o600); err != nil {
-			return "", err
-		}
-		_, err = run("schtasks", "/Create", "/TN", WindowsTask, "/XML", file, "/F")
-		return WindowsTask, err
-	}
-	return "", i18n.Errorf("install.err.no_schedule", runtime.GOOS)
-}
-
-// RemoveSchedule unregisters the schedule.
-func RemoveSchedule(run func(string, ...string) (string, error)) error {
-	switch runtime.GOOS {
-	case "darwin":
-		_, _ = run("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", os.Getuid(), LaunchdLabel))
-		err := os.Remove(LaunchAgentPath())
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	case "windows":
-		_, err := run("schtasks", "/Delete", "/TN", WindowsTask, "/F")
-		return err
-	}
-	return nil
-}
-
-// ScheduleInstalled reports whether the OS schedule is registered (loaded).
-func ScheduleInstalled(run func(string, ...string) (string, error)) bool {
-	switch runtime.GOOS {
-	case "darwin":
-		_, err := run("launchctl", "print", fmt.Sprintf("gui/%d/%s", os.Getuid(), LaunchdLabel))
-		return err == nil
-	case "windows":
-		_, err := run("schtasks", "/Query", "/TN", WindowsTask)
-		return err == nil
-	}
-	return false
 }
 
 // DefaultBinDir is where orbit-mem is installed: ~/.local/bin on Mac and Linux,

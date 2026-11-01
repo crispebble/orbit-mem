@@ -231,37 +231,44 @@ func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
 	}
 }
 
-func TestHook_세션_끝은_대기열에_넣고_뒤_실행을_띄운다(t *testing.T) {
+// K3: 세션 끝 훅은 활동 기록만 남긴다. 세션 끝 회고 대기열에 넣지 않고 뒤 프로세스도 띄우지 않는다
+// (회고는 OpenOrbit이 돌린다). 프로세스를 띄우지 않는 것은 TestNoHostCalls가 코드로도 막는다.
+func TestHook_세션_끝은_활동_기록만_남긴다(t *testing.T) {
 	h := home(t)
 	s := seed(t)
-	var spawned [][]string
-	old := spawnDetached
-	spawnDetached = func(name string, args []string, log string) error { spawned = append(spawned, args); return nil }
-	t.Cleanup(func() { spawnDetached = old })
-
 	out, _, code := run(t, `{"cwd":"/w/app","session_id":"sess-9","transcript_path":"/x/sess-9.jsonl","hook_event_name":"SessionEnd","reason":"exit"}`, "hook", "session-end", "--host", "claude")
 	if code != 0 || out != "" {
 		t.Fatalf("code=%d out=%q", code, out)
 	}
-	if len(spawned) != 1 || strings.Join(spawned[0], " ") != "retro sessions" {
-		t.Fatalf("spawned = %v", spawned)
+	var ended int64
+	if err := s.DB().QueryRow(`SELECT ended_at FROM activity WHERE host='claude' AND session='sess-9'`).Scan(&ended); err != nil || ended == 0 {
+		t.Fatalf("activity ended_at = %d %v", ended, err)
 	}
-	var host, session, transcript string
-	if err := s.DB().QueryRow(`SELECT host, session, transcript FROM session_ends WHERE retro_id=''`).Scan(&host, &session, &transcript); err != nil ||
-		host != "claude" || session != "sess-9" || transcript != "/x/sess-9.jsonl" {
-		t.Fatalf("queue = %s %s %s %v", host, session, transcript, err)
-	}
-	// 넣지 않는 경우: Orbit 폴더 아래 세션, 회고 실행 안, 세션 끝 회고를 끈 PC.
-	run(t, `{"cwd":"`+filepath.Join(h, "retro", "run")+`","session_id":"sess-r"}`, "hook", "session-end", "--host", "claude")
-	t.Setenv("ORBIT_RETRO_ID", "r-1")
-	run(t, `{"cwd":"/w/app","session_id":"sess-in-retro"}`, "hook", "session-end", "--host", "claude")
-	t.Setenv("ORBIT_RETRO_ID", "")
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14,"sessionRetro":false,"recallChars":1000,"ledgerWindowDays":7}`), 0o600)
-	run(t, `{"cwd":"/w/app","session_id":"sess-off"}`, "hook", "session-end", "--host", "claude")
 	var n int
 	s.DB().QueryRow(`SELECT COUNT(*) FROM session_ends`).Scan(&n)
-	if n != 1 || len(spawned) != 1 {
-		t.Fatalf("queued %d, spawned %d", n, len(spawned))
+	if n != 0 {
+		t.Fatalf("session_ends = %d, want 0", n)
+	}
+	if _, err := os.Stat(filepath.Join(h, "logs", "session-retro.log")); !os.IsNotExist(err) {
+		t.Fatalf("a background run was started: %v", err)
+	}
+}
+
+// K1: retro 명령은 없다(회고는 OpenOrbit의 orb retro).
+func TestRetro_명령은_없다(t *testing.T) {
+	home(t)
+	_, errOut, code := run(t, "", "retro", "run")
+	if code != 2 || !strings.Contains(strings.ToLower(errOut), "unknown command") {
+		t.Fatalf("code=%d err=%q", code, errOut)
+	}
+	_, help, _ := run(t, "", "help")
+	for _, line := range strings.Split(help, "\n") {
+		if f := strings.Fields(line); len(f) > 1 && f[0] == "orbit-mem" && f[1] == "retro" {
+			t.Fatalf("help lists retro: %q", line)
+		}
+	}
+	if !strings.Contains(help, "orbit-mem retro-store") {
+		t.Fatalf("help has no retro-store:\n%s", help)
 	}
 }
 
@@ -278,15 +285,6 @@ func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T
 	next, _, _ := run(t, `{"cwd":"/tmp","session_id":"s2","source":"startup"}`, "hook", "session-start", "--host", "claude")
 	if !strings.Contains(next, "새로 확정된 규칙") {
 		t.Fatalf("next session: %s", next)
-	}
-}
-
-func TestRetroSessions_대기열이_비면_조용히_끝난다(t *testing.T) {
-	home(t)
-	seed(t)
-	out, errOut, code := run(t, "", "retro", "sessions")
-	if code != 0 || !strings.Contains(out, "0 sessions waiting") {
-		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }
 
@@ -400,7 +398,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.5.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.6.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -410,7 +408,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.5.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.6.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {

@@ -13,7 +13,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
 const mark = "LABMARK 묻기 전에 무엇을 정하는지 한 줄로 풀어 쓴다"
@@ -22,7 +21,7 @@ type env struct {
 	l       *Lab
 	s       *memory.Store
 	src     string
-	calls   []retro.Cmd
+	calls   []Cmd
 	cost    float64
 	failRun func(changed bool, round int) bool
 	cancel  context.CancelFunc // 첫 고르기 뒤에 부르면 실험을 취소한다
@@ -65,7 +64,7 @@ func setup(t *testing.T) *env {
 		Build: func(source, out string) error { // 원본을 그대로 플러그인 폴더로
 			return copyTree(source, filepath.Join(out, "plugins", "orbit"))
 		},
-		Exec: func(ctx context.Context, c retro.Cmd) (string, error) {
+		Exec: func(ctx context.Context, c Cmd) (string, error) {
 			e.calls = append(e.calls, c)
 			dir := argOf(c.Args, "--plugin-dir")
 			if dir == "" { // 고르는 모델
@@ -169,7 +168,7 @@ func TestRun_두_후보를_돌려_익명으로_고르고_원장에_남긴다(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	var runs, judges []retro.Cmd
+	var runs, judges []Cmd
 	for _, c := range e.calls {
 		if argOf(c.Args, "--plugin-dir") != "" {
 			runs = append(runs, c)

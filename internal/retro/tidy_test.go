@@ -204,8 +204,8 @@ func TestTidy_정리만_한_회_돌리기(t *testing.T) {
 	if !strings.Contains(text, "## 그래프 정리") || strings.Contains(text, "## 이미 있는 기억") || !strings.Contains(section(text, "## 주제 태그 목록"), "대기 중인 묶기: studio → onidot-studio") {
 		t.Errorf("정리 재료:\n%s", text)
 	}
-	if !strings.Contains(e.calls[0].Stdin+strings.Join(e.calls[0].Args, " "), "그래프 정리") {
-		t.Errorf("정리 지시문이어야 합니다: %+v", e.calls[0])
+	if st, _ := getStatus(e.s, e.calls[0]); st.Kind != KindTidy {
+		t.Errorf("정리 회고여야 합니다: %+v", st)
 	}
 	retags, applied := pendingOf(t, e, memory.ProposalRetag), autoOf(t, e, memory.ProposalRetag)
 	if len(retags) != 1 || len(applied) != 1 || len(applied[0].MemoryIDs) != 3 {

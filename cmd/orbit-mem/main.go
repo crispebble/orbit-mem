@@ -1,8 +1,10 @@
 // Command orbit-mem is the shared memory of this PC for AI hosts: memories with
-// their sources, background retrospectives that propose what was learned, the
-// activity log of host sessions, and its own Claude Code and Codex plugin (the
-// memory MCP server, hooks and skills) that it builds and registers itself. It
-// does not need OpenOrbit; OpenOrbit's harness plugin is a separate plugin.
+// their sources, the storage of the retrospectives (retro-store and the retro MCP
+// tools), the activity log of host sessions, and its own Claude Code and Codex
+// plugin (the memory MCP server, hooks and skills) that it builds and registers
+// itself. It never runs a model or a headless host: the retrospectives run in
+// OpenOrbit (orb retro), and the lab is the one exception until ONID-124. It does
+// not need OpenOrbit to keep and recall memories.
 package main
 
 import (
@@ -52,7 +54,7 @@ func commands() []command {
 		{"import", "usage.import", cmdImport},
 		{"activity", "usage.activity", cmdActivity},
 		{"proposals", "usage.proposals", cmdProposals},
-		{"retro", "usage.retro", cmdRetro},
+		{"retro-store", "usage.retro-store", cmdRetroStore},
 		{"mcp", "usage.mcp", cmdMCP},
 		{"hook", "usage.hook", cmdHook},
 		{"inject", "usage.inject", cmdInject},

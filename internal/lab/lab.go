@@ -27,7 +27,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/memplugin"
-	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
 // Candidates.
@@ -48,7 +47,7 @@ type Lab struct {
 	Cfg    config.Config
 	Paths  config.Paths
 	Source string // 지금 쓰는 플러그인 원본
-	Exec   func(context.Context, retro.Cmd) (string, error)
+	Exec   func(context.Context, Cmd) (string, error)
 	Now    func() time.Time
 	// Shuffle says whether the changed candidate is shown as A in a round. Nil is random.
 	Shuffle func(round int) bool
@@ -66,11 +65,11 @@ func (l *Lab) now() time.Time {
 	return time.Now()
 }
 
-func (l *Lab) exec(ctx context.Context, c retro.Cmd) (string, error) {
+func (l *Lab) exec(ctx context.Context, c Cmd) (string, error) {
 	if l.Exec != nil {
 		return l.Exec(ctx, c)
 	}
-	return retro.ExecHost(ctx, c)
+	return ExecHost(ctx, c)
 }
 
 // Task is a reproducible task made from a real piece of work.
@@ -536,7 +535,7 @@ func (l *Lab) runOne(ctx context.Context, x *memory.LabExperiment, task Task, ca
 	if err := copyTree(start, work); err != nil {
 		return output{}, err
 	}
-	c := retro.Cmd{Name: l.claude(), Dir: work, Env: []string{"ORBIT_HOME=" + home}, Stdin: task.Instruction,
+	c := Cmd{Name: l.claude(), Dir: work, Env: []string{"ORBIT_HOME=" + home}, Stdin: task.Instruction,
 		// --strict-mcp-config: 사용자 범위 MCP(연결 서비스)를 싣지 않는다. --add-dir: --restricted가 파일 도구를 작업 폴더로
 		// 가두므로 후보 플러그인의 분야 묶음만 더 읽게 한다.
 		Args: []string{"-p", "--model", l.Cfg.LabModel, "--plugin-dir", plugin, "--add-dir", plugin, "--restricted", "--setting-sources", "project",
@@ -545,7 +544,7 @@ func (l *Lab) runOne(ctx context.Context, x *memory.LabExperiment, task Task, ca
 	defer cancel()
 	began := time.Now()
 	out, err := l.exec(rctx, c)
-	h := retro.ParseHostOutput(out)
+	h := ParseHostOutput(out)
 	r := memory.LabRun{Experiment: x.ID, Candidate: cand, Round: round, CostUSD: h.CostUSD, InputTokens: h.InputTokens,
 		OutputTokens: h.OutputTokens, Ms: time.Since(began).Milliseconds(), OK: err == nil && h.Known && !h.IsError}
 	if !r.OK {
@@ -663,7 +662,7 @@ func (l *Lab) judge(ctx context.Context, x *memory.LabExperiment, task Task, rou
 	if err := os.MkdirAll(jdir, 0o700); err != nil {
 		return memory.LabPick{}, err
 	}
-	c := retro.Cmd{Name: l.claude(), Dir: jdir, Env: []string{"ORBIT_HOME=" + filepath.Join(dir, "home")},
+	c := Cmd{Name: l.claude(), Dir: jdir, Env: []string{"ORBIT_HOME=" + filepath.Join(dir, "home")},
 		Stdin: fmt.Sprintf(judgePrompt, task.Instruction, task.Criteria, shown(outs[a], scrubDirs(dir)), shown(outs[b], scrubDirs(dir))),
 		Args: []string{"-p", "--model", l.Cfg.LabJudgeModel, "--restricted", "--setting-sources", "project", "--strict-mcp-config", "--tools", "",
 			"--output-format", "json", "--max-budget-usd", budgetArg(l.Cfg.LabRunUSD, l.Cfg.LabExperimentUSD-x.CostUSD), "--no-session-persistence"}}
@@ -671,7 +670,7 @@ func (l *Lab) judge(ctx context.Context, x *memory.LabExperiment, task Task, rou
 	defer cancel()
 	began := time.Now()
 	out, err := l.exec(rctx, c)
-	h := retro.ParseHostOutput(out)
+	h := ParseHostOutput(out)
 	x.CostUSD += h.CostUSD
 	pick := memory.LabPick{Round: round, A: a}
 	var v struct{ Pick, Reason string }

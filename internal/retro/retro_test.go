@@ -20,11 +20,12 @@ import (
 var kst = time.FixedZone("KST", 9*3600)
 
 type env struct {
-	r     *Runner
+	r     *runner
 	s     *memory.Store
 	roots transcript.Roots
-	calls []Cmd
-	ai    func(id string) error // 호스트 대신 도는 가짜 AI
+	calls []string                   // 가짜 호스트가 돈 회고 id
+	ai    func(id string) error      // 호스트 대신 도는 가짜 AI
+	host  func(id string) HostResult // 호스트 결과를 직접 줄 때(없으면 ai의 오류가 실행 오류)
 }
 
 func w(t *testing.T, path, content string) {
@@ -46,20 +47,7 @@ func setup(t *testing.T, now time.Time) *env {
 	t.Cleanup(func() { s.Close() })
 	s.Now = func() time.Time { return now }
 	e := &env{s: s, roots: transcript.Roots{Claude: t.TempDir(), Codex: t.TempDir()}}
-	e.r = &Runner{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }, Mem: "/opt/orbit-mem",
-		Exec: func(ctx context.Context, c Cmd) (string, error) {
-			e.calls = append(e.calls, c)
-			if e.ai == nil {
-				return "", nil
-			}
-			id := ""
-			for _, kv := range c.Env {
-				if strings.HasPrefix(kv, "ORBIT_RETRO_ID=") {
-					id = strings.TrimPrefix(kv, "ORBIT_RETRO_ID=")
-				}
-			}
-			return "", e.ai(id)
-		}}
+	e.r = &runner{Keeper: &Keeper{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }}, e: e}
 	return e
 }
 
@@ -241,92 +229,6 @@ func TestDaily_호스트_기억_변경은_한번만_재료가_된다(t *testing.
 	}
 }
 
-func TestCatchUp_밀린_날을_따라잡고_주간도_돈다(t *testing.T) {
-	// 2026-10-27은 화요일. 지난주(10-19~10-25)의 주간 회고가 돌아야 한다.
-	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-old','daily','2026-10-23','done',1,1)`)
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at,journal_id) VALUES('r-j','daily','2026-10-22','done',1,1,'m-j')`)
-	e.talk(t, "2026-10-25", claudeTurn("2026-10-25", "10:00", "user", "일요일 작업"))
-	e.ai = func(id string) error {
-		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "ok", Journal: &JournalIn{Title: "t", Body: "b"}})
-		return err
-	}
-	results, err := e.r.CatchUp(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got []string
-	for _, r := range results {
-		got = append(got, r.Kind+":"+r.Period+":"+r.Status)
-	}
-	want := "daily:2026-10-24:empty,daily:2026-10-25:done,daily:2026-10-26:empty,weekly:2026-10-19:done"
-	if strings.Join(got, ",") != want {
-		t.Fatalf("got  %s\nwant %s", strings.Join(got, ","), want)
-	}
-	if _, err := os.Stat(filepath.Join(e.r.Paths.Backups())); err != nil {
-		t.Fatalf("daily backup missing: %v", err)
-	}
-}
-
-func TestCatchUp_처음이면_어제만(t *testing.T) {
-	e := setup(t, time.Date(2026, 10, 28, 9, 0, 0, 0, kst)) // 수요일
-	results, _ := e.r.CatchUp(context.Background())
-	if len(results) != 2 || results[0].Period != "2026-10-27" || results[1].Kind != KindWeekly {
-		t.Fatalf("results = %+v", results)
-	}
-}
-
-func TestLock_동시에_두_번_돌지_않는다(t *testing.T) {
-	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
-	unlock, err := e.r.lock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer unlock()
-	if _, err := e.r.CatchUp(context.Background()); !errors.Is(err, ErrBusy) {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestHostCommand_Claude와_Codex(t *testing.T) {
-	e := setup(t, time.Now())
-	c := e.r.hostCommand("r-1", "/tmp/run", "프롬프트", e.r.Cfg.RetroModel)
-	joined := strings.Join(c.Args, " ")
-	for _, want := range []string{"-p", "--strict-mcp-config", "--no-session-persistence", "--setting-sources project", "mcp__orbit-retro__retro_submit"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("claude args missing %q: %s", want, joined)
-		}
-	}
-	if c.Stdin != "프롬프트" || strings.Contains(joined, "프롬프트") {
-		t.Errorf("prompt must go through stdin: %+v", c)
-	}
-	cfg, _ := os.ReadFile(filepath.Join(e.r.Paths.RetroDir(), "r-1", "mcp.json"))
-	if !strings.Contains(string(cfg), `"--retro"`) || !strings.Contains(string(cfg), "ORBIT_HOME") {
-		t.Errorf("mcp config file: %s", cfg)
-	}
-	e.r.Cfg.RetroHost, e.r.Cfg.RetroModel = "codex", "gpt-x"
-	c = e.r.hostCommand("r-1", "/tmp/run", "프롬프트", e.r.Cfg.RetroModel)
-	joined = strings.Join(c.Args, " ")
-	for _, want := range []string{"exec", "--ephemeral", "--skip-git-repo-check", "-m gpt-x", "mcp_servers.orbit-retro.command", "-C /tmp/run", `default_tools_approval_mode="approve"`, " -"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("codex args missing %q: %s", want, joined)
-		}
-	}
-}
-
-func TestCatchUp_중간에_실패한_날도_다음에_다시_돈다(t *testing.T) {
-	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-a','daily','2026-10-23','done',1,1)`)
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-b','daily','2026-10-24','failed',2,2)`)
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-c','daily','2026-10-25','done',3,3)`)
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-d','daily','2026-10-26','empty',4,4)`)
-	e.s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r-w','weekly','2026-10-19','done',5,5)`)
-	results, _ := e.r.CatchUp(context.Background())
-	if len(results) != 1 || results[0].Period != "2026-10-24" {
-		t.Fatalf("results = %+v", results)
-	}
-}
-
 func TestRun_오늘이나_미래는_거절한다(t *testing.T) {
 	e := setup(t, time.Date(2026, 10, 27, 9, 0, 0, 0, kst))
 	if _, err := e.r.Run(context.Background(), KindDaily, "2026-10-27"); err == nil {
@@ -479,19 +381,5 @@ func TestWeekly_재료에_그_주_지표가_들어간다(t *testing.T) {
 	}
 	if !strings.Contains(all, "## 이번 주 지표") || !strings.Contains(all, "반복 교정 1건") {
 		t.Fatalf("material: %s", all)
-	}
-}
-
-func TestCatchUp_작업_기록_백업이_실패해도_회고는_돈다(t *testing.T) {
-	e := setup(t, time.Date(2026, 10, 28, 9, 0, 0, 0, kst))
-	if err := os.WriteFile(e.r.Paths.WorkDB(), []byte("SQLite가 아닌 파일"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	results, err := e.r.CatchUp(context.Background())
-	if len(results) != 2 {
-		t.Fatalf("results = %+v", results)
-	}
-	if err == nil || !strings.Contains(err.Error(), "work log") {
-		t.Fatalf("err = %v", err)
 	}
 }

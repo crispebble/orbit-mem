@@ -1,6 +1,6 @@
 //go:build !windows
 
-package retro
+package lab
 
 import (
 	"os/exec"
@@ -17,12 +17,4 @@ func setProcessGroup(cmd *exec.Cmd) {
 		}
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
 }

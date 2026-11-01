@@ -1,7 +1,6 @@
 package retro
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -10,7 +9,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
-// KindTidy is a retrospective that only tidies the memory graph (orbit-mem retro tidy).
+// KindTidy is a retrospective that only tidies the memory graph (OpenOrbit orb retro tidy).
 const KindTidy = "tidy"
 
 // tidyMeta is where the graph tidy keeps which cluster it reached.
@@ -80,7 +79,7 @@ func tidyMemory(m memory.Memory) TidyMemory {
 // clusters never done in picked order, then, of the clusters whose size
 // changed since they were done, the one done longest ago. A cluster that did
 // not change is not walked again (it would cost a run to see the same pairs).
-func (r *Runner) tidyMaterial() (*Tidy, error) {
+func (r *Keeper) tidyMaterial() (*Tidy, error) {
 	n, u := r.Cfg.GraphTidyMemories, r.Cfg.GraphTidyUntagged
 	if n <= 0 && u <= 0 {
 		return nil, nil
@@ -196,30 +195,19 @@ func advanceTidy(s *memory.Store, t *Tidy, day string) {
 	_ = s.SetMeta(tidyMeta, string(b))
 }
 
-// RunTidy runs one graph tidy now, with no conversation material. Callers
-// hold the lock (RunTidyOne takes it).
-func (r *Runner) RunTidy(ctx context.Context) (Result, error) {
+// PrepareTidy prepares one graph tidy for host, with no conversation material.
+func (r *Keeper) PrepareTidy(host string) (Prepared, error) {
 	mat := Material{Kind: KindTidy, Period: dayOf(r.now())}
 	t, err := r.tidyMaterial()
 	if err != nil {
-		return Result{Kind: KindTidy, Period: mat.Period}, err
+		return Prepared{Kind: KindTidy, Period: mat.Period}, err
 	}
 	mat.Tidy = t
 	if err := r.commonMaterial(&mat); err != nil {
-		return Result{Kind: KindTidy, Period: mat.Period}, err
+		return Prepared{Kind: KindTidy, Period: mat.Period}, err
 	}
 	mat.Existing = nil // 정리는 기억을 새로 남기지 않는다
-	return r.launch(ctx, mat, r.Cfg.RetroModel)
-}
-
-// RunTidyOne takes the lock and runs one graph tidy.
-func (r *Runner) RunTidyOne(ctx context.Context) (Result, error) {
-	unlock, err := r.lock()
-	if err != nil {
-		return Result{Kind: KindTidy, Period: dayOf(r.now())}, err
-	}
-	defer unlock()
-	return r.RunTidy(ctx)
+	return r.begin(mat, host)
 }
 
 func renderTidy(b *strings.Builder, t *Tidy) {

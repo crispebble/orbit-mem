@@ -11,7 +11,7 @@ import (
 // cleanupMaterial adds what the weekly cleanup looks at (설계 「주간 정리」):
 // memories not used for a long time, pairs that may say the same thing, the
 // week's usage verdicts worth acting on, and judged changes.
-func (r *Runner) cleanupMaterial(mat *Material, active []memory.Memory, from, to string) error {
+func (r *Keeper) cleanupMaterial(mat *Material, active []memory.Memory, from, to string) error {
 	var live []memory.Memory
 	for _, m := range active {
 		if m.Kind != memory.KindJournal {

@@ -2,14 +2,38 @@ package main
 
 import (
 	"os"
+	"strings"
+	"sync"
 	"testing"
 )
 
-// TestMain keeps tests from starting real background processes: the session-end hook spawns
-// selfPath() retro sessions, and in a test selfPath() is the test binary, which would run the
-// whole suite again (and spawn again, without end). Tests that check the spawn replace
-// spawnDetached themselves.
+// defaultSchedule records the OS schedule commands (launchctl, schtasks) a test ran without
+// its own fake (fakeSchedule): no test reaches the real launchd or Task Scheduler.
+var defaultSchedule struct {
+	sync.Mutex
+	calls []string
+}
+
 func TestMain(m *testing.M) {
-	spawnDetached = func(string, []string, string) error { return nil }
+	scheduleRun = func(name string, args ...string) (string, error) {
+		defaultSchedule.Lock()
+		defer defaultSchedule.Unlock()
+		defaultSchedule.calls = append(defaultSchedule.calls, name+" "+strings.Join(args, " "))
+		return "", nil
+	}
 	os.Exit(m.Run())
+}
+
+func TestMain_예약_명령은_기본으로_가짜다(t *testing.T) {
+	defaultSchedule.Lock()
+	n := len(defaultSchedule.calls)
+	defaultSchedule.Unlock()
+	if _, err := scheduleRun("launchctl", "print", "gui/0/x"); err != nil {
+		t.Fatal(err)
+	}
+	defaultSchedule.Lock()
+	defer defaultSchedule.Unlock()
+	if len(defaultSchedule.calls) != n+1 || defaultSchedule.calls[n] != "launchctl print gui/0/x" {
+		t.Fatalf("calls = %v", defaultSchedule.calls)
+	}
 }

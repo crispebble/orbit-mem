@@ -1,7 +1,6 @@
 package retro
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -65,74 +64,16 @@ func Pending(s *memory.Store) ([]SessionEnd, error) {
 	return out, rows.Err()
 }
 
-func markEnd(s *memory.Store, e SessionEnd, retroID string) {
-	_, _ = s.DB().Exec(`UPDATE session_ends SET retro_id=? WHERE host=? AND session=? AND ended_at=?`, retroID, e.Host, e.Session, e.EndedAt)
-}
-
-// DrainSessions runs the queued session-end retrospectives under the PC-wide
-// lock. When another retrospective holds the lock it returns at once: that
-// run, or the next daily catch-up, takes the queue.
-func (r *Runner) DrainSessions(ctx context.Context) ([]Result, error) {
-	var results []Result
-	// 잠금을 푸는 사이에 새로 들어온 세션의 실행은 바쁨으로 끝났을 수 있다: 풀고 나서 한 번 더 본다.
-	for attempt := 0; attempt < 3; attempt++ {
-		unlock, err := r.lock()
-		if errors.Is(err, ErrBusy) {
-			return results, nil
-		}
-		if err != nil {
-			return results, err
-		}
-		res, err := r.drain(ctx)
-		unlock()
-		results = append(results, res...)
-		if err != nil || ctx.Err() != nil {
-			return results, err
-		}
-		if pending, _ := Pending(r.Store); len(pending) == 0 {
-			break
-		}
-	}
-	return results, nil
-}
-
-// drain runs the queue until it is empty, or stops at a host that is not
-// signed in, leaving the rest queued. Callers hold the lock.
-func (r *Runner) drain(ctx context.Context) ([]Result, error) {
-	var results []Result
-	var errs []error
-	done := map[string]bool{}
-	for {
-		pending, err := Pending(r.Store)
-		if err != nil {
-			return results, err
-		}
-		var next *SessionEnd
-		for i := range pending {
-			key := fmt.Sprintf("%s:%s:%d", pending[i].Host, pending[i].Session, pending[i].EndedAt)
-			if !done[key] {
-				done[key] = true
-				next = &pending[i]
-				break
-			}
-		}
-		if next == nil || ctx.Err() != nil {
-			return results, errors.Join(errs...)
-		}
-		res, err := r.RunSession(ctx, *next)
-		results = append(results, res)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s:%s: %w", next.Host, next.Session, err))
-		}
-		if errors.Is(err, ErrHostSignedOut) { // 남은 세션도 같은 이유로 실패한다: 다음 실행에 맡긴다
-			return results, errors.Join(errs...)
-		}
-	}
+// MarkEnd closes a queued session: retroID is the retrospective that read it,
+// or StatusEmpty, StatusCapped or StatusSkipped.
+func MarkEnd(s *memory.Store, e SessionEnd, retroID string) error {
+	_, err := s.DB().Exec(`UPDATE session_ends SET retro_id=? WHERE host=? AND session=? AND ended_at=?`, retroID, e.Host, e.Session, e.EndedAt)
+	return err
 }
 
 // sessionsToday counts the session-end retrospectives started today that
 // reached the host (not empty or capped ones).
-func (r *Runner) sessionsToday() int {
+func (r *Keeper) sessionsToday() int {
 	t := r.now()
 	start := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()).UnixMilli()
 	var n int
@@ -140,9 +81,14 @@ func (r *Runner) sessionsToday() int {
 	return n
 }
 
-// RunSession runs the session-end retrospective of one queued session. Callers hold the lock.
-func (r *Runner) RunSession(ctx context.Context, e SessionEnd) (Result, error) {
-	res := Result{Kind: KindSession, Period: dayOf(r.now())}
+// PrepareSession prepares the session-end retrospective of one queued session
+// for host. A session with nothing to read (no transcript, no new user turn)
+// closes its queue entry as empty; with dailyMax > 0 and that many session
+// retrospectives already run today it closes it as capped (the daily
+// retrospective reads it). Otherwise the caller marks the entry with the
+// returned id once the run is finished (MarkEnd).
+func (r *Keeper) PrepareSession(host string, e SessionEnd, dailyMax int) (Prepared, error) {
+	res := Prepared{Kind: KindSession, Period: dayOf(r.now())}
 	exclude := []string{r.Paths.Home}
 	sess, ok := transcript.SessionFile(e.Host, e.Transcript, exclude)
 	if !ok { // 훅이 경로를 주지 않았거나 그 경로가 틀렸다
@@ -161,27 +107,21 @@ func (r *Runner) RunSession(ctx context.Context, e SessionEnd) (Result, error) {
 	if !ok || !hasUser {
 		// 읽을 기록이 없거나(프로그램 세션·지워진 기록) 새 사용자 발화가 없다: 회고 줄 없이 대기열만 닫는다.
 		res.Status = StatusEmpty
-		markEnd(r.Store, e, StatusEmpty)
-		return res, nil
+		return res, MarkEnd(r.Store, e, StatusEmpty)
 	}
-	if limit := r.Cfg.SessionRetroDailyMax; limit > 0 && r.sessionsToday() >= limit {
+	if dailyMax > 0 && r.sessionsToday() >= dailyMax {
 		res.Status = StatusCapped
-		markEnd(r.Store, e, StatusCapped)
-		return res, nil
+		return res, MarkEnd(r.Store, e, StatusCapped)
 	}
 	mat, err := r.sessionMaterial(sess, e)
 	if err != nil {
 		return res, err
 	}
 	mat.Session = key
-	res, err = r.launch(ctx, mat, r.Cfg.SessionModel())
-	if !errors.Is(err, ErrHostSignedOut) { // 로그인되지 않았으면 대기열에 남겨 다음 실행이 다시 돌린다
-		markEnd(r.Store, e, res.ID)
-	}
-	return res, err
+	return r.begin(mat, host)
 }
 
-func (r *Runner) sessionMaterial(sess transcript.Session, e SessionEnd) (Material, error) {
+func (r *Keeper) sessionMaterial(sess transcript.Session, e SessionEnd) (Material, error) {
 	last := sess.Turns[0].At
 	for _, t := range sess.Turns {
 		if t.At.After(last) {

@@ -49,7 +49,7 @@ func recordCheck(s *memory.Store, outcome string, memories int, proposed bool) {
 // wrong for that); an excerpt that left the file is one stale proposal per
 // file. Memories without an excerpt come back for the model to judge.
 // Pending proposals of the old whole-file check give way to this judgment.
-func (r *Runner) checkSources() []SourceCheck {
+func (r *Keeper) checkSources() []SourceCheck {
 	_, _ = r.Store.SettleLegacySourceProposals()
 	rows, err := r.Store.DB().Query(`SELECT s.id, s.memory_id, s.ref, s.excerpt, s.hash, m.title FROM sources s JOIN memories m ON m.id=s.memory_id
 		WHERE s.kind='file' AND s.hash<>'' AND m.state IN ('candidate','confirmed') ORDER BY s.ref, s.memory_id, s.at`)
@@ -91,7 +91,7 @@ func (r *Runner) checkSources() []SourceCheck {
 
 // checkFile settles one changed file and says whether the model must judge
 // some of its memories, taking them out of budget.
-func (r *Runner) checkFile(path, cur string, rows []sourceRow, budget *int) (SourceCheck, bool) {
+func (r *Keeper) checkFile(path, cur string, rows []sourceRow, budget *int) (SourceCheck, bool) {
 	setHash := func(memoryIDs map[string]bool) {
 		for _, row := range rows {
 			if memoryIDs[row.memoryID] {

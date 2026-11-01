@@ -3,12 +3,10 @@ package retro
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
@@ -231,46 +229,6 @@ func TestLegacy_승인한_합치기는_원장에_남고_되돌린다(t *testing.
 	}
 }
 
-// 예약 회고(orb retro run)는 하루에 옛 기억 묶음을 legacyBatches개까지 돌린다. 같은 날 다시 돌려도 더 돌지 않고, 0이면 끈다.
-func TestLegacy_예약_회고는_하루_묶음_수까지_돈다(t *testing.T) {
-	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
-	e, _ := legacyEnv(t, now)
-	e.r.Cfg.LegacyMemories, e.r.Cfg.LegacyBatches = 2, 2
-	legacyRuns := func() int {
-		n := 0
-		for _, c := range e.calls {
-			if strings.Contains(c.Stdin+strings.Join(c.Args, " "), "옛 기억 판정") {
-				n++
-			}
-		}
-		return n
-	}
-	e.ai = func(id string) error {
-		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "판정 없음"})
-		return err
-	}
-	if _, err := e.r.CatchUp(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if n := legacyRuns(); n != 2 {
-		t.Fatalf("첫 예약 실행 옛 기억 묶음 %d번, 2번이어야 합니다", n)
-	}
-	if _, err := e.r.CatchUp(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if n := legacyRuns(); n != 2 {
-		t.Fatalf("같은 날 다시 돌려도 더 돌지 않습니다: %d번", n)
-	}
-	e.r.Now = func() time.Time { return now.AddDate(0, 0, 1) }
-	e.r.Cfg.LegacyBatches = 0
-	if _, err := e.r.CatchUp(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if n := legacyRuns(); n != 2 {
-		t.Fatalf("legacyBatches 0이면 돌지 않습니다: %d번", n)
-	}
-}
-
 // 검토 지적 2·3·5: 같은 지금 기억에 합치는 합치기는 하나만 대기한다(뒤 것이 앞 것의 합친 본문을 덮지 않게).
 // 합친 본문이 없는 합치기, 다른 합치기의 with에 든 기억에 따로 낸 판정은 받지 않는다(다음 묶음에 다시 나온다).
 func TestLegacy_겹치는_합치기와_빈_본문은_받지_않는다(t *testing.T) {
@@ -360,59 +318,6 @@ func ms0(t *testing.T, e *env) string {
 	t.Helper()
 	all, _ := e.s.List(memory.StateCandidate)
 	return all[0].ID
-}
-
-// 검토 지적 8: 호스트가 로그인되어 있지 않아 실패한 실행은 그날 몫에서 빼고 다시 돈다.
-func TestLegacy_로그인되지_않아_실패한_실행은_몫에서_뺀다(t *testing.T) {
-	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
-	e, _ := legacyEnv(t, now)
-	signedOut := true
-	e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
-		e.calls = append(e.calls, c)
-		if signedOut {
-			return `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"is_error":true,"result":"Not logged in · Please run /login","type":"result"}`, errors.New("exit 1")
-		}
-		return "", nil
-	}
-	if _, err := e.r.legacyDaily(context.Background()); !errors.Is(err, ErrHostSignedOut) {
-		t.Fatalf("로그아웃 실패여야 합니다: %v", err)
-	}
-	signedOut = false
-	calls := len(e.calls)
-	e.r.legacyDaily(context.Background())
-	if len(e.calls) != calls+1 {
-		t.Fatalf("로그인 뒤 같은 날 다시 돌아야 합니다: %d → %d", calls, len(e.calls))
-	}
-	e.r.legacyDaily(context.Background())
-	if len(e.calls) != calls+1 {
-		t.Fatalf("로그인 뒤 실패(제출 없음)는 몫을 씁니다: %d", len(e.calls))
-	}
-}
-
-// 한국어로 쓰던 때 남은 로그아웃 실패도 영어로 바꾼 뒤 몫에서 뺀다(ONID-61).
-func TestLegacy_다른_언어로_남은_로그아웃_실패도_몫에서_뺀다(t *testing.T) {
-	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
-	e, _ := legacyEnv(t, now)
-	signedOut := true
-	e.r.Exec = func(ctx context.Context, c Cmd) (string, error) {
-		e.calls = append(e.calls, c)
-		if signedOut {
-			return `{"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"is_error":true,"result":"Not logged in · Please run /login","type":"result"}`, errors.New("exit 1")
-		}
-		return "", nil
-	}
-	i18n.Set(i18n.KO)
-	defer i18n.Set(i18n.EN)
-	if _, err := e.r.legacyDaily(context.Background()); !errors.Is(err, ErrHostSignedOut) {
-		t.Fatalf("로그아웃 실패여야 합니다: %v", err)
-	}
-	i18n.Set(i18n.EN)
-	signedOut = false
-	calls := len(e.calls)
-	e.r.legacyDaily(context.Background())
-	if len(e.calls) != calls+1 {
-		t.Fatalf("언어를 바꿔도 같은 날 다시 돌아야 합니다: %d → %d", calls, len(e.calls))
-	}
 }
 
 // 끝 기준 2: 옛 기억 확정(증거가 없어 사람이 승인)·낡음(자동 적용)도 원장에 남고 되돌리면 옛 상태로 돌아온다.
