@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook session-end --host claude --plugin-version 0.9.0; fi",
+            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook session-end --host claude --plugin-version 0.10.0; fi",
             "timeout": 3,
             "type": "command"
           }
@@ -15,7 +15,7 @@
       {
         "hooks": [
           {
-            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook session-start --host claude --plugin-version 0.9.0; else printf '%s\\n' '{\"hookSpecificOutput\":{\"additionalContext\":\"orbit-mem 실행 파일이 PATH에 없습니다. https://github.com/onidot-labs/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요.\",\"hookEventName\":\"SessionStart\"}}'; fi",
+            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook session-start --host claude --plugin-version 0.10.0; else printf '%s\\n' '{\"hookSpecificOutput\":{\"additionalContext\":\"orbit-mem 실행 파일이 PATH에 없습니다. https://github.com/onidot-labs/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요.\",\"hookEventName\":\"SessionStart\"}}'; fi",
             "timeout": 10,
             "type": "command"
           }
@@ -27,7 +27,7 @@
       {
         "hooks": [
           {
-            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook prompt --host claude --plugin-version 0.9.0; fi",
+            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook prompt --host claude --plugin-version 0.10.0; fi",
             "timeout": 5,
             "type": "command"
           }

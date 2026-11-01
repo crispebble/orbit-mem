@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
@@ -324,57 +323,6 @@ func TestConfig_2차_키를_설정한다(t *testing.T) {
 	}
 }
 
-// 명세 · O3-5: orbit-mem lab은 플러그인 원본을 쓰는 PC에서만 돈다. 과제를 만들고 목록에 보이며, 실험실 설정 키를 바꿀 수 있다.
-func TestLab_과제_명령과_설정(t *testing.T) {
-	h := home(t)
-	seed(t)
-	if _, errOut, code := run(t, "", "lab", "task", "list"); code == 0 || !strings.Contains(errOut, "plugin source") {
-		t.Fatalf("원본 없이 돌면 안 됩니다: %d %s", code, errOut)
-	}
-	src := filepath.Join(h, "src")
-	os.MkdirAll(src, 0o755)
-	cfg := config.Default()
-	cfg.PluginSource = src
-	if err := config.Save(paths().Config(), cfg); err != nil {
-		t.Fatal(err)
-	}
-	if out, errOut, code := run(t, "", "lab", "task", "new", "--title", "묻기", "--instruction", "물어라", "--criteria", "풀어 쓴다"); code != 0 || !strings.Contains(out, "Created task") {
-		t.Fatalf("과제 %d %s %s", code, out, errOut)
-	}
-	if out, _, _ := run(t, "", "lab", "task", "list"); !strings.Contains(out, "“묻기”") {
-		t.Fatalf("목록 %s", out)
-	}
-	for _, kv := range [][2]string{{"labRuns", "5"}, {"labRunUSD", "0.5"}, {"labExperimentUSD", "8"}, {"labModel", "haiku"}, {"labJudgeModel", "sonnet"}} {
-		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
-			t.Fatalf("%s: %s", kv[0], errOut)
-		}
-	}
-	if _, _, code := run(t, "", "config", "set", "labJudgeModel", "haiku"); code != 1 {
-		t.Fatal("고르는 모델이 실행 모델과 같으면 받지 않습니다")
-	}
-	if out, _, _ := run(t, "", "lab", "candidates"); !strings.Contains(out, "0 waiting for the lab") {
-		t.Fatalf("후보 %s", out)
-	}
-	// 검토 지적 4: 실험하지 않을 실험실 대기 제안은 사용자가 닫을 수 있다.
-	s, _ := openStore()
-	skill := filepath.Join(src, "skills", "x", "SKILL.md")
-	os.MkdirAll(filepath.Dir(skill), 0o755)
-	os.WriteFile(skill, []byte("옛"), 0o644)
-	p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalApplyFile, Title: "스킬", Lab: true, Payload: memory.Payload{Path: skill, Content: "새"}})
-	s.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out, errOut, code := run(t, "", "lab", "drop", p.ID, "--note", "필요 없음"); code != 0 || !strings.Contains(out, "Closed lab proposal") {
-		t.Fatalf("닫기 %d %s %s", code, out, errOut)
-	}
-	s, _ = openStore()
-	defer s.Close()
-	if got, _ := s.GetProposal(p.ID); got.Status != memory.StatusRejected || !strings.Contains(got.Note, "필요 없음") {
-		t.Fatalf("닫은 제안 %+v", got)
-	}
-}
-
 // 끝 기준: 시작 훅은 --plugin-version이 자기 판과 다르면 문맥 끝에 맞추라는 한 줄을 더한다. 같으면 없고,
 // 다른 훅과 hook work는 이 플래그를 받고 무시한다.
 func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T) {
@@ -398,7 +346,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.9.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.10.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -408,7 +356,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.9.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.10.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {

@@ -14,9 +14,9 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
-// fakePC is a PC with fake claude and codex on PATH that log their arguments: HOME, PATH,
-// CODEX_HOME and ORBIT_ORB all point into temporary folders, so no test reaches the real
-// hosts, launchctl or orb. claude answers its list commands from state files.
+// fakePC is a PC with fake claude and codex on PATH that log their arguments: HOME, PATH
+// and CODEX_HOME all point into temporary folders, so no test reaches the real hosts or
+// launchctl. claude answers its list commands from state files.
 type fakePC struct {
 	home, bin, log, state, codexHome string
 }
@@ -31,7 +31,6 @@ func newFakePC(t *testing.T, hosts ...string) *fakePC {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", f.bin)
 	t.Setenv("CODEX_HOME", f.codexHome)
-	t.Setenv("ORBIT_ORB", filepath.Join(f.state, "no-orb"))
 	for _, h := range hosts {
 		script := "#!/bin/sh\nprintf '%s\\n' \"" + h + " $*\" >>'" + f.log + "'\n" +
 			"case \"$*\" in\n" +
@@ -322,7 +321,7 @@ func TestUsage_걷어_낸_명령(t *testing.T) {
 			t.Errorf("%v: %d", args, code)
 		}
 	}
-	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.9.0\n" {
+	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.10.0\n" {
 		t.Errorf("version %d %q", code, out)
 	}
 	if _, errOut, code := run(t, ""); code != 2 || !strings.Contains(errOut, "orbit-mem search") || strings.Contains(errOut, "orb run") || strings.Contains(errOut, "fragment") {

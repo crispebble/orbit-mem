@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -221,4 +222,127 @@ func (s *Store) CloseLabProposal(id, note string) error {
 		return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, id)
 	}
 	return nil
+}
+
+// LabCorrection is a correction event's id and the user's words: the harness lab
+// (OpenOrbit's dev tool, ONID-124) adds them to a task's criteria.
+type LabCorrection struct {
+	ID    int64  `json:"id"`
+	Quote string `json:"quote"`
+}
+
+// LabCorrections reads the correction events with these ids, in the given order.
+func (s *Store) LabCorrections(ids []int64) ([]LabCorrection, error) {
+	out := []LabCorrection{}
+	for _, id := range ids {
+		var data string
+		if err := s.db.QueryRow(`SELECT data FROM events WHERE id=? AND kind=?`, id, EventCorrection).Scan(&data); err != nil {
+			return nil, i18n.Errorf("memory.err.no_correction", id)
+		}
+		var d struct{ Quote string }
+		_ = json.Unmarshal([]byte(data), &d)
+		out = append(out, LabCorrection{ID: id, Quote: strings.TrimSpace(d.Quote)})
+	}
+	return out, nil
+}
+
+// LabLedger is the ledger line of a judged experiment as the lab sends it; the verdict is the experiment's.
+type LabLedger struct {
+	Targets []string `json:"targets"`
+	Change  string   `json:"change"`
+	Basis   string   `json:"basis"`
+}
+
+// LabProposalNote releases or closes one proposal waiting for the lab.
+type LabProposalNote struct {
+	ProposalID string `json:"proposalId"`
+	Summary    string `json:"summary,omitempty"`
+	Note       string `json:"note,omitempty"`
+}
+
+// LabFileProposal is a file change that helped, proposed to the user.
+type LabFileProposal struct {
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// LabSave is what the harness lab records at once: the experiment, its runs, and for a
+// judged experiment its ledger line and what happens to the proposals.
+type LabSave struct {
+	Experiment LabExperiment     `json:"experiment"`
+	Runs       []LabRun          `json:"runs"`
+	Ledger     *LabLedger        `json:"ledger"`
+	Release    *LabProposalNote  `json:"release"`
+	Close      *LabProposalNote  `json:"close"`
+	Propose    []LabFileProposal `json:"propose"`
+}
+
+// labID is an id the lab made: a prefix and letters, digits or '-' only (it names a folder).
+func labID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if !(r == '-' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+// SaveLab records what the lab sends (ONID-124: the lab is OpenOrbit's dev tool and
+// reaches the records only through this). The runs are kept first; a ledger line is
+// written only for a done experiment with a verdict, then the proposal is released or
+// closed, or the helped files are proposed; the experiment is written last with the
+// ledger and proposal ids. It returns the experiment as stored.
+func (s *Store) SaveLab(in LabSave) (LabExperiment, error) {
+	x := in.Experiment
+	if !labID(x.ID) || !labID(x.TaskID) || x.Runs < 1 || x.CreatedAt <= 0 ||
+		(x.Status != LabRunning && x.Status != LabDone && x.Status != LabFailed) {
+		return x, i18n.Errorf("memory.err.lab_record", ErrInvalid)
+	}
+	if (in.Ledger != nil) != (x.Status == LabDone) || (in.Ledger == nil && (in.Release != nil || in.Close != nil || len(in.Propose) > 0)) {
+		return x, i18n.Errorf("memory.err.lab_record", ErrInvalid)
+	}
+	if in.Ledger != nil {
+		if x.Verdict != VerdictHelped && x.Verdict != VerdictHarmful && x.Verdict != VerdictNoEffect {
+			return x, i18n.Errorf("memory.err.experiment_verdict", ErrInvalid)
+		}
+	}
+	for _, r := range in.Runs {
+		r.Experiment = x.ID
+		if err := s.AddLabRun(r); err != nil {
+			return x, err
+		}
+	}
+	var errs []error
+	if in.Ledger != nil {
+		id, err := s.RecordLabLedger(LabLedgerInput{ExperimentID: x.ID, Targets: in.Ledger.Targets, Change: in.Ledger.Change,
+			Basis: in.Ledger.Basis, Verdict: x.Verdict})
+		if err != nil {
+			return x, err
+		}
+		x.LedgerID = id
+		switch {
+		case in.Release != nil:
+			errs = append(errs, s.ReleaseLabProposal(in.Release.ProposalID, in.Release.Summary))
+			x.ProposalIDs = []string{in.Release.ProposalID}
+		case in.Close != nil:
+			errs = append(errs, s.CloseLabProposal(in.Close.ProposalID, in.Close.Note))
+			x.ProposalIDs = []string{in.Close.ProposalID}
+		default:
+			for _, f := range in.Propose {
+				p, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: f.Title, Body: f.Body, Payload: Payload{Path: f.Path, Content: f.Content}})
+				if err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", f.Path, err))
+					continue
+				}
+				x.ProposalIDs = append(x.ProposalIDs, p.ID)
+			}
+		}
+	}
+	errs = append(errs, s.SaveLabExperiment(x))
+	return x, errors.Join(errs...)
 }
