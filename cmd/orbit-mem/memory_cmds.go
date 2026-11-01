@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,7 +18,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/project"
-	"github.com/onidot-labs/orbit-mem/internal/retro"
 	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 	"github.com/onidot-labs/orbit-mem/internal/version"
 )
@@ -108,47 +106,11 @@ type hookInput struct {
 	TranscriptPath string `json:"transcript_path"`
 }
 
-// spawnDetached starts a background orbit-mem that outlives the hook, its output
-// appended to log.
-var spawnDetached = func(name string, args []string, log string) error {
-	_ = os.MkdirAll(filepath.Dir(log), 0o700)
-	f, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	cmd := exec.Command(name, args...)
-	cmd.Stdout, cmd.Stderr = f, f
-	detach(cmd)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return cmd.Process.Release()
-}
-
-// sessionEnd queues the ended session for its session-end retrospective and
-// starts the queue runner in the background; the host is not kept waiting.
-func (a *app) sessionEnd(s *memory.Store, in hookInput, host string, cfg config.Config) {
-	if os.Getenv("ORBIT_RETRO_ID") != "" || !cfg.SessionRetro {
-		return
-	}
-	queued, err := retro.Enqueue(s, paths(), retro.SessionEnd{Host: host, Session: in.SessionID, Transcript: in.TranscriptPath, Cwd: in.Cwd})
-	if err != nil {
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.enqueue_failed", err))
-		return
-	}
-	if !queued {
-		return
-	}
-	if err := spawnDetached(selfPath(), []string{"retro", "sessions"}, filepath.Join(paths().Logs(), "session-retro.log")); err != nil {
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.spawn_failed", err))
-	}
-}
-
 // cmdHook never fails the host: any problem, wrong arguments included, prints
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
 // session-start and prompt give the memory context; all three keep the activity
-// log; session-end also queues the session-end retrospective.
+// log. session-end only ends the activity row: the retrospectives (and their
+// session-end queue) are OpenOrbit's.
 func cmdHook(a *app, args []string) error {
 	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
 	fs := a.flags("hook")
@@ -282,7 +244,6 @@ func recordActivity(s *memory.Store, which, host string, in hookInput, p project
 // memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
 func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config, pluginVersion string) {
 	if which == "session-end" {
-		a.sessionEnd(s, in, host, cfg)
 		done <- ""
 		return
 	}

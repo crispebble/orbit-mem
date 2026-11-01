@@ -87,21 +87,6 @@ func TestLoad_옛_설정_파일에는_2차_기본값이_채워진다(t *testing.
 	}
 }
 
-func TestSessionModel_claude는_haiku_codex는_호스트_기본(t *testing.T) {
-	c := Default()
-	if c.SessionModel() != "haiku" {
-		t.Fatalf("claude = %q", c.SessionModel())
-	}
-	c.RetroHost = "codex"
-	if c.SessionModel() != "" {
-		t.Fatalf("codex = %q", c.SessionModel())
-	}
-	c.SessionRetroModel = "sonnet"
-	if c.SessionModel() != "sonnet" {
-		t.Fatalf("set = %q", c.SessionModel())
-	}
-}
-
 func TestValidate_2차_설정_범위(t *testing.T) {
 	for _, f := range []func(*Config){
 		func(c *Config) { c.RecallChars = 99 },

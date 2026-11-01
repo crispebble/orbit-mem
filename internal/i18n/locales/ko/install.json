@@ -1,4 +1,3 @@
 {
-  "install.err.no_schedule": "%s에서는 예약을 지원하지 않습니다. orbit-mem retro run을 직접 예약해 주세요",
   "install.err.replace_binary": "기존 orbit-mem를 바꿀 수 없습니다(실행 중인 세션을 닫고 다시 해 주세요): %w"
 }

@@ -138,7 +138,9 @@ func contains(list []string, v string) bool {
 }
 
 // cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB,
-// schedules the retrospectives and registers orbit-mem's plugin in the hosts: Claude Code
+// takes out the retrospective schedule an earlier orbit-mem registered (unless --no-schedule:
+// the retrospectives and their schedule are OpenOrbit's orb install) and registers
+// orbit-mem's plugin in the hosts: Claude Code
 // from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
 // the local folder it builds.
 func cmdInstall(a *app, args []string) error {
@@ -173,7 +175,7 @@ func cmdInstall(a *app, args []string) error {
 		steps = append(steps, i18n.T("cli.install.step_source", *pluginSource))
 	}
 	if !*noSchedule {
-		steps = append(steps, i18n.T("cli.install.step_schedule", config.Default().RetroHour))
+		steps = append(steps, i18n.T("cli.install.step_legacy_schedule"))
 	}
 	if !*noHosts {
 		if needLocal {
@@ -245,22 +247,7 @@ func cmdInstall(a *app, args []string) error {
 	}
 	s.Close()
 	if !*noSchedule {
-		var dirs []string
-		for _, hp := range []string{h.Claude, h.Codex} {
-			if hp != "" && !contains(dirs, filepath.Dir(hp)) {
-				dirs = append(dirs, filepath.Dir(hp))
-			}
-		}
-		home := ""
-		if os.Getenv("ORBIT_HOME") != "" {
-			home = p.Home
-		}
-		where, err := install.ApplySchedule(install.Schedule{Bin: dst, Hour: cfg.RetroHour, Home: home, PathDirs: dirs, Logs: p.Logs()}, install.RunCommand)
-		if err != nil {
-			return i18n.Errorf("cli.install.err.schedule", err)
-		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled", cfg.RetroHour, where))
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled_note"))
+		a.removeLegacySchedule(p)
 	}
 	if *noHosts {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
@@ -315,6 +302,23 @@ func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource s
 	return nil
 }
 
+// scheduleRun runs the OS schedule commands (launchctl, schtasks); tests replace it.
+var scheduleRun = install.RunCommand
+
+// removeLegacySchedule takes out the retrospective schedule an earlier orbit-mem install
+// registered for this home. A failure is reported and does not stop the caller.
+func (a *app) removeLegacySchedule(p config.Paths) bool {
+	removed, err := install.RemoveLegacySchedule(runtime.GOOS, p.Home, config.DefaultHome(), scheduleRun)
+	if err != nil {
+		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.schedule_error", err))
+		return false
+	}
+	if removed {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.legacy_schedule_removed"))
+	}
+	return true
+}
+
 func samePath(a, b string) bool {
 	ra, err1 := filepath.EvalSymlinks(a)
 	rb, err2 := filepath.EvalSymlinks(b)
@@ -324,17 +328,14 @@ func samePath(a, b string) bool {
 	return ra == rb
 }
 
-// cmdUninstall takes the retrospective schedule out and orbit-mem's plugin and marketplace
-// out of the hosts. The data and the local plugin folder stay.
+// cmdUninstall takes the retrospective schedule an earlier orbit-mem registered and
+// orbit-mem's plugin and marketplace out of the hosts. The data and the local plugin folder
+// stay; OpenOrbit's own schedule is orb uninstall's.
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
 	}
-	failed := false
-	if err := install.RemoveSchedule(install.RunCommand); err != nil {
-		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.schedule_error", err))
-		failed = true
-	}
+	failed := !a.removeLegacySchedule(paths())
 	h := install.FindHosts()
 	if h.Claude != "" {
 		if err := h.UnregisterClaude(memplugin.Name, memplugin.Market); err != nil {
@@ -369,7 +370,6 @@ type doctorReport struct {
 	Pending      int                 `json:"pendingProposals"`
 	SessionQueue int                 `json:"sessionQueue"`
 	Activity     activityStatus      `json:"activity"`
-	Schedule     bool                `json:"schedule"`
 	LastRetros   []retro.RetroStatus `json:"lastRetros"`
 	LastBackup   string              `json:"lastBackup,omitempty"`
 	Claude       claudeStatus        `json:"claude"`
@@ -455,10 +455,6 @@ func cmdDoctor(a *app, args []string) error {
 		add("db-missing", "orbit-mem install")
 	}
 	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
-	rep.Schedule = install.ScheduleInstalled(install.RunCommand)
-	if !rep.Schedule {
-		add("schedule-missing", "orbit-mem install")
-	}
 	if entries, err := os.ReadDir(p.Backups()); err == nil && len(entries) > 0 {
 		rep.LastBackup = filepath.Join(p.Backups(), entries[len(entries)-1].Name())
 	}
@@ -517,12 +513,7 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.path_binary", orNone(rep.PathBinary)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.RetroHost, cfg.RetroModel, cfg.RetroHour, cfg.Inject, yes(rep.Schedule)))
-	sessionRetro := i18n.T("cli.doctor.session_retro_off")
-	if cfg.SessionRetro {
-		sessionRetro = i18n.T("cli.doctor.on_model", cfg.SessionModel())
-	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.session_retro", sessionRetro, rep.SessionQueue, cfg.RecallChars))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.Inject, rep.SessionQueue, cfg.RecallChars))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions, rep.Activity.LegacySessions))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex", orNone(rep.Codex.Path), memplugin.ID, rep.Codex.Plugin, yes(rep.Codex.Marketplace), yes(rep.Codex.HooksTrusted)))

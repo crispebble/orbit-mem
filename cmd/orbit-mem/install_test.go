@@ -230,7 +230,7 @@ func TestDoctor_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, k := range []string{"version", "binary", "pathBinary", "home", "db", "config", "memories", "pendingProposals", "sessionQueue", "activity", "schedule", "lastRetros", "claude", "codex", "problems"} {
+	for _, k := range []string{"version", "binary", "pathBinary", "home", "db", "config", "memories", "pendingProposals", "sessionQueue", "activity", "lastRetros", "claude", "codex", "problems"} {
 		if _, ok := raw[k]; !ok {
 			t.Errorf("키 %s가 없습니다", k)
 		}
@@ -265,10 +265,16 @@ func TestDoctor_JSON(t *testing.T) {
 			t.Errorf("문제 %+v", p)
 		}
 	}
-	for _, id := range []string{"claude-plugin-version", "codex-hooks-untrusted", "schedule-missing"} {
+	if _, ok := raw["schedule"]; ok {
+		t.Error("schedule 키는 뺐습니다(회고 예약은 OpenOrbit)")
+	}
+	for _, id := range []string{"claude-plugin-version", "codex-hooks-untrusted"} {
 		if _, ok := ids[id]; !ok {
 			t.Errorf("문제 %s가 없습니다: %+v", id, rep.Problems)
 		}
+	}
+	if _, ok := ids["schedule-missing"]; ok {
+		t.Error("schedule-missing 문제는 뺐습니다")
 	}
 	if _, ok := ids["not-on-path"]; ok {
 		t.Error("PATH에 있는데 not-on-path")

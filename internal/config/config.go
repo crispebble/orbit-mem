@@ -75,18 +75,6 @@ type Config struct {
 // limit (about 10,000 characters in Claude Code).
 const maxRecallChars = 9000
 
-// SessionModel is the model of the session-end retrospective: the setting,
-// else haiku on Claude and the host default on Codex.
-func (c Config) SessionModel() string {
-	if c.SessionRetroModel != "" {
-		return c.SessionRetroModel
-	}
-	if c.RetroHost == "claude" {
-		return "haiku"
-	}
-	return ""
-}
-
 // Default is the starting configuration.
 func Default() Config {
 	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
@@ -156,6 +144,11 @@ func Home() string {
 	if h := os.Getenv("ORBIT_HOME"); h != "" {
 		return h
 	}
+	return DefaultHome()
+}
+
+// DefaultHome is the home without ORBIT_HOME: orbit under the user config folder.
+func DefaultHome() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		home, _ := os.UserHomeDir()
