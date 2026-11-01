@@ -31,8 +31,13 @@ describe('새 작업 입력', () => {
     const html = h.renderComposer();
     assert.match(html, /<textarea[^>]*aria-label="Request"/);
     assert.match(html, /<button[^>]*aria-label="Start"/);
-    for (const m of ['Default', 'ultrawork', 'plan']) assert.ok(text(html).includes(m), m);
-    assert.match(html, /title="Runs to the end without asking for plan approval\."/);
+    const t = text(html);
+    const at = ['ultrawork', 'plan', 'plan-approve'].map(m => t.indexOf(m));
+    assert.ok(at.every(i => i >= 0) && at[0] < at[1] && at[1] < at[2], String(at));
+    assert.ok(!t.includes('Default'));
+    assert.match(html, /title="Shows the plan and waits for your approval before running it\."/);
+    assert.match(html, /<p class="orbit-meta">Runs to the end without asking for plan approval \(default\)\.<\/p>/);
+    assert.match(html, /title="Runs to the end without asking for plan approval \(default\)\."/);
     assert.match(html, /aria-label="Profile"/);
     assert.ok(html.includes('/Users/me/proj'));
   });

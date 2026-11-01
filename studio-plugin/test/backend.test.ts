@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {Code, ConnectError} from '@connectrpc/connect';
 import {DAEMON_METHODS, type DaemonEvent, type DaemonStatus} from '../src/daemon/api.ts';
+import {toRunMode} from '../src/backend/convert.ts';
 import {resolveOrb} from '../src/backend/orb.ts';
 import {TOKEN_SECRET, isLoopbackUrl} from '../src/backend/service.ts';
 import {rig, TOKEN, until} from './backend-rig.ts';
@@ -231,6 +232,25 @@ describe('뒤쪽: 메서드', () => {
     assert.equal(plan.plan, true);
     assert.equal(plan.limits, undefined);
     assert.equal(plan.resume, undefined);
+  });
+
+  it('startRun: 모드 없으면 ultrawork, plan-approve는 planApprove만 켠다', async () => {
+    const r = await rig({paired: true});
+    await r.m(DAEMON_METHODS.startRun, {request: 'x', cwd: '/w'});
+    await r.m(DAEMON_METHODS.startRun, {request: 'x', cwd: '/w', mode: 'plan-approve'});
+    const [none, pa] = r.daemon.startRuns;
+    assert.deepEqual([none.ultrawork, none.plan, none.planApprove], [true, false, false]);
+    assert.deepEqual([pa.ultrawork, pa.plan, pa.planApprove], [false, false, true]);
+    await assert.rejects(r.m(DAEMON_METHODS.startRun, {request: 'x', cwd: '/w', mode: 'default'}), (e: any) => e.code === 'RPC_INVALID_ARGUMENT');
+  });
+
+  it('옛 기록의 mode default는 plan-approve로 읽는다', () => {
+    const s = toRunMode;
+    assert.equal(s('default'), 'plan-approve');
+    assert.equal(s('plan-approve'), 'plan-approve');
+    assert.equal(s('ultrawork'), 'ultrawork');
+    assert.equal(s('plan'), 'plan');
+    assert.equal(s(''), 'ultrawork');
   });
 
   it('잘못된 입력은 RPC_INVALID_ARGUMENT', async () => {

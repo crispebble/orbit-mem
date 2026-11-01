@@ -9,13 +9,18 @@ import type {
 
 const num = (v: bigint | number): number => Number(v);
 
-const MODES = new Set<string>(['default', 'ultrawork', 'plan']);
+const MODES = new Set<string>(['ultrawork', 'plan', 'plan-approve']);
+
+// AU-1 이전 기록의 'default'는 계획 승인을 받던 모드라 plan-approve로 읽는다. 비었거나 모르는 값은 지금 데몬의
+// 기본(ultrawork)으로 읽는다.
+export const toRunMode = (mode: string): RunMode =>
+  mode === 'default' ? 'plan-approve' : MODES.has(mode) ? (mode as RunMode) : 'ultrawork';
 
 export function toRunSummary(r: PbRunSummary): RunSummary {
   const t = r.totals;
   return {
     runId: r.runId, request: r.request, cwd: r.cwd, profile: r.profile,
-    mode: (MODES.has(r.mode) ? r.mode : 'default') as RunMode,
+    mode: toRunMode(r.mode),
     state: r.state, reason: r.reason, exitCode: r.exitCode, workId: r.workId, message: r.message,
     startedAt: r.startedAt, finishedAt: r.finishedAt,
     totals: {

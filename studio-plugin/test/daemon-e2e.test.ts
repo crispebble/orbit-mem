@@ -38,7 +38,7 @@ describe('데몬 처음부터 끝까지', () => {
     await client.loadMessages('ko');
     assert.equal(client.optionLabel('approve'), '승인');
 
-    const started = await client.api.startRun({request: 'build it', cwd: '/w', mode: 'default'});
+    const started = await client.api.startRun({request: 'build it', cwd: '/w', mode: 'ultrawork'});
     const live = r.daemon.runs.get(started.runId)!;
     live.sessionId = 'S-1';
     live.openDecisions = [{id: 'd1', title: 'Run the plan?', options: ['approve', 'cancel'], askedAt: '2026-11-01T01:00:00.000Z'}];

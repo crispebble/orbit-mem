@@ -57,7 +57,13 @@ describe('새 작업 입력', () => {
     if (r.ok) assert.deepEqual(r.input.resume, {workId: 'w9'});
   });
   it('「이어가기」 입력: 같은 폴더·프로필, 모드 default, 그 workId', () => {
-    assert.deepEqual(resumeInput(sampleRun({mode: 'ultrawork', workId: 'w1'})), {request: '', cwd: '/w', mode: 'default', resume: {workId: 'w1'}, profile: 'p'});
+    assert.deepEqual(resumeInput(sampleRun({mode: 'ultrawork', workId: 'w1'})), {request: '', cwd: '/w', mode: 'ultrawork', resume: {workId: 'w1'}, profile: 'p'});
+  });
+  it('새 입력의 기본 모드는 ultrawork', () => {
+    assert.equal(emptyForm().mode, 'ultrawork');
+    const r = buildStartInput(emptyForm({request: 'x', cwd: '/w'}));
+    assert.ok(r.ok);
+    if (r.ok) assert.equal(r.input.mode, 'ultrawork');
   });
   it('폴더 후보는 프로젝트 범위의 디렉터리들, 전체 범위는 없음', () => {
     assert.deepEqual(folderCandidates({kind: 'project', directories: ['/a', '/b']}), ['/a', '/b']);

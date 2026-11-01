@@ -144,7 +144,7 @@ export function buildTimeline(events: readonly DaemonEvent[]): Entry[] {
     const base = {seq: ev.seq, at: ev.at};
     switch (f.type) {
       case 'run.started':
-        out.push({...base, kind: 'started', request: str(f, 'request'), cwd: str(f, 'cwd'), profile: str(f, 'profile'), mode: str(f, 'mode') || 'default', resume: f.resume === true});
+        out.push({...base, kind: 'started', request: str(f, 'request'), cwd: str(f, 'cwd'), profile: str(f, 'profile'), mode: str(f, 'mode') === 'default' ? 'plan-approve' : str(f, 'mode') || 'ultrawork', resume: f.resume === true});
         break;
       case 'work.recorded':
         out.push({...base, kind: 'work', workId: str(f, 'workId')});

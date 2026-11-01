@@ -76,7 +76,7 @@ export async function fakeDaemon(init: {lastSeq?: number} = {}): Promise<FakeDae
     if (e) throw e;
   };
   const summary = (r: FakeRun) => create(RunSummarySchema, {
-    runId: r.runId, request: r.request ?? 'do it', cwd: r.cwd ?? '/work', state: r.state ?? 'running', mode: 'default', sessionId: r.sessionId ?? '', workId: r.workId ?? '',
+    runId: r.runId, request: r.request ?? 'do it', cwd: r.cwd ?? '/work', state: r.state ?? 'running', mode: 'ultrawork', sessionId: r.sessionId ?? '', workId: r.workId ?? '',
     startedAt: '2026-11-01T01:00:00.000Z', source: 'studio', device: 'orbit-studio',
     lastSeq: BigInt(events.filter(e => e.runId === r.runId).at(-1)?.seq ?? 0n),
     totals: {costUsd: 0.5, turns: 3, minutes: 1.5, inputTokens: 1000n, outputTokens: 200n},

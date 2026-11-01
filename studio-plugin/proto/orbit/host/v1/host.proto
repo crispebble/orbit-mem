@@ -1,4 +1,4 @@
-// Vendored from orbit-pi packages/orbit-host (contract commit 211ae6f82, branch feat/s4-5-studio-daemon or later).
+// Vendored from orbit-pi packages/orbit-host (contract commit e0f711989, branch feat/s4-5-studio-daemon or later).
 // Do not edit: run scripts/sync-host-contract.mjs to copy it again.
 // orbit-pi daemon contract (설계 · OpenOrbit 4차 「층별 기능」 ⑤ 호스트, D2; R4-4).
 //
@@ -113,7 +113,7 @@ message StartRunRequest {
   // Absolute work folder. It also picks the profile when profile is empty.
   string cwd = 2;
   string profile = 3;
-  // `--ultrawork`: no plan approval, run to the end.
+  // `--ultrawork`: no plan approval, run to the end. This is also what happens when no mode is set (AU-1).
   bool ultrawork = 4;
   // `--plan`: write and record the plan only.
   bool plan = 5;
@@ -121,6 +121,9 @@ message StartRunRequest {
   Limits limits = 7;
   // Where the work comes from, for the profile's run rules: studio (default), terminal, workflow, schedule.
   string source = 8;
+  // `--plan-approve`: ask for approval of the plan on a decision card, then run it. Only when chosen; plan wins over
+  // it, and it wins over ultrawork (the field or a keyword in the request).
+  bool plan_approve = 9;
 }
 
 message StartRunResponse {
@@ -164,7 +167,9 @@ message WatchEventsResponse {
 
 // One orchestra event. `json` is the event exactly as `runWork` emitted it (orbit-orchestra
 // src/core/events.ts, type OrchestraEvent), with API key values masked. New event types may appear;
-// clients skip types they do not know.
+// clients skip types they do not know. Every device that may WatchEvents (scope READ) receives all of it, including
+// `decision.asked.context`, the summary of the tool call a permission card asks about (command lines, file paths),
+// so READ is not a scope for a device that must not see what the works do.
 message Event {
   // Daemon-wide, strictly increasing, kept across daemon restarts.
   uint64 seq = 1;
@@ -202,7 +207,7 @@ message RunSummary {
   string request = 2;
   string cwd = 3;
   string profile = 4;
-  // default, ultrawork or plan.
+  // ultrawork (the default), plan or plan-approve. Runs from before AU-1 may say default, which is plan-approve.
   string mode = 5;
   // running, completed, failed, stopped, planned, or interrupted (the daemon ended while it ran; resume it).
   string state = 6;
@@ -340,7 +345,9 @@ message GetProfilesResponse {
   // Absolute path of the file.
   string path = 3;
   repeated ProfileKeys keys = 4;
-  // Where key values live: keyring (OS credential store) or file (a test or temporary ORBIT_HOME).
+  // Where key values live: keyring (OS credential store) or file. The file store (`<home>/runtime/secrets.json`,
+  // 0600) is for a non-default ORBIT_HOME such as a test; it is plain text and has no lock, so two processes writing
+  // at once can lose an update. Real use keeps keys in the OS credential store.
   string key_store = 5;
 }
 

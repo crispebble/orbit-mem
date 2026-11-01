@@ -95,7 +95,7 @@ describe('buildTimeline', () => {
 });
 
 const summary = (over: Partial<RunSummary> = {}): RunSummary => ({
-  runId: 'r1', request: 'q', cwd: '/w', profile: 'p', mode: 'default', state: 'running', reason: '', exitCode: 0, workId: 'w1', message: '', startedAt: '2026-11-01T00:00:00Z', finishedAt: '',
+  runId: 'r1', request: 'q', cwd: '/w', profile: 'p', mode: 'ultrawork', state: 'running', reason: '', exitCode: 0, workId: 'w1', message: '', startedAt: '2026-11-01T00:00:00Z', finishedAt: '',
   totals: {costUsd: 0, subscription: false, turns: 0, minutes: 0, inputTokens: 0, outputTokens: 0, monthSpentUsd: 3, monthLimitUsd: 10}, openDecisions: [], source: 'studio', device: '', lastSeq: 0, sessionId: '', ...over,
 });
 

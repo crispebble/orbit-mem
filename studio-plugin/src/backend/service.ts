@@ -421,13 +421,13 @@ export function createDaemonBackend(deps: ServiceDeps) {
       const p = params(raw) as Partial<StartRunInput> & Record<string, unknown>;
       const request = text(p, 'request', false);
       const cwd = text(p, 'cwd');
-      const mode = p.mode ?? 'default';
-      if (mode !== 'default' && mode !== 'ultrawork' && mode !== 'plan') throw invalid('mode must be default, ultrawork or plan');
+      const mode = p.mode ?? 'ultrawork';
+      if (mode !== 'ultrawork' && mode !== 'plan' && mode !== 'plan-approve') throw invalid('mode must be ultrawork, plan or plan-approve');
       const limits = isObj(p.limits) ? p.limits : {};
       const [turns, cost, minutes] = [positive(limits.maxTurns), positive(limits.maxCostUsd), positive(limits.maxMinutes)];
       const req = create(StartRunRequestSchema, {
         request, cwd, profile: typeof p.profile === 'string' ? p.profile : '',
-        ultrawork: mode === 'ultrawork', plan: mode === 'plan',
+        ultrawork: mode === 'ultrawork', plan: mode === 'plan', planApprove: mode === 'plan-approve',
         ...(isObj(p.resume) ? {resume: {workId: typeof p.resume.workId === 'string' ? p.resume.workId : ''}} : {}),
         ...(turns || cost || minutes ? {limits: {maxTurns: turns, maxCostUsd: cost, maxMinutes: minutes}} : {}),
         source: 'studio',
