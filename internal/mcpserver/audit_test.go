@@ -145,3 +145,36 @@ func TestResolveActor_서버_옵션과_환경(t *testing.T) {
 }
 
 var _ = context.Background
+
+// 검토 M-1: 사람이 아닌 쪽(AI)은 사용자 말 없이 사용자 인용 기억에 닿는 제안을 승인하거나 어긋남 표시를 닫지 못한다.
+func TestReview_AI_결정은_보호된_것에_사용자_말이_필요하다(t *testing.T) {
+	cs, s := connectAs(t, "")
+	rule := quotedRule(t, s, "답은 한글 존댓말")
+	p, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: "낡음", MemoryIDs: []string{rule.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := call(t, cs, "proposal_decide", map[string]any{"id": p.ID, "decision": "approve"}, nil); !res.IsError {
+		t.Fatal("사용자 말 없이 승인됐습니다")
+	}
+	var many DecideOut
+	call(t, cs, "proposal_decide", map[string]any{"ids": []string{p.ID}, "decision": "approve"}, &many)
+	if len(many.Failed) != 1 {
+		t.Fatalf("묶음 승인: %+v", many)
+	}
+	call(t, cs, "proposal_decide", map[string]any{"id": p.ID, "decision": "approve", "userQuote": "그 규칙 이제 안 써, 정리해"}, nil)
+	if got, _ := s.Get(rule.ID); got.State != memory.StateStale {
+		t.Fatalf("사용자 말로 승인: %s", got.State)
+	}
+
+	cand, _ := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "후보", Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}})
+	other := quotedRule(t, s, "다른 규칙")
+	f, _ := s.FlagConflict(cand.ID, other.ID, "어긋남", memory.Who{Actor: memory.ActorAutomation})
+	if res := call(t, cs, "proposal_decide", map[string]any{"id": f.ID, "decision": "dismiss"}, nil); !res.IsError {
+		t.Fatal("사용자 말 없이 어긋남을 닫았습니다")
+	}
+	call(t, cs, "proposal_decide", map[string]any{"id": f.ID, "decision": "dismiss", "userQuote": "그건 어긋나는 거 아니야"}, nil)
+	if fl, _ := s.OpenFlags(); len(fl) != 0 {
+		t.Fatalf("flags = %+v", fl)
+	}
+}

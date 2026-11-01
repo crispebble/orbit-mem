@@ -356,19 +356,8 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
-	if len(in.ConflictsWith) > 0 && in.Source.Kind != memory.SourceQuote {
-		// 어긋남은 확정 전에 표시해야 한다: 같은 제목 후보가 이 저장으로 확정되지 않게 먼저 단다.
-		if m, ok := h.existingCandidate(in, scope); ok {
-			for _, rule := range in.ConflictsWith {
-				if _, err := h.s.FlagConflict(m.ID, rule, "memory_save: 사용자 규칙과 어긋남", h.o.who("", "")); err != nil {
-					r, _ := toolError(err)
-					return r, MemoryOut{}, nil
-				}
-			}
-		}
-	}
 	m, err := h.s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
-		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}})
+		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", "")})
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -379,30 +368,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 			return r, MemoryOut{}, nil
 		}
 	}
-	if m.State == memory.StateCandidate {
-		for _, rule := range in.ConflictsWith {
-			if _, err := h.s.FlagConflict(m.ID, rule, "memory_save: 사용자 규칙과 어긋남", h.o.who("", "")); err != nil {
-				r, _ := toolError(err)
-				return r, MemoryOut{}, nil
-			}
-		}
-	}
 	return nil, MemoryOut{Memory: m}, nil
-}
-
-// existingCandidate is the candidate a save of in would add to (same kind, scope and title).
-func (h handlers) existingCandidate(in SaveIn, scope string) (memory.Memory, bool) {
-	ms, err := h.s.Find(memory.FindInput{Kinds: []string{in.Kind}, States: []string{memory.StateCandidate}, AllProjects: true, Limit: 50})
-	if err != nil {
-		return memory.Memory{}, false
-	}
-	key := memory.TitleKey(in.Title)
-	for _, m := range ms {
-		if m.Scope == scope && memory.TitleKey(m.Title) == key {
-			return m, true
-		}
-	}
-	return memory.Memory{}, false
 }
 
 // UpdateIn is memory_update's input.
@@ -548,6 +514,8 @@ type DecideIn struct {
 	Title    *string  `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
 	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
 	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
+	// UserQuote is the user's words behind a decision on something the user said (A2).
+	UserQuote string `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억에 닿는 제안의 승인·거절이나 어긋남 표시 닫기는 그렇게 하라는 사용자 말 그대로"`
 }
 
 // DecideOut is proposal_decide's result: one decision, or with ids what was
@@ -570,7 +538,7 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 		}
 		out := DecideOut{}
 		for _, id := range ids {
-			res, err := h.auditDecide(id, in.Decision, in.Note)
+			res, err := h.auditDecide(id, in.Decision, in.Note, in.UserQuote)
 			if err != nil {
 				if len(ids) == 1 {
 					r, _ := toolError(err)
@@ -603,7 +571,17 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 			r, _ := toolError(fmt.Errorf("%w: 결정할 제안 id가 비었습니다", memory.ErrInvalid))
 			return r, DecideOut{}, nil
 		}
-		b := h.s.DecideMany(ids, in.Decision, in.Note)
+		var allowed []string
+		var refused []memory.BatchFailure
+		for _, id := range ids {
+			if err := h.needsWords(id, in.UserQuote); err != nil {
+				refused = append(refused, memory.BatchFailure{ID: id, Error: err.Error()})
+				continue
+			}
+			allowed = append(allowed, id)
+		}
+		b := h.s.DecideMany(allowed, in.Decision, in.Note)
+		b.Failed = append(refused, b.Failed...)
 		msg := fmt.Sprintf("%d건 결정, %d건 실패", len(b.Decided), len(b.Failed))
 		for _, f := range b.Failed {
 			msg += "\n- " + f.ID + ": " + f.Error
@@ -612,6 +590,10 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 	}
 	if in.ID == "" {
 		r, _ := toolError(fmt.Errorf("%w: id나 ids가 필요합니다", memory.ErrInvalid))
+		return r, DecideOut{}, nil
+	}
+	if err := h.needsWords(in.ID, in.UserQuote); err != nil {
+		r, _ := toolError(err)
 		return r, DecideOut{}, nil
 	}
 	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note})
@@ -624,14 +606,36 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 
 // auditDecide settles one audit item: revert an automatic change (by its
 // proposal or ledger id), or dismiss a conflict mark or a repeated correction.
-func (h handlers) auditDecide(id, decision, note string) (memory.DecideResult, error) {
-	w := h.o.who("", "")
+func (h handlers) auditDecide(id, decision, note, quote string) (memory.DecideResult, error) {
+	w := h.o.who(quote, "")
 	switch {
 	case decision == "revert":
 		return h.s.RevertChange(id, w, note)
 	case strings.HasPrefix(id, "correction:"):
 		return memory.DecideResult{}, h.s.Acknowledge(id, w)
 	default:
+		// 어긋남을 닫으면 그 후보가 자동 확정될 수 있다: 사람이 아니면 사용자 말이 있어야 한다.
+		if w.Actor != memory.ActorUser && strings.TrimSpace(quote) == "" {
+			return memory.DecideResult{}, fmt.Errorf("%w: %s", memory.ErrProtected, id)
+		}
 		return memory.DecideResult{}, h.s.ResolveFlag(id, "dismissed", w)
 	}
+}
+
+// needsWords refuses a decision by a writer other than the person on a
+// proposal that touches what the user said, unless the user's words come with it.
+func (h handlers) needsWords(id, quote string) error {
+	if h.o.who("", "").Actor == memory.ActorUser || strings.TrimSpace(quote) != "" {
+		return nil
+	}
+	p, err := h.s.GetProposal(id)
+	if err != nil {
+		return nil // 없는 제안은 결정에서 알린다
+	}
+	for _, mid := range p.MemoryIDs {
+		if prot, err := h.s.Protected(mid); err == nil && prot {
+			return fmt.Errorf("%w: %s", memory.ErrProtected, mid)
+		}
+	}
+	return nil
 }

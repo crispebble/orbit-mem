@@ -259,6 +259,14 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			src.Kind = memory.SourceQuote
 		}
 		if in.SameAs != "" {
+			// 어긋남은 다시 나옴(증거 ①)보다 먼저 단다: 표시가 늦으면 이 저장으로 확정된다.
+			if cur, err := s.Get(in.SameAs); err == nil && cur.State == memory.StateCandidate {
+				for _, rule := range in.ConflictsWith {
+					if _, err := s.FlagConflict(cur.ID, rule, "회고 "+id+": 사용자 규칙과 어긋남", memory.Who{Actor: memory.ActorAutomation}); err != nil {
+						notes = append(notes, fmt.Sprintf("%s: 어긋남 표시 실패: %v", in.SameAs, err))
+					}
+				}
+			}
 			if mat.Kind == KindWeekly {
 				// 주간 재료는 그 주 일지라 같은 근거를 다시 센다: 출처만 붙인다.
 				if err := s.AddSource(in.SameAs, src); err != nil {
@@ -288,7 +296,8 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			}
 		}
 		before, _ := s.Count()
-		m, err := s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label, Source: src, Day: day})
+		m, err := s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label, Source: src, Day: day,
+			ConflictsWith: in.ConflictsWith, Who: memory.Who{Actor: memory.ActorAutomation}})
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s: %v", in.Title, err))
 			continue
@@ -306,13 +315,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		judgment.MemoryID, judgment.Kind, judgment.Title = m.ID, m.Kind, m.Title
 		_, _ = s.RecordJudgment(judgment)
 		// 확정은 승인 제안이 아니라 증거로 한다(A2): 후보는 회상에 쓰이고 증거가 쌓이면 저장 계층이 스스로 확정한다.
-		if m.State == memory.StateCandidate {
-			for _, rule := range in.ConflictsWith {
-				if _, err := s.FlagConflict(m.ID, rule, "회고 "+id+": 사용자 규칙과 어긋남", memory.Who{Actor: memory.ActorAutomation}); err != nil {
-					notes = append(notes, fmt.Sprintf("%s: 어긋남 표시 실패: %v", in.Title, err))
-				}
-			}
-		}
+		// 어긋남 표시는 Save가 증거 확인보다 먼저 단다.
 		if judgment.Verdict == memory.VerdictHold {
 			held++
 			continue

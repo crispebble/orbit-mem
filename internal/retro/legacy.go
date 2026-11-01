@@ -360,6 +360,9 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 				if same, ok := s.SameProposal(p); ok {
 					proposalID = same.ID
 				}
+			case errors.Is(err, memory.ErrAutoSkip):
+				// 이미 다른 길로 됐거나(어긋남·보류·되돌림으로) 자동화가 하지 않을 변경이다. 판정은 남겨 다시 묻지 않는다.
+				notes = append(notes, fmt.Sprintf("%s: 자동 정리하지 않음(%v)", id, err))
 			default:
 				notes = append(notes, fmt.Sprintf("%s: %v", id, err))
 				continue

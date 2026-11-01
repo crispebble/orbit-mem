@@ -8,6 +8,7 @@
   "memory.err.backup": "backup failed: %w",
   "memory.err.body_size": "%w: keep the body within 32KB",
   "memory.err.check_kind_title": "%w: check the kind (%s) and the title (one line, up to 200 characters)",
+  "memory.err.confirm_words": "a writer other than the person confirms a candidate only with the user's words (userQuote); otherwise evidence confirms it",
   "memory.err.copy": "copy failed: %w",
   "memory.err.correction_quote": "%w: a correction needs the user's words",
   "memory.err.correction_target": "%w: the target kind is %s",

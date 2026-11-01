@@ -73,3 +73,25 @@ func TestAU6_회고는_저장_계층_규칙을_따른다(t *testing.T) {
 		t.Fatalf("자동화 직접 호출: %v", err)
 	}
 }
+
+// 검토 H-2: 둘째 날 회고가 sameAs로 다시 나온 후보에 어긋남을 달면, 다시 나옴(증거 ①)보다 표시가 먼저다.
+func TestAU6_다시_나온_후보의_어긋남은_확정보다_먼저(t *testing.T) {
+	now := time.Date(2026, 10, 27, 4, 0, 0, 0, kst)
+	e := setup(t, now)
+	e.s.Now = func() time.Time { return now.AddDate(0, 0, -2) }
+	rule, _ := e.s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "배포는 직전 승인", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "배포는 직전 승인 받아"}})
+	cand, _ := e.s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "배포는 묻지 않는다", Source: memory.Source{Kind: memory.SourceSession}})
+	e.s.Now = func() time.Time { return now }
+	e.talk(t, "2026-10-26", claudeTurn("2026-10-26", "10:00", "user", "배포 얘기"))
+	e.ai = func(id string) error {
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "배포", Journal: &JournalIn{Title: "배포", Body: "-"},
+			Memories: []MemoryIn{{Kind: "lesson", Title: "배포는 묻지 않는다", SameAs: cand.ID, ConflictsWith: []string{rule.ID}}}})
+		return err
+	}
+	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
+		t.Fatalf("daily %+v %v", res, err)
+	}
+	if got, _ := e.s.Get(cand.ID); got.State != memory.StateCandidate || len(got.Days) != 2 {
+		t.Fatalf("어긋난 후보가 확정됐습니다: %+v", got)
+	}
+}

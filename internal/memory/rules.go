@@ -48,6 +48,10 @@ func (w Who) quote() string { return strings.TrimSpace(w.UserQuote) }
 // user said (a memory with a quote source) without the user's words.
 var ErrProtected = i18n.Err("memory.err.protected")
 
+// ErrConfirmNeedsWords means a writer other than the person tried to confirm a
+// candidate without the user's words (automatic confirmation needs evidence).
+var ErrConfirmNeedsWords = i18n.Err("memory.err.confirm_words")
+
 // ErrNoEvidence means an automatic confirmation has no evidence.
 var ErrNoEvidence = i18n.Err("memory.err.no_evidence")
 
@@ -137,14 +141,16 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // --- 증거 확정 ---
 
 // confirmBlocked is why memory id may not be confirmed automatically: an open
-// conflict mark, or the person undid an automatic confirmation of it before.
+// conflict mark, the person put it back to candidate (hold), or the person
+// undid an automatic confirmation of it before.
 func (s *Store) confirmBlocked(id string) (string, error) {
-	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_flags WHERE memory_id=? AND kind=? AND resolved_at=0`, id, FlagConflict).Scan(&n); err != nil {
-		return "", err
+	var kind string
+	err := s.db.QueryRow(`SELECT kind FROM audit_flags WHERE memory_id=? AND resolved_at=0 LIMIT 1`, id).Scan(&kind)
+	if err == nil {
+		return kind, nil // 어긋남(conflict), 사람이 내린 보류(hold)
 	}
-	if n > 0 {
-		return "conflict", nil
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
 	}
 	rows, err := s.db.Query(`SELECT targets FROM ledger WHERE proposal_kind=? AND reverted_by<>''`, ProposalConfirm)
 	if err != nil {
@@ -186,7 +192,8 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 	}
 	if m.Kind == KindFact && m.Scope != ScopeGlobal {
 		var n int
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM sources WHERE memory_id=? AND kind=?`, id, SourceVerification).Scan(&n); err != nil {
+		// 검증 출처는 무엇을 돌렸는지(ref)와 그 결과(excerpt)가 있어야 증거다.
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM sources WHERE memory_id=? AND kind=? AND ref<>'' AND excerpt<>''`, id, SourceVerification).Scan(&n); err != nil {
 			return "", err
 		}
 		if n > 0 {

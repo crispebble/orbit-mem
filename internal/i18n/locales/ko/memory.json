@@ -8,6 +8,7 @@
   "memory.err.backup": "백업 실패: %w",
   "memory.err.body_size": "%w: 본문은 32KB 이하로 써 주세요",
   "memory.err.check_kind_title": "%w: 종류(%s)·제목(한 줄, 200자 이하)을 확인해 주세요",
+  "memory.err.confirm_words": "사람이 아닌 쪽은 사용자 말(userQuote)이 있을 때만 후보를 확정합니다. 아니면 증거가 쌓여 스스로 확정됩니다",
   "memory.err.copy": "사본 실패: %w",
   "memory.err.correction_quote": "%w: 교정에는 사용자 말이 필요합니다",
   "memory.err.correction_target": "%w: 대상 종류는 %s입니다",

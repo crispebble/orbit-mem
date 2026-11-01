@@ -23,11 +23,25 @@ CREATE TABLE IF NOT EXISTS audit_flags (
   resolved_at INTEGER NOT NULL DEFAULT 0, resolution TEXT NOT NULL DEFAULT '', resolved_by TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS audit_flags_memory ON audit_flags(memory_id) WHERE resolved_at = 0;
 CREATE TABLE IF NOT EXISTS audit_acks (key TEXT PRIMARY KEY, at INTEGER NOT NULL, actor TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS events_kind ON events(kind);
 PRAGMA user_version=4;
 `
 
-// FlagConflict is the kind of a mark that a candidate goes against a rule of the user.
-const FlagConflict = "conflict"
+// Kinds of marks on a memory.
+const (
+	FlagConflict = "conflict" // 후보가 사용자 규칙과 어긋남(감사 목록에 보인다)
+	FlagHold     = "hold"     // 사람이 확정을 후보로 내림: 자동화가 다시 확정하지 않는다
+)
+
+// holdConfirm keeps the person's choice to put a memory back to candidate.
+func (s *Store) holdConfirm(memoryID string, w Who) {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM audit_flags WHERE memory_id=? AND kind=? AND resolved_at=0`, memoryID, FlagHold).Scan(&n)
+	if n > 0 {
+		return
+	}
+	_, _ = s.db.Exec(`INSERT INTO audit_flags(id,kind,memory_id,note,actor,at) VALUES(?,?,?,?,?,?)`, NewID("f-"), FlagHold, memoryID, "사람이 후보로 내림", w.actor(), s.nowMs())
+}
 
 // Correction targets.
 const (
@@ -439,6 +453,9 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 		return a, err
 	}
 	for _, fl := range flags {
+		if fl.Kind != FlagConflict {
+			continue
+		}
 		c := AuditConflict{Flag: fl}
 		if m, err := getTx(s.db, fl.MemoryID); err == nil {
 			c.Title, c.State = m.Title, m.State

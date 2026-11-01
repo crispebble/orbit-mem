@@ -111,7 +111,9 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 - 자동 변경: 자동화의 확정·합치기·낡음·대체(`supersede`)·연결·태그는 승인 없이 적용되고, 제안 표에 상태 `auto`로, 효과 원장에 한 줄로 남는다(`SubmitChange`·`AutoApply`). 고치기·재분류·파일 반영·방향, 사용자 인용 기억에 닿는 정리, 증거 없는 확정은 대기 제안이다. 사람이 거절한 제안과 되돌린 자동 변경은 자동화가 다시 하지 않는다. 효과 판정이 「해로움」인 자동 변경은 예약 회고가 되돌리고(`RevertHarmfulAuto`) 사건 `audit.auto_reverted`와 세션 시작 한 줄로 알린다.
 - 반복 교정: 교정 사건에 대상(`memory`·`skill`·`role`)을 둔다. 대상마다 교정이 나온 세션 수가 `correctionRepeatSessions`(기본 3) 이상이면 감사 목록에 보이고, 스킬·역할이면 하네스 개선 후보다. 확인함을 누르면 그 뒤 교정만 다시 센다.
 - 기준 횟수 `confirmFollowedVerified`·`correctionRepeatSessions`는 E2로 이 PC 기억 DB 사본(2026-10-26~11-01)을 재서 정한 추천값이며 사용자 결정 대기다(근거는 계획 · AU-6). `orbit-mem config set <키> <1-30>`으로 바꾼다.
-- 표: `audit_flags`(어긋남 표시), `audit_acks`(반복 교정 확인함). 스키마 판 4.
+- 사람의 결정: 사람이 아닌 쪽(AI)이 사용자 인용 기억에 닿는 대기 제안을 승인·거절하거나 어긋남 표시를 닫으려면 `userQuote`가 있어야 한다. 사람이 확정 기억을 후보로 내리면 보류(`hold`)로 남아 자동화가 다시 확정하지 않는다(사람이 확정하면 풀린다).
+- 표: `audit_flags`(어긋남 `conflict`·보류 `hold`), `audit_acks`(반복 교정 확인함), 색인 `events_kind`. 스키마 판 4.
+- 한계: actor는 서버·명령을 띄운 쪽이 정한다. 호스트 AI가 셸로 `orbit-mem edit`를 직접 부르면 사람(user)으로 쓰인다. 대화 중 AI가 새 기억을 저장하며 사용자 인용 기억에 잇는 연결은 기억 내용을 바꾸지 않아 막지 않는다. 출처 `quote`·`verification`은 쓰는 쪽이 붙이는 표시이므로, 스킬·MCP 안내가 「사용자 말 그대로」「실제로 돌린 검증」에만 쓰라고 한다(`verification`은 `ref`·`excerpt`가 있어야 증거다). Studio 플러그인 0.2.0은 `--actor`를 아는 `orbit-mem` 0.5.0 이상이 필요하다(`orbit-mem install`이 함께 올린다).
 
 ## 언어
 

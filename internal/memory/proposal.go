@@ -475,6 +475,10 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		for _, id := range p.MemoryIDs {
 			confirmed := StateConfirmed
 			u := UpdateInput{ID: id, State: &confirmed, Reason: "제안 승인 " + p.ID, Action: "confirm"}
+			if p.Status == StatusAuto {
+				// 자동 확정은 후보일 때만: 다른 프로세스가 먼저 확정했으면 겹쳐 쓰지 않는다.
+				u.ExpectState, u.Reason = StateCandidate, "자동 확정 "+p.ID+": "+p.Payload.Evidence
+			}
 			if len(p.MemoryIDs) == 1 {
 				u.Title, u.Body = in.Title, in.Body
 			}

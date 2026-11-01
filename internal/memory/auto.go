@@ -184,7 +184,7 @@ func (s *Store) applyRecorded(p *Proposal, in DecideInput) (DecideResult, error)
 	if err != nil {
 		return res, err
 	}
-	if err := s.apply(*p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) || errors.Is(err, errMergeGone) {
+	if err := s.apply(*p, in, &res); errors.Is(err, errAlreadyLinked) || errors.Is(err, errAlreadyRetagged) || errors.Is(err, errMergeGone) || errors.Is(err, ErrAutoSkip) {
 		_ = s.finish(p, StatusSettled, err.Error())
 		res.Proposal = *p
 		return res, fmt.Errorf("%w: %v", ErrAutoSkip, err)
@@ -256,9 +256,12 @@ func (s *Store) RevertChange(ref string, w Who, reason string) (DecideResult, er
 	if err := s.prepare(&pi); err != nil {
 		return DecideResult{}, err
 	}
+	// 그 변경이 실제로 바꾼 기억만 본다(대체의 대신하는 기억처럼 바뀌지 않은 쪽은 되돌려도 그대로다).
 	var ids []string
 	for _, m := range e.Before.Memories {
-		ids = append(ids, m.ID)
+		if v, ok := e.Before.After[m.ID]; !ok || v != m.Version {
+			ids = append(ids, m.ID)
+		}
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -273,8 +276,8 @@ func (s *Store) RevertChange(ref string, w Who, reason string) (DecideResult, er
 	if err != nil {
 		return DecideResult{}, err
 	}
-	status := StatusApproved
-	if !w.human() {
+	status := StatusApproved // 사람, 또는 사람의 말을 전하는 AI
+	if w.actor() == ActorAutomation {
 		status = StatusAuto
 	}
 	p, err := s.insertProposal(pi, status)

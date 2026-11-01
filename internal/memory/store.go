@@ -185,6 +185,10 @@ type SaveInput struct {
 	Day      string   // 후보가 나온 날. 비우면 오늘
 	At       int64    // 만든 시각. 비우면 지금
 	Extra    []Source // 같은 트랜잭션에 함께 붙일 출처
+	// ConflictsWith marks the candidate as going against these rules of the
+	// user before its evidence is checked (A2): it is then not confirmed automatically.
+	ConflictsWith []string
+	Who           Who // 어긋남 표시를 남기는 쪽
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -248,8 +252,16 @@ func (in *SaveInput) validate() error {
 // stays hidden unless the new source is the user's own quote.
 func (s *Store) Save(in SaveInput) (Memory, error) {
 	m, err := s.save(in)
-	if err != nil || in.noEvidence || m.State != StateCandidate {
+	if err != nil || m.State != StateCandidate {
 		return m, err
+	}
+	for _, rule := range in.ConflictsWith {
+		if _, err := s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who); err != nil {
+			return m, err
+		}
+	}
+	if in.noEvidence {
+		return m, nil
 	}
 	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
 		return m, nil // 확정하지 못해도 저장은 됐다
@@ -528,7 +540,8 @@ type UpdateInput struct {
 	State           *string
 	Reason          string
 	Action          string
-	Who             Who // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
+	Who             Who    // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
+	ExpectState     string // 비우지 않으면 지금 상태가 이것일 때만 고친다(자동 확정이 겹치지 않게)
 }
 
 // Update edits a memory and records a new version. A writer other than the
@@ -549,8 +562,12 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 		return m, ErrVersionConflict
 	}
 	if !in.Who.human() && in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" {
-		return m, fmt.Errorf("%w: %s", ErrProtected, in.ID)
+		return m, fmt.Errorf("%w: %s", ErrConfirmNeedsWords, in.ID)
 	}
+	if in.ExpectState != "" && m.State != in.ExpectState {
+		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
+	}
+	prevState := m.State
 	if err := guardTx(tx, in.Who, s.nowMs(), in.ID); err != nil {
 		return m, err
 	}
@@ -607,6 +624,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	}
 	if m.State != StateCandidate {
 		s.closeFlagsOf(m.ID, m.State)
+	} else if prevState == StateConfirmed && in.Who.human() {
+		// 사람이 확정을 후보로 내렸다: 자동화가 같은 증거로 다시 확정하지 않게 보류로 남긴다(사람이 확정하면 풀린다).
+		s.holdConfirm(m.ID, in.Who)
 	}
 	return s.Get(m.ID)
 }

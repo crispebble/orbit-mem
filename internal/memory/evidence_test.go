@@ -101,7 +101,7 @@ func TestAC1_AI는_사용자_말_없이_후보를_확정하지_못한다(t *test
 	s, _ := newTestStore(t)
 	cand := candidate(t, s, "후보")
 	confirmed := StateConfirmed
-	if _, err := s.Update(UpdateInput{ID: cand.ID, State: &confirmed, Who: Who{Actor: ActorAI}}); !errors.Is(err, ErrProtected) {
+	if _, err := s.Update(UpdateInput{ID: cand.ID, State: &confirmed, Who: Who{Actor: ActorAI}}); !errors.Is(err, ErrConfirmNeedsWords) {
 		t.Fatalf("AI 확정: %v", err)
 	}
 	m, err := s.Update(UpdateInput{ID: cand.ID, State: &confirmed, Who: Who{Actor: ActorAI, UserQuote: "그거 맞아, 기억해"}})
@@ -501,5 +501,94 @@ func TestAC8_스키마_3을_4로_올린다(t *testing.T) {
 	var check string
 	if err := s.DB().QueryRow(`PRAGMA integrity_check`).Scan(&check); err != nil || check != "ok" {
 		t.Fatalf("integrity %q %v", check, err)
+	}
+}
+
+// 검토 H-1: 사람이 후보로 내린 기억은 자동화가 다시 확정하지 않는다.
+func TestReview_사람이_후보로_내린_기억은_다시_자동_확정하지_않는다(t *testing.T) {
+	s, c := newTestStore(t)
+	in := SaveInput{Kind: KindLesson, Title: "두 날 본 교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	m, _ := s.Save(in)
+	c.t = c.t.Add(24 * time.Hour)
+	if got, _ := s.Save(in); got.State != StateConfirmed {
+		t.Fatalf("state %s", got.State)
+	}
+	cand := StateCandidate
+	if _, err := s.Update(UpdateInput{ID: m.ID, State: &cand, Action: "restore"}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.ConfirmCandidates(); err != nil || n != 0 {
+		t.Fatalf("다시 확정 %d %v", n, err)
+	}
+	if a, _ := s.Audit(AuditFilter{}); len(a.Conflicts) != 0 {
+		t.Fatalf("보류 표시는 어긋남 목록에 보이지 않는다: %+v", a.Conflicts)
+	}
+	// 사람이 확정하면 보류는 풀린다.
+	conf := StateConfirmed
+	if got, err := s.Update(UpdateInput{ID: m.ID, State: &conf}); err != nil || got.State != StateConfirmed {
+		t.Fatalf("사람 확정 %+v %v", got, err)
+	}
+}
+
+// 검토 H-2: 저장과 같은 호출로 단 어긋남 표시는 증거 확인보다 먼저 걸린다(같은 제목이 다른 날 다시 나와도).
+func TestReview_저장의_어긋남_표시는_확정보다_먼저(t *testing.T) {
+	s, c := newTestStore(t)
+	rule := quoted(t, s, "배포는 직전 승인")
+	in := SaveInput{Kind: KindLesson, Title: "배포는 묻지 않는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	if _, err := s.Save(in); err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(24 * time.Hour)
+	in.ConflictsWith, in.Who = []string{rule.ID}, Who{Actor: ActorAutomation}
+	got, err := s.Save(in)
+	if err != nil || got.State != StateCandidate {
+		t.Fatalf("어긋남 표시보다 확정이 먼저였습니다: %+v %v", got, err)
+	}
+	if fl, _ := s.OpenFlags(); len(fl) != 1 || fl[0].OtherID != rule.ID || fl[0].Actor != ActorAutomation {
+		t.Fatalf("flags = %+v", fl)
+	}
+}
+
+// 검토 M-4: 사용자 말 없는 AI 확정은 확정 전용 오류로 알린다.
+func TestReview_AI_확정_거절은_확정_오류로(t *testing.T) {
+	s, _ := newTestStore(t)
+	cand := candidate(t, s, "후보")
+	conf := StateConfirmed
+	_, err := s.Update(UpdateInput{ID: cand.ID, State: &conf, Who: Who{Actor: ActorAI}})
+	if !errors.Is(err, ErrConfirmNeedsWords) || errors.Is(err, ErrProtected) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// 검토 L-2: 자동 대체를 되돌릴 때 바뀌지 않은 쪽(대신하는 기억)이 사용자 인용이어도 막히지 않는다.
+func TestReview_대신하는_기억이_인용이어도_자동_대체를_되돌린다(t *testing.T) {
+	s, _ := newTestStore(t)
+	old := candidate(t, s, "옛 후보")
+	rule := quoted(t, s, "사용자 규칙")
+	res, err := s.AutoApply(auto(AutoInput{Kind: ProposalSupersede, Title: "대체", MemoryIDs: []string{old.ID, rule.ID}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RevertChange(res.LedgerID, Who{Actor: ActorAutomation}, "해로움"); err != nil {
+		t.Fatalf("자동 되돌림: %v", err)
+	}
+	if got, _ := s.Get(old.ID); got.State != StateCandidate {
+		t.Fatalf("state %s", got.State)
+	}
+}
+
+// 검토 Nit: 사람·AI가 되돌린 자동 변경은 「해로움 자동 되돌림」이 아니다.
+func TestReview_사람이_되돌린_것은_자동_되돌림이_아니다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := candidate(t, s, "가")
+	res, _ := s.AutoApply(auto(AutoInput{Kind: ProposalStale, Title: "낡음", MemoryIDs: []string{a.ID}}))
+	if _, err := s.RevertChange(res.LedgerID, Who{Actor: ActorAI}, "사용자가 되돌리라 함"); err != nil {
+		t.Fatal(err)
+	}
+	au, _ := s.Audit(AuditFilter{})
+	for _, ch := range au.Changes {
+		if ch.LedgerID == res.LedgerID && (ch.RevertedBy == "" || ch.AutoReverted) {
+			t.Fatalf("change = %+v", ch)
+		}
 	}
 }
