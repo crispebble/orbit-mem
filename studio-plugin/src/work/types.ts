@@ -237,3 +237,54 @@ export interface WorkInboxItem {
   createdAt?: number;
   path?: string;
 }
+
+// ---- AU-7 능숙해짐 지표(orbit.work 1.5 work_metrics) ----
+
+export type WorkKind = 'broad' | 'fix' | 'add' | 'other';
+export type WorkSize = 'small' | 'medium' | 'large';
+export type TrendKey = 'asked' | 'overturned' | 'corrections' | 'repeats' | 'replans' | 'firstPass' | 'cost' | 'turns' | 'minutes';
+
+export interface WorkMetrics {
+  asked: number;
+  assumed: number;
+  overturned: number;
+  /** orbit-mem이 센 사용자 교정. 모르면 null */
+  corrections: number | null;
+  repeats: number;
+  replans: number;
+  firstPass: {passed: number; steps: number};
+  costUsd: number;
+  turns: number;
+  minutes: number;
+}
+
+export interface WorkMetricsDoc {
+  workId: string;
+  title: string;
+  state: string;
+  project: string;
+  kind: WorkKind | string;
+  size: WorkSize | string;
+  endedAt: number;
+  metrics: WorkMetrics;
+}
+
+export interface TrendSide {
+  works: number;
+  asked: number;
+  assumed: number;
+  overturned: number;
+  corrections: number | null;
+  repeats: number;
+  replans: number;
+  firstPassRate: number | null;
+  costUsd: number;
+  turns: number;
+  minutes: number;
+}
+
+export interface MetricsResult {
+  seq: string;
+  work: WorkMetricsDoc;
+  similar: {works: WorkMetricsDoc[]; trend: {earlier: TrendSide; later: TrendSide; better: TrendKey[]; worse: TrendKey[]}};
+}

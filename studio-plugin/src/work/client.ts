@@ -3,10 +3,10 @@ import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import {errorMessage, OrbitError} from '../orb.ts';
 import {
-  checkContract, parseChanges, parseGet, parseList, parseSession, parseSessions, WorkPaused, WorkToolError,
+  checkContract, parseChanges, parseGet, parseList, parseMetrics, parseSession, parseSessions, WorkPaused, WorkToolError,
 } from './contract.ts';
 import type {
-  ChangesResult, GetResult, ListPage, SessionPage, SessionsPage, StudioScope, WorkCtx,
+  ChangesResult, GetResult, ListPage, MetricsResult, SessionPage, SessionsPage, StudioScope, WorkCtx,
 } from './types.ts';
 
 export const WORK_CONNECTION_ID = 'work';
@@ -59,6 +59,11 @@ export async function workList(ctx: WorkCtx, p: ListParams): Promise<ListPage> {
 
 export async function workGet(ctx: WorkCtx, workId: string, includeChildren = false): Promise<GetResult> {
   return parseGet(await call(ctx, 'work_get', {workId, includeChildren}));
+}
+
+/** AU-7: 작업 하나의 능숙해짐 지표와 비슷한 일의 추이(orbit.work 1.5). 옛 orb에는 도구가 없어 오류다. */
+export async function workMetrics(ctx: WorkCtx, workId: string, limit = 10): Promise<MetricsResult> {
+  return parseMetrics(await call(ctx, 'work_metrics', {workId, limit}));
 }
 
 export interface SessionsParams {

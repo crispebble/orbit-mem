@@ -14,6 +14,7 @@ import {ownerWorkers} from '../work/owners.ts';
 import {summaryOf} from '../work/store.ts';
 import type {Work} from '../work/types.ts';
 import {WorkBrief} from './brief.tsx';
+import {WorkLearning} from './learning.tsx';
 import {StageDetail, type StageNav} from './stage-detail.tsx';
 import {useNow, useWork} from './runtime.ts';
 import {Paused} from './paused.tsx';
@@ -121,6 +122,7 @@ export function WorkTab({ctx, tab}: TabProps) {
         </div>
       </header>
       <WorkBrief work={work} onSelectStep={id => { setMode('flow'); select(id); }} />
+      <WorkLearning workId={work.id} updatedAt={work.updatedAt} />
       {mode === 'flow' ? (
         <div className="orbit-work-graph">
           <FlowGraph
