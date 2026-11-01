@@ -52,6 +52,8 @@ export interface Step {
   verification: {state: string; outdated: boolean; evidenceId?: string};
   evidenceIds: string[];
   childWorkIds: string[];
+  /** 호스트의 단계 이름표(계획 id 등). 없을 수 있다. 가정의 `steps`는 이 값이나 `id`로 단계를 가리킨다. */
+  native?: {kind: string; id: string};
 }
 
 export interface Run {
@@ -89,11 +91,50 @@ export interface Evidence {
   files?: string[];
 }
 
+/** 계획 전 조사(AU-2, orbit.work 1.3). 오래된 작업에는 없다. */
+export interface Discovery {
+  problem: string;
+  decisions: {point: string; evidence: string[]; settled?: string}[];
+  idealEnd?: string;
+  unknowns: string[];
+  sources: string[];
+  /** small | medium | large | (모르는 값) */
+  size?: string;
+  rounds?: number;
+  by?: string;
+  at: string;
+}
+
+/** 모호함 사다리의 한 칸(AU-3, orbit.work 1.3). 열거값은 모르는 값도 string으로 받는다. */
+export interface Assumption {
+  id: string;
+  point: string;
+  chosen: string;
+  basis: string;
+  /** low | medium | high | (모르는 값) */
+  confidence: string;
+  /** evidence | assume | ask | (모르는 값) */
+  rung: string;
+  /** settled | open | confirmed | overturned | answered | closed(답 없이 카드를 닫음) | (모르는 값) */
+  state: string;
+  options?: string[];
+  cardId?: string;
+  /** 이 가정에 기댄 단계 id(`Step.id` 또는 `Step.native.id`) */
+  steps: string[];
+  answer?: string;
+  answeredBy?: string;
+  /** 밀리초 */
+  answeredAt?: number;
+  at: string;
+}
+
 export interface Work extends WorkHead {
   steps: Step[];
   runs: Run[];
   evidence: Evidence[];
   children?: Work[];
+  discovery?: Discovery;
+  assumptions?: Assumption[];
 }
 
 export interface Session {

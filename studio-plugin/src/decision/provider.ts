@@ -1,5 +1,7 @@
 // Orbit Studio Needs you에 주는 결정 공급자(플러그인 API 0.1.26 `ctx.decisions.provide`, Studio 4차 S4-3).
 // 저장소의 카드를 Studio가 아는 모양으로만 옮긴다. 옛 Studio(ctx.decisions 없음)에서는 등록하지 않는다.
+import {pick} from '../i18n/index.ts';
+import {workText} from '../i18n/messages/work.ts';
 import type {DecisionStore} from './store.ts';
 import type {AnswerOutcome, AnswerPart, Decision, DecisionSource} from './types.ts';
 
@@ -34,17 +36,26 @@ interface DecisionProviderLike {
 const RELAY_OWNERS = new Set(['orbit-pi', 'studio']);
 const ms = (s: string | undefined) => (s ? Date.parse(s) || undefined : undefined);
 
+/** Needs you 줄의 보조 글. 가정 카드(AU-3)는 「가정으로 진행 중」을 맨 앞에 붙인다. 호스트 Needs you는 출처를 question|permission|ops|plugin만 알아서 assumption은 question으로 옮긴다(일은 막히지 않았고, 답하면 이어진 단계만 다시 열린다). */
+function metaOf(d: Decision): string | undefined {
+  const host = d.work?.host;
+  if (d.source !== 'assumption') return host;
+  const head = pick(workText).assumption.rung.assume;
+  return host ? `${head} · ${host}` : head;
+}
+
 export function toStudioCard(d: Decision): StudioCard {
   const links = d.links.flatMap(l => {
     const url = l.ref && /^https?:\/\//.test(l.ref) ? l.ref : undefined;
     const label = l.label ?? l.ref;
     return label ? [{kind: l.kind, label, ...(url ? {url} : {})}] : [];
   });
+  const meta = metaOf(d);
   return {
-    id: d.id, state: d.state, source: d.source, relay: RELAY_OWNERS.has(d.owner),
+    id: d.id, state: d.state, source: d.source === 'assumption' ? 'question' : d.source, relay: RELAY_OWNERS.has(d.owner),
     createdAt: ms(d.createdAt) ?? 0, ...(ms(d.updatedAt) ? {updatedAt: ms(d.updatedAt)} : {}),
     questions: d.questions, ...(d.context ? {context: d.context} : {}), ...(links.length ? {links} : {}),
-    ...(d.work?.workId ? {workItemId: d.work.workId} : {}), ...(d.work?.host ? {meta: d.work.host} : {}),
+    ...(d.work?.workId ? {workItemId: d.work.workId} : {}), ...(meta ? {meta} : {}),
     ...(d.answer && ms(d.answer.at) ? {answer: {answers: d.answer.answers, by: d.answer.by, at: ms(d.answer.at)!}} : {}),
     ...(ms(d.closedAt) ? {closedAt: ms(d.closedAt)} : {}), ...(d.closeReason ? {closeReason: d.closeReason} : {}),
   };

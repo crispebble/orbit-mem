@@ -91,6 +91,14 @@ export const workText = defineMessages({
       batch: (n: number) => `Batch ${n}`,
       batchSummary: (done: number, total: number) => `Done ${done}/${total}`,
     },
+    // 조사(AU-2)·가정(AU-3)
+    assumption: {
+      mark: {assume: 'Assumption', ask: 'Waiting', reopened: 'Reopened'},
+      rung: {evidence: 'Settled by evidence', assume: 'Running on an assumption', ask: 'Waiting for an answer'},
+      state: {settled: 'Recorded', open: 'Open', confirmed: 'Confirmed', overturned: 'Overturned · steps reopened', answered: 'Answered', closed: 'Closed'},
+      confidence: {low: 'Low', medium: 'Medium', high: 'High'},
+      size: {small: 'Small', medium: 'Medium', large: 'Large'},
+    },
     // 증거
     evidence: {
       command: 'Command',
@@ -226,6 +234,14 @@ export const workText = defineMessages({
       stepNotListed: '목록에 없는 단계',
       batch: (n: number) => `묶음 ${n}`,
       batchSummary: (done: number, total: number) => `끝 ${done}/${total}`,
+    },
+    // 조사(AU-2)·가정(AU-3)
+    assumption: {
+      mark: {assume: '가정', ask: '답 기다림', reopened: '다시 엶'},
+      rung: {evidence: '근거로 정함', assume: '가정으로 진행 중', ask: '답을 기다림'},
+      state: {settled: '기록됨', open: '열려 있음', confirmed: '확인됨', overturned: '뒤집혀 다시 엶', answered: '답함', closed: '닫힘'},
+      confidence: {low: '낮음', medium: '보통', high: '높음'},
+      size: {small: '작음', medium: '보통', large: '큼'},
     },
     evidence: {
       command: '명령',
@@ -403,6 +419,29 @@ export const workUiText = defineMessages({
       copyTranscript: 'Copy location',
     },
     // 세션 탭
+    // 작업 머리 아래 「조사」「결정·가정」
+    brief: {
+      discovery: 'Discovery',
+      decisions: 'Decisions',
+      decisionsCount: (n: number) => (n === 1 ? '1 decision' : `${n} decisions`),
+      problem: 'Problem',
+      points: 'Decision points',
+      noEvidence: 'No evidence recorded',
+      settled: 'Settled',
+      idealEnd: 'Intended end state',
+      unknowns: 'Still unknown',
+      sources: 'Where it looked',
+      meta: (size: string | undefined, rounds: number | undefined, by: string | undefined) =>
+        [size && `Size: ${size}`, rounds !== undefined && `${rounds} ${rounds === 1 ? 'round' : 'rounds'}`, by && `by ${by}`].filter(Boolean).join(' · '),
+      chosen: 'Chosen',
+      basis: 'Basis',
+      confidence: 'Confidence',
+      answer: 'Answer',
+      answeredBy: (who: string, when: string) => (when ? `${who} · ${when}` : who),
+      leaning: 'Steps relying on it',
+      stepNotListed: 'Step not in the list',
+      assumptionsOfStep: 'Decisions it relies on',
+    },
     sessionTab: {
       loading: 'Loading session',
       readFailed: 'Could not read the session',
@@ -542,6 +581,29 @@ export const workUiText = defineMessages({
       changedFiles: (n: number) => `바뀐 파일 ${n}개`,
       openCommit: '커밋 열기',
       copyTranscript: '기록 위치 복사',
+    },
+    // 작업 머리 아래 「조사」「결정·가정」
+    brief: {
+      discovery: '조사',
+      decisions: '결정·가정',
+      decisionsCount: (n: number) => `결정 ${n}개`,
+      problem: '문제',
+      points: '결정 지점',
+      noEvidence: '남긴 근거 없음',
+      settled: '정함',
+      idealEnd: '바라는 끝 모습',
+      unknowns: '아직 모르는 것',
+      sources: '살펴본 곳',
+      meta: (size: string | undefined, rounds: number | undefined, by: string | undefined) =>
+        [size && `크기: ${size}`, rounds !== undefined && `${rounds}회 조사`, by && `${by}`].filter(Boolean).join(' · '),
+      chosen: '고른 것',
+      basis: '근거',
+      confidence: '확신',
+      answer: '답',
+      answeredBy: (who: string, when: string) => (when ? `${who} · ${when}` : who),
+      leaning: '기댄 단계',
+      stepNotListed: '목록에 없는 단계',
+      assumptionsOfStep: '기댄 결정',
     },
     sessionTab: {
       loading: '세션을 불러오는 중입니다',

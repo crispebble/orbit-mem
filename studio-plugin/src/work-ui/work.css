@@ -14,6 +14,17 @@
 .orbit-work-graph > * { flex: 1; min-height: 0; }
 .orbit-work-owners { flex: 1; min-height: 0; overflow: auto; padding: var(--forma-space-4); }
 
+/* 조사·결정·가정: 머리 아래. 길면 스스로 스크롤해 그래프 자리를 지킨다 */
+.orbit-work-brief { display: flex; flex-direction: column; gap: var(--forma-space-2); max-height: 38%; overflow: auto; padding: var(--forma-space-2) var(--forma-space-4); border-bottom: 1px solid var(--forma-line); }
+.orbit-work-brief-body { display: flex; flex-direction: column; gap: var(--forma-space-3); padding: var(--forma-space-2) 0 var(--forma-space-2) var(--forma-space-4); min-width: 0; }
+.orbit-work-brief-part .orbit-work-sec { margin-bottom: var(--forma-space-1, 4px); }
+.orbit-work-brief-list, .orbit-work-brief-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--forma-space-1, 4px); min-width: 0; }
+.orbit-work-brief-list .orbit-mono { font-size: var(--forma-font-small); }
+.orbit-work-brief-point { display: flex; flex-direction: column; gap: 2px; }
+.orbit-work-brief-items { gap: var(--forma-space-3); padding: var(--forma-space-2) 0 var(--forma-space-2) var(--forma-space-4); }
+.orbit-work-brief-item { display: flex; flex-direction: column; gap: var(--forma-space-1, 4px); padding-bottom: var(--forma-space-2); border-bottom: 1px solid var(--forma-line); min-width: 0; }
+.orbit-work-brief-item:last-child { border-bottom: 0; }
+
 /* 단계 상세(FlowGraph aside 안) */
 .orbit-work-detail { display: flex; flex-direction: column; gap: var(--forma-space-3); padding: var(--forma-space-3) var(--forma-space-4) var(--forma-space-4); min-width: 0; }
 .orbit-work-detail-head { display: flex; align-items: flex-start; gap: var(--forma-space-2); }

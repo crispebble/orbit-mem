@@ -6,6 +6,7 @@ import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {Badge, Button, IconButton, PropertyList, TextLink} from '@onidot-labs/orbit-studio-plugin/ui';
 import {pick, useMessages} from '../i18n/index.ts';
 import {workText, workUiText} from '../i18n/messages/work.ts';
+import {assumptionStateView, assumptionsOfStep, rungView} from '../work/assumptions.ts';
 import {blockText, formatTime, runStateView, stepStatusView, verificationBadge} from '../work/display.ts';
 import {commitsOf, evidenceKindLabel, evidenceOfStep, evidenceResultView, runLabelOf, waitingSessionOf, type CommitRef} from '../work/evidence.ts';
 import {agoText, assigneeText, neighbors, type Neighbor} from '../work/graph.ts';
@@ -137,6 +138,7 @@ export interface StageDetailProps {
 export function StageDetail({ctx, work, step, now, works, sessions, nav, onClose}: StageDetailProps) {
   const t = useMessages(workUiText).stage;
   const unknown = useMessages(workText).unknown;
+  const briefText = useMessages(workUiText).brief;
   const status = stepStatusView(step.status, step.block);
   const badge = verificationBadge(step.verification, step.status);
   const nb = neighbors(work.steps, step.id);
@@ -165,6 +167,18 @@ export function StageDetail({ctx, work, step, now, works, sessions, nav, onClose
     {label: t.started, value: when(step.startedAt, now) ?? <span className="orbit-meta">{t.notStarted}</span>},
   );
   if (step.finishedAt) items.push({label: t.finished, value: when(step.finishedAt, now)});
+  const leaning = assumptionsOfStep(work, step);
+  if (leaning.length) {
+    items.push({label: briefText.assumptionsOfStep, value: (
+      <span className="orbit-work-links">
+        {leaning.map(a => {
+          const r = rungView(a.rung);
+          const st = assumptionStateView(a.state);
+          return <span key={a.id} className="orbit-row"><span className="orbit-work-text">{a.point}</span><Badge tone={r.tone}>{r.label}</Badge><Badge tone={st.tone}>{st.label}</Badge></span>;
+        })}
+      </span>
+    )});
+  }
   if (step.childWorkIds.length) {
     items.push({label: t.childWorks, value: (
       <span className="orbit-work-links">
