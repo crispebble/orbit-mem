@@ -1,0 +1,7 @@
+{
+  "openorbit.err.bad_cli": "%s가 가리킨 %s는 파일이 아닙니다",
+  "openorbit.err.bad_node": "ORBIT_NODE %s를 실행할 수 없습니다: %v",
+  "openorbit.err.failed": "%s가 실패했습니다(종료 코드 %d): %s",
+  "openorbit.err.no_cli": "%s를 찾지 못했습니다(%s). orb runtime install로 OpenOrbit 런타임을 설치하거나 orb runtime update로 갱신해 주세요(또는 %s에 그 dist/cli.js 경로를 넣습니다).",
+  "openorbit.err.no_node": "node를 찾지 못했습니다(ORBIT_NODE, PATH, %s). Node 22.19 이상이 필요합니다. 다른 곳에 있으면 ORBIT_NODE에 그 경로를 넣어 주세요."
+}
