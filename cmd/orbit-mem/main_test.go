@@ -127,10 +127,10 @@ func TestUsage_모르는_명령은_2(t *testing.T) {
 	}
 }
 
-// orb mcp를 실제 stdio로 띄워 도구를 부른다.
+// orbit-mem mcp를 실제 stdio로 띄워 도구를 부른다.
 func TestMCP_stdio로_도구를_부른다(t *testing.T) {
 	h := home(t)
-	bin := filepath.Join(t.TempDir(), "orb")
+	bin := filepath.Join(t.TempDir(), "orbit-mem")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
@@ -326,7 +326,7 @@ func TestConfig_2차_키를_설정한다(t *testing.T) {
 	}
 }
 
-// 명세 · O3-5: orb lab은 플러그인 원본을 쓰는 PC에서만 돈다. 과제를 만들고 목록에 보이며, 실험실 설정 키를 바꿀 수 있다.
+// 명세 · O3-5: orbit-mem lab은 플러그인 원본을 쓰는 PC에서만 돈다. 과제를 만들고 목록에 보이며, 실험실 설정 키를 바꿀 수 있다.
 func TestLab_과제_명령과_설정(t *testing.T) {
 	h := home(t)
 	seed(t)

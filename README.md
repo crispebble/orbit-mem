@@ -12,7 +12,7 @@
 | **`orbit-mem`** | **이 저장소** | 기억 MCP 서버 `orbit-mem`, 세션 시작·요청·세션 끝 훅, 스킬 `memory`·`proposals` | PATH의 `orbit-mem` 실행 파일 |
 | OpenOrbit 확장 | `onidot-labs/openorbit` | 오케스트라·작업 현황 | OpenOrbit `orb` |
 
-`orbit-mem`과 하네스는 서로를 모르고 OpenOrbit도 모른다. 하네스 빌드에 기억 조각을 끼우던 방식(`orbit-mem plugin fragment`, `orb plugin build --fragment`)은 걷어 냈다.
+`orbit-mem`의 기억 플러그인·MCP·훅은 OpenOrbit 없이 돈다. 예외는 둘이다. 실험실(`orbit-mem lab`)은 후보 하네스를 빌드할 때 OpenOrbit의 `orb plugin build`를 부른다(실험실을 어디 둘지는 다음에 정한다). 훅은 orbit-pi가 부를 때 붙는 `--runtime orbit-pi` 표시를 안다. 하네스와는 서로를 모른다. 하네스 빌드에 기억 조각을 끼우던 방식(`orbit-mem plugin fragment`, `orb plugin build --fragment`)은 걷어 냈다.
 
 ## 설치
 
