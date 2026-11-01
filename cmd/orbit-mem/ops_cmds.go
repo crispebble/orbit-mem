@@ -10,23 +10,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit-mem/internal/activity"
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/install"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/memplugin"
 	"github.com/onidot-labs/orbit-mem/internal/migrate"
-	"github.com/onidot-labs/orbit-mem/internal/openorbit"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 	"github.com/onidot-labs/orbit-mem/internal/version"
-	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 func selfPath() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return "orb"
+		return "orbit-mem"
 	}
 	if r, err := filepath.EvalSymlinks(exe); err == nil {
 		return r
@@ -35,7 +34,7 @@ func selfPath() string {
 }
 
 func newRunner(s *memory.Store, cfg config.Config) *retro.Runner {
-	return &retro.Runner{Store: s, Cfg: cfg, Paths: paths(), Roots: transcript.DefaultRoots(), Loc: time.Local, Orb: selfPath()}
+	return &retro.Runner{Store: s, Cfg: cfg, Paths: paths(), Roots: transcript.DefaultRoots(), Loc: time.Local, Mem: selfPath()}
 }
 
 func cmdRetro(a *app, args []string) error {
@@ -223,53 +222,42 @@ func counts(m map[string]int) string {
 }
 
 func cmdPlugin(a *app, args []string) error {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] != "fragment" {
+		return errUsage // 플러그인 빌드·등록은 OpenOrbit orb plugin build·orb install이 한다
+	}
+	// 기억 MCP·훅 조각: OpenOrbit의 플러그인 빌드(orb plugin build … --fragment)가 받는다
+	fs := a.flags("plugin fragment")
+	path := fs.String("path", "", i18n.T("flag.plugin.path"))
+	pos, err := parse(fs, args[1:])
+	if err != nil {
+		return err
+	}
+	if len(pos) != 0 {
 		return errUsage
 	}
-	switch args[0] {
-	case "fragment": // 기억 MCP·훅 조각: openorbit-harness build … --fragment가 받는다
-		fs := a.flags("plugin fragment")
-		orb := fs.String("orb", "", i18n.T("flag.plugin.orb"))
-		pos, err := parse(fs, args[1:])
-		if err != nil {
-			return err
-		}
-		if len(pos) != 0 {
-			return errUsage
-		}
-		if *orb == "" {
-			*orb = selfPath()
-		}
-		b, err := memplugin.Fragment(*orb)
-		if err != nil {
-			return err
-		}
-		_, err = a.stdout.Write(b)
+	if *path == "" {
+		*path = selfPath()
+	}
+	b, err := memplugin.Fragment(*path)
+	if err != nil {
 		return err
-	case "build", "install": // 하네스 빌드·호스트 등록은 OpenOrbit(openorbit-harness)
-		return a.passthrough(openorbit.Harness, args)
 	}
-	return errUsage
+	_, err = a.stdout.Write(b)
+	return err
 }
 
-func codexHome() string {
-	return transcript.DefaultRoots().Codex
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
-func hostList(h install.Hosts) string {
-	var hs []string
-	if h.Claude != "" {
-		hs = append(hs, "Claude Code")
-	}
-	if h.Codex != "" {
-		hs = append(hs, "Codex")
-	}
-	if len(hs) == 0 {
-		return i18n.T("cli.install.no_hosts")
-	}
-	return strings.Join(hs, "·")
-}
-
+// cmdInstall puts orbit-mem in the bin folder, writes the settings (hosts, plugin source,
+// apply targets), makes the memory DB and schedules the retrospectives. Building the OpenOrbit
+// plugin and registering it in the hosts is OpenOrbit's orb install.
 func cmdInstall(a *app, args []string) error {
 	fs := a.flags("install")
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), i18n.T("flag.install.bin_dir"))
@@ -279,9 +267,7 @@ func cmdInstall(a *app, args []string) error {
 	var targets multiFlag
 	fs.Var(&targets, "apply-target", i18n.T("flag.install.apply_target"))
 	noSchedule := fs.Bool("no-schedule", false, i18n.T("flag.install.no_schedule"))
-	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
-	enablePlan := fs.Bool("enable-codex-plan", false, i18n.T("flag.install.enable_codex_plan"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -290,15 +276,10 @@ func cmdInstall(a *app, args []string) error {
 	dst := filepath.Join(*binDir, install.BinaryName())
 	steps := []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
-		i18n.T("cli.install.step_alias", install.AliasPath(dst)), // 4차 동안의 별칭(ONID-107)
 		i18n.T("cli.install.step_home", p.Home),
-		i18n.T("cli.install.step_build", p.Marketplace()),
 	}
 	if *pluginSource != "" {
 		steps = append(steps, i18n.T("cli.install.step_source", *pluginSource))
-	}
-	if !*noHosts {
-		steps = append(steps, i18n.T("cli.install.step_hosts", hostList(h)))
 	}
 	if !*noSchedule {
 		steps = append(steps, i18n.T("cli.install.step_schedule", config.Default().RetroHour))
@@ -307,6 +288,7 @@ func cmdInstall(a *app, args []string) error {
 		for _, s := range steps {
 			fmt.Fprintln(a.stdout, "- "+s)
 		}
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_by_orb"))
 		return nil
 	}
 	copied, err := install.CopyBinary(selfPath(), dst)
@@ -315,12 +297,6 @@ func cmdInstall(a *app, args []string) error {
 	}
 	if copied {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.installed", dst))
-	}
-	// 4차 동안의 별칭(ONID-107): 두지 못해도 orb는 깔렸으니 알리고 이어 간다.
-	if alias, changed, err := install.InstallAlias(dst); err != nil {
-		fmt.Fprintln(a.stderr, i18n.T("cli.install.alias_failed", err))
-	} else if changed {
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.alias", alias))
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -359,24 +335,6 @@ func cmdInstall(a *app, args []string) error {
 		return err
 	}
 	s.Close()
-	r := bridge()
-	src := cfg.PluginSource
-	if src == "" { // 내장 원본: OpenOrbit 하네스가 싣고 있는 원본
-		out, err := r.Output(openorbit.Harness, "source")
-		if err != nil {
-			return i18n.Errorf("cli.install.err.plugin_build", err)
-		}
-		src = strings.TrimSpace(string(out))
-	}
-	if err := memplugin.Build(r, src, p.Marketplace(), dst); err != nil {
-		return i18n.Errorf("cli.install.err.plugin_build", err)
-	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_built", p.Marketplace(), map[bool]string{true: i18n.T("cli.install.builtin"), false: src}[cfg.PluginSource == ""]))
-	if !*noHosts {
-		if err := asExit(r.Run(openorbit.Harness, nil, a.stdout, a.stderr, "install", p.Marketplace(), "--codex-home", codexHome())); err != nil {
-			return err
-		}
-	}
 	if !*noSchedule {
 		var dirs []string
 		for _, hp := range []string{h.Claude, h.Codex} {
@@ -388,61 +346,30 @@ func cmdInstall(a *app, args []string) error {
 		if os.Getenv("ORBIT_HOME") != "" {
 			home = p.Home
 		}
-		where, err := install.ApplySchedule(install.Schedule{Orb: dst, Hour: cfg.RetroHour, Home: home, PathDirs: dirs, Logs: p.Logs()}, install.RunCommand)
+		where, err := install.ApplySchedule(install.Schedule{Bin: dst, Hour: cfg.RetroHour, Home: home, PathDirs: dirs, Logs: p.Logs()}, install.RunCommand)
 		if err != nil {
 			return i18n.Errorf("cli.install.err.schedule", err)
 		}
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled", cfg.RetroHour, where))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled_note"))
 	}
-	if h.Codex != "" && !*noHosts {
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.codex_hooks"))
-		switch {
-		case install.CodexPlanEnabled(codexHome()):
-		case *enablePlan:
-			if err := install.EnableCodexPlan(codexHome()); err != nil {
-				return i18n.Errorf("cli.install.err.codex_plan", err)
-			}
-			fmt.Fprintln(a.stdout, i18n.T("cli.install.codex_plan_on", filepath.Join(codexHome(), "config.toml")))
-		default:
-			fmt.Fprintln(a.stdout, i18n.T("cli.install.codex_plan_off"))
-		}
-	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_by_orb"))
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
 	return nil
 }
 
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
+// cmdUninstall takes the retrospective schedule out. The plugin is OpenOrbit's (orb uninstall).
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
 	}
-	h := install.FindHosts()
-	failed := false
-	if err := h.UnregisterPlugin("orbit", "orbit"); err != nil {
-		failed = true
-		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.plugin_error", err))
-	}
 	if err := install.RemoveSchedule(install.RunCommand); err != nil {
-		failed = true
 		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.schedule_error", err))
-	}
-	if failed {
 		return i18n.Errorf("cli.uninstall.err.partial", paths().Home)
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", paths().Home))
+	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.plugin_by_orb"))
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.binary", selfPath()))
-	if alias := install.AliasPath(selfPath()); lexists(alias) { // 4차 동안의 별칭(ONID-107)
-		fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.alias", alias))
-	}
 	return nil
 }
 
@@ -459,30 +386,12 @@ type doctorReport struct {
 	Schedule     bool                `json:"schedule"`
 	LastRetros   []retro.RetroStatus `json:"lastRetros"`
 	LastBackup   string              `json:"lastBackup,omitempty"`
-	CodexPlan    bool                `json:"codexPlanTool"`
-	Work         workStatus          `json:"work"`
+	Activity     activityStatus      `json:"activity"`
 }
 
-type workStatus struct {
-	On      bool `json:"on"`
-	Open    int  `json:"openWorks"`
-	Total   int  `json:"works"`
-	Spooled int  `json:"spooled"` // 아직 DB에 넣지 못한 훅 사건
-}
-
-func workReport(cfg config.Config) workStatus {
-	st := workStatus{On: cfg.WorkOn()}
-	if files, err := filepath.Glob(filepath.Join(paths().WorkSpool(), "*.json")); err == nil {
-		st.Spooled = len(files)
-	}
-	if _, err := os.Stat(paths().WorkDB()); err != nil {
-		return st
-	}
-	if s, err := work.Open(paths().WorkDB()); err == nil {
-		st.Open, st.Total = s.Count()
-		s.Close()
-	}
-	return st
+type activityStatus struct {
+	Sessions       int `json:"sessions"`       // 활동 기록(memory.db)의 세션 수
+	LegacySessions int `json:"legacySessions"` // 옛 작업 기록(work.db, 읽기 전용)의 세션 수
 }
 
 func cmdDoctor(a *app, args []string) error {
@@ -521,8 +430,8 @@ func cmdDoctor(a *app, args []string) error {
 		rep.Plugin[name] = strings.Contains(string(out), "orbit@orbit")
 	}
 	rep.Schedule = install.ScheduleInstalled(install.RunCommand)
-	rep.CodexPlan = h.Codex != "" && install.CodexPlanEnabled(codexHome())
-	rep.Work = workReport(cfg)
+	rep.Activity.Sessions = s.ActivityCount()
+	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
 	if entries, err := os.ReadDir(p.Backups()); err == nil && len(entries) > 0 {
 		rep.LastBackup = filepath.Join(p.Backups(), entries[len(entries)-1].Name())
 	}
@@ -535,12 +444,6 @@ func cmdDoctor(a *app, args []string) error {
 		}
 		return i18n.T("cli.doctor.no")
 	}
-	onOff := func(b bool) string {
-		if b {
-			return i18n.T("cli.doctor.on")
-		}
-		return i18n.T("cli.doctor.off")
-	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.head", rep.Version, rep.Binary, runtime.GOOS, runtime.GOARCH, rep.Home))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
@@ -550,16 +453,10 @@ func cmdDoctor(a *app, args []string) error {
 		sessionRetro = i18n.T("cli.doctor.on_model", cfg.SessionModel())
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.session_retro", sessionRetro, rep.SessionQueue, cfg.RecallChars))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions, rep.Activity.LegacySessions))
 	for _, name := range []string{"claude", "codex"} {
 		if path, ok := rep.Hosts[name]; ok {
 			fmt.Fprintln(a.stdout, i18n.T("cli.doctor.host", name, path, yes(rep.Plugin[name])))
-			if name == "codex" {
-				if rep.CodexPlan {
-					fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex_plan_on"))
-				} else {
-					fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex_plan_off"))
-				}
-			}
 		} else {
 			fmt.Fprintln(a.stdout, i18n.T("cli.doctor.host_missing", name))
 		}
@@ -570,7 +467,6 @@ func cmdDoctor(a *app, args []string) error {
 	if rep.LastBackup != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_backup", rep.LastBackup))
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.work", onOff(rep.Work.On), rep.Work.Open, rep.Work.Total, rep.Work.Spooled))
 	return nil
 }
 

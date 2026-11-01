@@ -1,8 +1,8 @@
-// Command orb is OpenOrbit: per-PC memory for AI hosts, background
-// retrospectives that propose what was learned, and the memory MCP server and
-// hooks it adds to the OpenOrbit plugin. The harness (plugin source, build,
-// host install, role folder) and the work record are OpenOrbit's TS CLIs, which
-// orb calls (internal/openorbit).
+// Command orbit-mem is the shared memory of this PC for AI hosts: memories with
+// their sources, background retrospectives that propose what was learned, the
+// activity log of host sessions, and the MCP server and hooks it adds to the
+// OpenOrbit plugin. OpenOrbit's own command orb (TypeScript, openorbit repo)
+// builds that plugin, registers it in the hosts and runs the orchestration.
 package main
 
 import (
@@ -32,7 +32,7 @@ type command struct {
 
 var errUsage = i18n.Err("cli.err.usage")
 
-// exitCode ends orb with a child's exit code without printing anything.
+// exitCode ends orbit-mem with a child's exit code without printing anything.
 type exitCode int
 
 func (c exitCode) Error() string { return "" }
@@ -43,24 +43,26 @@ func commands() []command {
 		{"install", "usage.install", cmdInstall},
 		{"uninstall", "usage.uninstall", cmdUninstall},
 		{"doctor", "usage.doctor", cmdDoctor},
-		{"mcp", "usage.mcp", cmdMCP},
-		{"hook", "usage.hook", cmdHook},
-		{"memory", "usage.memory", cmdMemory},
+		{"search", "usage.search", cmdSearch},
+		{"show", "usage.show", cmdShow},
+		{"list", "usage.list", cmdList},
+		{"edit", "usage.edit", cmdEdit},
+		{"stale", "usage.stale", cmdStale},
+		{"export", "usage.export", cmdExport},
+		{"import", "usage.import", cmdImport},
+		{"activity", "usage.activity", cmdActivity},
 		{"proposals", "usage.proposals", cmdProposals},
 		{"retro", "usage.retro", cmdRetro},
-		{"migrate", "usage.migrate", cmdMigrate},
+		{"mcp", "usage.mcp", cmdMCP},
+		{"hook", "usage.hook", cmdHook},
+		{"inject", "usage.inject", cmdInject},
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},
+		{"migrate", "usage.migrate", cmdMigrate},
 		{"stats", "usage.stats", cmdStats},
-		{"lab", "usage.lab", cmdLab},
 		{"ledger", "usage.ledger", cmdLedger},
-		{"inject", "usage.inject", cmdInject},
-		{"runtime", "usage.runtime", cmdRuntime},
-		{"work", "usage.work", cmdWork},
-		{"run", "usage.run", cmdRun},
-		{"profile", "usage.profile", cmdProfile},
-		{"daemon", "usage.daemon", cmdDaemon},
+		{"lab", "usage.lab", cmdLab},
 	}
 }
 
@@ -73,10 +75,6 @@ func (a *app) usage() {
 
 func (a *app) main(args []string) int {
 	i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), config.Language(paths().Config())))
-	if len(args) == 0 && zeroArgTUI(isTerminal(a.stdin), isTerminal(a.stdout)) {
-		// 터미널에서 인자 없이 부르면 orbit-pi TUI를 연다(설계 · OpenOrbit 4차 R4-5)
-		return a.zeroArg()
-	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		a.usage()
 		if len(args) == 0 {
@@ -103,25 +101,12 @@ func (a *app) main(args []string) int {
 			fmt.Fprintln(a.stderr, i18n.T("cli.usage_line", i18n.T(c.usage)))
 			return 2
 		}
-		fmt.Fprintln(a.stderr, "orb "+c.name+": "+err.Error())
+		fmt.Fprintln(a.stderr, "orbit-mem "+c.name+": "+err.Error())
 		return 1
 	}
 	fmt.Fprintln(a.stderr, i18n.T("cli.unknown_command", args[0]))
 	a.usage()
 	return 2
-}
-
-// exit prints a command error and gives orb's exit code for it.
-func (a *app) exit(name string, err error) int {
-	var code exitCode
-	switch {
-	case err == nil:
-		return 0
-	case errors.As(err, &code):
-		return int(code)
-	}
-	fmt.Fprintln(a.stderr, name+": "+err.Error())
-	return 1
 }
 
 func (a *app) flags(name string) *flag.FlagSet {

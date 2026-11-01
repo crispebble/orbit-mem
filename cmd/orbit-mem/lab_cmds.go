@@ -19,7 +19,7 @@ func newLab(s *memory.Store) (*lab.Lab, error) {
 	if cfg.PluginSource == "" {
 		return nil, i18n.Errorf("cli.lab.err.no_source")
 	}
-	return &lab.Lab{Store: s, Cfg: cfg, Paths: paths(), Orb: selfPath(), Source: cfg.PluginSource}, nil
+	return &lab.Lab{Store: s, Cfg: cfg, Paths: paths(), Mem: selfPath(), Source: cfg.PluginSource}, nil
 }
 
 func readArg(text, file string) (string, error) {

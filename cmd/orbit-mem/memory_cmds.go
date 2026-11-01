@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,9 +20,8 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
+	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 	"github.com/onidot-labs/orbit-mem/internal/version"
-	"github.com/onidot-labs/orbit-mem/internal/work"
-	"github.com/onidot-labs/orbit-mem/internal/work/hook"
 )
 
 func paths() config.Paths { return config.Paths{Home: config.Home()} }
@@ -33,7 +31,7 @@ func loadConfig() (config.Config, error) { return config.Load(paths().Config()) 
 func openStore() (*memory.Store, error) { return memory.Open(paths().DB()) }
 
 func cmdVersion(a *app, args []string) error {
-	fmt.Fprintln(a.stdout, "orb "+version.Version)
+	fmt.Fprintln(a.stdout, "orbit-mem "+version.Version)
 	return nil
 }
 
@@ -54,24 +52,15 @@ func cmdMCP(a *app, args []string) error {
 	}
 	// MCP 응답 글은 AI가 읽는다(ONID-61 대상 아님). 공유 오류(기억·제안)도 언어 설정과 무관하게 한국어로 낸다.
 	i18n.Set(i18n.KO)
-	if *reader { // 기억 그래프만. 작업·결정 카드 도구는 orb work mcp(openorbit-work)
+	if *reader { // 기억 그래프만(Orbit Studio 같은 앱)
 		ctx, cancel := signalContext()
 		defer cancel()
 		return mcpserver.NewReader(paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
 	}
-	cfg, err := loadConfig()
-	if err != nil {
+	if _, err := loadConfig(); err != nil {
 		return err
 	}
 	p := sessionProject()
-	cwd := os.Getenv("CLAUDE_PROJECT_DIR")
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-	wo := &mcpserver.WorkOptions{DB: paths().WorkDB(), Spool: paths().WorkSpool(), Cwd: cwd, Project: p.Scope, Read: work.ReadOptions{StaleAfter: cfg.StaleAfter()}}
-	if !cfg.WorkOn() {
-		wo = nil
-	}
 	s, err := openStore()
 	if err != nil {
 		return err
@@ -83,7 +72,7 @@ func cmdMCP(a *app, args []string) error {
 	if *retroID != "" {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, Work: wo})
+		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB()})
 	}
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
@@ -96,7 +85,7 @@ type hookInput struct {
 	TranscriptPath string `json:"transcript_path"`
 }
 
-// spawnDetached starts a background orb that outlives the hook, its output
+// spawnDetached starts a background orbit-mem that outlives the hook, its output
 // appended to log.
 var spawnDetached = func(name string, args []string, log string) error {
 	_ = os.MkdirAll(filepath.Dir(log), 0o700)
@@ -116,134 +105,120 @@ var spawnDetached = func(name string, args []string, log string) error {
 
 // sessionEnd queues the ended session for its session-end retrospective and
 // starts the queue runner in the background; the host is not kept waiting.
-func (a *app) sessionEnd(in hookInput, host string, cfg config.Config) {
+func (a *app) sessionEnd(s *memory.Store, in hookInput, host string, cfg config.Config) {
 	if os.Getenv("ORBIT_RETRO_ID") != "" || !cfg.SessionRetro {
 		return
 	}
-	s, err := openStore()
-	if err != nil {
-		return
-	}
-	defer s.Close()
 	queued, err := retro.Enqueue(s, paths(), retro.SessionEnd{Host: host, Session: in.SessionID, Transcript: in.TranscriptPath, Cwd: in.Cwd})
 	if err != nil {
-		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.enqueue_failed", err))
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.enqueue_failed", err))
 		return
 	}
 	if !queued {
 		return
 	}
 	if err := spawnDetached(selfPath(), []string{"retro", "sessions"}, filepath.Join(paths().Logs(), "session-retro.log")); err != nil {
-		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.spawn_failed", err))
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.spawn_failed", err))
 	}
 }
 
-// hookContextRunes is about the hosts' hook context limit (Claude Code
-// 10,000자). The resume context uses what the memory context leaves.
-const hookContextRunes = 10000
-
 // cmdHook never fails the host: any problem, wrong arguments included, prints
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
+// session-start and prompt give the memory context; all three keep the activity
+// log; session-end also queues the session-end retrospective.
 func cmdHook(a *app, args []string) error {
-	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다(비동기 훅의 도착 순서는 믿지 않는다)
+	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
 	fs := a.flags("hook")
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
-	skipLists := fs.Bool("skip-lists", false, i18n.T("flag.hook.skip_lists"))
+	fs.Bool("skip-lists", false, "") // 옛 작업 기록 훅의 인자: 받고 버린다
 	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
 	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end" && pos[0] != "work") || (*host != "claude" && *host != "codex") ||
-		(*runtime != "" && *runtime != runtimeOrbitPi) {
-		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.bad_args"))
+	if err == nil && len(pos) == 1 && pos[0] == "work" {
+		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 OpenOrbit으로 옮겼다: 입력을 버리고 끝낸다.
+		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
 		return nil
 	}
-	// 설계 · Studio 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션에서는 기억 주입·작업 기록·
-	// 질문 카드를 orbit-pi가 맡는다. 플러그인 훅(--runtime 없음)은 아무것도 하지 않고,
+	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end") || (*host != "claude" && *host != "codex") ||
+		(*runtime != "" && *runtime != runtimeOrbitPi) {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
+		return nil
+	}
+	// 설계 · Studio 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션에서는 기억 주입·활동 기록을
+	// orbit-pi가 맡는다. 플러그인 훅(--runtime 없음)은 아무것도 하지 않고,
 	// orbit-pi가 같은 입력으로 --runtime orbit-pi를 붙여 부른 훅만 기록한다.
 	if *runtime == "" && os.Getenv(runtimeEnv) == runtimeOrbitPi {
 		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
 		return nil
 	}
 	who := launcherOf(*runtime, *launcher)
-	start := time.Now()
 	deadline := time.After(hookDeadline)
-	until := start.Add(hookDeadline - hookExitMargin) // 이때까지 사건을 쓰거나 스풀에 남긴다
 	done := make(chan string, 1)
-	recorded := make(chan struct{})
-	finished := make(chan struct{}) // 기억 사건까지 남겼다
+	finished := make(chan struct{}) // 사건·활동 기록까지 남겼다
 	go func() {
 		defer close(finished)
 		defer func() {
 			if recover() != nil {
-				done <- ""
+				select {
+				case done <- "":
+				default:
+				}
 			}
 		}()
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
 		cfg, err := loadConfig()
 		if err != nil {
-			close(recorded)
-			fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.config_failed", err))
+			fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.config_failed", err))
 			done <- ""
 			return
 		}
-		if pos[0] == "work" {
-			// 제목 요청 문맥은 기록 결과(연 작업)에 달려 있어 차례로 한다
-			opened, listTool := recordWork(*host, b, at, until, cfg, *skipLists, who)
-			close(recorded)
-			var ctx []string
-			if listTool {
-				for _, id := range opened {
-					ctx = append(ctx, work.TitleRequest(id))
-				}
-			}
-			done <- inject.HookOutput("PostToolUse", strings.Join(ctx, "\n"))
-			return
-		}
-		// 기억 문맥은 작업 기록(git 호출·쓰기 대기)을 기다리지 않는다
-		go func() {
-			defer close(recorded)
-			defer func() { _ = recover() }()
-			recordWork(*host, b, at, until, cfg, *skipLists, who)
-		}()
 		var in hookInput
 		_ = json.Unmarshal(b, &in)
-		memoryHook(a, done, pos[0], *host, in, cfg)
+		if _, err := os.Stat(paths().DB()); err != nil { // 설치 전: 기억 DB를 만들지 않는다
+			done <- ""
+			return
+		}
+		s, err := openStore()
+		if err != nil {
+			done <- ""
+			return
+		}
+		defer s.Close()
+		var p project.Project
+		if in.Cwd != "" {
+			p = project.Resolve(in.Cwd)
+		}
+		memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg)
+		recordActivity(s, pos[0], *host, in, p, who, at)
 	}()
 	select {
 	case out := <-done:
 		if out != "" {
 			fmt.Fprintln(a.stdout, out)
 		}
-		// 작업 기록은 until 전에 쓰거나 스풀에 남기고, 기억 사건은 문맥을 낸 뒤에 쓴다.
-		// 둘 다 기다리지 않고 끝나면 프로세스와 함께 사라진다.
-		for _, ch := range []<-chan struct{}{recorded, finished} {
-			select {
-			case <-ch:
-			case <-deadline:
-				return nil
-			}
+		// 사건·활동 기록은 문맥을 낸 뒤에 쓴다. 시간 안에 끝나지 않으면 프로세스와 함께 사라진다.
+		select {
+		case <-finished:
+		case <-deadline:
 		}
 	case <-deadline:
-		fmt.Fprintln(a.stderr, "orb hook: "+i18n.T("cli.hook.timeout"))
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
 	}
 	return nil
 }
 
-// hookDeadline is how long a hook may take before it gives up without output;
-// hookExitMargin is left after the work record so the process exits in time.
-const (
-	hookDeadline   = 4 * time.Second
-	hookExitMargin = 300 * time.Millisecond
-)
+// hookDeadline is how long a hook may take before it gives up without output.
+const hookDeadline = 4 * time.Second
 
 // Runtime marks (설계 · Studio 4차 「Claude 엔진 중복 규칙」). orbit-pi puts
 // ORBIT_RUNTIME=orbit-pi into the claude it starts and calls the hooks itself
-// with --runtime orbit-pi and --launcher (ORBIT_LAUNCHER) for origin.launcher.
+// with --runtime orbit-pi and --launcher (ORBIT_LAUNCHER) for the activity log.
 const (
 	runtimeEnv     = "ORBIT_RUNTIME"
 	runtimeOrbitPi = "orbit-pi"
 	launcherEnv    = "ORBIT_LAUNCHER"
+	parentEnv      = "ORBIT_PARENT" // 이 세션을 띄운 세션(활동 기록의 parent)
 )
 
 // hookCaller is who called a hook: a person's own session or orbit-pi.
@@ -252,7 +227,7 @@ type hookCaller struct {
 	runtime  bool
 }
 
-// launcherOf is origin.launcher: human for a person's own session; for
+// launcherOf is the activity log's launcher: human for a person's own session; for
 // orbit-pi the launcher it names (studio·telegram·workflow…), else orbit-pi.
 func launcherOf(runtime, launcher string) hookCaller {
 	if runtime == "" {
@@ -269,60 +244,29 @@ func launcherOf(runtime, launcher string) hookCaller {
 	return hookCaller{launcher: launcher, runtime: true}
 }
 
-// recordWork turns the hook input into work ledger events (설계 · Orbit 2차
-// 「훅」). It returns the works this call opened and whether it was a list tool.
-func recordWork(host string, raw []byte, at int64, until time.Time, cfg config.Config, skipLists bool, who hookCaller) ([]string, bool) {
-	if !cfg.WorkOn() || os.Getenv("ORBIT_RETRO_ID") != "" {
-		return nil, false
+// recordActivity keeps the session in the activity log (설계 · OpenOrbit 4차 M5). Sessions
+// inside a retrospective run are not activity.
+func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, who hookCaller, at int64) {
+	if os.Getenv("ORBIT_RETRO_ID") != "" || in.SessionID == "" {
+		return
 	}
-	env := hook.Env{Host: host, Getenv: os.Getenv, Git: hook.SystemGit{}, Now: at, Launcher: who.launcher, NoDecisions: who.runtime,
-		TestCommands: append(append([]string{}, hook.DefaultTestCommands...), cfg.WorkTestCommands...),
-		Project: func(cwd string) work.Project {
-			p := project.Resolve(cwd)
-			return work.Project{Scope: p.Scope, Label: p.Label}
-		}}
-	plan := hook.Translate(raw, env)
-	if len(plan.Events) == 0 || (skipLists && plan.ListTool) {
-		return nil, plan.ListTool
-	}
-	var opened []string
-	for _, res := range work.RecordAll(paths().WorkDB(), paths().WorkSpool(), plan.Events, until) {
-		opened = append(opened, res.Opened...)
-	}
-	return opened, plan.ListTool
+	kind := map[string]string{"session-start": memory.ActivityStart, "prompt": memory.ActivityPrompt, "session-end": memory.ActivityEnd}[which]
+	_ = s.RecordActivity(memory.ActivityEvent{Kind: kind, Host: host, Session: in.SessionID, Cwd: in.Cwd, ProjectScope: p.Scope, ProjectLabel: p.Label,
+		Launcher: who.launcher, Parent: os.Getenv(parentEnv), Prompt: in.Prompt, At: at})
 }
 
-// memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」),
-// with the open works of the project at session start (설계 · Orbit 2차 O9).
-func memoryHook(a *app, done chan<- string, which, host string, in hookInput, cfg config.Config) {
-	scope := ""
-	if in.Cwd != "" {
-		scope = project.Resolve(in.Cwd).Scope
-	}
-	if _, err := os.Stat(paths().DB()); err != nil {
-		done <- ""
-		return
-	}
+// memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
+func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config) {
 	if which == "session-end" {
-		a.sessionEnd(in, host, cfg)
+		a.sessionEnd(s, in, host, cfg)
 		done <- ""
 		return
 	}
-	s, err := openStore()
-	if err != nil {
-		done <- ""
-		return
-	}
-	defer s.Close()
 	var inj inject.Injection
 	kind := memory.EventInjectSessionStart
 	if which == "session-start" {
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
-		text := inj.Text
-		if resume := resumeContext(cfg, scope, hookContextRunes-len([]rune(text))-200); resume != "" {
-			text = strings.TrimSpace(text + "\n" + resume)
-		}
-		done <- inject.HookOutput("SessionStart", text)
+		done <- inject.HookOutput("SessionStart", inj.Text)
 	} else {
 		kind = memory.EventInjectPrompt
 		inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
@@ -346,22 +290,6 @@ func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, sc
 	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: session, Scope: scope}, data)
 }
 
-// resumeContext is the open works of the project, only at the full injection level.
-func resumeContext(cfg config.Config, scope string, budget int) string {
-	if cfg.Inject != config.InjectFull || !cfg.WorkOn() || scope == "" {
-		return ""
-	}
-	if _, err := os.Stat(paths().WorkDB()); err != nil {
-		return ""
-	}
-	ws, err := work.Open(paths().WorkDB())
-	if err != nil {
-		return ""
-	}
-	defer ws.Close()
-	return ws.ResumeContext(scope, budget, work.ReadOptions{StaleAfter: cfg.StaleAfter()})
-}
-
 // kindName and stateName are the names a person reads; an unknown code is shown as is.
 func kindName(k string) string {
 	if !contains(memory.Kinds, k) {
@@ -375,79 +303,6 @@ func stateName(s string) string {
 		return s
 	}
 	return i18n.T("state." + s)
-}
-
-func cmdMemory(a *app, args []string) error {
-	if len(args) == 0 {
-		return errUsage
-	}
-	s, err := openStore()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	switch args[0] {
-	case "find":
-		fs := a.flags("memory find")
-		var kinds multiFlag
-		fs.Var(&kinds, "kind", i18n.T("flag.memory.kind"))
-		all := fs.Bool("all", false, i18n.T("flag.memory.all"))
-		stale := fs.Bool("stale", false, i18n.T("flag.memory.stale"))
-		limit := fs.Int("n", 20, i18n.T("flag.max"))
-		asJSON := fs.Bool("json", false, "JSON")
-		pos, err := parse(fs, args[1:])
-		if err != nil {
-			return err
-		}
-		in := memory.FindInput{Query: strings.Join(pos, " "), Kinds: kinds, Limit: *limit, AllProjects: *all, Project: sessionProject().Scope}
-		if *stale {
-			in.States = []string{memory.StateCandidate, memory.StateConfirmed, memory.StateStale}
-		}
-		ms, err := s.Find(in)
-		if err != nil {
-			return err
-		}
-		if *asJSON {
-			return a.json(ms)
-		}
-		for _, m := range ms {
-			fmt.Fprintf(a.stdout, "%s  %s·%s  %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
-		}
-		if len(ms) == 0 {
-			fmt.Fprintln(a.stdout, i18n.T("cli.memory.none_found"))
-		}
-		return nil
-	case "show":
-		fs := a.flags("memory show")
-		history := fs.Bool("history", false, i18n.T("flag.memory.history"))
-		asJSON := fs.Bool("json", false, "JSON")
-		pos, err := parse(fs, args[1:])
-		if err != nil || len(pos) != 1 {
-			return errUsage
-		}
-		m, err := s.Get(pos[0])
-		if err != nil {
-			return err
-		}
-		if *asJSON {
-			return a.json(m)
-		}
-		fmt.Fprintf(a.stdout, "%s · %s · %s · %s · v%d\n%s\n\n%s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Scope, m.Version, m.Title, m.Body)
-		if len(m.Tags) > 0 {
-			fmt.Fprintln(a.stdout, "\n"+i18n.T("cli.memory.tags", strings.Join(m.Tags, ", ")))
-		}
-		for _, src := range m.Sources {
-			fmt.Fprintln(a.stdout, i18n.T("cli.memory.source", src.Kind, src.Ref, oneLine(src.Excerpt, 80)))
-		}
-		if *history {
-			h, _ := s.History(m.ID)
-			for _, v := range h {
-				fmt.Fprintf(a.stdout, "v%d %s %s %s\n", v.Version, time.UnixMilli(v.At).Format("2006-01-02 15:04"), v.Action, v.Reason)
-			}
-		}
-		return nil
-	}
-	return errUsage
 }
 
 func oneLine(s string, n int) string {
@@ -644,7 +499,7 @@ func cmdBackup(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", path))
-	wpath, err := work.DailyBackup(paths().WorkDB(), paths().Backups(), cfg.BackupKeep, time.Now())
+	wpath, err := sqlitedb.BackupDaily(paths().WorkDB(), paths().Backups(), "work", cfg.BackupKeep, time.Now()) // 옛 작업 기록(읽기 전용으로 연다)
 	if err != nil {
 		return err
 	}
@@ -753,5 +608,3 @@ func cmdConfig(a *app, args []string) error {
 	fmt.Fprintln(a.stdout)
 	return nil
 }
-
-var _ = context.Background

@@ -18,13 +18,14 @@ func hasHangul(s string) bool {
 }
 
 func TestLang_새_설치는_영어로_말한다(t *testing.T) {
+	onTerminal(t) // 사람용 글을 본다(--json은 언제나 JSON)
 	home(t)
 	t.Setenv("ORBIT_LANG", "")
 	_, errOut, code := run(t, "")
 	if code != 2 || !strings.Contains(errOut, "Commands:") || hasHangul(errOut) {
 		t.Fatalf("usage: %d %q", code, errOut)
 	}
-	out, _, _ := run(t, "", "memory", "find", "없는말")
+	out, _, _ := run(t, "", "search", "없는말")
 	if strings.TrimSpace(out) != "No memories found." {
 		t.Fatalf("find: %q", out)
 	}
@@ -43,13 +44,14 @@ func TestLang_새_설치는_영어로_말한다(t *testing.T) {
 }
 
 func TestLang_설정으로_한국어로_바꾼다(t *testing.T) {
+	onTerminal(t) // 사람용 글을 본다(--json은 언제나 JSON)
 	home(t)
 	t.Setenv("ORBIT_LANG", "")
 	out, errOut, code := run(t, "", "config", "set", "language", "ko")
 	if code != 0 || !strings.Contains(out, "language = ko") {
 		t.Fatalf("set: %d %q %q", code, out, errOut)
 	}
-	out, _, _ = run(t, "", "memory", "find", "없는말")
+	out, _, _ = run(t, "", "search", "없는말")
 	if strings.TrimSpace(out) != "찾은 기억이 없습니다." {
 		t.Fatalf("find: %q", out)
 	}
@@ -59,7 +61,7 @@ func TestLang_설정으로_한국어로_바꾼다(t *testing.T) {
 	}
 	// 환경 변수가 설정보다 앞선다.
 	t.Setenv("ORBIT_LANG", "en")
-	out, _, _ = run(t, "", "memory", "find", "없는말")
+	out, _, _ = run(t, "", "search", "없는말")
 	if strings.TrimSpace(out) != "No memories found." {
 		t.Fatalf("env first: %q", out)
 	}
@@ -89,23 +91,24 @@ func TestLang_지원하지_않는_언어는_받지_않는다(t *testing.T) {
 }
 
 func TestLang_JSON_출력은_언어와_무관하다(t *testing.T) {
+	onTerminal(t) // 사람용 글을 본다(--json은 언제나 JSON)
 	home(t)
 	s := seed(t)
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	t.Setenv("ORBIT_LANG", "en")
-	en, _, _ := run(t, "", "memory", "find", "--all", "--json")
+	en, _, _ := run(t, "", "search", "--all", "--json")
 	t.Setenv("ORBIT_LANG", "ko")
-	ko, _, _ := run(t, "", "memory", "find", "--all", "--json")
+	ko, _, _ := run(t, "", "search", "--all", "--json")
 	if en != ko || !strings.Contains(en, `"kind": "rule"`) {
 		t.Fatalf("en %q\nko %q", en, ko)
 	}
 	t.Setenv("ORBIT_LANG", "en")
-	out, _, _ := run(t, "", "memory", "find", "--all")
+	out, _, _ := run(t, "", "search", "--all")
 	if !strings.Contains(out, "rule·confirmed") {
 		t.Fatalf("names: %q", out)
 	}
 	t.Setenv("ORBIT_LANG", "ko")
-	out, _, _ = run(t, "", "memory", "find", "--all")
+	out, _, _ = run(t, "", "search", "--all")
 	if !strings.Contains(out, "규칙·확정") {
 		t.Fatalf("names ko: %q", out)
 	}
