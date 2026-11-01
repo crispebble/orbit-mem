@@ -48,8 +48,8 @@ type Config struct {
 	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
 
-	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. 예약 회고가 하루에
-	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orbit-mem retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
+	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. OpenOrbit 예약 회고(orb retro)가 하루에
+	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orb retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
 	// 첫 실행 실측(30개 묶음 2회, 약 50초·$0.27~0.40)을 보고 사용자가 정했다(2026-10-30, 남은 것은 한 번에 판정하고 예약은 하루 1묶음).
 	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
