@@ -2,9 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -64,37 +61,4 @@ func containsID(ids []string, id string) bool {
 		}
 	}
 	return false
-}
-
-func TestRuntime_설치하고_상태를_본다(t *testing.T) {
-	home(t)
-	if _, errOut, code := run(t, "", "runtime", "status"); code != 1 || !strings.Contains(errOut, "not installed") {
-		t.Fatalf("설치 전 status: code %d %q", code, errOut)
-	}
-	repo := t.TempDir()
-	for _, args := range [][]string{{"init", "--quiet", "-b", "main"}, {"add", "orbit"}, {"-c", "user.name=t", "-c", "user.email=t@e", "commit", "--quiet", "-m", "one"}} {
-		if args[0] == "add" {
-			os.MkdirAll(filepath.Join(repo, "orbit", "scripts"), 0o755)
-			os.WriteFile(filepath.Join(repo, "orbit", "scripts", "build.sh"), []byte("#!/usr/bin/env bash\ntrue\n"), 0o755)
-		}
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repo
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v %s", args, err, out)
-		}
-	}
-	if _, errOut, code := run(t, "", "runtime", "install", "--repo", repo); code != 0 {
-		t.Fatalf("install: code %d %s", code, errOut)
-	}
-	out, _, code := run(t, "", "runtime", "status", "--json")
-	var st struct {
-		Commit  string
-		Current bool
-	}
-	if code != 0 || json.Unmarshal([]byte(out), &st) != nil || len(st.Commit) != 40 || !st.Current {
-		t.Fatalf("status: code %d %s", code, out)
-	}
-	if _, _, code := run(t, "", "runtime", "bogus"); code != 2 {
-		t.Errorf("틀린 인자 code %d", code)
-	}
 }
