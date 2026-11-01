@@ -5,6 +5,7 @@
 #
 #   scripts/e2e-work.sh [작업 디렉터리]          # claude 세션 A·B
 #   E2E_CODEX=1 scripts/e2e-work.sh [디렉터리]   # codex 세션 C도(설치·신뢰한 같은 판 플러그인: 아래 안내)
+#   OPENORBIT_HARNESS_SOURCE=<openorbit>/packages/harness/source  # 하네스 원본(기본: 옆 openorbit checkout)
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 E=${1:-$(mktemp -d)}
@@ -13,7 +14,12 @@ E=$(cd "$E" && pwd -P)
 model=${E2E_MODEL:-sonnet}
 
 go build -o "$E/bin/orb" "$root/cmd/orb"
-"$E/bin/orb" plugin build "$root/internal/orbitplugin/source" --out "$E/market" --var "orb=$E/bin/orb" --var "orbcmd=$E/bin/orb" >/dev/null
+# 플러그인 원본은 OpenOrbit 하네스(onidot-labs/openorbit packages/harness/source)에 있다. 기억 MCP·훅은
+# 이 orb의 조각으로 끼운다. 빌드는 openorbit-harness가 한다(ORBIT_HARNESS_CLI 또는 orb runtime install).
+harness_src=${OPENORBIT_HARNESS_SOURCE:-$root/../openorbit/packages/harness/source}
+[ -f "$harness_src/plugin.json" ] || { echo "OpenOrbit 하네스 원본이 없습니다: $harness_src (OPENORBIT_HARNESS_SOURCE로 지정)" >&2; exit 1; }
+"$E/bin/orb" plugin fragment --orb "$E/bin/orb" >"$E/fragment.json"
+"$E/bin/orb" plugin build "$harness_src" --out "$E/market" --fragment "$E/fragment.json" >/dev/null
 echo '{"enabledPlugins":{"orbit@orbit":false}}' >"$E/settings.json"
 
 repo() { # $1: 디렉터리

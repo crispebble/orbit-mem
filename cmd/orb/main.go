@@ -1,6 +1,8 @@
 // Command orb is OpenOrbit: per-PC memory for AI hosts, background
-// retrospectives that propose what was learned, and a plugin builder that
-// writes Claude Code and Codex formats from one source.
+// retrospectives that propose what was learned, and the memory MCP server and
+// hooks it adds to the OpenOrbit plugin. The harness (plugin source, build,
+// host install, role folder) and the work record are OpenOrbit's TS CLIs, which
+// orb calls (internal/openorbit).
 package main
 
 import (
