@@ -10,6 +10,7 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
@@ -76,6 +77,9 @@ var storeOps = map[string]storeOp{
 	"backup":     storeBackup,
 	"judge":      storeJudge,
 	"settle":     storeSettle,
+	// AU-7: OpenOrbit이 작업 지표를 넣고, 작업별 교정 수를 읽는다(모델을 부르지 않는다).
+	"work-metrics": storeWorkMetrics,
+	"work-signals": storeWorkSignals,
 }
 
 // storeError is a retro-store failure: exit 1 with one stderr line.
@@ -253,5 +257,54 @@ func storeJudge(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, er
 func storeSettle(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
 	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
 		return map[string]any{"errors": k.Settle()}, nil
+	}
+}
+
+// maxWorkMetricsInput is how much of the work-metrics and work-signals body is read.
+const maxWorkMetricsInput = 8 << 20
+
+// readWorks reads {"works":[…]} from stdin.
+func readWorks[T any](r io.Reader) ([]T, error) {
+	var in struct {
+		Works []T `json:"works"`
+	}
+	dec := json.NewDecoder(io.LimitReader(r, maxWorkMetricsInput))
+	if err := dec.Decode(&in); err != nil {
+		return nil, i18n.Errorf("cli.retro_store.err.stdin", err)
+	}
+	return in.Works, nil
+}
+
+// storeWorkMetrics keeps the works' metrics OpenOrbit computed (사건 work.metrics).
+func storeWorkMetrics(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	return func(a *app, k *retro.Keeper, _ config.Config) (any, error) {
+		works, err := readWorks[memory.WorkRecord](a.stdin)
+		if err != nil {
+			return nil, err
+		}
+		n, err := k.Store.RecordWorkMetrics(works)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"recorded": n}, nil
+	}
+}
+
+// storeWorkSignals counts each work's user corrections (작업 id 세션과 작업 세션 창 안).
+func storeWorkSignals(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	return func(a *app, k *retro.Keeper, _ config.Config) (any, error) {
+		refs, err := readWorks[memory.WorkRef](a.stdin)
+		if err != nil {
+			return nil, err
+		}
+		counts, err := k.Store.WorkCorrections(refs)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]any, len(counts))
+		for id, n := range counts {
+			out[id] = map[string]int{"corrections": n}
+		}
+		return map[string]any{"works": out}, nil
 	}
 }

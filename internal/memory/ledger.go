@@ -54,6 +54,11 @@ type Window struct {
 	Bad        int `json:"bad"`        // 그 기억을 가리킨 교정 + 어김 판정
 	Irrelevant int `json:"irrelevant"` // 상관없음 판정
 	Sessions   int `json:"sessions"`   // 그 기억을 넣은 세션
+	// AU-7: 그 기억이 붙은 OpenOrbit 작업(끝난 시각으로 나눔)과 그 지표
+	Works       int `json:"works,omitempty"`
+	Trouble     int `json:"trouble,omitempty"`     // 작업 문제 수 합(질문·뒤집힌 가정·교정·같은 실패 반복·재계획)
+	FirstPassed int `json:"firstPassed,omitempty"` // 첫 시도에 검증을 통과한 단계
+	FirstSteps  int `json:"firstSteps,omitempty"`  // 실행이 있었던 단계
 }
 
 // Observation compares the period before a change with the period after.
@@ -538,9 +543,13 @@ func (s *Store) JudgeLedger(windowDays int) (int, error) {
 			if err := s.observe(&obs, e.Observe); err != nil {
 				return n, err
 			}
+			if err := s.observeWorks(&obs, e.Observe); err != nil {
+				return n, err
+			}
 			// 이 변경이 만든 기억만 보면 변경 전에는 넣을 수 없었다: 비교할 전이 없다.
 			comparable := !subset(e.Observe, e.Before.Created)
-			evidence = comparable && obs.Before.Bad+obs.After.Bad+obs.Before.Irrelevant+obs.After.Irrelevant > 0
+			signals := obs.Before.Bad+obs.After.Bad+obs.Before.Irrelevant+obs.After.Irrelevant > 0
+			evidence = comparable && (signals || worksBothSides(obs))
 		}
 		if len(obs.MixedWith) == 0 {
 			verdict = judge(obs, evidence)
@@ -575,12 +584,23 @@ func compareRate(before, after, sb, sa int) int {
 	return 0
 }
 
+// worksBothSides says whether OpenOrbit works with the memory ended before and after the change.
+func worksBothSides(obs Observation) bool { return obs.Before.Works > 0 && obs.After.Works > 0 }
+
+// judge reads the signals in order (AU-7): corrections and violations, then the works' trouble
+// per work, then their first-attempt verification rate, then irrelevant verdicts.
 func judge(obs Observation, evidence bool) string {
 	if !evidence {
 		return VerdictNoEffect
 	}
 	b, a := obs.Before, obs.After
 	c := compareRate(b.Bad, a.Bad, b.Sessions, a.Sessions)
+	if c == 0 && worksBothSides(obs) {
+		c = compareRate(b.Trouble, a.Trouble, b.Works, a.Works)
+		if c == 0 && b.FirstSteps > 0 && a.FirstSteps > 0 {
+			c = -compareRate(b.FirstPassed, a.FirstPassed, b.FirstSteps, a.FirstSteps) // 많을수록 낫다
+		}
+	}
 	if c == 0 {
 		c = compareRate(b.Irrelevant, a.Irrelevant, b.Sessions, a.Sessions)
 	}

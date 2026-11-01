@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -334,3 +335,48 @@ func TestRetroStore_작업_회고_준비(t *testing.T) {
 		t.Fatalf("rows = %v", l)
 	}
 }
+
+// AU-7 L2·L6: OpenOrbit이 작업 지표를 넣고(work-metrics), 작업별 교정 수를 읽는다(work-signals).
+// 같은 내용은 다시 쌓지 않는다. 모델을 부르지 않는 저장 API다.
+func TestRetroStore_작업_지표_넣기와_교정_수(t *testing.T) {
+	storeHome(t)
+	now := time.Now().UnixMilli()
+	in := `{"works":[{"workId":"w-1","endedAt":` + itoa(now) + `,"status":"completed","project":"git:x","kind":"add","size":"small",` +
+		`"sessions":[{"host":"claude","session":"S","from":` + itoa(now-3600000) + `}],"metrics":{"asked":1,"firstPassed":2,"firstSteps":2,"costUsd":0.02,"turns":7,"minutes":1.5}}]}`
+	if v := storeJSON(t, in, "work-metrics"); v["recorded"] != float64(1) {
+		t.Fatalf("work-metrics = %v", v)
+	}
+	if v := storeJSON(t, in, "work-metrics"); v["recorded"] != float64(0) {
+		t.Fatalf("같은 내용 = %v", v)
+	}
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCorrection(memory.CorrectionInput{Quote: "그거 아니야", Host: "claude", Session: "S", OccurredAt: now - 60000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCorrection(memory.CorrectionInput{Quote: "아니", Host: "openorbit", Session: "w-1"}); err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := s.WorkRecords(0, now+1)
+	s.Close()
+	if len(recs) != 1 || recs[0].Metrics.Asked != 1 || recs[0].Sessions[0].Session != "S" {
+		t.Fatalf("records = %+v", recs)
+	}
+	v := storeJSON(t, `{"works":[{"workId":"w-1","sessions":[{"host":"claude","session":"S","from":`+itoa(now-3600000)+`}]},{"workId":"w-2"}]}`, "work-signals")
+	works, _ := v["works"].(map[string]any)
+	w1, _ := works["w-1"].(map[string]any)
+	w2, _ := works["w-2"].(map[string]any)
+	if w1["corrections"] != float64(2) || w2["corrections"] != float64(0) {
+		t.Fatalf("work-signals = %v", v)
+	}
+	// 깨진 입력·작업 id가 아닌 값은 종료 1
+	for _, bad := range []string{`{`, `{"works":[{"workId":"../x","endedAt":1}]}`} {
+		if _, _, code := run(t, bad, "retro-store", "work-metrics"); code != 1 {
+			t.Fatalf("bad %q: code %d", bad, code)
+		}
+	}
+}
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

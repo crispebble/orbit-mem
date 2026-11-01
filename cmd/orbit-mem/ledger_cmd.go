@@ -64,6 +64,10 @@ func cmdLedger(a *app, args []string) error {
 			o := e.Observation
 			fmt.Fprintln(a.stdout, "    "+i18n.T("cli.ledger.observation", o.Before.Bad, o.Before.Irrelevant, o.Before.Sessions,
 				o.After.Bad, o.After.Irrelevant, o.After.Sessions))
+			if o.Before.Works > 0 || o.After.Works > 0 {
+				fmt.Fprintln(a.stdout, "    "+i18n.T("cli.ledger.works", o.Before.Works, o.Before.Trouble, o.Before.FirstPassed, o.Before.FirstSteps,
+					o.After.Works, o.After.Trouble, o.After.FirstPassed, o.After.FirstSteps))
+			}
 		}
 		for _, link := range []struct{ label, id string }{{i18n.T("cli.ledger.lesson"), e.LessonID}, {i18n.T("cli.ledger.reverted_by"), e.RevertedBy}, {i18n.T("cli.ledger.revert_of"), e.RevertOf}} {
 			if link.id != "" {
