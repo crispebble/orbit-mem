@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,11 +25,11 @@ func cmdRetroStore(a *app, args []string) error {
 		return storeUsage("")
 	}
 	op, rest := args[0], args[1:]
-	if op == "queue" {
+	if op == "queue" || op == "experiment" {
 		if len(rest) == 0 {
 			return storeUsage(op)
 		}
-		op, rest = "queue "+rest[0], rest[1:]
+		op, rest = op+" "+rest[0], rest[1:]
 	}
 	run, ok := storeOps[op]
 	if !ok {
@@ -80,6 +81,13 @@ var storeOps = map[string]storeOp{
 	// AU-7: OpenOrbit이 작업 지표를 넣고, 작업별 교정 수를 읽는다(모델을 부르지 않는다).
 	"work-metrics": storeWorkMetrics,
 	"work-signals": storeWorkSignals,
+	// ONID-124: 하네스 실험실(OpenOrbit 개발 도구)이 교정·대기 제안을 읽고 실험 기록을 넣는다.
+	"experiment corrections": storeExperimentCorrections,
+	"experiment candidates":  storeExperimentCandidates,
+	"experiment drop":        storeExperimentDrop,
+	"experiment save":        storeExperimentSave,
+	"experiment list":        storeExperimentList,
+	"experiment get":         storeExperimentGet,
 }
 
 // storeError is a retro-store failure: exit 1 with one stderr line.
@@ -306,5 +314,100 @@ func storeWorkSignals(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (a
 			out[id] = map[string]int{"corrections": n}
 		}
 		return map[string]any{"works": out}, nil
+	}
+}
+
+// storeExperimentCorrections reads the user's words of correction events for a lab task.
+func storeExperimentCorrections(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	ids := fs.String("ids", "", "")
+	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
+		var list []int64
+		for _, f := range strings.Split(*ids, ",") {
+			if f = strings.TrimSpace(f); f == "" {
+				continue
+			}
+			id, err := strconv.ParseInt(f, 10, 64)
+			if err != nil {
+				return nil, storeUsage("experiment corrections")
+			}
+			list = append(list, id)
+		}
+		if len(list) == 0 {
+			return nil, storeUsage("experiment corrections")
+		}
+		return k.Store.LabCorrections(list)
+	}
+}
+
+// storeExperimentCandidates lists the file proposals waiting for the lab.
+func storeExperimentCandidates(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
+		ps, err := k.Store.Proposals(memory.StatusLab)
+		if ps == nil {
+			ps = []memory.Proposal{}
+		}
+		return ps, err
+	}
+}
+
+// storeExperimentDrop closes a proposal waiting for the lab without an experiment.
+func storeExperimentDrop(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	id := fs.String("id", "", "")
+	note := fs.String("note", "", "")
+	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
+		if *id == "" {
+			return nil, storeUsage("experiment drop")
+		}
+		reason := "사용자가 실험 없이 닫음" // i18n:keep 제안에 남는 기록(회고가 읽는다)
+		if n := strings.TrimSpace(*note); n != "" {
+			reason += ": " + n
+		}
+		if err := k.Store.CloseLabProposal(*id, reason); err != nil {
+			return nil, err
+		}
+		return map[string]any{"dropped": *id}, nil
+	}
+}
+
+// storeExperimentSave records an experiment (memory.LabSave on stdin) and prints it as stored.
+// File proposals are kept only for files inside this PC's plugin source (pluginSource).
+func storeExperimentSave(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	return func(a *app, k *retro.Keeper, cfg config.Config) (any, error) {
+		var in memory.LabSave
+		dec := json.NewDecoder(io.LimitReader(a.stdin, maxWorkMetricsInput))
+		if err := dec.Decode(&in); err != nil {
+			return nil, i18n.Errorf("cli.retro_store.err.stdin", err)
+		}
+		return k.Store.SaveLab(in, []string{cfg.PluginSource})
+	}
+}
+
+// storeExperimentList lists the experiments, newest first.
+func storeExperimentList(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
+		xs, err := k.Store.LabExperiments(0, 0)
+		if xs == nil {
+			xs = []memory.LabExperiment{}
+		}
+		return xs, err
+	}
+}
+
+// storeExperimentGet reads one experiment and its runs.
+func storeExperimentGet(fs *flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
+	id := fs.String("id", "", "")
+	return func(_ *app, k *retro.Keeper, _ config.Config) (any, error) {
+		if *id == "" {
+			return nil, storeUsage("experiment get")
+		}
+		x, err := k.Store.LabExperiment(*id)
+		if err != nil {
+			return nil, err
+		}
+		runs, err := k.Store.LabRuns(*id)
+		if runs == nil {
+			runs = []memory.LabRun{}
+		}
+		return map[string]any{"experiment": x, "runs": runs}, err
 	}
 }

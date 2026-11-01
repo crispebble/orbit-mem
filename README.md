@@ -2,7 +2,7 @@
 
 저장소 `onidot-labs/orbit-mem`이다. 이 PC의 AI 호스트(Claude Code·Codex)가 함께 쓰는 공유 기억 시스템 `orbit-mem`(Go 실행 파일 하나)을 담는다. 기억과 그 출처, 회고가 남긴 일지·후보·제안을 받아 두는 저장 API, 호스트 세션의 활동 기록, 그리고 이것들을 호스트에 붙이는 MCP 서버와 훅이다. 서버와 상주 프로세스는 없다.
 
-회고(하루·주간·세션 끝·작업·그래프 정리·옛 기억 판정)는 OpenOrbit이 돌린다: `orb retro …`, 예약은 `orb install`이 등록한다. `orbit-mem`은 모델이나 헤드리스 호스트를 부르지 않고(예외는 실험실 `orbit-mem lab`, ONID-124에서 빠진다), 회고의 저장 쪽만 맡는다: 기계용 명령 `orbit-mem retro-store`(재료 준비·마침·대기열·상태)와 회고용 MCP 도구(`orbit-mem mcp --retro ID`). 그래서 `orbit-mem`만 깐 PC에서는 회고가 돌지 않지만, 일하는 동안 `memory_save` 등으로 배운 것을 남기고 회상하는 일은 그대로 된다. 결정: 2026-11-01 「orbit-mem은 기억 기능을 제공하는 시스템, 회고 기능은 openorbit」(Atlas 계획 · AU-0). 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
+회고(하루·주간·세션 끝·작업·그래프 정리·옛 기억 판정)는 OpenOrbit이 돌린다: `orb retro …`, 예약은 `orb install`이 등록한다. `orbit-mem`은 모델이나 헤드리스 호스트를 부르지 않고 OpenOrbit의 `orb`도 부르지 않으며(`TestNoHostCalls`가 지킨다), 회고의 저장 쪽만 맡는다: 기계용 명령 `orbit-mem retro-store`(재료 준비·마침·대기열·상태)와 회고용 MCP 도구(`orbit-mem mcp --retro ID`). 그래서 `orbit-mem`만 깐 PC에서는 회고가 돌지 않지만, 일하는 동안 `memory_save` 등으로 배운 것을 남기고 회상하는 일은 그대로 된다. 결정: 2026-11-01 「orbit-mem은 기억 기능을 제공하는 시스템, 회고 기능은 openorbit」(Atlas 계획 · AU-0). 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
 
 `orbit-mem`은 자기 Claude Code·Codex 플러그인 `orbit-mem`(기억 MCP 서버, 훅 셋, 스킬 `memory`·`proposals`)을 Go로 직접 빌드하고 호스트에 등록한다. OpenOrbit 없이 혼자 설치된다. 이 저장소 자체가 Claude Code 플러그인 마켓이다(아래 「설치」). 구조: Atlas 설계 · OpenOrbit 4차 「플러그인과 설치 — 역할과 의존」.
 
@@ -14,7 +14,7 @@
 | **`orbit-mem`** | **이 저장소** | 기억 MCP 서버 `orbit-mem`, 세션 시작·요청·세션 끝 훅(기억 주입·활동 기록), 스킬 `memory`·`proposals`, 회고 저장 API `retro-store` | PATH의 `orbit-mem` 실행 파일 |
 | OpenOrbit 확장 | `onidot-labs/openorbit` | 오케스트라·작업 현황, 회고 실행(`orb retro`)과 그 예약(`orb install`) | OpenOrbit `orb` |
 
-`orbit-mem`의 기억 플러그인·MCP·훅은 OpenOrbit 없이 돈다. 예외는 둘이다. 실험실(`orbit-mem lab`)은 후보 하네스를 빌드할 때 OpenOrbit의 `orb plugin build`를 부른다(실험실을 어디 둘지는 다음에 정한다). 훅은 orbit-pi가 부를 때 붙는 `--runtime orbit-pi` 표시를 안다. 하네스와는 서로를 모른다. 하네스 빌드에 기억 조각을 끼우던 방식(`orbit-mem plugin fragment`, `orb plugin build --fragment`)은 걷어 냈다.
+`orbit-mem`의 기억 플러그인·MCP·훅은 OpenOrbit 없이 돈다. 의존은 OpenOrbit → orbit-mem 한 방향이다: `orbit-mem`은 `orb`를 부르지 않는다. 예외는 하나다. 훅은 orbit-pi가 부를 때 붙는 `--runtime orbit-pi` 표시를 안다. 하네스 실험실은 제품이 아니라 openorbit 저장소의 개발 도구(`packages/lab`, `npm run lab`)로 옮겼고(2026-11-01 ONID-124), orbit-mem은 그 기록을 받는 저장 API(`retro-store experiment …`)만 둔다. 하네스와는 서로를 모른다. 하네스 빌드에 기억 조각을 끼우던 방식(`orbit-mem plugin fragment`, `orb plugin build --fragment`)은 걷어 냈다.
 
 ## 설치
 
@@ -56,7 +56,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem activity [질의] [--host H] [--project all\|DIR] [--since 날짜] [-n N]` | 활동 기록 찾기(`activity_find`) |
 | `orbit-mem proposals` | 사람의 결정을 기다리는 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `orbit-mem audit [--days N] [--json]`, `audit revert <원장·제안 id> [--note]`, `audit dismiss <f-…\|correction:…>`, `audit harness [--json]` | 감사 목록(아래 「확정 규칙과 감사 목록」): 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정. 틀린 것만 되돌리거나 확인함으로 닫는다. `harness --json`은 하네스 개선 후보(스킬·역할 반복 교정, 서로 다른 작업 여럿에서 나온 절차 교훈)를 openorbit 실험실(개발 도구)이 읽기만 하는 꼴로 준다 |
-| `orbit-mem retro-store <op>` | OpenOrbit `orb retro`가 부르는 회고 저장 API(기계용). 결과는 stdout에 JSON 객체 하나, 실패는 종료 1과 stderr 한 줄, 기억 DB가 없으면 만들지 않는다. `prepare --kind daily\|weekly --period YYYY-MM-DD`·`--kind tidy\|legacy`·`--kind session --session-host H --session S --ended-at MS [--daily-max N]`·`--kind work`(stdin의 끝난 작업 기록 JSON 하나 `{ref,cwd,title,status,endedAt,text,userWords,evidence,recalled,verified}`, 4MB까지. 같은 작업의 같은 `endedAt`이 실행 중이거나 끝났으면 `skipped`(실행·제출 중으로 45분이 지난 줄은 실패로 닫고 다시 돈다), `text`가 비면 `empty`)(재료를 `retro/<id>/material.json`에 두고 실행 줄을 연다, `--host` 기본 `retroHost`), `finish --id ID`(stdin의 호스트 결과 JSON으로 재료를 지우고 사건 `retro.run`을 남기며, 제출이 없으면 실패로 닫는다), `queue list\|add\|mark`(세션 끝 회고 대기열), `state`, `list [--n N]`, `sessions --day D`, `backup`(세션 시작 훅과 같은 하루 규칙: 마지막 기억 사본이 24시간 안이면 새로 만들지 않고 그 사본 경로를 준다), `judge`(효과 판정·해로운 자동 변경 되돌리기), `settle`(증거 확정·정착한 제안 닫기·오래된 세션 상태 정리), `work-metrics`(stdin `{works:[…]}`: OpenOrbit이 계산한 작업별 능숙해짐 지표를 사건 `work.metrics`로 남긴다. 같은 내용은 다시 쌓지 않는다), `work-signals`(stdin `{works:[{workId,sessions}]}`: 작업별 사용자 교정 수) |
+| `orbit-mem retro-store <op>` | OpenOrbit `orb retro`가 부르는 회고 저장 API(기계용). 결과는 stdout에 JSON 객체 하나, 실패는 종료 1과 stderr 한 줄, 기억 DB가 없으면 만들지 않는다. `prepare --kind daily\|weekly --period YYYY-MM-DD`·`--kind tidy\|legacy`·`--kind session --session-host H --session S --ended-at MS [--daily-max N]`·`--kind work`(stdin의 끝난 작업 기록 JSON 하나 `{ref,cwd,title,status,endedAt,text,userWords,evidence,recalled,verified}`, 4MB까지. 같은 작업의 같은 `endedAt`이 실행 중이거나 끝났으면 `skipped`(실행·제출 중으로 45분이 지난 줄은 실패로 닫고 다시 돈다), `text`가 비면 `empty`)(재료를 `retro/<id>/material.json`에 두고 실행 줄을 연다, `--host` 기본 `retroHost`), `finish --id ID`(stdin의 호스트 결과 JSON으로 재료를 지우고 사건 `retro.run`을 남기며, 제출이 없으면 실패로 닫는다), `queue list\|add\|mark`(세션 끝 회고 대기열), `state`, `list [--n N]`, `sessions --day D`, `backup`(세션 시작 훅과 같은 하루 규칙: 마지막 기억 사본이 24시간 안이면 새로 만들지 않고 그 사본 경로를 준다), `judge`(효과 판정·해로운 자동 변경 되돌리기), `settle`(증거 확정·정착한 제안 닫기·오래된 세션 상태 정리), `work-metrics`(stdin `{works:[…]}`: OpenOrbit이 계산한 작업별 능숙해짐 지표를 사건 `work.metrics`로 남긴다. 같은 내용은 다시 쌓지 않는다), `work-signals`(stdin `{works:[{workId,sessions}]}`: 작업별 사용자 교정 수), `experiment corrections --ids 1,2`(교정 사건의 사용자 말)·`experiment candidates`(실험실 대기 파일 반영 제안)·`experiment drop --id P [--note N]`(실험 없이 닫기)·`experiment save`(stdin `{experiment,runs,ledger?,release?\|close?\|propose?}`: 실험·실행 기록, 판정이 났으면 원장 실험 줄과 대기 제안 풀기·닫기 또는 파일 반영 제안)·`experiment list`·`experiment get --id X`: openorbit 개발 도구 하네스 실험실(ONID-124)이 부른다. `experiment corrections`·`candidates`·`list`는 JSON 배열 하나를 낸다 |
 | `orbit-mem mcp [--actor ai\|user\|automation] [--retro ID \| --reader]` | 호스트가 띄우는 MCP 서버(stdio). 아래 「MCP 도구」. `--actor`는 이 서버로 쓰는 쪽(기본 ai, Orbit Studio는 user) |
 | `orbit-mem hook session-start\|prompt\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 준다. 셋 다 활동 기록을 남기고, 세션 끝 훅은 활동 기록의 끝 시각만 남긴다(세션 끝 회고 대기열은 OpenOrbit이 채운다). 세션 시작 훅은 마지막 기억 사본이 24시간보다 오래됐으면 `orbit-mem backup auto`를 따로 띄우고 기다리지 않는다(아래 「백업」). 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). `hook prompt --record-only`는 활동만 남기고 기억을 넣지도 「넣음」 사건을 남기지도 않는다(지시에 단계 회상이 이미 든 orbit-pi claude 엔진 실행, AU-7). `hook work`(옛 플러그인의 작업 기록 훅)는 입력을 버리고 아무것도 하지 않는다 |
 | `orbit-mem inject session-start\|prompt [--cwd D] [--session S]` | orbit-pi에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 요청 글은 stdin |
@@ -64,7 +64,6 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `orbit-mem stats [--days N \| --week 월요일]` | 지표: 반복 교정, 요청 적중, 사용 판정, 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정, 효과 원장, 회고 비용, 기억 그래프, 옛 기억 정리 |
 | `orbit-mem ledger [--all]` | 승인한 변경과 자동 변경(기억·하네스·지침)의 효과 판정(그 기억이 붙은 OpenOrbit 작업의 지표가 있으면 작업 줄도) |
-| `orbit-mem lab` | 하네스 실험실. 지금 플러그인과 고친 플러그인을 `labRuns`번씩 실험 전용 `ORBIT_HOME`에서 돌리고 결과물을 익명으로 고른다. 후보 플러그인은 OpenOrbit `orb plugin build <원본> --out <폴더>`로 하네스 플러그인만 빌드한다(`orb`는 `ORBIT_ORB`, PATH, `~/.local/bin/orb` 순으로 찾는다). 실행은 실험 전용 빈 `ORBIT_HOME`과 `--setting-sources project`로 돌아 이 PC에 깔린 플러그인(`orbit-mem` 포함)을 싣지 않으므로 기억은 비교에 끼지 않는다. 플러그인 원본(`pluginSource`)을 쓰는 PC에서만 돈다 |
 | `orbit-mem backup [list\|status\|restore <사본> [--yes]]` | 지금 사본 만들기(하루 규칙과 관계없이, 기억 DB와 옛 `work.db`), 사본 목록, 상태, 복구. 아래 「백업」 |
 | `orbit-mem config`, `orbit-mem version` | 설정 보기·바꾸기, 판 |
 
@@ -127,7 +126,7 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 ## 데이터
 
 - 위치: `ORBIT_HOME`, 없으면 Mac `~/Library/Application Support/orbit`, Windows `%AppData%\orbit`.
-- `memory.db`(SQLite: 기억·제안(자동 변경 포함)·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록·감사 표시), `config.json`, `backups/`(아래 「백업」), `retro/`(진행 중 회고 재료: `prepare`가 만들고 `finish`가 지운다), `logs/`, `lab/`(실험실).
+- `memory.db`(SQLite: 기억·제안(자동 변경 포함)·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록·감사 표시), `config.json`, `backups/`(아래 「백업」), `retro/`(진행 중 회고 재료: `prepare`가 만들고 `finish`가 지운다), `logs/`, `lab/`(하네스 실험실 개발 도구의 과제·실행 폴더. orbit-mem은 쓰지 않고 지우지도 않는다).
 - `work.db`: 옛 작업 기록. 읽기 전용으로 활동 기록 찾기에 보이고 하루 백업만 이어 간다. 새로 쓰지 않는다.
 - 옛 설정 키 `work`·`workStaleAfter`·`workTestCommands`는 읽을 때 무시하고 다시 저장하면 빠진다.
 - PC끼리 공유하지 않는다.
@@ -163,8 +162,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/orbit-mem.exe ./cmd/orbit-mem
 | `internal/mcpserver` | MCP 서버(기억·활동 기록 도구, `memory_graph`, 회고용 도구)와 얇은 CLI가 부르는 `Tools` |
 | `internal/inject` | 세션 시작 묶음·요청 회상 |
 | `internal/retro`, `internal/transcript` | 회고 저장: 재료(호스트 대화 기록) 만들기·제출 받기·실행 기록·세션 끝 대기열. 모델은 부르지 않는다(실행은 OpenOrbit) |
-| `internal/memplugin` | 플러그인 원본(`source/`, go:embed)과 Claude·Codex 꼴·마켓 빌드, OpenOrbit `orb` 찾기(실험실) |
-| `internal/lab` | 하네스 실험실. `orbit-mem`에서 헤드리스 호스트를 부르는 유일한 곳(ONID-124에서 빠진다) |
+| `internal/memplugin` | 플러그인 원본(`source/`, go:embed)과 Claude·Codex 꼴·마켓 빌드 |
 | `internal/install` | 실행 파일 복사, 예전 `orbit-mem` 회고 예약 지우기(`legacy.go`), 호스트 플러그인 등록·해제·상태(`hosts.go`) |
 | `internal/config`, `internal/i18n`, `internal/sqlitedb`, `internal/project` | 설정, 문구, SQLite 열기·옛 `work.db` 하루 사본, 프로젝트 범위 |
 | `internal/backup` | 백업 폴더의 사본 이름·목록·보관 정리·24시간 규칙·잠금 |

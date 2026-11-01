@@ -21,14 +21,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/inject"
 )
 
@@ -456,33 +453,4 @@ func removeEmptyDirs(root string) error {
 		}
 	}
 	return nil
-}
-
-// ErrNoOrb says that OpenOrbit's orb was not found.
-var ErrNoOrb = i18n.Err("memplugin.err.no_orb")
-
-// FindOrb finds OpenOrbit's orb (the lab builds candidate harness plugins with it):
-// ORBIT_ORB, then orb on PATH, then ~/.local/bin/orb. ORBIT_ORB that points nowhere is an
-// error of its own (no silent fallback).
-func FindOrb() (string, error) {
-	name := "orb"
-	if runtime.GOOS == "windows" {
-		name = "orb.exe"
-	}
-	if p := os.Getenv("ORBIT_ORB"); p != "" {
-		if fi, err := os.Stat(p); err != nil || fi.IsDir() {
-			return "", i18n.Errorf("memplugin.err.bad_orb", p)
-		}
-		return p, nil
-	}
-	if p, err := exec.LookPath(name); err == nil {
-		return p, nil
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".local", "bin", name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p, nil
-		}
-	}
-	return "", ErrNoOrb
 }

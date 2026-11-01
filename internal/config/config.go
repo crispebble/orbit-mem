@@ -56,14 +56,6 @@ type Config struct {
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
 	RetiredNames   []string `json:"retiredNames,omitempty"` // 보관한 저장소·옛 제품 이름(낡음 판정의 근거로 보인다)
 
-	// 하네스 실험실(명세 · Orbit 3차 O3-5). 지금 하네스와 고친 하네스를 같은 과제로 돌려 익명으로 고른다.
-	// 기본값은 사용자가 정했다(2026-10-30, U13~U15): 후보마다 3회, 실행 $1·실험 $10, 실행 sonnet·고르기 opus.
-	LabRuns          int     `json:"labRuns"`          // 후보마다 회차 수
-	LabRunUSD        float64 `json:"labRunUSD"`        // 실행 한 번 비용 상한(USD)
-	LabExperimentUSD float64 `json:"labExperimentUSD"` // 실험 하나(모든 실행+고르기) 누적 상한(USD)
-	LabModel         string  `json:"labModel"`         // 후보 실행 모델
-	LabJudgeModel    string  `json:"labJudgeModel"`    // 결과물을 익명으로 고르는 모델(후보 실행 모델과 달라야 한다)
-
 	// 확정 규칙(A2, 계획 · AU-6). 후보가 스스로 확정되는 증거의 횟수와 반복 교정 표시 기준.
 	// confirmFollowedVerified·correctionRepeatSessions는 E2: 이 PC 기억 DB 사본(2026-10-26~11-01)으로 잰
 	// 추천값이며 사용자 결정 대기다. 근거는 Atlas 계획 · AU-6 「E2 측정」.
@@ -81,7 +73,6 @@ func Default() Config {
 	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
 		LegacyMemories: 30, LegacyBatches: 1,
-		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus",
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3}
 }
 
@@ -113,12 +104,6 @@ func (c Config) Validate() error {
 	}
 	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
 		return i18n.Errorf("config.err.legacy")
-	}
-	if c.LabRuns < 1 || c.LabRuns > 10 || c.LabRunUSD <= 0 || c.LabRunUSD > 20 || c.LabExperimentUSD < c.LabRunUSD || c.LabExperimentUSD > 200 {
-		return i18n.Errorf("config.err.lab_budget")
-	}
-	if c.LabModel == "" || c.LabJudgeModel == "" || c.LabModel == c.LabJudgeModel {
-		return i18n.Errorf("config.err.lab_models")
 	}
 	for _, n := range []int{c.ConfirmSeenDays, c.ConfirmFollowedVerified, c.CorrectionRepeatSessions} {
 		if n < 1 || n > 30 {

@@ -557,16 +557,6 @@ func cmdConfig(a *app, args []string) error {
 		cfg.SessionRetro = b
 	case "sessionRetroModel":
 		cfg.SessionRetroModel = val
-	case "labModel":
-		cfg.LabModel = val
-	case "labJudgeModel":
-		cfg.LabJudgeModel = val
-	case "labRunUSD", "labExperimentUSD":
-		f, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			return i18n.Errorf("cli.config.err.number", key, val)
-		}
-		*map[string]*float64{"labRunUSD": &cfg.LabRunUSD, "labExperimentUSD": &cfg.LabExperimentUSD}[key] = f
 	case "retiredNames":
 		cfg.RetiredNames = nil
 		for _, n := range strings.Split(val, ",") {
@@ -574,7 +564,7 @@ func cmdConfig(a *app, args []string) error {
 				cfg.RetiredNames = append(cfg.RetiredNames, n)
 			}
 		}
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches", "labRuns",
+	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches",
 		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions":
 		n, err := strconv.Atoi(val)
 		if err != nil {
@@ -582,10 +572,10 @@ func cmdConfig(a *app, args []string) error {
 		}
 		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
-			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns,
+			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
