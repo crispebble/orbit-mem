@@ -29,14 +29,13 @@ describe('plugin.json', () => {
     for (const c of manifest.commands) assert.ok(index.includes(`'${c.id}':`), c.id);
   });
 
-  it('MCP 연결은 orb를 부른다(ONID-107)', () => {
-    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {command: string}[]}};
-    assert.deepEqual([...new Set(full.connections.mcp.map(c => c.command))], ['orb']);
-  });
-
-  it('MCP 연결 id와 명령: work는 `orb work mcp`, mem은 기억 그래프만 내는 `orb mcp --reader`', () => {
-    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {id: string; args: string[]}[]}};
-    assert.deepEqual(full.connections.mcp.map(c => [c.id, c.args.join(' ')]), [['oni', 'mcp'], ['work', 'work mcp'], ['mem', 'mcp --reader']]);
+  it('MCP 연결 id와 명령: memory·mem은 `orbit-mem`, work는 OpenOrbit 앱 `orb work mcp`', () => {
+    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {id: string; command: string; args: string[]}[]}};
+    assert.deepEqual(full.connections.mcp.map(c => [c.id, c.command, c.args.join(' ')]), [
+      ['memory', 'orbit-mem', 'mcp'],
+      ['work', 'orb', 'work mcp'],
+      ['mem', 'orbit-mem', 'mcp --reader'],
+    ]);
   });
 });
 

@@ -1,4 +1,4 @@
-// 기억 연결(`mem` = `orb mcp --reader`)로 memory_graph를 부른다. 판·오류 처리는 작업 계약과 같은 경계(memCall)를 쓴다.
+// 기억 연결(`mem` = `orbit-mem mcp --reader`)로 memory_graph를 부른다. 판·오류 처리는 작업 계약과 같은 경계(memCall)를 쓴다.
 import {OrbitError} from '../orb.ts';
 import {memCall, type CallOptions} from '../work/client.ts';
 import {WorkPaused} from '../work/contract.ts';

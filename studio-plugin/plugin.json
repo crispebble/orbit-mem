@@ -74,8 +74,8 @@
   "connections": {
     "mcp": [
       {
-        "id": "oni",
-        "command": "orb",
+        "id": "memory",
+        "command": "orbit-mem",
         "args": [
           "mcp"
         ]
@@ -90,7 +90,7 @@
       },
       {
         "id": "mem",
-        "command": "orb",
+        "command": "orbit-mem",
         "args": [
           "mcp",
           "--reader"

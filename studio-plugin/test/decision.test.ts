@@ -1,5 +1,5 @@
 // 결정 카드(orbit.decision 1.0)를 Orbit Studio Needs you에 주는 길(Studio 4차 S4-3, Atlas 0s39ap1v5b0qw).
-// 계약 읽기 → 카드 출처(DecisionSource: 지금은 orb mcp --reader, 뒤에 데몬 구독) → 저장소 → Studio 결정 공급자.
+// 계약 읽기 → 카드 출처(DecisionSource: 지금은 orbit-mem mcp --reader, 뒤에 데몬 구독) → 저장소 → Studio 결정 공급자.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {describe, it} from 'node:test';
@@ -158,7 +158,7 @@ describe('Studio 결정 공급자', () => {
 
   it('홈 지도: 열린 카드가 묶인 작업은 「답 기다림」이다', () => {
     const task = parseGet(workExample('work_get.claude-task').result).work;
-    const calm = {...task, id: 'w-calm', steps: task.steps.map(s => ({...s, status: 'done' as const, block: undefined}))};
+    const calm = {...task, origin: {...task.origin!, host: 'orbit-pi'}, id: 'w-calm', steps: task.steps.map(s => ({...s, status: 'done' as const, block: undefined}))};
     const sessions = parseSessions(workExample('work_sessions.list.page1').result).sessions.map(s => ({...s, state: 'running'}));
     const state = {status: 'ready' as const, scope: {kind: 'all' as const}, works: [summaryOf(calm)], details: {[calm.id]: calm}, sessions, pendingReview: []};
     const now = Date.parse('2026-10-28T07:00:00.000Z');

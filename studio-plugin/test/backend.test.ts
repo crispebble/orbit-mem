@@ -3,8 +3,23 @@ import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {Code, ConnectError} from '@connectrpc/connect';
 import {DAEMON_METHODS, type DaemonEvent, type DaemonStatus} from '../src/daemon/api.ts';
+import {resolveOrb} from '../src/backend/orb.ts';
 import {TOKEN_SECRET, isLoopbackUrl} from '../src/backend/service.ts';
 import {rig, TOKEN, until} from './backend-rig.ts';
+
+describe('resolveOrb', () => {
+  const at = (...paths: string[]) => (p: string) => paths.includes(p);
+  it('ORBIT_ORB가 경로면 그것, PATH와 흔한 위치에서 orb를 찾는다', () => {
+    assert.equal(resolveOrb({ORBIT_ORB: '/x/orb'}, at('/x/orb')), '/x/orb');
+    assert.equal(resolveOrb({PATH: '/a:/b'}, at('/b/orb')), '/b/orb');
+    assert.equal(resolveOrb({PATH: '/a', HOME: '/h'}, at('/h/.local/bin/orb')), '/h/.local/bin/orb');
+    assert.equal(resolveOrb({PATH: '/a'}, at('/opt/homebrew/bin/orb')), '/opt/homebrew/bin/orb');
+    assert.equal(resolveOrb({PATH: '/a'}, at('/usr/local/bin/orb')), '/usr/local/bin/orb');
+  });
+  it('옛 별칭 oni는 대신 쓰지 않는다', () => {
+    assert.equal(resolveOrb({PATH: '/a', HOME: '/h'}, at('/a/oni', '/h/.local/bin/oni')), undefined);
+  });
+});
 
 describe('뒤쪽: 찾기와 상태', () => {
   it('status는 데몬을 띄우지 않는다: daemon.json이 없으면 down이고 orb를 부르지 않는다', async () => {

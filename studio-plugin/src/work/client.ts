@@ -10,7 +10,7 @@ import type {
 } from './types.ts';
 
 export const WORK_CONNECTION_ID = 'work';
-/** 기억 그래프 연결(`mem` = `orb mcp --reader`). memory_graph만 낸다. */
+/** 기억 그래프 연결(`mem` = `orbit-mem mcp --reader`). memory_graph만 낸다. */
 export const MEM_CONNECTION_ID = 'mem';
 export const READ_MAJOR_ARG = 1;
 
