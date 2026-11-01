@@ -398,7 +398,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.8.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.9.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -408,7 +408,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.8.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.9.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
