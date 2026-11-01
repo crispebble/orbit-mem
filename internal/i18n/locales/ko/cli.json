@@ -117,7 +117,7 @@
   "cli.uninstall.host_error": "%s: 플러그인을 빼다가 오류: %v",
   "cli.uninstall.schedule_error": "예약 해제 중 오류: %v",
   "cli.unknown_command": "모르는 명령입니다: %s",
-  "cli.usage_head": "orbit-mem — 이 PC의 AI 공유 기억·회고·활동 기록 도구\n\n명령:",
+  "cli.usage_head": "orbit-mem — 이 PC의 AI 공유 기억·회고 저장·활동 기록 도구\n\n명령:",
   "cli.usage_line": "사용법: %s",
   "decision.approved": "%s 승인했습니다.",
   "decision.changed": "바뀐 기억 %s.",

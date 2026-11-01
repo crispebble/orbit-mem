@@ -117,7 +117,7 @@
   "cli.uninstall.host_error": "%s: error while taking the plugin out: %v",
   "cli.uninstall.schedule_error": "Error while removing the schedule: %v",
   "cli.unknown_command": "Unknown command: %s",
-  "cli.usage_head": "orbit-mem — shared AI memory, retrospectives and activity log for this PC\n\nCommands:",
+  "cli.usage_head": "orbit-mem — shared AI memory, retrospective storage and activity log for this PC\n\nCommands:",
   "cli.usage_line": "Usage: %s",
   "decision.approved": "%s approved.",
   "decision.changed": "Changed memories %s.",
