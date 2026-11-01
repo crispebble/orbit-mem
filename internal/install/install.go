@@ -1,7 +1,6 @@
-// Package install puts orbit-mem on this PC: the binary and the OS schedule for
-// retrospectives (launchd on Mac, Task Scheduler on Windows). Building the OpenOrbit
-// plugin and registering it in the hosts (and taking it out again) is OpenOrbit's
-// orb install|uninstall.
+// Package install puts orbit-mem on this PC: the binary, the OS schedule for
+// retrospectives (launchd on Mac, Task Scheduler on Windows) and orbit-mem's own plugin
+// in the hosts (hosts.go: Claude Code and Codex plugin commands, Codex's config.toml).
 package install
 
 import (

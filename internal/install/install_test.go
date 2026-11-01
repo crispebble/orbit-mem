@@ -13,7 +13,7 @@ func (f *fakeRun) run(name string, args ...string) (string, error) {
 	return "", nil
 }
 
-// 등록은 openorbit-harness install로 옮겼다. 빼기(orb uninstall)는 orb에 남는다.
+// 호스트 등록·해제 시험은 hosts_test.go에 있다.
 func TestLaunchdPlist_매일_시각과_로그인_때(t *testing.T) {
 	p := LaunchdPlist(Schedule{Bin: "/Users/me/.local/bin/orbit-mem", Hour: 4, Home: "/Users/me/orbit", PathDirs: []string{"/Users/me/.local/bin", "/opt/homebrew/bin"}, Logs: "/Users/me/orbit/logs"})
 	for _, want := range []string{"<string>dev.onidot.orbit.retro</string>", "<string>/Users/me/.local/bin/orbit-mem</string>", "<string>retro</string>", "<string>run</string>",
