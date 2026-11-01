@@ -296,7 +296,6 @@ func moduleRoot(t *testing.T) string {
 var aiFacing = []string{
 	"internal/mcpserver/",
 	"internal/inject/",
-	"internal/orbitplugin/",
 	"internal/contractkit/",
 	"internal/transcript/",
 	"internal/retro/submit.go",

@@ -1,8 +1,8 @@
 # orbit-mem
 
-저장소 `onidot-labs/orbit-mem`(옛 이름 `onidot-labs/openorbit`, 2026-11-01 N4-2 차례 1에서 바꿈)이다. 공유 기억 시스템 orbit-mem이 되는 Go 소스이고, N4-2 차례 5까지는 아래 `orb`(OpenOrbit 명령)와 OpenOrbit 플러그인 원본을 그대로 담는다. 새 OpenOrbit 하네스(TS)는 `onidot-labs/openorbit`이다. 구조: Atlas 설계 · OpenOrbit 4차 「구조 (2026-11-01 확정)」.
+저장소 `onidot-labs/orbit-mem`(옛 이름 `onidot-labs/openorbit`, 2026-11-01 N4-2 차례 1에서 바꿈)이다. 공유 기억 시스템 orbit-mem이 되는 Go 소스이고, N4-2 차례 5까지는 아래 `orb`(OpenOrbit 명령)를 그대로 담는다. 하네스(플러그인 원본·빌드·호스트 등록·역할 폴더)와 작업 기록(`orb work`)은 OpenOrbit(TS, `onidot-labs/openorbit`)의 `@onidot-labs/openorbit-harness`·`@onidot-labs/openorbit-work`로 옮겼고, `orb`는 기억·훅·MCP 조각만 맡으며 옮긴 명령은 그 CLI에 넘긴다(아래 「OpenOrbit CLI 다리」). 구조: Atlas 설계 · OpenOrbit 4차 「구조 (2026-11-01 확정)」.
 
-PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·Codex)에 이 PC의 기억과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 붙이고, 대화 기록으로 회고해 배운 것을 제안하고, 플러그인을 Claude·Codex 두 형식으로 빌드한다. 서버와 상주 프로세스는 없다. 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
+PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·Codex)에 이 PC의 기억과 일하는 방법(개발 스킬·역할·스택 에이전트·git 규칙)을 붙이고, 대화 기록으로 회고해 배운 것을 제안하고, OpenOrbit 하네스로 플러그인을 Claude·Codex 두 형식으로 빌드해 등록한다. 서버와 상주 프로세스는 없다. 개인 내용 없이 공개할 수 있게 만든다. 버전은 0.x를 쓴다.
 
 기준 설계: Atlas 「설계 · Orbit 1차 — 기억·회고·하네스」, 「설계 · Orbit 개선 — 기억 품질과 자가 개선」(2차 구현 명세는 그 하위).
 
@@ -10,9 +10,10 @@ PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·C
 
 | 명령 | 하는 일 |
 | --- | --- |
-| `orb install` | `orb`를 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고(옛 이름 `oni`는 당분간 같은 자리에 `orb`의 별칭으로 둔다), OpenOrbit 플러그인을 이 PC의 경로로 빌드해 두 호스트의 로컬 마켓에 등록하고(Codex 역할 파일은 `~/.codex/agents/orbit-*.toml`로 복사), 회고 예약(launchd·작업 스케줄러)을 건다. `--plugin-source <원본>`을 주면 내장 원본 대신 그 디렉터리로 빌드한다 |
+| `orb install` | `orb`를 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고(옛 이름 `oni`는 당분간 같은 자리에 `orb`의 별칭으로 둔다), OpenOrbit 플러그인을 이 PC의 경로로 빌드해(`openorbit-harness build <원본> --fragment <설치할 orb로 채운 조각>`) 두 호스트의 로컬 마켓에 등록하고(`openorbit-harness install`, Codex 역할 파일은 `~/.codex/agents/orbit-*.toml`로 복사), 회고 예약(launchd·작업 스케줄러)을 건다. `--plugin-source <원본>`을 주면 하네스에 실린 원본 대신 그 디렉터리로 빌드한다 |
 | `orb doctor` | 기억 수, 대기 제안, 호스트 등록, 예약, 최근 회고·백업 |
-| `orb mcp [--reader]` | 호스트가 띄우는 MCP 서버. 기억 도구 6개 `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`(`memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다)와 작업 도구 `work_list`, `work_get`, `work_title`. `--reader`는 Orbit Studio·orbit-pi 같은 앱 전용으로 `work_list`·`work_get`·`work_sessions`·`work_changes`, 결정 카드 `decision_list`·`decision_get`·`decision_changes`·`decision_open`·`decision_answer`·`decision_withdraw`, 기억 그래프 `memory_graph`를 연다(계약 `internal/work/contract/v1`, `internal/decision/contract/v1`, `internal/memory/contract/v1`) |
+| `orb mcp [--reader]` | 호스트가 띄우는 MCP 서버. 기억 도구 6개 `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`(`memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다)와 작업 도구 `work_list`, `work_get`, `work_title`. `--reader`는 Orbit Studio·orbit-pi 같은 앱 전용으로 기억 그래프 `memory_graph`만 연다(계약 `internal/memory/contract/v1`). 앱용 작업·결정 카드 도구는 `orb work mcp` |
+| `orb work emit\|get\|list\|mcp …` | OpenOrbit 작업 기록(`openorbit-work`)에 인자·표준 입출력·종료 코드를 그대로 넘긴다. emit은 stdin JSON 줄로 orbit-pi의 계획·진행·증거·비용을 쓰고, get·list는 orbit.work JSON을, mcp는 앱용 작업·결정 카드 MCP 서버(`work_list`·`work_get`·`work_sessions`·`work_changes`, `decision_*`)를 낸다 |
 | `orb hook session-start\|prompt\|session-end\|work` | 질문 도구(AskUserQuestion·request_user_input)는 결정 카드(`orbit.decision`)로 열고 닫는다. orbit-pi가 띄운 세션(`ORBIT_RUNTIME=orbit-pi`)에서는 플러그인 훅이 아무것도 하지 않고, orbit-pi가 `--runtime orbit-pi --launcher <studio·telegram·workflow>`로 부른 것만 기록한다. 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 순위대로(작업 회상), 세션이 끝나면 세션 끝 회고 대기열에 넣고 `orb retro sessions`를 뒤에서 띄운다 |
 | `orb inject session-start\|prompt [--cwd D] [--session S]` | orbit-pi에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 요청 글은 stdin. 사용 사건은 호스트 `orbit-pi`로 남긴다 |
 | `orb runtime install\|update\|status` | 에이전트 런타임 orbit-pi(`onidot-labs/orbit-pi`)를 `ORBIT_HOME/runtime/orbit-pi`에 받아 그 저장소의 `orbit/scripts/build.sh`로 빌드한다(`--ref`, `--repo`). git과 Node 22.19 이상이 필요하다. 빌드가 실패하면 설치 기록은 앞의 것을 그대로 둔다 |
@@ -24,8 +25,9 @@ PC마다 깔리는 Go 바이너리 하나(`orb`)다. AI 호스트(Claude Code·C
 | `orb proposals` | 회고 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `orb memory find\|show` | 기억 찾기·읽기 |
 | `orb migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
-| `orb plugin build <원본>` | 공통 원본에서 Claude·Codex 플러그인과 마켓 파일을 만든다 |
-| `orb plugin install <마켓>` | 빌드한 마켓을 두 호스트에 등록하고 Codex 역할 파일을 복사한다 |
+| `orb plugin fragment [--orb 경로]` | orb가 플러그인에 넘기는 조각(기억 MCP 서버 `orbit`과 훅)을 그 orb 경로(기본: 지금 orb)로 채운 JSON으로 낸다 |
+| `orb plugin build <원본> …` | `openorbit-harness build`에 그대로 넘긴다: 공통 원본(과 `--fragment` 조각)에서 Claude·Codex 플러그인과 마켓 파일을 만든다 |
+| `orb plugin install <마켓> …` | `openorbit-harness install`에 그대로 넘긴다: 빌드한 마켓을 두 호스트에 등록하고 Codex 역할 파일을 복사한다 |
 | `orb stats [--days N \| --week 월요일] [--json]` | 지표: 반복 교정(넣었는데 어김·넣지 못함), 요청 적중과 평균 글자 수, 사용 판정(따름·어김·상관없음), 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정(감지 수·제안으로 이어진 수), 효과 원장, 회고 종류별 수와 비용, 기억 그래프, 상태별 기억 수, 옛 기억 정리(판정한 수·남은 수) |
 | `orb ledger [--all] [--json]` | 승인한 기억·하네스·지침 변경과 효과 판정(도움됨·해로움·효과 없음·섞임) |
 | `orb config`, `orb backup`, `orb uninstall` | 설정, 즉시 백업, 등록·예약 해제(데이터는 남김) |
@@ -58,21 +60,29 @@ go build -o dist/orb ./cmd/orb
 | `internal/memory` | 기억 DB, 한글 검색 점수(옛 Knowledge 규칙), 후보·확정·낡음·숨김, 출처, 버전 이력, 제안, 쓰기 판정, 효과 원장(기록·판정·되돌리기) |
 | `internal/inject` | 훅이 넣는 세션 고정 묶음·작업 회상과 넣은 기억 id |
 | `internal/metrics` | 사건(`events` 표)·회고·제안으로 지표 계산. 새 지표는 사건 종류를 더한다 |
-| `internal/mcpserver` | MCP 도구 6개, 작업·결정 카드·기억 그래프 계약 도구, 회고 전용 도구 |
-| `internal/work` | 작업 기록(`work.db`): 훅 사건 원장과 그래프, 결정 카드(`orbit.decision`) |
+| `internal/mcpserver` | MCP 도구 6개, AI 호스트용 작업 도구, 기억 그래프 계약 도구(`--reader`), 회고 전용 도구 |
+| `internal/work` | 작업 기록(`work.db`): 훅이 쓰는 사건 원장과 그래프, 결정 카드(`orbit.decision`). 앱이 읽는 쪽은 `openorbit-work` |
 | `internal/decision/contract` | 결정 카드 계약 |
 | `internal/transcript` | Claude·Codex 대화 기록에서 사용자 말과 AI 답만 추리기 |
 | `internal/retro` | 세션 끝·하루·주간 회고, 대기열과 읽은 발화 구간, 밀린 회고 따라잡기, 흡수, 주간 정리 재료, 제출 반영(쓰기·사용 판정, 교훈) |
 | `internal/migrate` | 옛 Knowledge 이전 |
 | `internal/lab` | 하네스 실험실: 과제, 후보 빌드·실행, 익명 고르기, 원장 실험 줄과 제안 |
-| `internal/pluginbuild` | 두 호스트 플러그인 빌드 |
-| `internal/orbitplugin/source` | OpenOrbit 플러그인 원본: MCP·훅, 스킬 18개(memory, proposals, tdd, spec-first, debugging, plan, verify, frontend, plain-writing, explore-domain, research, review, delegate, git-commit, pull-request, 그리고 orbit-pi 오케스트레이터용 ultrawork, ulw-plan, ulw-execute — 이름·호출 방식은 OmO를 따르고 본문은 새로 씀, 영어 기본·한국어 지원), 역할 17개와 스택 에이전트 6개(`agents/`), 공통 규칙(`agents-common.md`), 분야 묶음(`knowledge/<분야>/`: 한 줄 신호 목록 `SIGNALS.md`와 항목. 에이전트에는 일하는 방법만 두고 분야 사실은 여기에) |
-| `internal/install` | 바이너리·플러그인 등록·Codex 역할 복사·OS 예약 |
+| `internal/memplugin` | orb가 OpenOrbit 플러그인에 넘기는 조각(`fragment.json`: 기억 MCP 서버와 훅)과 그것을 끼운 하네스 빌드 |
+| `internal/openorbit` | OpenOrbit TS CLI(`openorbit-work`, `openorbit-harness`) 다리: node·CLI 찾기, 통과형·캡처형 실행 |
+| `internal/install` | 바이너리·OS 예약·플러그인 등록 해제(등록과 Codex 역할 복사는 `openorbit-harness install`) |
 | `internal/i18n` | 사람이 읽는 문구 카탈로그(en·ko)와 언어 고르기(`language` 설정, `ORBIT_LANG`) |
+
+## OpenOrbit CLI 다리
+
+`orb work …`, `orb plugin build|install`, `orb install`의 플러그인 빌드·등록, 실험실의 후보 빌드, `orb run`의 역할 폴더는 OpenOrbit TS 패키지의 CLI를 Node로 부른다.
+
+- CLI: `ORBIT_WORK_CLI`·`ORBIT_HARNESS_CLI`가 있으면 그 파일, 없으면 `<런타임>/node_modules/@onidot-labs/<패키지>/dist/cli.js`. 런타임은 `ORBIT_PI_DIR`, 없으면 `ORBIT_HOME/runtime/orbit-pi`(`orb runtime install`). 없으면 `orb runtime install|update`를 안내한다.
+- Node: `ORBIT_NODE`, PATH의 `node`, `/opt/homebrew/bin`·`/usr/local/bin`·`~/.local/bin`·`~/.volta/bin` 순서로 찾는다(GUI 앱이 짧은 PATH로 `orb`를 띄워도 돈다).
+- 자식에는 `orb`가 푼 `ORBIT_HOME`과, `ORBIT_LANG`이 없으면 `orb`의 언어를 넘긴다.
 
 ## 플러그인 원본 고치기
 
-스킬·역할·분야 묶음은 `internal/orbitplugin/source`가 정본이다. 회고가 낸 원본 변경은 실험실(`orb lab`)에서 도움됨으로 판정된 것만 사용자 승인으로 간다. 개인·회사 분야 지식은 원본이 아니라 그 PC 기억에 `분야:<이름>` 태그로 둔다(요청과 맞으면 신호만 붙는다). 고친 뒤 `go build`로 바이너리를 다시 만들거나, 이 PC에서는 `orb install --plugin-source internal/orbitplugin/source`로 내장 원본 대신 이 디렉터리를 쓰게 한다. 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다. 플러그인 버전은 `internal/version`의 orb 버전과 같다.
+스킬·역할·분야 묶음은 OpenOrbit 하네스 원본(`onidot-labs/openorbit`의 `packages/harness/source`)이 정본이고, 기억 MCP 서버와 훅은 이 저장소의 `internal/memplugin/fragment.json`이 정본이다. 빌드가 원본에 조각을 끼운다(`orb plugin fragment`로 조각을 만들어 `orb plugin build <원본> --fragment <조각>`). 회고가 낸 원본 변경은 실험실(`orb lab`)에서 도움됨으로 판정된 것만 사용자 승인으로 간다. 개인·회사 분야 지식은 원본이 아니라 그 PC 기억에 `분야:<이름>` 태그로 둔다(요청과 맞으면 신호만 붙는다). 이 PC에서 고친 원본을 쓰려면 `orb install --plugin-source <openorbit checkout>/packages/harness/source`로 하네스에 실린 원본 대신 그 디렉터리를 쓰게 한다(조각이 끼워지므로 원본의 `plugin.json`에는 `mcpServers`·`hooks`를 두지 않는다). 원본에 특정 서비스·개인 프로젝트·개인 경로를 넣지 않는다.
 
 ## 릴리스
 

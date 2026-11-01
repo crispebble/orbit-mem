@@ -1,8 +1,6 @@
 package mcpserver
 
 import (
-	"bytes"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -48,7 +46,7 @@ func TestWork_orbit_pi_응답이_1_2_계약에_맞는다(t *testing.T) {
 	e := newWorkEnv(t)
 	seedWork(t, e)
 	id := seedOrbitPi(t, e)
-	cs := readerHost(t, e)
+	cs := aiHost(t, e)
 	g := validate(t, "work_get", callRaw(t, cs, "work_get", map[string]any{"workId": id}))
 	if c := g["contract"].(map[string]any); c["minor"] != float64(2) {
 		t.Errorf("계약 판: %v", c)
@@ -61,49 +59,9 @@ func TestWork_orbit_pi_응답이_1_2_계약에_맞는다(t *testing.T) {
 	if run["link"] != "step" || run["cost"].(map[string]any)["usd"] != 0.12 {
 		t.Errorf("실행: %v", run)
 	}
-	validate(t, "work_sessions", callRaw(t, cs, "work_sessions", map[string]any{"sessionId": "P1"}))
 	all := validate(t, "work_list", callRaw(t, cs, "work_list", nil))
 	pi := validate(t, "work_list", callRaw(t, cs, "work_list", map[string]any{"launcher": "orbit-pi"}))
 	if len(all["items"].([]any)) < 2 || len(pi["items"].([]any)) != 1 || pi["ignoredArgs"] != nil {
 		t.Errorf("launcher 필터: 전체 %d, orbit-pi %v", len(all["items"].([]any)), pi)
 	}
-}
-
-// orb work get|list는 MCP 도구와 같은 구조화 결과를 낸다(Orbit Studio가 그대로 읽는다).
-func TestCallWork_MCP와_같은_결과(t *testing.T) {
-	e := newWorkEnv(t)
-	seedWork(t, e)
-	id := seedOrbitPi(t, e)
-	cs := readerHost(t, e)
-	for _, c := range []struct {
-		tool string
-		args map[string]any
-	}{
-		{"work_get", map[string]any{"workId": id, "includeChildren": true}},
-		{"work_list", map[string]any{"state": "open", "launcher": "orbit-pi"}},
-		{"work_get", map[string]any{"workId": "w-없음"}},
-	} {
-		res := callRaw(t, cs, c.tool, c.args)
-		want, _ := json.Marshal(res.StructuredContent)
-		got, isErr, err := CallWork(e.opts(), c.tool, c.args)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if isErr != res.IsError || !bytes.Equal(compact(t, got), compact(t, want)) {
-			t.Errorf("%s: CLI %s\nMCP %s", c.tool, got, want)
-		}
-	}
-	if _, _, err := CallWork(e.opts(), "work_title", nil); err == nil {
-		t.Error("쓰기 도구는 부를 수 없어야 합니다")
-	}
-}
-
-func compact(t *testing.T, b []byte) []byte {
-	t.Helper()
-	var v any
-	if err := json.Unmarshal(b, &v); err != nil {
-		t.Fatalf("JSON이 아닙니다: %s", b)
-	}
-	out, _ := json.Marshal(v)
-	return out
 }

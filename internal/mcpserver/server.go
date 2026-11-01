@@ -73,7 +73,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
 	if o.Work != nil {
-		addWorkTools(srv, newWorkTools(*o.Work, false))
+		addWorkTools(srv, newWorkTools(*o.Work))
 	}
 	return srv
 }

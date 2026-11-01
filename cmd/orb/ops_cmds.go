@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,9 +14,9 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/install"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/memplugin"
 	"github.com/onidot-labs/orbit-mem/internal/migrate"
-	"github.com/onidot-labs/orbit-mem/internal/orbitplugin"
-	"github.com/onidot-labs/orbit-mem/internal/pluginbuild"
+	"github.com/onidot-labs/orbit-mem/internal/openorbit"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 	"github.com/onidot-labs/orbit-mem/internal/version"
@@ -228,94 +227,29 @@ func cmdPlugin(a *app, args []string) error {
 		return errUsage
 	}
 	switch args[0] {
-	case "build":
-		fs := a.flags("plugin build")
-		out := fs.String("out", "", i18n.T("flag.plugin.out"))
-		check := fs.Bool("check", false, i18n.T("flag.plugin.check"))
-		market := fs.String("marketplace", "", i18n.T("flag.plugin.marketplace"))
-		var vars multiFlag
-		fs.Var(&vars, "var", i18n.T("flag.plugin.var"))
+	case "fragment": // 기억 MCP·훅 조각: openorbit-harness build … --fragment가 받는다
+		fs := a.flags("plugin fragment")
+		orb := fs.String("orb", "", i18n.T("flag.plugin.orb"))
 		pos, err := parse(fs, args[1:])
-		if err != nil || len(pos) != 1 {
-			return errUsage
-		}
-		src, _ := filepath.Abs(pos[0])
-		if *out == "" {
-			*out = filepath.Dir(src)
-		}
-		vm := map[string]string{}
-		for _, v := range vars {
-			k, val, ok := strings.Cut(v, "=")
-			if !ok {
-				return errUsage
-			}
-			vm[k] = val
-		}
-		res, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: *out, Marketplace: *market, Vars: vm, Check: *check})
 		if err != nil {
 			return err
 		}
-		if *check {
-			for _, d := range res.Drift {
-				fmt.Fprintln(a.stdout, d)
-			}
-			if len(res.Drift) > 0 {
-				return i18n.Errorf("cli.plugin.err.drift", len(res.Drift))
-			}
-			fmt.Fprintln(a.stdout, i18n.T("cli.plugin.same"))
-			return nil
-		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.plugin.built", *out, len(res.Written), len(res.Removed)))
-		return nil
-	case "install":
-		pos, err := parse(a.flags("plugin install"), args[1:])
-		if err != nil || len(pos) != 1 {
+		if len(pos) != 0 {
 			return errUsage
 		}
-		dir, _ := filepath.Abs(pos[0])
-		return a.installMarketplace(install.FindHosts(), dir)
-	}
-	return errUsage
-}
-
-type marketplaceFile struct {
-	Name    string `json:"name"`
-	Plugins []struct {
-		Name   string `json:"name"`
-		Source string `json:"source"`
-	} `json:"plugins"`
-}
-
-// installMarketplace registers every plugin of a built marketplace directory in
-// both hosts and copies their Codex roles.
-func (a *app) installMarketplace(h install.Hosts, dir string) error {
-	b, err := os.ReadFile(filepath.Join(dir, ".claude-plugin", "marketplace.json"))
-	if err != nil {
-		return i18n.Errorf("cli.plugin.err.not_marketplace", dir)
-	}
-	var m marketplaceFile
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	for _, p := range m.Plugins {
-		if err := h.RegisterPlugin(dir, p.Name, m.Name); err != nil {
+		if *orb == "" {
+			*orb = selfPath()
+		}
+		b, err := memplugin.Fragment(*orb)
+		if err != nil {
 			return err
 		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.plugin.registered", p.Name, m.Name, hostList(h)))
-		if h.Codex != "" {
-			res, err := install.CopyCodexAgents(filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(p.Source, "./"))), codexHome())
-			if err != nil {
-				return err
-			}
-			if len(res.Copied)+len(res.Kept)+len(res.Removed) > 0 {
-				fmt.Fprintln(a.stdout, i18n.T("cli.plugin.codex_roles", len(res.Copied), len(res.Kept), len(res.Removed)))
-			}
-			for _, k := range res.Kept {
-				fmt.Fprintln(a.stdout, "  "+i18n.T("cli.plugin.codex_kept", k))
-			}
-		}
+		_, err = a.stdout.Write(b)
+		return err
+	case "build", "install": // 하네스 빌드·호스트 등록은 OpenOrbit(openorbit-harness)
+		return a.passthrough(openorbit.Harness, args)
 	}
-	return nil
+	return errUsage
 }
 
 func codexHome() string {
@@ -425,24 +359,21 @@ func cmdInstall(a *app, args []string) error {
 		return err
 	}
 	s.Close()
+	r := bridge()
 	src := cfg.PluginSource
-	if src == "" {
-		tmp, err := os.MkdirTemp("", "orbit-plugin-src")
+	if src == "" { // 내장 원본: OpenOrbit 하네스가 싣고 있는 원본
+		out, err := r.Output(openorbit.Harness, "source")
 		if err != nil {
-			return err
+			return i18n.Errorf("cli.install.err.plugin_build", err)
 		}
-		defer os.RemoveAll(tmp)
-		if err := orbitplugin.Write(tmp); err != nil {
-			return err
-		}
-		src = tmp
+		src = strings.TrimSpace(string(out))
 	}
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: src, Out: p.Marketplace(), Vars: orbitplugin.Vars(dst)}); err != nil {
-		return err
+	if err := memplugin.Build(r, src, p.Marketplace(), dst); err != nil {
+		return i18n.Errorf("cli.install.err.plugin_build", err)
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_built", p.Marketplace(), map[bool]string{true: i18n.T("cli.install.builtin"), false: src}[cfg.PluginSource == ""]))
 	if !*noHosts {
-		if err := a.installMarketplace(h, p.Marketplace()); err != nil {
+		if err := asExit(r.Run(openorbit.Harness, nil, a.stdout, a.stderr, "install", p.Marketplace(), "--codex-home", codexHome())); err != nil {
 			return err
 		}
 	}

@@ -121,20 +121,6 @@ func TestProposals_하나씩_검토(t *testing.T) {
 	}
 }
 
-func TestPluginBuild_와_검사(t *testing.T) {
-	src := t.TempDir()
-	out := t.TempDir()
-	os.MkdirAll(filepath.Join(src, "skills", "x"), 0o755)
-	os.WriteFile(filepath.Join(src, "plugin.json"), []byte(`{"name":"demo","version":"0.1.0","description":"d","skills":["x"]}`), 0o644)
-	os.WriteFile(filepath.Join(src, "skills", "x", "SKILL.md"), []byte("---\nname: x\ndescription: d\n---\nx"), 0o644)
-	if o, e, code := run(t, "", "plugin", "build", src, "--out", out); code != 0 {
-		t.Fatalf("build: %s %s", o, e)
-	}
-	if o, e, code := run(t, "", "plugin", "build", src, "--out", out, "--check"); code != 0 || !strings.Contains(o, "match the source") {
-		t.Fatalf("check: %s %s", o, e)
-	}
-}
-
 func TestUsage_모르는_명령은_2(t *testing.T) {
 	if _, _, code := run(t, "", "nope"); code != 2 {
 		t.Fatal(code)

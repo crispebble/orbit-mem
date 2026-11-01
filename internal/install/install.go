@@ -1,13 +1,11 @@
-// Package install puts orb on this PC: the binary, the OpenOrbit plugin in each
-// host's marketplace, the Codex role files of a built plugin and the OS
-// schedule for retrospectives (launchd on Mac, Task Scheduler on Windows).
+// Package install puts orb on this PC: the binary and the OS schedule for
+// retrospectives (launchd on Mac, Task Scheduler on Windows), and takes the
+// OpenOrbit plugin out of the hosts again. Building and registering the plugin
+// is the OpenOrbit harness's (openorbit-harness build|install).
 package install
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -16,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -55,27 +52,6 @@ func FindHosts() Hosts {
 	return h
 }
 
-// RegisterPlugin adds the marketplace at dir and installs plugin name from it
-// in every host present. Both hosts accept the same commands again.
-func (h Hosts) RegisterPlugin(dir, name, market string) error {
-	var errs []error
-	if h.Claude != "" {
-		if _, err := h.Run(h.Claude, "plugin", "marketplace", "add", dir); err != nil {
-			errs = append(errs, err)
-		} else if _, err := h.Run(h.Claude, "plugin", "install", name+"@"+market, "--scope", "user"); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if h.Codex != "" {
-		if _, err := h.Run(h.Codex, "plugin", "marketplace", "add", dir); err != nil {
-			errs = append(errs, err)
-		} else if _, err := h.Run(h.Codex, "plugin", "add", name+"@"+market); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
 // UnregisterPlugin removes plugin name and its marketplace from every host present.
 func (h Hosts) UnregisterPlugin(name, market string) error {
 	var errs []error
@@ -96,86 +72,6 @@ func (h Hosts) UnregisterPlugin(name, market string) error {
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// CopyResult says what happened to Codex role files.
-type CopyResult struct {
-	Copied  []string `json:"copied,omitempty"`
-	Kept    []string `json:"kept,omitempty"`    // 사용자 파일이거나 사용자가 고쳐 그대로 둠
-	Removed []string `json:"removed,omitempty"` // 더는 만들지 않는 내 파일
-}
-
-const ownedFile = ".orbit-owned.json"
-
-func hashBytes(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
-
-func loadOwned(dir string) map[string]string {
-	m := map[string]string{}
-	if b, err := os.ReadFile(filepath.Join(dir, ownedFile)); err == nil {
-		_ = json.Unmarshal(b, &m)
-	}
-	return m
-}
-
-func saveOwned(dir string, m map[string]string) error {
-	b, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(filepath.Join(dir, ownedFile), append(b, '\n'), 0o644)
-}
-
-// CopyCodexAgents copies a built plugin's codex/agents/*.toml into
-// <codexHome>/agents. Codex plugins cannot carry roles, so they are installed
-// as files. Only files OpenOrbit wrote and nobody changed since are replaced or removed.
-func CopyCodexAgents(pluginDir, codexHome string) (CopyResult, error) {
-	var res CopyResult
-	srcs, err := filepath.Glob(filepath.Join(pluginDir, "codex", "agents", "*.toml"))
-	if err != nil {
-		return res, err
-	}
-	dst := filepath.Join(codexHome, "agents")
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return res, err
-	}
-	owned := loadOwned(dst)
-	prefix := filepath.Base(pluginDir) + "-"
-	want := map[string]bool{}
-	for _, src := range srcs {
-		name := filepath.Base(src)
-		want[name] = true
-		b, err := os.ReadFile(src)
-		if err != nil {
-			return res, err
-		}
-		target := filepath.Join(dst, name)
-		cur, err := os.ReadFile(target)
-		switch {
-		case err == nil && bytes.Equal(cur, b):
-			owned[name] = hashBytes(b)
-			continue
-		case err == nil && owned[name] != hashBytes(cur):
-			res.Kept = append(res.Kept, target)
-			continue
-		}
-		if err := os.WriteFile(target, b, 0o644); err != nil {
-			return res, err
-		}
-		owned[name] = hashBytes(b)
-		res.Copied = append(res.Copied, target)
-	}
-	for name, h := range owned {
-		if want[name] || !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		target := filepath.Join(dst, name)
-		cur, err := os.ReadFile(target)
-		if err == nil && hashBytes(cur) == h {
-			if os.Remove(target) == nil {
-				res.Removed = append(res.Removed, target)
-			}
-		}
-		delete(owned, name)
-	}
-	sort.Strings(res.Copied)
-	return res, saveOwned(dst, owned)
 }
 
 // Schedule is the retrospective schedule of this PC.

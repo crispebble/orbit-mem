@@ -166,8 +166,7 @@ func TestMemoryGraphOnlyForReaders(t *testing.T) {
 
 // 끝 기준: 기억 DB를 열거나 읽지 못하면 인자 오류가 아니라 UNAVAILABLE이고 Schema를 통과한다.
 func TestMemoryGraphUnavailable(t *testing.T) {
-	e := newWorkEnv(t)
-	cs := connectServer(t, NewReader(e.opts(), t.TempDir(), "test")) // 디렉터리는 DB로 열 수 없다
+	cs := connectServer(t, NewReader(t.TempDir(), "test")) // 디렉터리는 DB로 열 수 없다
 	res := callRaw(t, cs, "memory_graph", nil)
 	m := validateMemory(t, "error", res)
 	if er, _ := m["error"].(map[string]any); !res.IsError || er["code"] != "UNAVAILABLE" {

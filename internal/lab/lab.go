@@ -25,8 +25,8 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/orbitplugin"
-	"github.com/onidot-labs/orbit-mem/internal/pluginbuild"
+	"github.com/onidot-labs/orbit-mem/internal/memplugin"
+	"github.com/onidot-labs/orbit-mem/internal/openorbit"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
@@ -53,6 +53,9 @@ type Lab struct {
 	Now    func() time.Time
 	// Shuffle says whether the changed candidate is shown as A in a round. Nil is random.
 	Shuffle func(round int) bool
+	// Build builds a candidate's marketplace from a plugin source into out. Nil is the
+	// OpenOrbit harness build with orb's memory fragment for Orb (tests replace it).
+	Build func(source, out string) error
 }
 
 func (l *Lab) dir() string { return filepath.Join(l.Paths.Home, "lab") }
@@ -277,7 +280,13 @@ func (l *Lab) inSource(path string) (string, error) {
 
 // build makes a candidate's plugin from source and returns its plugin folder and hash.
 func (l *Lab) build(source, out string) (string, string, error) {
-	if _, err := pluginbuild.Build(pluginbuild.Options{Source: source, Out: out, Vars: orbitplugin.Vars(l.Orb)}); err != nil {
+	build := l.Build
+	if build == nil {
+		build = func(source, out string) error {
+			return memplugin.Build(openorbit.New(l.Paths.Home, string(i18n.Current())), source, out, l.Orb)
+		}
+	}
+	if err := build(source, out); err != nil {
 		return "", "", err
 	}
 	plugins, err := os.ReadDir(filepath.Join(out, "plugins"))

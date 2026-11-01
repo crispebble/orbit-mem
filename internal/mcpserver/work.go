@@ -25,32 +25,13 @@ type WorkOptions struct {
 	Read    work.ReadOptions // 응답 없음 시간 등
 }
 
-const readerInstructions = `OpenOrbit 기록을 읽는다. 작업 기록(orbit.work 1판)은 work_list·work_get·work_sessions로 읽고 work_changes로 바뀐 것을 기다린다.
-결정 카드(orbit.decision 1판)는 decision_list·decision_get으로 읽고 decision_changes로 기다리며, 사용자의 답은 decision_answer로 넘긴다.
-기억 그래프(orbit.memory 1판)는 memory_graph로 읽는다.
-응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id·seq·커서는 받은 그대로 돌려준다.`
-
-// NewReader is orb mcp --reader: tools for apps such as Orbit Studio and
-// orbit-pi — the four work tools, the decision card tools and memory_graph.
-// It has no memory write tools and no work_title. memDB is opened on the
-// first memory_graph call.
-func NewReader(wo WorkOptions, memDB, version string) *mcp.Server {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})
-	w := newWorkTools(wo, true)
-	addWorkTools(srv, w)
-	addDecisionTools(srv, w)
-	addMemoryGraphTool(srv, &memoryGraphTool{path: memDB})
-	return srv
-}
-
 type workTools struct {
-	o      WorkOptions
-	reader bool
-	mu     sync.Mutex
-	s      *work.Store
+	o  WorkOptions
+	mu sync.Mutex
+	s  *work.Store
 }
 
-func newWorkTools(o WorkOptions, reader bool) *workTools { return &workTools{o: o, reader: reader} }
+func newWorkTools(o WorkOptions) *workTools { return &workTools{o: o} }
 
 // store opens work.db once and drains the spool before each call, so a hook
 // event spooled while the database was locked shows in the next read.
@@ -94,39 +75,7 @@ func addWorkTools(srv *mcp.Server, w *workTools) {
 	}
 	add("work_list", "이 PC의 작업 목록 쪽(orbit.work). 범위(all·project)·cwdPrefix·상태(open·done·any)·updatedSince로 거르고 cursor로 넘긴다. 최근에 바뀐 것부터.", w.list)
 	add("work_get", "작업 하나의 전체 그래프(단계·선행·실행·증거·자식 작업 id). includeChildren이면 자식 작업 전체.", w.get)
-	if !w.reader {
-		add("work_title", "작업 제목을 정하거나 고친다. 작업 목록 도구로 작업을 열면 무엇을 하는 작업인지 한 줄로 정한다. 덧붙임 문맥이 준 workId를 넘긴다.", w.title)
-		return
-	}
-	add("work_sessions", "세션 쪽, 또는 sessionId를 넘기면 그 세션 한 건과 사건 쪽(오래된 것부터, 첫 쪽에 실행·증거 전부).", w.sessions)
-	add("work_changes", "after(앞 응답의 seq) 뒤에 바뀐 작업·세션 id. 바뀐 것이 없으면 wait 밀리초까지 기다린다(상한 waitMax). reset이면 처음부터 다시 읽는다.", w.changes)
-}
-
-// CallWork calls one read tool (work_list, work_get, work_sessions, work_changes)
-// as the reader would get it over MCP and returns its structured result: the
-// same contract JSON, with the contract head, argument checks and contract
-// errors (isError). orb work get|list print it for orbit-pi and Orbit Studio.
-func CallWork(o WorkOptions, tool string, arguments map[string]any) (json.RawMessage, bool, error) {
-	w := newWorkTools(o, true)
-	defer w.Close()
-	h := map[string]func(context.Context, args) (any, error){"work_list": w.list, "work_get": w.get, "work_sessions": w.sessions, "work_changes": w.changes}[tool]
-	if h == nil {
-		return nil, false, fmt.Errorf("%s는 읽기 도구가 아닙니다", tool)
-	}
-	schema, err := contract.InputSchema(contract.Major, tool)
-	if err != nil {
-		return nil, false, err
-	}
-	raw, err := json.Marshal(arguments)
-	if err != nil {
-		return nil, false, err
-	}
-	res, err := w.handler(tool, schema, h)(context.Background(), &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tool, Arguments: raw}})
-	if err != nil {
-		return nil, false, err
-	}
-	body, _ := res.StructuredContent.(json.RawMessage)
-	return body, res.IsError, nil
+	add("work_title", "작업 제목을 정하거나 고친다. 작업 목록 도구로 작업을 열면 무엇을 하는 작업인지 한 줄로 정한다. 덧붙임 문맥이 준 workId를 넘긴다.", w.title)
 }
 
 // args are a call's arguments after the contract checks.
@@ -165,7 +114,6 @@ type callError struct {
 	Field      string    `json:"field,omitempty"`
 	Supported  []int     `json:"supportedMajors,omitempty"`
 	Candidates *[]string `json:"candidates,omitempty"` // AMBIGUOUS_WORK에는 빈 배열이라도 둔다
-	Decision   any       `json:"decision,omitempty"`   // orbit.decision CONFLICT: 지금의 카드
 }
 
 func (e *callError) Error() string { return e.Code + ": " + e.Message }
@@ -333,7 +281,7 @@ func (w *workTools) filter(a args) (work.Filter, error) {
 	}
 	if a.str("scope") == "project" {
 		f.Project = a.str("project")
-		if f.Project == "" && !w.reader {
+		if f.Project == "" {
 			f.Project = w.o.Project // AI 호스트는 그 세션의 프로젝트
 		}
 		if f.Project == "" {
@@ -451,58 +399,4 @@ func sameDirs(dir string) []string {
 		out = append(out, real)
 	}
 	return out
-}
-
-func (w *workTools) sessions(_ context.Context, a args) (any, error) {
-	s, err := w.store()
-	if err != nil {
-		return nil, err
-	}
-	if id := a.str("sessionId"); id != "" {
-		d, err := s.SessionEvents(id, a.str("cursor"), a.int("limit"), w.o.Read)
-		if errors.Is(err, work.ErrNotFound) {
-			return nil, notFound("sessionId", "세션 "+id)
-		}
-		if err != nil {
-			return nil, cursorErr(err)
-		}
-		out := map[string]any{"seq": s.EncodeSeq(d.Seq), "session": d.Session, "events": d.Events, "limitMax": work.EventLimitMax}
-		if d.First {
-			out["runs"], out["evidence"] = d.Runs, d.Evidence
-		}
-		if d.NextCursor != "" {
-			out["nextCursor"] = d.NextCursor
-		}
-		return out, nil
-	}
-	f, err := w.filter(a)
-	if err != nil {
-		return nil, err
-	}
-	f.States = a.strs("state")
-	p, err := s.ListSessions(f, w.o.Read)
-	if err != nil {
-		return nil, cursorErr(err)
-	}
-	out := map[string]any{"seq": s.EncodeSeq(p.Seq), "sessions": p.Sessions, "limitMax": work.ListLimitMax}
-	if p.NextCursor != "" {
-		out["nextCursor"] = p.NextCursor
-	}
-	return out, nil
-}
-
-func (w *workTools) changes(ctx context.Context, a args) (any, error) {
-	s, err := w.store()
-	if err != nil {
-		return nil, err
-	}
-	c, err := s.Changes(ctx, a.str("after"), time.Duration(a.int("wait"))*time.Millisecond)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]any{"seq": s.EncodeSeq(c.Seq), "reset": c.Reset, "more": c.More, "waitMax": work.WaitMax.Milliseconds()}
-	if !c.Reset {
-		out["workIds"], out["sessionIds"] = c.WorkIDs, c.Sessions
-	}
-	return out, nil
 }
