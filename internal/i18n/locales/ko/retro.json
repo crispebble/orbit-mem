@@ -15,5 +15,6 @@
   "retro.err.work_status": "%w: status는 %s입니다",
   "retro.host_no_result": "호스트가 결과를 제출하지 않았습니다",
   "retro.no_material": "재료 없음",
-  "retro.signed_out_note": "로그인된 뒤 다음 실행에서 다시 돕니다"
+  "retro.signed_out_note": "로그인된 뒤 다음 실행에서 다시 돕니다",
+  "retro.work_abandoned": "중단된 실행: 정해진 시간 안에 마치지 못해 다음 준비가 다시 돌림"
 }

@@ -15,5 +15,6 @@
   "retro.err.work_status": "%w: status is %s",
   "retro.host_no_result": "the host did not submit a result",
   "retro.no_material": "no material",
-  "retro.signed_out_note": "It runs again on the next run once you are signed in"
+  "retro.signed_out_note": "It runs again on the next run once you are signed in",
+  "retro.work_abandoned": "abandoned run: it did not finish in time, so the next prepare runs it again"
 }

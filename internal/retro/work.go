@@ -106,6 +106,11 @@ const (
 	maxEvidenceLine = 4 << 10 // 증거 한 줄 상한
 )
 
+// workStaleAfter is how long a work retrospective may stay running or
+// submitting before a new prepare of the same work end takes over: OpenOrbit's
+// run timeout is 30 minutes, so a row older than this lost its runner.
+const workStaleAfter = 45 * time.Minute
+
 // workKey is what the retros row keeps to run a work's end once: the same work
 // ending at the same time is the same retrospective.
 func workKey(ref string, endedAt int64) string {
@@ -120,8 +125,39 @@ func (r *Keeper) activeWork(key string) bool {
 	return n > 0
 }
 
+// closeStaleWork fails the runs of key still running or submitting after
+// workStaleAfter: their runner died (reboot, kill, finish that never came), so
+// they no longer hold the work's end. Their material goes as finish would do.
+func (r *Keeper) closeStaleWork(key string) error {
+	now := r.now()
+	cutoff := now.Add(-workStaleAfter).UnixMilli()
+	rows, err := r.Store.DB().Query(`SELECT id FROM retros WHERE kind=? AND session=? AND status IN (?,?) AND started_at<?`,
+		KindWork, key, StatusRunning, "submitting", cutoff)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		// 같은 조건으로 닫는다: 그사이 끝난(done) 줄은 건드리지 않는다.
+		if _, err := r.Store.DB().Exec(`UPDATE retros SET status=?, finished_at=?, error=? WHERE id=? AND status IN (?,?) AND started_at<?`,
+			StatusFailed, now.UnixMilli(), i18n.T("retro.work_abandoned"), id, StatusRunning, "submitting", cutoff); err != nil {
+			return err
+		}
+		os.RemoveAll(filepath.Join(r.Paths.RetroDir(), id))
+	}
+	return nil
+}
+
 // PrepareWork prepares the retrospective of one finished work for host. A work
-// end already running or done is skipped (a failed or empty one runs again);
+// end already running or done is skipped (a failed or empty one runs again,
+// and so does one running longer than workStaleAfter, which is failed first);
 // an empty record finishes as empty.
 func (r *Keeper) PrepareWork(host string, in WorkIn) (Prepared, error) {
 	if err := in.Validate(); err != nil {
@@ -130,6 +166,9 @@ func (r *Keeper) PrepareWork(host string, in WorkIn) (Prepared, error) {
 	in.Ref = strings.TrimSpace(in.Ref)
 	period := dayOf(time.UnixMilli(in.EndedAt).In(r.loc()))
 	key := workKey(in.Ref, in.EndedAt)
+	if err := r.closeStaleWork(key); err != nil {
+		return Prepared{Kind: KindWork, Period: period}, err
+	}
 	if r.activeWork(key) {
 		return Prepared{Status: StatusSkipped, Kind: KindWork, Period: period}, nil
 	}

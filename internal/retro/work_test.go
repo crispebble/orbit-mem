@@ -278,7 +278,8 @@ func TestWork_제출은_작업_출처로_후보를_남기고_증거와_인용으
 		Journal: &JournalIn{Title: "로그인 오류 고침", Body: "한 일"},
 		Memories: []MemoryIn{
 			{Kind: "lesson", Title: "로그인 오류는 세션 만료부터 본다", Scope: "project", Tags: []string{"절차", "auth"},
-				Links: []LinkIn{{ID: anchor.ID, Relation: "basis", Note: "세션 쿠키라서"}, {ID: "m-none", Relation: "basis"}, {ID: anchor.ID, Relation: "near"}}},
+				Links: []LinkIn{{ID: anchor.ID, Relation: "basis", Note: "세션 쿠키라서"}, {ID: "m-none", Relation: "basis"}, {ID: anchor.ID, Relation: "near"},
+					{ID: protected.ID, Relation: "exception", Note: "사용자 말 기억에 잇기"}}},
 			{Kind: "fact", Title: "이 프로젝트 시험 명령은 npm test", Scope: "project", Evidence: "Tests 5 passed"},
 			{Kind: "fact", Title: "시험은 9개다", Scope: "project", Evidence: "Tests 9 passed"},
 			{Kind: "decision", Title: "금요일에는 배포하지 않는다", Quote: "금요일에는 배포하지 않는다, 앞으로 기억해"},
@@ -316,6 +317,9 @@ func TestWork_제출은_작업_출처로_후보를_남기고_증거와_인용으
 	}
 	if !linked {
 		t.Fatalf("no ledger line for the link: %+v", ledger)
+	}
+	if !strings.Contains(report, "연결 1건") {
+		t.Fatalf("report must count the applied link: %s", report)
 	}
 	if !strings.Contains(report, "m-none") || !strings.Contains(report, "near") {
 		t.Fatalf("bad links must be noted: %s", report)
@@ -473,3 +477,89 @@ func TestWork_붙인_기억의_사용_판정과_교정을_남긴다(t *testing.T
 		t.Fatalf("unverified work confirmed a memory: %s", got.State)
 	}
 }
+
+// 검토 B1: orb가 준비 뒤 죽어 남은 실행 줄은 정해진 시간이 지나면 막지 않는다. 그 줄은 실패로 닫고 새로 돈다.
+func TestWork_오래된_실행_줄은_실패로_닫고_다시_돈다(t *testing.T) {
+	start := workEnd.Add(time.Hour)
+	e := setup(t, start)
+	in := workIn(t, "w-stale", workEnd, "준비 뒤 orb가 죽은 작업")
+	old := e.prepWork(t, in)
+	// 아직 한도 안: 건너뛴다.
+	e.r.Now = func() time.Time { return start.Add(workStaleAfter - time.Minute) }
+	if p := e.prepWork(t, in); p.Status != StatusSkipped {
+		t.Fatalf("fresh running = %+v", p)
+	}
+	// 제출 중에 죽은 줄도 같다.
+	e.s.DB().Exec(`UPDATE retros SET status='submitting' WHERE id=?`, old.ID)
+	e.r.Now = func() time.Time { return start.Add(workStaleAfter + time.Minute) }
+	p := e.prepWork(t, in)
+	if p.Status != StatusRunning || p.ID == old.ID {
+		t.Fatalf("after stale limit = %+v", p)
+	}
+	st, _ := getStatus(e.s, old.ID)
+	if st.Status != StatusFailed || st.Error == "" || st.FinishedAt == 0 {
+		t.Fatalf("old row = %+v", st)
+	}
+	if _, err := os.Stat(e.r.Paths.RetroDir() + "/" + old.ID); !os.IsNotExist(err) {
+		t.Fatalf("old material left: %v", err)
+	}
+	if n := workRows(t, e); n != 2 {
+		t.Fatalf("rows = %d", n)
+	}
+	// 끝난 회고는 시간이 지나도 다시 돌지 않는다.
+	Submit(e.s, e.r.Paths, p.ID, Submission{Summary: "끝"})
+	e.r.Now = func() time.Time { return start.Add(10 * workStaleAfter) }
+	if again := e.prepWork(t, in); again.Status != StatusSkipped {
+		t.Fatalf("done = %+v", again)
+	}
+}
+
+// 검토 S1: 검증 출처는 그 작업 자신의 프로젝트 사실에만 붙는다(모델이 준 다른 프로젝트 경로·sameAs 대상 포함).
+func TestWork_검증_출처는_그_작업_프로젝트에만_붙는다(t *testing.T) {
+	e := setup(t, workEnd.Add(time.Hour))
+	in := workIn(t, "w-scope", workEnd, "시험을 돌렸다")
+	in.Evidence = []WorkEvidenceIn{{Ref: "step s1", Text: "go test ./... → ok: 18 packages"}}
+	other := t.TempDir()
+	op := project.Resolve(other)
+	elsewhere, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "다른 프로젝트 시험은 go test", Scope: op.Scope, Project: op.Label, Source: memory.Source{Kind: memory.SourceSession}})
+	_, report := e.doneWork(t, in, Submission{Memories: []MemoryIn{
+		{Kind: "fact", Title: "남의 프로젝트 사실", Scope: "project", Project: other, Evidence: "ok: 18 packages"},
+		{Kind: "fact", Title: "다른 프로젝트 시험은 go test", SameAs: elsewhere.ID, Evidence: "ok: 18 packages"},
+	}})
+	for _, title := range []string{"남의 프로젝트 사실", "다른 프로젝트 시험은 go test"} {
+		got := findTitle(t, e, title)
+		if len(got) != 1 || got[0].State != memory.StateCandidate || len(sourcesOf(got[0], memory.SourceVerification)) != 0 || got[0].Scope != op.Scope {
+			t.Fatalf("%s = %+v (%s)", title, got, report)
+		}
+	}
+	if !strings.Contains(report, "이 작업의 프로젝트") {
+		t.Fatalf("report must say why: %s", report)
+	}
+}
+
+// 검토 S2: 일지를 남긴 뒤 실패한 제출을 다시 받으면 같은 작업의 일지를 다시 쓴다(이름을 바꾼 둘째 일지를 만들지 않는다).
+func TestWork_다시_제출해도_일지는_하나다(t *testing.T) {
+	e := setup(t, workEnd.Add(time.Hour))
+	in := workIn(t, "w-j", workEnd, "일지를 남긴 작업")
+	pr := project.Resolve(in.Cwd)
+	p := e.prepWork(t, in)
+	// 앞선 제출이 일지까지 남기고 실패한 꼴(상태는 running으로 돌아감).
+	prev, _ := e.s.Save(memory.SaveInput{Kind: memory.KindJournal, Title: "2026-10-27 작업: 로그인", Body: "앞 제출", Scope: pr.Scope, Project: pr.Label,
+		State: memory.StateConfirmed, Day: "2026-10-27", Source: memory.Source{Kind: memory.SourceWork, Ref: "w-j"}})
+	if _, err := Submit(e.s, e.r.Paths, p.ID, Submission{Summary: "로그인", Journal: &JournalIn{Title: "로그인", Body: "다시"}}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	e.s.DB().QueryRow(`SELECT COUNT(*) FROM memories WHERE kind='journal'`).Scan(&n)
+	st, _ := getStatus(e.s, p.ID)
+	if n != 1 || st.JournalID != prev.ID {
+		t.Fatalf("journals = %d, row journal %s want %s", n, st.JournalID, prev.ID)
+	}
+	// 다른 작업이 같은 제목을 내면 작업 id를 단 둘째 일지다.
+	e.doneWork(t, workIn2(in, "w-k"), Submission{Journal: &JournalIn{Title: "로그인", Body: "다른 작업"}})
+	if got := findTitle(t, e, "2026-10-27 작업: 로그인 (w-k)"); len(got) != 1 {
+		t.Fatalf("second work journal = %+v", got)
+	}
+}
+
+func workIn2(in WorkIn, ref string) WorkIn { in.Ref = ref; return in }
