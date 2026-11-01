@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -139,6 +137,18 @@ func Open(path string) (*Store, error) {
 	db, err := sqlitedb.Open(path, 5*time.Second, "foreign_keys(1)", "synchronous(NORMAL)")
 	if err != nil {
 		return nil, i18n.Errorf("memory.err.db_open", err)
+	}
+	// 스키마를 바꾸기 전에는 하루 한 번 규칙과 관계없이 사본을 남긴다(ONID-136). 사본을 못 만들면 바꾸지 않는다.
+	need, err := needsSchemaChange(db)
+	if err != nil {
+		db.Close()
+		return nil, i18n.Errorf("memory.err.db_open", err)
+	}
+	if need {
+		if _, err := snapshot(db, schemaBackupDir(path), "before-schema", time.Now()); err != nil {
+			db.Close()
+			return nil, i18n.Errorf("memory.err.schema_backup", err)
+		}
 	}
 	if err := migrate(db); err != nil {
 		db.Close()
@@ -848,59 +858,4 @@ func (s *Store) Meta(key string) string {
 func (s *Store) SetMeta(key, value string) error {
 	_, err := s.db.Exec(`INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
 	return err
-}
-
-// Backup writes a consistent copy into dir (memory-YYYYMMDD.sqlite, one per day)
-// and keeps the newest keep copies.
-func (s *Store) Backup(dir string, keep int) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	name := "memory-" + s.Now().Local().Format("20060102") + ".sqlite"
-	dst := filepath.Join(dir, name)
-	tmp := dst + ".tmp"
-	_ = os.Remove(tmp)
-	if _, err := s.db.Exec(`VACUUM INTO ?`, tmp); err != nil {
-		return "", i18n.Errorf("memory.err.backup", err)
-	}
-	_ = os.Chmod(tmp, 0o600)
-	if err := os.Rename(tmp, dst); err != nil {
-		return "", err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return dst, err
-	}
-	var names []string
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "memory-") && strings.HasSuffix(e.Name(), ".sqlite") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for len(names) > keep {
-		_ = os.Remove(filepath.Join(dir, names[0]))
-		names = names[1:]
-	}
-	return dst, nil
-}
-
-// Snapshot writes a named copy (<name>-YYYYMMDDTHHMMSS.sqlite) into dir that
-// daily backup rotation never removes, e.g. before a migration.
-func (s *Store) Snapshot(dir, name string) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	base := filepath.Join(dir, name+"-"+s.Now().Local().Format("20060102T150405"))
-	dst := base + ".sqlite"
-	for i := 2; ; i++ { // 같은 초에 두 번 찍어도 앞 사본을 덮지 않는다
-		if _, err := os.Stat(dst); os.IsNotExist(err) {
-			break
-		}
-		dst = fmt.Sprintf("%s-%d.sqlite", base, i)
-	}
-	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
-		return "", i18n.Errorf("memory.err.copy", err)
-	}
-	return dst, os.Chmod(dst, 0o600)
 }
