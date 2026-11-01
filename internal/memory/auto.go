@@ -66,6 +66,10 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 			pi.MemoryIDs = keep
 		}
 	}
+	// 사람이 거절한 제안이나 되돌린 자동 변경은 자동화가 다시 하지 않는다.
+	if err := s.notAgain(pi); err != nil {
+		return DecideResult{}, err
+	}
 	targets := pi.MemoryIDs
 	if in.Kind == ProposalSupersede {
 		targets = pi.MemoryIDs[:1] // 대신하는 기억은 바뀌지 않는다
@@ -101,6 +105,27 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 	}
 	_ = s.RecordEvent(Event{Kind: EventProposalDecided}, map[string]any{"proposalId": p.ID, "proposalKind": p.Kind, "decision": "auto", "evidence": in.Evidence})
 	return res, nil
+}
+
+// notAgain stops an automatic change the person already turned down: the
+// same proposal was rejected, or the same automatic change was reverted.
+func (s *Store) notAgain(pi ProposalInput) error {
+	fp := fingerprint(pi)
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM proposals WHERE fingerprint=? AND status='rejected'`, fp).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%w (rejected)", ErrDuplicateProposal)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM proposals p JOIN ledger l ON l.proposal_id=p.id WHERE p.fingerprint=? AND p.status=? AND l.reverted_by<>''`,
+		fp, StatusAuto).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%w: %s", ErrAutoSkip, "reverted before")
+	}
+	return nil
 }
 
 // autoReady checks that an automatic change still has something to do, and
@@ -338,7 +363,7 @@ func (s *Store) SubmitChange(in ProposalInput, w Who) (ChangeOutcome, error) {
 		switch {
 		case err == nil:
 			return ChangeOutcome{Applied: true, LedgerID: res.LedgerID, Proposal: res.Proposal, Changed: res.Changed}, nil
-		case errors.Is(err, ErrAutoSkip):
+		case errors.Is(err, ErrAutoSkip), errors.Is(err, ErrDuplicateProposal):
 			return ChangeOutcome{Reason: err.Error()}, err
 		case errors.Is(err, ErrProtected), errors.Is(err, ErrNoEvidence):
 			p, perr := s.Propose(in)

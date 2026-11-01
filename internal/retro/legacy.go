@@ -329,7 +329,7 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 				}
 			}
 			if busy != "" {
-				notes = append(notes, fmt.Sprintf("%s: 합칠 기억 %s는 이미 다른 합치기(대기 중인 합치기 %s)에 들어 있습니다. 그 합치기가 결정된 뒤 다시 판정합니다", id, bad, busy))
+				notes = append(notes, fmt.Sprintf("%s: 합칠 기억 %s는 이미 다른 합치기(%s)에 들어 있습니다. 그 합치기가 끝난 뒤 다시 판정합니다", id, bad, busy))
 				continue
 			}
 			if bad != "" {
@@ -350,7 +350,8 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 		proposalID := ""
 		if p.Kind != "" {
 			p.Body, p.RetroID = "옛 기억 판정 근거: "+clipped, retroID
-			got, err := s.Propose(p)
+			out, err := s.SubmitChange(p, memory.Who{Actor: memory.ActorAutomation})
+			got := out.Proposal
 			switch {
 			case err == nil:
 				proposalID = got.ID

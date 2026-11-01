@@ -171,7 +171,8 @@ func TestDaily_재료를_읽고_제출하면_일지_후보_제안이_남는다(t
 	for _, p := range pending {
 		kinds[p.Kind]++
 	}
-	if kinds["confirm"] != 2 || kinds["direction"] != 1 {
+	// 후보 확정은 승인 제안이 아니라 증거로 한다(A2): 확정 제안은 생기지 않는다.
+	if kinds["confirm"] != 0 || kinds["direction"] != 1 {
 		t.Errorf("proposals = %v", kinds)
 	}
 	st, _ := Status(e.s, KindDaily, "2026-10-26")

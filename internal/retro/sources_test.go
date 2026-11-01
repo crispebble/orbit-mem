@@ -210,13 +210,19 @@ func TestSources_발췌가_없으면_회고_모델이_파일을_읽고_판정한
 		t.Fatalf("material must not copy the file: %s", page)
 	}
 
+	// 고치기는 사람의 결정을 기다리고, 낡음은 승인 없이 적용되고 원장에 남는다(A2).
 	pending, _ := e.s.Proposals(memory.StatusPending)
 	kinds := map[string][]memory.Proposal{}
-	for _, p := range pending {
+	for _, p := range append(pending, autoOf(t, e, memory.ProposalStale)...) {
 		kinds[p.Kind] = append(kinds[p.Kind], p)
 	}
-	if len(pending) != 2 || len(kinds[memory.ProposalEdit]) != 1 || len(kinds[memory.ProposalStale]) != 1 {
-		t.Fatalf("pending = %+v", pending)
+	if len(pending) != 1 || len(kinds[memory.ProposalEdit]) != 1 || len(kinds[memory.ProposalStale]) != 1 {
+		t.Fatalf("pending = %+v auto stale = %+v", pending, kinds[memory.ProposalStale])
+	}
+	for _, id := range []string{old1.ID, old2.ID} {
+		if m, _ := e.s.Get(id); m.State != memory.StateStale {
+			t.Fatalf("낡음이 적용되지 않았습니다: %s %s", id, m.State)
+		}
 	}
 	if e := kinds[memory.ProposalEdit][0]; e.MemoryIDs[0] != fix.ID || e.Payload.Body != "포트는 9090" {
 		t.Fatalf("edit = %+v", e)
