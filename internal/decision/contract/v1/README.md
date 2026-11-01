@@ -13,10 +13,10 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.decision", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.decision", major: 1, minor: 1, supportedMajors: [1]}`가 있다.
 - 선택 칸·열거값·도구 추가는 `minor`, 칸 삭제·이름·뜻 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 상태·출처·owner·`by`·연결 종류는 「알 수 없음」으로 보인다.
-- `response.schema.json`은 결정 카드 도구가 내는 1.0 응답을 엄격하게 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.**
+- `response.schema.json`은 결정 카드 도구가 내는 1.x(1.1 포함) 응답을 엄격하게 검사한다. 1.1은 `source`에 `assumption`을 더했다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.**
 
 ## 도구
 
@@ -38,7 +38,7 @@
 | 도구 | 칸 | 형 | 기본값 | 뜻 |
 | --- | --- | --- | --- | --- |
 | `decision_list` | `state` | `open`·`answered`·`withdrawn`·`expired` 목록 | `open` | 카드 상태 |
-| | `source` | `question`·`permission`·`ops`·`plugin` 목록 | 모두 | 출처 |
+| | `source` | `question`·`permission`·`ops`·`plugin`·`assumption` 목록 | 모두 | 출처 |
 | | `sessionId`, `workId` | 문자열 | 없음 | 이 세션·작업의 카드만 |
 | | `updatedSince` | RFC 3339 | 없음 | 이 뒤에 바뀐 카드만(「오늘 내린 결정」) |
 | | `limit` | 정수 | 50 | `limitMax`보다 크면 줄인다. 넘친 것은 `truncated` |
@@ -58,7 +58,7 @@
 | --- | --- |
 | `id`, `createdAt`, `updatedAt` | |
 | `state` | `open`·`answered`·`withdrawn`·`expired`. `expired`는 읽을 때 정한다(`expiresAt`이 지난 열린 카드). 시간이 지나 생긴 `expired`는 `decision_changes`에 나오지 않는다 |
-| `source` | `question`(AI 질문 도구), `permission`(도구 실행 허가), `ops`(운영 감시 승인), `plugin` |
+| `source` | `question`(AI 질문 도구), `permission`(도구 실행 허가), `ops`(운영 감시 승인), `plugin`, `assumption`(1.1부터. 아래 「가정 카드」) |
 | `owner` | 답을 세션에 넘길 쪽. `orbit-pi`(orbit-pi가 띄운 세션·워크플로·오케스트레이션 단계), `human`(사람이 직접 연 Claude 데스크톱·대화형 터미널 세션. 답을 넘길 수 없다), `studio`(Orbit Studio 플러그인) |
 | `questions[]` | `text`, `header`, `multiSelect`, `options[]`(`id`, `label`, `detail`), 선택 `recommended`(선택지 id)·`reason`. 선택지 id를 주지 않으면 1부터 센 위치다. 질문 1~10개, 선택지 20개까지 |
 | `context`, `links[]` | 근거·배경과 출처. 연결 `kind`는 `work`·`session`·`step`·`atlas`·`pr`·`memory`·`url` |
@@ -68,6 +68,20 @@
 | `answer` | `answered`일 때만: `answers[]`(`optionIds`·`text`), `by`(`studio`·`telegram`·`terminal`·`host`·`orbit-pi`), `at` |
 
 글 칸은 비밀값을 가리고 길이를 자른다(질문·답 글 2000자, 설명·이유·연결·묶음 대상 1000자, 근거 4000자, 이름표·선택지 id 200자).
+
+## 가정 카드 (1.1)
+
+`source: "assumption"`은 「가정으로 진행 중」 카드다. OpenOrbit이 되돌리기 쉬운 모호함을 만났을 때 사람의 답을 기다리지 않고 추천 선택지로 일을 이어 가면서, 사람이 나중에 뒤집을 수 있게 열어 두는 카드다.
+
+- 질문 하나에서 `questions[0].recommended`가 지금 쓰는 선택지 id(`chosen`), `questions[0].reason`이 그렇게 정한 근거다.
+- **일을 막지 않는다.** 카드가 열려 있어도 실행은 계속 간다. 「답 기다림」 같은 막힘 표시·개수에 세지 않고, 사람이 답할 수 있게 목록에는 계속 보인다.
+- 답하기는 다른 질문 카드와 같다(`decision_answer`). 추천과 다른 답이면 그 가정에 기댄 단계만 다시 열린다(`orbit.work`의 `assumptions[].state`가 `overturned`). 같은 답이면 `confirmed`/`answered`로 닫힌다.
+- 가정 카드는 그 카드를 연 세션의 턴·세션이 끝나도 거두지 않는다(`turn_ended`·`session_ended` 거둠에서 빠진다). 일이 끝난 뒤에 온 답도 그 가정에 기댄 단계를 다시 연다.
+- 1.1은 `work.host`에 `orbit-pi`를 적었다. OpenOrbit 진행자와 orbit-pi가 1.0 때부터 이 값으로 카드를 열어 왔고, 문서 열거만 빠져 있었다.
+- 1.0만 아는 읽는 쪽은 판 규칙대로 `assumption`을 모르는 출처(「알 수 없음」)로 보인다. 질문·선택지·`recommended`·`reason` 칸은 다른 카드와 같아서 그 카드도 보이고 `decision_answer`로 답할 수 있다.
+- Orbit Studio 플러그인은 호스트의 Needs you가 출처를 `question`·`permission`·`ops`·`plugin`만 알기 때문에 `assumption` 카드를 `question`으로 옮겨 넘기고, 보조 글 맨 앞에 「가정으로 진행 중」을 붙인다. 호스트는 `recommended` 선택지에 「추천」 배지를, `reason`을 선택지 아래에 보인다. 카드의 `questions[0].header`(「가정으로 진행 중」)가 제목 앞에 붙는다.
+- 카드는 `owner: "orbit-pi"`로 열리고 `work.sessionId`는 Claude Code 세션 id다. Studio는 데몬이 아는 실행과 세션이 겹쳐도 이 카드를 가리지 않는다.
+- 가정과 조사의 작업 쪽 칸은 `orbit.work` 1.3의 `work.assumptions`·`work.discovery`다.
 
 ## 생명주기
 

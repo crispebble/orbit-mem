@@ -1,0 +1,65 @@
+{
+  "args": {
+    "source": [
+      "assumption"
+    ]
+  },
+  "result": {
+    "contract": {
+      "major": 1,
+      "minor": 1,
+      "name": "orbit.decision",
+      "supportedMajors": [
+        1
+      ]
+    },
+    "items": [
+      {
+        "createdAt": "2026-11-01T03:10:00.000Z",
+        "id": "d-5a1c9e0b72f4",
+        "links": [
+          {
+            "kind": "work",
+            "label": "가정 시험 작업",
+            "ref": "w-7d2a91c04e5b"
+          }
+        ],
+        "owner": "orbit-pi",
+        "questions": [
+          {
+            "header": "가정으로 진행 중",
+            "multiSelect": false,
+            "options": [
+              {
+                "detail": "되돌리기 쉬워 먼저 진행합니다",
+                "id": "top",
+                "label": "머리 위"
+              },
+              {
+                "id": "bottom",
+                "label": "머리 아래"
+              }
+            ],
+            "reason": "되돌리기 쉬워 먼저 진행합니다",
+            "recommended": "top",
+            "text": "요약을 어디에 둘까요?"
+          }
+        ],
+        "source": "assumption",
+        "state": "open",
+        "updatedAt": "2026-11-01T03:10:00.000Z",
+        "work": {
+          "host": "orbit-pi",
+          "sessionId": "0b8f6a52-1c3e-4d7a-9e21-6f4a8c5d3b10",
+          "stepId": "st-3c4d5e6f7081",
+          "workId": "w-7d2a91c04e5b"
+        }
+      }
+    ],
+    "limitMax": 200,
+    "seq": "C6IIpQAAAAAAAAAT",
+    "total": 1,
+    "truncated": false
+  },
+  "tool": "decision_list"
+}
