@@ -30,7 +30,9 @@ func TestInstall_orb를_깔고_oni_별칭을_둔다(t *testing.T) {
 	if err := os.WriteFile(oldOni, []byte("#!/bin/sh\necho old-oni\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(), "ORBIT_HOME="+h, "HOME="+filepath.Join(tmp, "home"), "ORBIT_LANG=")
+	// 플러그인 빌드는 openorbit-harness가 한다. 가짜 하네스는 받은 조각을 플러그인 폴더에 둔다.
+	env := append(os.Environ(), "ORBIT_HOME="+h, "HOME="+filepath.Join(tmp, "home"), "ORBIT_LANG=",
+		"ORBIT_NODE=/bin/sh", "ORBIT_HARNESS_CLI="+fakeTS(t), "FAKE_SOURCE="+filepath.Join(tmp, "src"))
 	cmd := exec.Command(built, "install", "--bin-dir", binDir, "--no-hosts", "--no-schedule")
 	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -55,12 +55,16 @@ func setup(t *testing.T) *env {
 	now := time.Date(2026, 10, 31, 10, 0, 0, 0, time.Local)
 	s.Now = func() time.Time { return now }
 	e := &env{s: s, src: filepath.Join(t.TempDir(), "source"), cost: 0.1, better: "무엇을 정할지"}
-	if err := copyTree("../orbitplugin/source", e.src); err != nil {
+	// 시험이 읽는 파일만 둔 작은 원본. 실제 빌드(openorbit-harness)는 가짜 빌드로 바꿔 끼운다.
+	if err := copyTree("testdata/source", e.src); err != nil {
 		t.Fatal(err)
 	}
 	rounds := map[string]int{}
 	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Orb: "/opt/orb", Source: e.src, Now: func() time.Time { return now },
 		Shuffle: func(round int) bool { return round%2 == 1 }, // 홀수 회차는 고침이 A
+		Build: func(source, out string) error { // 원본을 그대로 플러그인 폴더로
+			return copyTree(source, filepath.Join(out, "plugins", "orbit"))
+		},
 		Exec: func(ctx context.Context, c retro.Cmd) (string, error) {
 			e.calls = append(e.calls, c)
 			dir := argOf(c.Args, "--plugin-dir")
@@ -393,5 +397,18 @@ func TestShow_기본은_영어_라벨이고_한국어를_고르면_한국어_라
 		if !strings.Contains(ko, want) {
 			t.Errorf("Korean show missing %q:\n%s", want, ko)
 		}
+	}
+}
+
+// 끝 기준: 빌드 칸이 비면 OpenOrbit 하네스 빌드를 부른다. 하네스가 없으면 실행하지 않고 런타임 설치를 안내한다.
+func TestRun_기본_빌드는_하네스다(t *testing.T) {
+	e := setup(t)
+	task := e.task(t)
+	e.l.Build = nil
+	t.Setenv("ORBIT_HARNESS_CLI", "")
+	t.Setenv("ORBIT_PI_DIR", "")
+	_, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
+	if err == nil || !strings.Contains(err.Error(), "openorbit-harness") || !strings.Contains(err.Error(), "orb runtime install") || len(e.calls) != 0 {
+		t.Fatalf("%v calls=%d", err, len(e.calls))
 	}
 }

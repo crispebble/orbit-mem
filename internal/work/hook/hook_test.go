@@ -281,10 +281,29 @@ func TestSubagents(t *testing.T) {
 	}
 }
 
+// harnessSource is the OpenOrbit harness source that defines the roles (openorbit
+// packages/harness/source): OPENORBIT_HARNESS_SOURCE, or the openorbit checkout next to
+// this one. Empty when neither is there.
+func harnessSource() string {
+	if v := os.Getenv("OPENORBIT_HARNESS_SOURCE"); v != "" {
+		return v
+	}
+	p := filepath.Join("..", "..", "..", "..", "openorbit", "packages", "harness", "source")
+	if _, err := os.Stat(filepath.Join(p, "agents", "gate.md")); err == nil {
+		return p
+	}
+	return ""
+}
+
 // 판정 줄의 모양은 역할 정의가 정한다. 역할 반환 형식을 바꾸면 이 시험이 깨진다(설계 「증거와 검증 결과」).
+// 역할 정의는 OpenOrbit 하네스 원본에 있다. 그 원본이 없는 checkout에서는 판정 줄 읽기만 확인한다.
 func TestVerdictMatchesRoleDefinitions(t *testing.T) {
+	src := harnessSource()
+	if src == "" {
+		t.Log("OpenOrbit 하네스 원본이 없어 역할 정의 대조는 건너뜁니다(OPENORBIT_HARNESS_SOURCE)")
+	}
 	read := func(name string) string {
-		b, err := os.ReadFile(filepath.Join("..", "..", "orbitplugin", "source", "agents", name))
+		b, err := os.ReadFile(filepath.Join(src, "agents", name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -296,24 +315,26 @@ func TestVerdictMatchesRoleDefinitions(t *testing.T) {
 		"gate.md":     {"판정: 통과": "pass", "판정: 수정 필요": "needs_fix", "판정: 사용자 확인 필요": "needs_user"},
 		"reviewer.md": {"판정: 승인": "pass", "판정: 수정 요구": "needs_fix"},
 	} {
-		body := read(name)
-		if !strings.Contains(body, "첫 줄") {
-			t.Errorf("%s에 판정 줄을 첫 줄에 쓰라는 문장이 없습니다", name)
-		}
 		got := map[string]bool{}
-		for _, m := range line.FindAllStringSubmatch(body, -1) {
-			got[m[1]] = true
+		if src != "" {
+			body := read(name)
+			if !strings.Contains(body, "첫 줄") {
+				t.Errorf("%s에 판정 줄을 첫 줄에 쓰라는 문장이 없습니다", name)
+			}
+			for _, m := range line.FindAllStringSubmatch(body, -1) {
+				got[m[1]] = true
+			}
 		}
 		role := "orbit:" + strings.TrimSuffix(name, ".md")
 		for l, result := range want {
-			if !got[l] {
+			if src != "" && !got[l] {
 				t.Errorf("%s 반환 형식에 %q가 없습니다. 판정 읽기를 함께 고쳐 주세요", name, l)
 			}
 			if v := parseVerdict(role, l+"\n\n### 완료 기준별 판정\n| a | 충족 |"); v == nil || v.Result != result {
 				t.Errorf("%s %q를 %s로 읽지 못합니다: %+v", name, l, result, v)
 			}
 		}
-		if len(got) != len(want) {
+		if src != "" && len(got) != len(want) {
 			t.Errorf("%s 판정 줄 %v, %v여야 합니다", name, got, want)
 		}
 	}
@@ -465,9 +486,9 @@ func TestCodexSurface(t *testing.T) {
 }
 
 // 목록 도구는 동기 훅이 기록하고 비동기 훅은 건너뛴다(--skip-lists). 동기 훅의
-// matcher가 목록 도구를 빠뜨리면 그 도구는 어디에도 기록되지 않는다.
+// matcher가 목록 도구를 빠뜨리면 그 도구는 어디에도 기록되지 않는다. 훅은 orb의 플러그인 조각에 있다.
 func TestListToolsHaveSyncHook(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "orbitplugin", "source", "plugin.json"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "memplugin", "fragment.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

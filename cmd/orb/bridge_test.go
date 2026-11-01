@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/onidot-labs/orbit-mem/internal/memplugin"
 )
 
 var (
@@ -57,9 +59,11 @@ func fakeTS(t *testing.T) string {
 	}
 	p := filepath.Join(t.TempDir(), "cli.js")
 	script := `PATH=/usr/bin:/bin
-printf 'args=%s\n' "$*"
-printf 'home=%s\n' "$ORBIT_HOME"
-printf 'lang=%s\n' "$ORBIT_LANG"
+if [ "$1" != source ]; then
+	printf 'args=%s\n' "$*"
+	printf 'home=%s\n' "$ORBIT_HOME"
+	printf 'lang=%s\n' "$ORBIT_LANG"
+fi
 if [ -n "$FAKE_LOG" ]; then printf '%s\n' "$*" >>"$FAKE_LOG"; fi
 if [ -n "$FAKE_STDIN" ]; then printf 'stdin=%s\n' "$(cat)"; fi
 case "$1" in
@@ -75,7 +79,7 @@ build)
 		shift
 	done
 	if [ -n "$out" ]; then mkdir -p "$out/plugins/orbit"; fi
-	if [ -n "$frag" ] && [ -n "$FAKE_FRAGMENT_COPY" ]; then cp "$frag" "$FAKE_FRAGMENT_COPY"; fi
+	if [ -n "$out" ] && [ -n "$frag" ]; then cp "$frag" "$out/plugins/orbit/fragment.json"; fi
 	;;
 esac
 exit "${FAKE_EXIT:-0}"
@@ -157,5 +161,154 @@ func TestWork_CLI가_없으면_설치를_안내한다(t *testing.T) {
 	_, errOut, code := run(t, "", "work", "list")
 	if code != 1 || !strings.Contains(errOut, "orb work: ") || !strings.Contains(errOut, "orb runtime install") || !strings.Contains(errOut, "openorbit-work") {
 		t.Fatalf("%d %s", code, errOut)
+	}
+}
+
+// 끝 기준: orb plugin fragment는 이 orb(또는 --orb) 경로로 채운 기억 MCP·훅 조각을 낸다.
+func TestPluginFragment_조각을_낸다(t *testing.T) {
+	home(t)
+	out, errOut, code := run(t, "", "plugin", "fragment", "--orb", `/x y/"q"/orb`)
+	want, _ := memplugin.Fragment(`/x y/"q"/orb`)
+	if code != 0 || out != string(want) {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	out, _, code = run(t, "", "plugin", "fragment")
+	want, _ = memplugin.Fragment(selfPath())
+	if code != 0 || out != string(want) {
+		t.Fatalf("기본은 지금 orb: %s", out)
+	}
+	if _, _, code := run(t, "", "plugin", "fragment", "extra"); code != 2 {
+		t.Fatalf("위치 인자는 받지 않는다: %d", code)
+	}
+}
+
+// 끝 기준: orb plugin build|install은 인자 그대로 openorbit-harness build|install에 넘기고 종료 코드를 잇는다.
+func TestPlugin_build와_install은_하네스로_넘긴다(t *testing.T) {
+	cli := fakeTS(t)
+	h := t.TempDir()
+	env := []string{"ORBIT_HOME=" + h, "ORBIT_NODE=/bin/sh", "ORBIT_HARNESS_CLI=" + cli}
+	out, errOut, code := runOrb(t, "", env, "plugin", "build", "src", "--check", "--var", "a=b c", "--fragment", "f.json")
+	if code != 0 || errOut != "" || !strings.Contains(out, "args=build src --check --var a=b c --fragment f.json\n") || !strings.Contains(out, "home="+h+"\n") {
+		t.Fatalf("build: %d %q %q", code, out, errOut)
+	}
+	out, _, code = runOrb(t, "", append(env, "FAKE_EXIT=1"), "plugin", "install", "/m")
+	if code != 1 || !strings.Contains(out, "args=install /m\n") {
+		t.Fatalf("install: %d %q", code, out)
+	}
+}
+
+func readLines(t *testing.T, p string) []string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return nil
+	}
+	return strings.Split(strings.TrimSpace(string(b)), "\n")
+}
+
+// installEnv points orb install at a fake harness and keeps it away from this PC's hosts.
+func installEnv(t *testing.T) (h, log, src string) {
+	t.Helper()
+	cli := fakeTS(t)
+	h = home(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", "/usr/bin:/bin") // 이 PC의 claude·codex를 찾지 않는다
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("ORBIT_NODE", "/bin/sh")
+	t.Setenv("ORBIT_HARNESS_CLI", cli)
+	log = filepath.Join(t.TempDir(), "calls.log")
+	t.Setenv("FAKE_LOG", log)
+	src = filepath.Join(t.TempDir(), "harness-source")
+	t.Setenv("FAKE_SOURCE", src)
+	return h, log, src
+}
+
+// 끝 기준: orb install은 설치할 orb 경로로 채운 조각과 하네스 원본(openorbit-harness source)으로
+// openorbit-harness build를 부르고, --no-hosts가 아니면 openorbit-harness install로 등록한다.
+func TestInstall_하네스로_빌드하고_등록한다(t *testing.T) {
+	h, log, src := installEnv(t)
+	bin := t.TempDir()
+	dst := filepath.Join(bin, "orb")
+	out, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", bin)
+	if code != 0 {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	market := filepath.Join(h, "plugin")
+	calls := readLines(t, log)
+	if len(calls) != 3 || calls[0] != "source" || calls[2] != "install "+market+" --codex-home "+filepath.Join(os.Getenv("HOME"), ".codex") {
+		t.Fatalf("호출: %q", calls)
+	}
+	build := strings.Fields(calls[1])
+	if len(build) != 10 || build[0] != "build" || build[1] != src || build[2] != "--out" || build[3] != market || build[4] != "--fragment" ||
+		build[6] != "--var" || build[7] != "orb="+dst || build[8] != "--var" || build[9] != "orbcmd="+dst {
+		t.Fatalf("빌드: %q", calls[1])
+	}
+	if _, err := os.Stat(build[5]); !os.IsNotExist(err) {
+		t.Errorf("임시 조각 파일이 남았습니다: %s", build[5])
+	}
+	got, _ := os.ReadFile(filepath.Join(market, "plugins", "orbit", "fragment.json"))
+	want, _ := memplugin.Fragment(dst)
+	if string(got) != string(want) {
+		t.Errorf("조각은 설치할 orb 경로로 채운다:\n%s", got)
+	}
+	if !strings.Contains(out, "Built the OpenOrbit plugin: "+market+" (source built-in)\n") || !strings.Contains(out, "args=install "+market) {
+		t.Errorf("출력: %s", out)
+	}
+	if strings.Contains(out, "args=build") || strings.Contains(out, "args=source") {
+		t.Errorf("빌드 출력은 받아 두고 내지 않는다: %s", out)
+	}
+
+	// --no-hosts: 등록하지 않는다. --plugin-source: 그 원본으로 빌드한다
+	os.Remove(log)
+	own := filepath.Join(t.TempDir(), "own")
+	os.MkdirAll(own, 0o755)
+	os.WriteFile(filepath.Join(own, "plugin.json"), []byte("{}"), 0o644)
+	out, errOut, code = run(t, "", "install", "--no-schedule", "--no-hosts", "--bin-dir", bin, "--plugin-source", own)
+	if code != 0 {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	calls = readLines(t, log)
+	if len(calls) != 1 || !strings.HasPrefix(calls[0], "build "+own+" --out "+market+" --fragment ") || !strings.Contains(out, "(source "+own+")") {
+		t.Fatalf("원본 지정: %q %s", calls, out)
+	}
+}
+
+// 끝 기준: 하네스 빌드가 실패하면 그 오류(stderr)를 담아 실패하고 등록하지 않는다.
+func TestInstall_빌드_실패를_알린다(t *testing.T) {
+	_, log, _ := installEnv(t)
+	t.Setenv("FAKE_BUILD_FAIL", "원본에 plugin.json이 없습니다")
+	_, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir())
+	calls := readLines(t, log)
+	if code != 1 || !strings.Contains(errOut, "원본에 plugin.json이 없습니다") || len(calls) != 2 || !strings.HasPrefix(calls[1], "build ") {
+		t.Fatalf("%d %s %q", code, errOut, calls)
+	}
+	// 하네스를 찾지 못하면 런타임 설치를 안내한다
+	t.Setenv("ORBIT_HARNESS_CLI", "")
+	if _, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir()); code != 1 || !strings.Contains(errOut, "orb runtime install") {
+		t.Fatalf("%d %s", code, errOut)
+	}
+}
+
+// 끝 기준: orb run은 orbit-pi에 넘기기 전에 openorbit-harness roles --out <ORBIT_HOME/runtime/roles>로
+// 역할 폴더를 쓰고, 실패하면 넘기지 않는다.
+func TestRun_역할_폴더는_하네스가_쓴다(t *testing.T) {
+	cli := fakeTS(t)
+	h, pi, bin := t.TempDir(), t.TempDir(), t.TempDir()
+	entry := filepath.Join(pi, "packages", "orbit-orchestra", "src", "cli.ts")
+	os.MkdirAll(filepath.Dir(entry), 0o755)
+	os.WriteFile(entry, []byte(""), 0o644)
+	os.WriteFile(filepath.Join(bin, "node"), []byte("#!/bin/sh\necho \"node $*\"\n"), 0o755)
+	log := filepath.Join(t.TempDir(), "calls.log")
+	env := []string{"PATH=" + bin + ":/usr/bin:/bin", "ORBIT_HOME=" + h, "ORBIT_PI_DIR=" + pi, "ORBIT_NODE=/bin/sh", "ORBIT_HARNESS_CLI=" + cli, "FAKE_LOG=" + log}
+	out, errOut, code := runOrb(t, "", env, "run", "일")
+	if code != 0 || !strings.Contains(out, "node "+entry+" run 일") {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+	if calls := readLines(t, log); len(calls) != 1 || calls[0] != "roles --out "+filepath.Join(h, "runtime", "roles") {
+		t.Fatalf("역할: %q", calls)
+	}
+	out, errOut, code = runOrb(t, "", append(env, "FAKE_EXIT=1"), "run", "일")
+	if code != 1 || strings.Contains(out, "node ") || !strings.Contains(errOut, "role folder") {
+		t.Fatalf("실패: %d %q %q", code, out, errOut)
 	}
 }

@@ -1,9 +1,6 @@
 package install
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -16,56 +13,21 @@ func (f *fakeRun) run(name string, args ...string) (string, error) {
 	return "", nil
 }
 
-func TestRegisterPlugin_두_호스트에_마켓과_플러그인을_등록한다(t *testing.T) {
+// 등록은 openorbit-harness install로 옮겼다. 빼기(orb uninstall)는 orb에 남는다.
+func TestUnregisterPlugin_두_호스트에서_플러그인과_마켓을_뺀다(t *testing.T) {
 	f := &fakeRun{}
 	h := Hosts{Claude: "/bin/claude", Codex: "/bin/codex", Run: f.run}
-	if err := h.RegisterPlugin("/m", "orbit", "orbit"); err != nil {
+	if err := h.UnregisterPlugin("orbit", "orbit"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
-		"/bin/claude plugin marketplace add /m",
-		"/bin/claude plugin install orbit@orbit --scope user",
-		"/bin/codex plugin marketplace add /m",
-		"/bin/codex plugin add orbit@orbit",
+		"/bin/claude plugin uninstall orbit@orbit --scope user",
+		"/bin/claude plugin marketplace remove orbit",
+		"/bin/codex plugin remove orbit@orbit",
+		"/bin/codex plugin marketplace remove orbit",
 	}
 	if strings.Join(f.calls, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("calls:\n%s", strings.Join(f.calls, "\n"))
-	}
-	f.calls = nil
-	(&Hosts{Codex: "/bin/codex", Run: f.run}).RegisterPlugin("/m", "orbit", "orbit")
-	if len(f.calls) != 2 {
-		t.Fatalf("claude missing must be skipped: %v", f.calls)
-	}
-}
-
-func TestCopyCodexAgents_내가_만든_파일만_덮어쓴다(t *testing.T) {
-	plugin, codex := t.TempDir(), t.TempDir()
-	os.MkdirAll(filepath.Join(plugin, "codex", "agents"), 0o755)
-	os.WriteFile(filepath.Join(plugin, "codex", "agents", "harness-worker.toml"), []byte("v1"), 0o644)
-	os.WriteFile(filepath.Join(plugin, "codex", "agents", "harness-qa.toml"), []byte("qa"), 0o644)
-	os.MkdirAll(filepath.Join(codex, "agents"), 0o755)
-	os.WriteFile(filepath.Join(codex, "agents", "harness-qa.toml"), []byte("사용자 것"), 0o644)
-
-	res, err := CopyCodexAgents(plugin, codex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Copied) != 1 || len(res.Kept) != 1 {
-		t.Fatalf("res = %+v", res)
-	}
-	if b, _ := os.ReadFile(filepath.Join(codex, "agents", "harness-qa.toml")); string(b) != "사용자 것" {
-		t.Fatal("user file overwritten")
-	}
-	os.WriteFile(filepath.Join(plugin, "codex", "agents", "harness-worker.toml"), []byte("v2"), 0o644)
-	os.Remove(filepath.Join(plugin, "codex", "agents", "harness-qa.toml"))
-	CopyCodexAgents(plugin, codex)
-	if b, _ := os.ReadFile(filepath.Join(codex, "agents", "harness-worker.toml")); string(b) != "v2" {
-		t.Fatal("owned file not updated")
-	}
-	os.WriteFile(filepath.Join(codex, "agents", "harness-worker.toml"), []byte("사용자가 고침"), 0o644)
-	res, _ = CopyCodexAgents(plugin, codex)
-	if b, _ := os.ReadFile(filepath.Join(codex, "agents", "harness-worker.toml")); string(b) != "사용자가 고침" || len(res.Kept) != 1 {
-		t.Fatalf("user-edited owned file overwritten: %+v", res)
 	}
 }
 
@@ -93,15 +55,5 @@ func TestTaskXML_매일과_로그온과_놓치면_실행(t *testing.T) {
 		if !strings.Contains(x, want) {
 			t.Errorf("xml missing %q:\n%s", want, x)
 		}
-	}
-}
-
-func TestOwnedManifest_JSON(t *testing.T) {
-	dir := t.TempDir()
-	saveOwned(dir, map[string]string{"a.toml": "h"})
-	b, _ := os.ReadFile(filepath.Join(dir, ownedFile))
-	var m map[string]string
-	if json.Unmarshal(b, &m) != nil || m["a.toml"] != "h" {
-		t.Fatal(string(b))
 	}
 }

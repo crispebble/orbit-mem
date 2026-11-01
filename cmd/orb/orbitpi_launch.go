@@ -8,8 +8,8 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/openorbit"
 	"github.com/onidot-labs/orbit-mem/internal/orbitpi"
-	"github.com/onidot-labs/orbit-mem/internal/orbitplugin"
 )
 
 // orbitPiLaunch builds the command that hands the terminal to orbit-pi's
@@ -134,7 +134,7 @@ func launcher() (orbitPiLaunch, error) {
 		installed: func() bool { _, err := orbitpi.Status(home); return err == nil }}, nil
 }
 
-// orbitPi writes the role sources, then replaces this process with orbit-pi (unix)
+// orbitPi writes the role folder (openorbit-harness roles), then replaces this process with orbit-pi (unix)
 // or runs it with this terminal and exits with its code (windows).
 func (a *app) orbitPi(sub string, args []string) error {
 	return a.orbitPiEntry(orchestraCLI, sub, args)
@@ -149,7 +149,8 @@ func (a *app) orbitPiEntry(entry, sub string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := orbitplugin.WriteRoles(l.roles); err != nil {
+	// 역할 폴더(ORBIT_ROLES_DIR)는 OpenOrbit 하네스가 쓴다
+	if _, err := bridge().Output(openorbit.Harness, "roles", "--out", l.roles); err != nil {
 		return i18n.Errorf("cli.run.roles_failed", err)
 	}
 	return execOrbitPi(a, argv, env)
