@@ -1,14 +1,15 @@
-// orb MCP 호출 경계: 연결 실패·도구 오류·응답 모양 오류를 한 가지 오류(OrbitError)로 모은다.
+// orbit-mem MCP(기억·제안) 호출 경계: 연결 실패·도구 오류·응답 모양 오류를 한 가지 오류(OrbitError)로 모은다.
 import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
 import {pick} from './i18n/index.ts';
 import {commonText} from './i18n/messages/common.ts';
 
-export const CONNECTION_ID = 'oni';
+/** 기억·제안 연결(`memory` = `orbit-mem mcp`) */
+export const CONNECTION_ID = 'memory';
 
 export class OrbitError extends Error {
   /** 판본이 어긋났다(다시 읽고 고쳐야 한다) */
   conflict = false;
-  /** orb에 닿지 못했다 */
+  /** orbit-mem에 닿지 못했다 */
   connection = false;
   constructor(message: string, flags: {conflict?: boolean; connection?: boolean} = {}) {
     super(message);
@@ -23,7 +24,7 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// orb가 판본이 어긋났을 때 돌려주는 글(한국어)을 알아본다
+// orbit-mem이 판본이 어긋났을 때 돌려주는 글(한국어)을 알아본다
 const CONFLICT = /다른 곳에서 먼저 고쳤|다시 읽고/;
 
 export async function callOrb<T>(ctx: PluginContext, tool: string, args?: Record<string, unknown>): Promise<T> {

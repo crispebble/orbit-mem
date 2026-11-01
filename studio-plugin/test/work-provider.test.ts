@@ -2,18 +2,48 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {parseGet, parseSessions} from '../src/work/contract.ts';
-import {homeItems, providerDetail, registerWorkProvider} from '../src/work/provider.ts';
+import {homeItems, isOpenOrbitWork, providerDetail, registerWorkProvider} from '../src/work/provider.ts';
 import {summaryOf, type WorkState} from '../src/work/store.ts';
 import type {Session, Work} from '../src/work/types.ts';
 import {example} from './work-fake.ts';
 
-const task = parseGet(example('work_get.claude-task').result).work;
+const claudeTask = parseGet(example('work_get.claude-task').result).work;
+// 지도에 오르는 것은 OpenOrbit이 만든 작업뿐이다: 예시 작업의 출처를 orbit-pi로 바꿔 쓴다
+const task: Work = {...claudeTask, origin: {...claudeTask.origin!, host: 'orbit-pi', surface: 'orbit-pi'}};
 const sessions = parseSessions(example('work_sessions.list.page1').result).sessions;
 const NOW = Date.parse('2026-10-28T07:00:00.000Z');
 
 function state(works: Work[] = [task], ss: Session[] = sessions, over: Partial<WorkState> = {}): WorkState {
   return {status: 'ready', scope: {kind: 'all'}, works: works.map(summaryOf), details: Object.fromEntries(works.map(w => [w.id, w])), sessions: ss, pendingReview: [], ...over};
 }
+
+const orbitTask = task;
+
+describe('홈 작업 판단(OpenOrbit 작업만)', () => {
+  it('origin.host가 orbit-pi이거나 목록 종류가 orbit-pi-plan이면 OpenOrbit 작업이다', () => {
+    assert.equal(isOpenOrbitWork(orbitTask), true);
+    assert.equal(isOpenOrbitWork({...task, origin: {...task.origin!, host: 'claude', list: {kind: 'orbit-pi-plan'}}}), true);
+    assert.equal(isOpenOrbitWork(claudeTask), false);
+    assert.equal(isOpenOrbitWork({...claudeTask, origin: undefined}), false);
+  });
+
+  it('순수 Claude·Codex 세션이 만든 작업은 지도에 없고, OpenOrbit 작업만 남는다', () => {
+    const other: Work = {...claudeTask, id: 'w-claude'};
+    const ids = homeItems(state([orbitTask, other]), NOW).map(i => i.id);
+    assert.deepEqual(ids, [orbitTask.id]);
+  });
+
+  it('작업 없는 세션은 세션 노드가 되지 않는다(열린 결정 카드가 묶여 있어도)', () => {
+    const lone: Session = {...sessions[0], sessionId: 's-lone', openWorkIds: [], activeStepIds: [], state: 'running', lastSeenAt: '2026-10-28T06:59:00.000Z'};
+    const cards = {workIds: new Set<string>(), sessionIds: new Set(['s-lone'])};
+    assert.deepEqual(homeItems(state([orbitTask], [...sessions, lone]), NOW, cards).filter(i => i.kind === 'session'), []);
+  });
+
+  it('옛 작업도 id로 여는 상세는 그대로 된다', async () => {
+    const d = await providerDetail({getState: () => state([claudeTask]), loadDetail: async () => claudeTask} as never, claudeTask.id);
+    assert.equal(d!.title, claudeTask.title);
+  });
+});
 
 describe('홈 작업 항목', () => {
   it('작업은 사실(끝·답 기다림·도는 중·마지막 움직임)과 프로젝트·최근 단계 두 줄을 준다', () => {
@@ -28,25 +58,16 @@ describe('홈 작업 항목', () => {
     assert.ok(w.recent && w.recent.length >= 1 && w.recent.length <= 2, String(w.recent));
   });
 
-  it('끝난 작업은 done과 끝난 시각, 열린 작업이 없는 세션은 세션 노드가 된다', () => {
+  it('끝난 작업은 done과 끝난 시각을 준다', () => {
     const done: Work = {...task, id: 'w-done', state: 'done', closedAt: '2026-10-28T06:00:00.000Z', steps: task.steps.map(s => ({...s, status: 'done', block: undefined}))};
-    const lone: Session = {...sessions[0], sessionId: 's-lone', openWorkIds: [], activeStepIds: [], state: 'running', lastSeenAt: '2026-10-28T06:59:00.000Z', branch: 'feat/x'};
-    const items = homeItems(state([task, done], [...sessions, lone]), NOW);
+    const items = homeItems(state([task, done]), NOW);
     const d = items.find(i => i.id === 'w-done')!;
     assert.equal(d.done, true);
     assert.equal(d.doneAt, Date.parse('2026-10-28T06:00:00.000Z'));
-    const s = items.find(i => i.id === 'session:s-lone')!;
-    assert.equal(s.kind, 'session');
-    assert.equal(s.running, true);
-    assert.ok(s.title.length > 0);
     // 작업을 연 세션은 따로 노드가 되지 않는다
     assert.ok(!items.some(i => i.id === `session:${task.origin!.sessionId}`));
   });
 
-  it('오래전에 끝난 세션은 넣지 않는다', () => {
-    const old: Session = {...sessions[0], sessionId: 's-old', openWorkIds: [], state: 'ended', endReason: 'session_end', endedAt: '2026-10-20T00:00:00.000Z', lastSeenAt: '2026-10-20T00:00:00.000Z'};
-    assert.ok(!homeItems(state([task], [old]), NOW).some(i => i.id === 'session:s-old'));
-  });
 });
 
 describe('작업 공급자 등록', () => {

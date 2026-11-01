@@ -55,14 +55,14 @@ export function commonBinDirs(env: Env): string[] {
 }
 
 /**
- * 실행할 orb 절대경로. ORBIT_ORB가 있으면 그것(경로가 아니면 PATH에서 찾는다), 없으면 PATH와 흔한 위치에서 `orb`, 그다음 별칭 `oni`.
+ * 실행할 orb 절대경로. ORBIT_ORB가 있으면 그것(경로가 아니면 PATH에서 찾는다), 없으면 PATH와 흔한 위치에서 `orb`(옛 별칭 `oni`는 쓰지 않는다).
  * 찾지 못하면 undefined.
  */
 export function resolveOrb(env: Env = process.env, exists: (path: string) => boolean = isExecutable): string | undefined {
   const dirs = [...(env.PATH ?? '').split(delimiter).filter(Boolean), ...commonBinDirs(env)];
   const find = (name: string) => (name.includes('/') || name.includes('\\') ? (exists(name) ? name : undefined) : dirs.map(d => join(d, name)).find(exists));
   if (env.ORBIT_ORB) return find(env.ORBIT_ORB);
-  return find('orb') ?? find('oni');
+  return find('orb');
 }
 
 export interface OrbResult {

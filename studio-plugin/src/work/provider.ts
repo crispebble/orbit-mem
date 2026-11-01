@@ -51,8 +51,6 @@ export interface WorkChatHooks {
 }
 type ProviderStore = Pick<WorkStore, 'getState' | 'subscribe' | 'ensureDetails' | 'loadDetail'>;
 
-/** 끝난 세션은 이만큼 안에 끝난 것만 세션 노드로 둔다(오늘 끝 접기에 쓰기에 충분하다). */
-export const SESSION_KEEP_MS = 36 * 60 * 60_000;
 const SESSION_PREFIX = 'session:';
 const time = (s: string | undefined) => (s ? Date.parse(s) || undefined : undefined);
 const STEP = new Set(['pending', 'ready', 'in_progress', 'blocked', 'done', 'cancelled']);
@@ -80,11 +78,23 @@ export interface OpenCardRefs {
 }
 const NO_CARDS: OpenCardRefs = {workIds: new Set(), sessionIds: new Set()};
 
-/** work store의 상태를 홈 항목으로 옮긴다. 작업이 없는(할 일 목록을 만들지 않은) 세션은 세션 노드가 된다. */
+/**
+ * 홈 작업 지도에 오르는 작업인가: OpenOrbit 오케스트레이션이 만든 작업(`origin.host`가 `orbit-pi`, 또는 목록 종류가 `orbit-pi-plan`)만.
+ * 순수 Claude Code·Codex 세션은 작업 현황을 만들지 않고 활동 기록만 남기므로, 옛 기록(work.db에 남아 있다)은 지도에서만 안 보인다.
+ * 작업 탭과 작업 상세는 id로 옛 작업도 그대로 연다.
+ */
+export function isOpenOrbitWork(w: {origin?: {host: string; list?: {kind: string}}}): boolean {
+  return w.origin?.host === 'orbit-pi' || w.origin?.list?.kind === 'orbit-pi-plan';
+}
+
+/**
+ * work store의 상태를 홈 항목으로 옮긴다. OpenOrbit 작업만 올리고, 작업 없는 세션은 노드가 되지 않는다.
+ * 열린 결정 카드가 지도 밖 작업·세션에 묶여 있어도 지도에는 아무것도 더하지 않는다(카드는 확인할 일에 그대로 열려 있다).
+ */
 export function homeItems(state: WorkState, now: number, cards: OpenCardRefs = NO_CARDS): HomeWorkItem[] {
-  const workSessions = new Set(state.works.map(w => w.origin?.sessionId).filter((x): x is string => !!x));
+  void now;
   const items: HomeWorkItem[] = [];
-  for (const w of state.works) {
+  for (const w of state.works.filter(isOpenOrbitWork)) {
     // 상세의 세션 목록과 같은 묶음: 작업을 연 세션과 이 작업을 열어 둔 세션
     const related = state.sessions.filter(s => s.sessionId === w.origin?.sessionId || s.openWorkIds.includes(w.id));
     const detail = state.details[w.id];
@@ -102,12 +112,6 @@ export function homeItems(state: WorkState, now: number, cards: OpenCardRefs = N
       ...(launcherOf(w.origin) ? {launcher: launcherOf(w.origin)} : {}),
       ...(w.origin ? {meta: hostName(w.origin.host)} : {}),
     });
-  }
-  for (const s of state.sessions) {
-    if (s.openWorkIds.length || workSessions.has(s.sessionId) || s.parentSessionId) continue;
-    const ended = time(s.endedAt);
-    if (s.state === 'ended' && (!ended || now - ended > SESSION_KEEP_MS)) continue;
-    items.push(sessionItem(s, cards.sessionIds.has(s.sessionId)));
   }
   return items;
 }
