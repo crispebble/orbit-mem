@@ -221,29 +221,43 @@ func counts(m map[string]int) string {
 	return strings.Join(parts, " · ")
 }
 
+// localPluginDir is the local marketplace folder orbit-mem install builds for Codex (and for
+// Claude Code with --local-plugin).
+func localPluginDir() string { return filepath.Join(paths().Home, "plugins", memplugin.Name) }
+
+// cmdPlugin builds orbit-mem's own plugin from the embedded source: --out (default the local
+// marketplace folder) gets both host formats and both local marketplaces; --repo gets the
+// GitHub marketplace this repository is (the Claude format only).
 func cmdPlugin(a *app, args []string) error {
-	if len(args) == 0 || args[0] != "fragment" {
-		return errUsage // 플러그인 빌드·등록은 OpenOrbit orb plugin build·orb install이 한다
+	if len(args) == 0 || args[0] != "build" {
+		return errUsage
 	}
-	// 기억 MCP·훅 조각: OpenOrbit의 플러그인 빌드(orb plugin build … --fragment)가 받는다
-	fs := a.flags("plugin fragment")
-	path := fs.String("path", "", i18n.T("flag.plugin.path"))
+	fs := a.flags("plugin build")
+	out := fs.String("out", "", i18n.T("flag.plugin.out"))
+	repo := fs.String("repo", "", i18n.T("flag.plugin.repo"))
 	pos, err := parse(fs, args[1:])
 	if err != nil {
 		return err
 	}
-	if len(pos) != 0 {
+	if len(pos) != 0 || (*out != "" && *repo != "") {
 		return errUsage
 	}
-	if *path == "" {
-		*path = selfPath()
+	build, dir := memplugin.Local, *out
+	if *repo != "" {
+		build, dir = memplugin.Repo, *repo
 	}
-	b, err := memplugin.Fragment(*path)
+	if dir == "" {
+		dir = localPluginDir()
+	}
+	files, err := build(version.Version)
 	if err != nil {
 		return err
 	}
-	_, err = a.stdout.Write(b)
-	return err
+	if err := memplugin.Write(dir, files); err != nil {
+		return err
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.plugin.built", memplugin.ID, version.Version, dir))
+	return nil
 }
 
 func contains(list []string, v string) bool {
@@ -255,9 +269,10 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// cmdInstall puts orbit-mem in the bin folder, writes the settings (hosts, plugin source,
-// apply targets), makes the memory DB and schedules the retrospectives. Building the OpenOrbit
-// plugin and registering it in the hosts is OpenOrbit's orb install.
+// cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB,
+// schedules the retrospectives and registers orbit-mem's plugin in the hosts: Claude Code
+// from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
+// the local folder it builds.
 func cmdInstall(a *app, args []string) error {
 	fs := a.flags("install")
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), i18n.T("flag.install.bin_dir"))
@@ -266,6 +281,8 @@ func cmdInstall(a *app, args []string) error {
 	pluginSource := fs.String("plugin-source", "", i18n.T("flag.install.plugin_source"))
 	var targets multiFlag
 	fs.Var(&targets, "apply-target", i18n.T("flag.install.apply_target"))
+	localPlugin := fs.Bool("local-plugin", false, i18n.T("flag.install.local_plugin"))
+	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
 	noSchedule := fs.Bool("no-schedule", false, i18n.T("flag.install.no_schedule"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
 	if _, err := parse(fs, args); err != nil {
@@ -274,6 +291,12 @@ func cmdInstall(a *app, args []string) error {
 	p := paths()
 	h := install.FindHosts()
 	dst := filepath.Join(*binDir, install.BinaryName())
+	dir := localPluginDir()
+	claudeSource := memplugin.GitHubRepo
+	if *localPlugin {
+		claudeSource = dir
+	}
+	needLocal := !*noHosts && (h.Codex != "" || (*localPlugin && h.Claude != ""))
 	steps := []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
 		i18n.T("cli.install.step_home", p.Home),
@@ -284,11 +307,24 @@ func cmdInstall(a *app, args []string) error {
 	if !*noSchedule {
 		steps = append(steps, i18n.T("cli.install.step_schedule", config.Default().RetroHour))
 	}
+	if !*noHosts {
+		if needLocal {
+			steps = append(steps, i18n.T("cli.install.step_build", memplugin.ID, dir))
+		}
+		if h.Claude != "" {
+			steps = append(steps, i18n.T("cli.install.step_claude", claudeSource, memplugin.Market, memplugin.ID))
+		}
+		if h.Codex != "" {
+			steps = append(steps, i18n.T("cli.install.step_codex", dir, memplugin.ID))
+		}
+		if h.Claude == "" && h.Codex == "" {
+			steps = append(steps, i18n.T("cli.install.step_no_hosts"))
+		}
+	}
 	if *dry {
 		for _, s := range steps {
 			fmt.Fprintln(a.stdout, "- "+s)
 		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_by_orb"))
 		return nil
 	}
 	copied, err := install.CopyBinary(selfPath(), dst)
@@ -297,6 +333,11 @@ func cmdInstall(a *app, args []string) error {
 	}
 	if copied {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.installed", dst))
+	}
+	if found, err := exec.LookPath("orbit-mem"); err != nil {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.not_on_path", *binDir))
+	} else if !samePath(found, dst) {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.other_on_path", found, dst))
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -353,45 +394,156 @@ func cmdInstall(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled", cfg.RetroHour, where))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.scheduled_note"))
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.install.plugin_by_orb"))
+	if *noHosts {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
+		return nil
+	}
+	if err := a.registerHosts(h, needLocal, dir, claudeSource); err != nil {
+		return err
+	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
 	return nil
 }
 
-// cmdUninstall takes the retrospective schedule out. The plugin is OpenOrbit's (orb uninstall).
+// registerHosts builds the local plugin folder when a host needs it and registers the plugin
+// in every host present. A host that fails does not stop the other.
+func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource string) error {
+	if h.Claude == "" && h.Codex == "" {
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.no_hosts", memplugin.GitHubRepo))
+		return nil
+	}
+	if needLocal {
+		files, err := memplugin.Local(version.Version)
+		if err == nil {
+			err = memplugin.Write(dir, files)
+		}
+		if err != nil {
+			return i18n.Errorf("cli.install.err.build", dir, err)
+		}
+		fmt.Fprintln(a.stdout, i18n.T("cli.plugin.built", memplugin.ID, version.Version, dir))
+	}
+	failed := false
+	if h.Claude != "" {
+		if err := h.RegisterClaude(claudeSource, memplugin.Name, memplugin.Market); err != nil {
+			fmt.Fprintln(a.stderr, i18n.T("cli.install.host_failed", "Claude Code", err))
+			failed = true
+		} else {
+			fmt.Fprintln(a.stdout, i18n.T("cli.install.registered", "Claude Code", memplugin.ID, claudeSource))
+		}
+	}
+	if h.Codex != "" {
+		if err := h.RegisterCodex(dir, memplugin.Name, memplugin.Market); err != nil {
+			fmt.Fprintln(a.stderr, i18n.T("cli.install.host_failed", "Codex", err))
+			failed = true
+		} else {
+			fmt.Fprintln(a.stdout, i18n.T("cli.install.registered", "Codex", memplugin.ID, dir))
+			fmt.Fprintln(a.stdout, i18n.T("cli.install.codex_hooks"))
+		}
+	}
+	if failed {
+		return i18n.Err("cli.install.err.hosts")
+	}
+	return nil
+}
+
+func samePath(a, b string) bool {
+	ra, err1 := filepath.EvalSymlinks(a)
+	rb, err2 := filepath.EvalSymlinks(b)
+	if err1 != nil || err2 != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return ra == rb
+}
+
+// cmdUninstall takes the retrospective schedule out and orbit-mem's plugin and marketplace
+// out of the hosts. The data and the local plugin folder stay.
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
 	}
+	failed := false
 	if err := install.RemoveSchedule(install.RunCommand); err != nil {
 		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.schedule_error", err))
+		failed = true
+	}
+	h := install.FindHosts()
+	if h.Claude != "" {
+		if err := h.UnregisterClaude(memplugin.Name, memplugin.Market); err != nil {
+			fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.host_error", "Claude Code", err))
+			failed = true
+		}
+	}
+	if h.Codex != "" {
+		st := install.ReadCodexState(install.CodexConfigPath(), memplugin.Name, memplugin.Market)
+		if err := h.UnregisterCodex(st, memplugin.Name, memplugin.Market); err != nil {
+			fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.host_error", "Codex", err))
+			failed = true
+		}
+	}
+	if failed {
 		return i18n.Errorf("cli.uninstall.err.partial", paths().Home)
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", paths().Home))
-	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.plugin_by_orb"))
+	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", memplugin.ID, paths().Home))
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.binary", selfPath()))
 	return nil
 }
 
+// doctorReport is orbit-mem doctor --json. OpenOrbit's orb doctor reads it: keep the keys.
 type doctorReport struct {
 	Version      string              `json:"version"`
-	Binary       string              `json:"binary"`
+	Binary       string              `json:"binary"`     // this orbit-mem
+	PathBinary   string              `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
 	Home         string              `json:"home"`
+	DB           bool                `json:"db"` // memory.db exists
 	Config       config.Config       `json:"config"`
 	Memories     map[string]int      `json:"memories"`
 	Pending      int                 `json:"pendingProposals"`
 	SessionQueue int                 `json:"sessionQueue"`
-	Hosts        map[string]string   `json:"hosts"`
-	Plugin       map[string]bool     `json:"pluginRegistered"`
+	Activity     activityStatus      `json:"activity"`
 	Schedule     bool                `json:"schedule"`
 	LastRetros   []retro.RetroStatus `json:"lastRetros"`
 	LastBackup   string              `json:"lastBackup,omitempty"`
-	Activity     activityStatus      `json:"activity"`
+	Claude       claudeStatus        `json:"claude"`
+	Codex        codexStatus         `json:"codex"`
+	Problems     []problem           `json:"problems"`
 }
 
 type activityStatus struct {
 	Sessions       int `json:"sessions"`       // 활동 기록(memory.db)의 세션 수
 	LegacySessions int `json:"legacySessions"` // 옛 작업 기록(work.db, 읽기 전용)의 세션 수
+}
+
+// Plugin states in claudeStatus.Plugin and codexStatus.Plugin.
+const (
+	pluginInstalled = "installed"
+	pluginMissing   = "missing"
+	pluginUnknown   = "unknown" // claude plugin list --json did not answer
+	pluginNoHost    = "no-host" // claude is not on PATH
+)
+
+type claudeStatus struct {
+	Path        string `json:"path"`   // claude on PATH ("" none)
+	Plugin      string `json:"plugin"` // installed | missing | unknown | no-host
+	Version     string `json:"version,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Marketplace string `json:"marketplace,omitempty"` // github:<owner/repo> | directory:<path>
+}
+
+type codexStatus struct {
+	Path         string `json:"path"`   // codex on PATH ("" none)
+	Config       string `json:"config"` // the config.toml read
+	Marketplace  bool   `json:"marketplace"`
+	Plugin       string `json:"plugin"` // installed | missing
+	Enabled      bool   `json:"enabled"`
+	HooksTrusted bool   `json:"hooksTrusted"`
+}
+
+// problem is one thing to fix, with one line that fixes it.
+type problem struct {
+	ID      string `json:"id"`
+	Message string `json:"message"`
+	Fix     string `json:"fix"`
 }
 
 func cmdDoctor(a *app, args []string) error {
@@ -405,35 +557,78 @@ func cmdDoctor(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	rep := doctorReport{Version: version.Version, Binary: selfPath(), Home: p.Home, Config: cfg, Memories: map[string]int{}, Hosts: map[string]string{}, Plugin: map[string]bool{}}
-	s, err := openStore()
-	if err != nil {
-		return err
+	rep := doctorReport{Version: version.Version, Binary: selfPath(), Home: p.Home, Config: cfg, Memories: map[string]int{}, Problems: []problem{}}
+	add := func(id, fix string, args ...any) {
+		rep.Problems = append(rep.Problems, problem{ID: id, Message: i18n.T("cli.doctor.problem."+id, args...), Fix: fix})
 	}
-	defer s.Close()
-	all, _ := s.List()
-	for _, m := range all {
-		rep.Memories[m.State]++
+	if found, err := exec.LookPath("orbit-mem"); err == nil {
+		rep.PathBinary = found
+	} else {
+		add("not-on-path", fmt.Sprintf(`orbit-mem install && export PATH="%s:$PATH"`, install.DefaultBinDir()))
 	}
-	rep.Pending = s.PendingCount()
-	if waiting, err := retro.Pending(s); err == nil {
-		rep.SessionQueue = len(waiting)
-	}
-	rep.LastRetros, _ = retro.Recent(s, 3)
-	h := install.FindHosts()
-	for name, path := range map[string]string{"claude": h.Claude, "codex": h.Codex} {
-		if path == "" {
-			continue
+	if _, err := os.Stat(p.DB()); err == nil { // 설치 전이면 DB를 만들지 않는다
+		rep.DB = true
+		s, err := openStore()
+		if err != nil {
+			return err
 		}
-		rep.Hosts[name] = path
-		out, _ := exec.Command(path, "plugin", "list").CombinedOutput()
-		rep.Plugin[name] = strings.Contains(string(out), "orbit@orbit")
+		defer s.Close()
+		all, _ := s.List()
+		for _, m := range all {
+			rep.Memories[m.State]++
+		}
+		rep.Pending = s.PendingCount()
+		if waiting, err := retro.Pending(s); err == nil {
+			rep.SessionQueue = len(waiting)
+		}
+		rep.LastRetros, _ = retro.Recent(s, 3)
+		rep.Activity.Sessions = s.ActivityCount()
+	} else {
+		add("db-missing", "orbit-mem install")
 	}
-	rep.Schedule = install.ScheduleInstalled(install.RunCommand)
-	rep.Activity.Sessions = s.ActivityCount()
 	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
+	rep.Schedule = install.ScheduleInstalled(install.RunCommand)
+	if !rep.Schedule {
+		add("schedule-missing", "orbit-mem install")
+	}
 	if entries, err := os.ReadDir(p.Backups()); err == nil && len(entries) > 0 {
 		rep.LastBackup = filepath.Join(p.Backups(), entries[len(entries)-1].Name())
+	}
+	h := install.FindHosts()
+	rep.Claude = claudeStatus{Path: h.Claude, Plugin: pluginNoHost}
+	if h.Claude != "" {
+		st := h.ClaudeStatus(memplugin.Name, memplugin.Market)
+		rep.Claude.Marketplace, rep.Claude.Version, rep.Claude.Enabled = st.Marketplace, st.Version, st.Enabled
+		switch {
+		case !st.Known:
+			rep.Claude.Plugin = pluginUnknown
+		case !st.Installed:
+			rep.Claude.Plugin = pluginMissing
+			add("claude-plugin-missing", "orbit-mem install")
+		default:
+			rep.Claude.Plugin = pluginInstalled
+			if !st.Enabled {
+				add("claude-plugin-disabled", "claude plugin enable "+memplugin.ID)
+			}
+			if st.Version != "" && st.Version != version.Version {
+				add("claude-plugin-version", "orbit-mem install", st.Version, version.Version)
+			}
+		}
+	}
+	cs := install.ReadCodexState(install.CodexConfigPath(), memplugin.Name, memplugin.Market)
+	rep.Codex = codexStatus{Path: h.Codex, Config: install.CodexConfigPath(), Marketplace: cs.Marketplace, Plugin: pluginMissing, Enabled: cs.Enabled, HooksTrusted: cs.HooksTrusted}
+	if cs.Plugin {
+		rep.Codex.Plugin = pluginInstalled
+	}
+	if h.Codex != "" {
+		switch {
+		case !cs.Plugin || !cs.Marketplace:
+			add("codex-plugin-missing", "orbit-mem install")
+		case !cs.Enabled:
+			add("codex-plugin-disabled", "orbit-mem install")
+		case !cs.HooksTrusted:
+			add("codex-hooks-untrusted", i18n.T("cli.doctor.fix.codex_hooks"))
+		}
 	}
 	if *asJSON {
 		return a.json(rep)
@@ -444,7 +639,14 @@ func cmdDoctor(a *app, args []string) error {
 		}
 		return i18n.T("cli.doctor.no")
 	}
+	orNone := func(s string) string {
+		if s == "" {
+			return i18n.T("cli.doctor.no")
+		}
+		return s
+	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.head", rep.Version, rep.Binary, runtime.GOOS, runtime.GOARCH, rep.Home))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.path_binary", orNone(rep.PathBinary)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.RetroHost, cfg.RetroModel, cfg.RetroHour, cfg.Inject, yes(rep.Schedule)))
@@ -454,18 +656,19 @@ func cmdDoctor(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.session_retro", sessionRetro, rep.SessionQueue, cfg.RecallChars))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions, rep.Activity.LegacySessions))
-	for _, name := range []string{"claude", "codex"} {
-		if path, ok := rep.Hosts[name]; ok {
-			fmt.Fprintln(a.stdout, i18n.T("cli.doctor.host", name, path, yes(rep.Plugin[name])))
-		} else {
-			fmt.Fprintln(a.stdout, i18n.T("cli.doctor.host_missing", name))
-		}
-	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex", orNone(rep.Codex.Path), memplugin.ID, rep.Codex.Plugin, yes(rep.Codex.Marketplace), yes(rep.Codex.HooksTrusted)))
 	for _, r := range rep.LastRetros {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_retro", r.Period, r.Kind, r.Status, oneLine(r.Summary+" "+r.Error, 80)))
 	}
 	if rep.LastBackup != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_backup", rep.LastBackup))
+	}
+	if len(rep.Problems) == 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.no_problems"))
+	}
+	for _, pr := range rep.Problems {
+		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.problem", pr.Message, pr.Fix))
 	}
 	return nil
 }

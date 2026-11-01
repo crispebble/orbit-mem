@@ -1,8 +1,8 @@
 // Command orbit-mem is the shared memory of this PC for AI hosts: memories with
 // their sources, background retrospectives that propose what was learned, the
-// activity log of host sessions, and the MCP server and hooks it adds to the
-// OpenOrbit plugin. OpenOrbit's own command orb (TypeScript, openorbit repo)
-// builds that plugin, registers it in the hosts and runs the orchestration.
+// activity log of host sessions, and its own Claude Code and Codex plugin (the
+// memory MCP server, hooks and skills) that it builds and registers itself. It
+// does not need OpenOrbit; OpenOrbit's harness plugin is a separate plugin.
 package main
 
 import (

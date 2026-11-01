@@ -16,6 +16,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -46,14 +47,13 @@ type Lab struct {
 	Store  *memory.Store
 	Cfg    config.Config
 	Paths  config.Paths
-	Mem    string // 후보 플러그인의 훅·MCP가 부를 orbit-mem
 	Source string // 지금 쓰는 플러그인 원본
 	Exec   func(context.Context, retro.Cmd) (string, error)
 	Now    func() time.Time
 	// Shuffle says whether the changed candidate is shown as A in a round. Nil is random.
 	Shuffle func(round int) bool
 	// Build builds a candidate's marketplace from a plugin source into out. Nil is OpenOrbit's
-	// orb plugin build with orbit-mem's memory fragment for Mem (tests replace it).
+	// orb plugin build <source> --out <out>: the harness plugin alone (tests replace it).
 	Build func(source, out string) error
 }
 
@@ -281,13 +281,7 @@ func (l *Lab) inSource(path string) (string, error) {
 func (l *Lab) build(source, out string) (string, string, error) {
 	build := l.Build
 	if build == nil {
-		build = func(source, out string) error {
-			orb, err := memplugin.FindOrb()
-			if err != nil {
-				return err
-			}
-			return memplugin.Build(orb, source, out, l.Mem, nil)
-		}
+		build = orbBuild
 	}
 	if err := build(source, out); err != nil {
 		return "", "", err
@@ -309,6 +303,21 @@ func (l *Lab) build(source, out string) (string, string, error) {
 		return err
 	})
 	return dir, hex.EncodeToString(h.Sum(nil))[:16], err
+}
+
+// orbBuild builds a candidate with OpenOrbit's orb: orb plugin build <source> --out <out>.
+// Only the harness plugin: a run's ORBIT_HOME is the experiment's own empty folder and
+// --setting-sources project keeps this PC's installed plugins (orbit-mem's too) out, so
+// memory plays no part in a comparison.
+func orbBuild(source, out string) error {
+	orb, err := memplugin.FindOrb()
+	if err != nil {
+		return err
+	}
+	if msg, err := exec.Command(orb, "plugin", "build", source, "--out", out).CombinedOutput(); err != nil {
+		return fmt.Errorf("%s plugin build: %w: %s", orb, err, strings.TrimSpace(string(msg)))
+	}
+	return nil
 }
 
 // output is what one run left.

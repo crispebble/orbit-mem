@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -11,148 +12,315 @@ import (
 	"testing"
 )
 
-func TestVars_공백이_있는_경로만_따옴표(t *testing.T) {
-	if got := Vars(`C:\Users\Kim Lee\orbit-mem.exe`); got["memcmd"] != `"C:/Users/Kim Lee/orbit-mem.exe"` || got["mem"] != `C:\Users\Kim Lee\orbit-mem.exe` {
-		t.Fatal(got)
-	}
-	if Vars("/a/orbit-mem")["memcmd"] != "/a/orbit-mem" {
-		t.Fatal("quoted without spaces")
-	}
-	if Vars("/a/b\tc/orbit-mem")["memcmd"] != "\"/a/b\tc/orbit-mem\"" {
-		t.Fatal("tab")
-	}
-}
-
-// 끝 기준: 흔한 경로면 조각은 원본 파일의 {{mem}}·{{memcmd}}만 바꾼 것과 바이트까지 같다
-// (칸 순서·들여쓰기·{{host}}가 그대로라 하네스 빌드가 그대로 받는다).
-func TestFragment_자리표시자만_채운다(t *testing.T) {
-	got, err := Fragment("/Users/me/.local/bin/orbit-mem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := strings.NewReplacer("{{mem}}", "/Users/me/.local/bin/orbit-mem", "{{memcmd}}", "/Users/me/.local/bin/orbit-mem").Replace(string(source))
-	if string(got) != want {
-		t.Fatalf("조각:\n%s", got)
-	}
-	if !strings.Contains(string(got), "--host {{host}}") || strings.Contains(string(got), "{{mem") {
-		t.Fatalf("{{host}}만 남아야 합니다:\n%s", got)
-	}
-}
-
-type fragment struct {
-	MCPServers map[string]struct {
-		Command string   `json:"command"`
-		Args    []string `json:"args"`
-		EnvVars []string `json:"envVars"`
-	} `json:"mcpServers"`
+type hookFile struct {
 	Hooks map[string][]struct {
-		Hosts   []string `json:"hosts"`
-		Matcher string   `json:"matcher"`
-		Command string   `json:"command"`
-		Async   bool     `json:"async"`
-		Timeout int      `json:"timeout"`
+		Matcher string `json:"matcher"`
+		Hooks   []struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
+			Async   bool   `json:"async"`
+		} `json:"hooks"`
 	} `json:"hooks"`
 }
 
-// 끝 기준(M4·M5): MCP 서버 이름은 orbit-mem 하나, 훅은 세션 시작·요청·세션 끝 셋뿐이다.
-// 작업 기록 훅(PostToolUse·PreToolUse·Stop…)은 없다.
-func TestFragment_서버_이름과_훅_셋(t *testing.T) {
-	b, err := Fragment("/o/orbit-mem")
+func mustJSON(t *testing.T, files Files, path string, v any) {
+	t.Helper()
+	b, ok := files[path]
+	if !ok {
+		t.Fatalf("%s가 없습니다: %v", path, files.Paths())
+	}
+	if err := json.Unmarshal(b, v); err != nil {
+		t.Fatalf("%s: %v\n%s", path, err, b)
+	}
+	if !strings.HasSuffix(string(b), "}\n") || strings.Contains(string(b), "\\u00"+"26") {
+		t.Fatalf("%s 모양:\n%s", path, b)
+	}
+}
+
+// 끝 기준: Claude 꼴은 plugin.json(name orbit-mem, 판, 설명), .mcp.json(서버 orbit-mem: orbit-mem mcp),
+// hooks/hooks.json(세 훅), skills/memory·proposals다. 절대경로를 박지 않는다.
+func TestClaude_꼴(t *testing.T) {
+	files, err := Claude("0.4.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var f fragment
-	if err := json.Unmarshal(b, &f); err != nil {
-		t.Fatal(err)
+	want := []string{".claude-plugin/plugin.json", ".mcp.json", "hooks/hooks.json", "skills/memory/SKILL.md", "skills/proposals/SKILL.md"}
+	if got := files.Paths(); !slices.Equal(got, want) {
+		t.Fatalf("파일 %v", got)
 	}
-	if len(f.MCPServers) != 1 {
-		t.Fatalf("MCP 서버 %v", f.MCPServers)
+	var pj map[string]any
+	mustJSON(t, files, ".claude-plugin/plugin.json", &pj)
+	if pj["name"] != "orbit-mem" || pj["version"] != "0.4.0" || pj["description"] == "" || pj["hooks"] != nil {
+		t.Fatalf("plugin.json %v", pj) // hooks/hooks.json은 Claude가 스스로 읽는다: 다시 적으면 중복 오류
 	}
-	srv, ok := f.MCPServers["orbit-mem"]
-	if !ok || srv.Command != "/o/orbit-mem" || !slices.Equal(srv.Args, []string{"mcp"}) || !slices.Equal(srv.EnvVars, []string{"ORBIT_HOME"}) {
-		t.Fatalf("MCP 서버 %+v", f.MCPServers)
+	var mcp struct {
+		MCPServers map[string]map[string]any `json:"mcpServers"`
 	}
+	mustJSON(t, files, ".mcp.json", &mcp)
+	srv := mcp.MCPServers["orbit-mem"]
+	if len(mcp.MCPServers) != 1 || srv["command"] != "orbit-mem" || !slices.Equal(toStrings(srv["args"]), []string{"mcp"}) {
+		t.Fatalf(".mcp.json %v", mcp)
+	}
+	checkHooks(t, files, "hooks/hooks.json", "claude", "0.4.0")
+	if s := string(files["skills/proposals/SKILL.md"]); !strings.Contains(s, "name: proposals") || !strings.Contains(s, "orbit-mem proposals") || strings.Contains(s, "orb proposals") {
+		t.Fatalf("proposals 스킬:\n%s", s)
+	}
+	if s := string(files["skills/memory/SKILL.md"]); !strings.Contains(s, "name: memory") || strings.Contains(s, "OpenOrbit") {
+		t.Fatalf("memory 스킬:\n%s", s)
+	}
+	for p, b := range files {
+		if strings.Contains(string(b), "/Users/") || strings.Contains(string(b), "{{") {
+			t.Errorf("%s에 절대경로나 자리표시자가 있습니다", p)
+		}
+	}
+}
+
+func toStrings(v any) []string {
+	var out []string
+	for _, x := range v.([]any) {
+		out = append(out, x.(string))
+	}
+	return out
+}
+
+func checkHooks(t *testing.T, files Files, path, host, version string) {
+	t.Helper()
+	var h hookFile
+	mustJSON(t, files, path, &h)
 	var events []string
-	for e := range f.Hooks {
+	for e := range h.Hooks {
 		events = append(events, e)
 	}
 	slices.Sort(events)
 	if !slices.Equal(events, []string{"SessionEnd", "SessionStart", "UserPromptSubmit"}) {
-		t.Fatalf("훅 %v", events)
+		t.Fatalf("%s 훅 %v", path, events)
 	}
-	for e, want := range map[string]string{"SessionStart": "session-start", "UserPromptSubmit": "prompt", "SessionEnd": "session-end"} {
-		hs := f.Hooks[e]
-		if len(hs) != 1 || hs[0].Command != "/o/orbit-mem hook "+want+" --host {{host}}" || hs[0].Async {
-			t.Errorf("%s: %+v", e, hs)
+	for e, want := range map[string]struct {
+		name    string
+		timeout int
+	}{"SessionStart": {"session-start", 10}, "UserPromptSubmit": {"prompt", 5}, "SessionEnd": {"session-end", 3}} {
+		g := h.Hooks[e]
+		if len(g) != 1 || len(g[0].Hooks) != 1 {
+			t.Fatalf("%s %s: %+v", path, e, g)
+		}
+		hk := g[0].Hooks[0]
+		call := "orbit-mem hook " + want.name + " --host " + host + " --plugin-version " + version
+		if hk.Type != "command" || hk.Timeout != want.timeout || hk.Async || !strings.Contains(hk.Command, call) || !strings.HasPrefix(hk.Command, "if command -v orbit-mem ") {
+			t.Errorf("%s %s: %+v", path, e, hk)
 		}
 	}
-	if f.Hooks["SessionStart"][0].Matcher != "startup|resume|clear|compact|fork" {
-		t.Errorf("SessionStart matcher %q", f.Hooks["SessionStart"][0].Matcher)
-	}
-	if strings.Contains(string(b), "hook work") {
-		t.Errorf("작업 기록 훅이 남았습니다:\n%s", b)
+	if h.Hooks["SessionStart"][0].Matcher != "startup|resume|clear|compact|fork" || h.Hooks["UserPromptSubmit"][0].Matcher != "" {
+		t.Errorf("%s matcher %+v", path, h.Hooks)
 	}
 }
 
-// 끝 기준: 따옴표·역슬래시·공백·&가 든 경로도 JSON이 깨지지 않고 값이 정확하다.
-func TestFragment_특수문자_경로(t *testing.T) {
-	for _, bin := range []string{`C:\Users\Kim "Q" Lee\orbit-mem.exe`, `/tmp/a&b <c>/orbit-mem`, `/x/"y"\z`} {
-		b, err := Fragment(bin)
+// 끝 기준: Codex 꼴은 하네스 빌드와 같은 꼴이다: .codex-plugin/plugin.json(skills·hooks·mcpServers·interface),
+// codex/mcp.json(env_vars ORBIT_HOME), hooks/codex.json(--host codex).
+func TestCodex_꼴(t *testing.T) {
+	files, err := Codex("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".codex-plugin/plugin.json", "codex/mcp.json", "hooks/codex.json", "skills/memory/SKILL.md", "skills/proposals/SKILL.md"}
+	if got := files.Paths(); !slices.Equal(got, want) {
+		t.Fatalf("파일 %v", got)
+	}
+	var pj struct {
+		Name, Version, Description, Skills, Hooks, MCPServers string
+		Interface                                             map[string]string
+	}
+	mustJSON(t, files, ".codex-plugin/plugin.json", &pj)
+	if pj.Name != "orbit-mem" || pj.Version != "0.4.0" || pj.Skills != "./skills/" || pj.Hooks != "./hooks/codex.json" || pj.MCPServers != "./codex/mcp.json" ||
+		pj.Interface["displayName"] != "orbit-mem" || pj.Interface["category"] != "Productivity" || pj.Interface["shortDescription"] != pj.Description {
+		t.Fatalf("codex plugin.json %+v", pj)
+	}
+	var mcp struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+			EnvVars []string `json:"env_vars"`
+		} `json:"mcpServers"`
+	}
+	mustJSON(t, files, "codex/mcp.json", &mcp)
+	if s := mcp.MCPServers["orbit-mem"]; s.Command != "orbit-mem" || !slices.Equal(s.Args, []string{"mcp"}) || !slices.Equal(s.EnvVars, []string{"ORBIT_HOME"}) {
+		t.Fatalf("codex mcp %+v", mcp)
+	}
+	checkHooks(t, files, "hooks/codex.json", "codex", "0.4.0")
+}
+
+// 끝 기준: 저장소 꼴은 루트 마켓(.claude-plugin/marketplace.json, source ./plugin)과 plugin/의 Claude 꼴뿐이다.
+// 로컬 꼴은 여기에 Codex 꼴과 Codex 로컬 마켓(.agents/plugins/marketplace.json)을 더한다.
+func TestRepo와_Local_마켓(t *testing.T) {
+	repo, err := Repo("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Name    string
+		Owner   map[string]string
+		Plugins []struct{ Name, Source, Version, Description string }
+	}
+	mustJSON(t, repo, ".claude-plugin/marketplace.json", &m)
+	if m.Name != "orbit-mem" || m.Owner["name"] == "" || len(m.Plugins) != 1 || m.Plugins[0].Name != "orbit-mem" || m.Plugins[0].Source != "./plugin" || m.Plugins[0].Version != "0.4.0" {
+		t.Fatalf("marketplace %+v", m)
+	}
+	for _, p := range repo.Paths() {
+		if p != ".claude-plugin/marketplace.json" && !strings.HasPrefix(p, "plugin/") {
+			t.Errorf("저장소 꼴에 %s", p)
+		}
+		if strings.Contains(p, "codex") {
+			t.Errorf("저장소 꼴에 Codex 파일 %s", p)
+		}
+	}
+	local, err := Local("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range repo.Paths() {
+		if string(local[p]) != string(repo[p]) {
+			t.Errorf("로컬 꼴의 %s가 저장소 꼴과 다릅니다", p)
+		}
+	}
+	var cm struct {
+		Name    string
+		Plugins []struct {
+			Name   string
+			Source struct{ Source, Path string }
+			Policy struct{ Installation, Authentication string }
+		}
+	}
+	mustJSON(t, local, ".agents/plugins/marketplace.json", &cm)
+	if cm.Name != "orbit-mem" || len(cm.Plugins) != 1 || cm.Plugins[0].Name != "orbit-mem" || cm.Plugins[0].Source.Source != "local" || cm.Plugins[0].Source.Path != "./plugin" ||
+		cm.Plugins[0].Policy.Installation != "AVAILABLE" {
+		t.Fatalf("codex marketplace %+v", cm)
+	}
+	for _, p := range []string{"plugin/.codex-plugin/plugin.json", "plugin/hooks/codex.json", "plugin/codex/mcp.json", "plugin/hooks/hooks.json"} {
+		if _, ok := local[p]; !ok {
+			t.Errorf("로컬 꼴에 %s가 없습니다", p)
+		}
+	}
+}
+
+// 끝 기준: Write는 바뀐 파일만 쓰고 plugin/ 안의 남은 파일을 지운다. Diff는 다시 만들 파일과 남은 파일을 알린다.
+func TestWrite와_Diff(t *testing.T) {
+	dir := t.TempDir()
+	files, _ := Repo("0.4.0")
+	if d := Diff(dir, files); len(d) != len(files) {
+		t.Fatalf("빈 폴더 차이 %v", d)
+	}
+	os.MkdirAll(filepath.Join(dir, "plugin", "skills", "old"), 0o755)
+	os.WriteFile(filepath.Join(dir, "plugin", "skills", "old", "SKILL.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "README.md"), []byte("keep"), 0o644)
+	if err := Write(dir, files); err != nil {
+		t.Fatal(err)
+	}
+	if d := Diff(dir, files); len(d) != 0 {
+		t.Fatalf("쓴 뒤 차이 %v", d)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plugin", "skills", "old", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatal("남은 파일을 지우지 않았습니다")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "README.md")); string(b) != "keep" {
+		t.Fatal("plugin/ 밖을 건드렸습니다")
+	}
+	os.WriteFile(filepath.Join(dir, "plugin", "hooks", "extra.json"), []byte("{}"), 0o644)
+	os.WriteFile(filepath.Join(dir, "plugin", ".mcp.json"), []byte("{}"), 0o644)
+	d := Diff(dir, files)
+	if len(d) != 2 || !strings.Contains(strings.Join(d, "\n"), "plugin/hooks/extra.json") || !strings.Contains(strings.Join(d, "\n"), "plugin/.mcp.json") {
+		t.Fatalf("차이 %v", d)
+	}
+}
+
+// 끝 기준: 훅 명령은 sh에서 PATH의 orbit-mem을 부른다. 없으면 시작 훅만 설치 안내 JSON을 내고 모두 종료 0,
+// 있으면 그 orbit-mem을 인자와 함께 부르고, 그 orbit-mem이 실패해도 안내가 섞이지 않는다.
+func TestHook_sh_꼴(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh 꼴")
+	}
+	files, err := Claude("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var h hookFile
+	mustJSON(t, files, "hooks/hooks.json", &h)
+	start := h.Hooks["SessionStart"][0].Hooks[0].Command
+	prompt := h.Hooks["UserPromptSubmit"][0].Hooks[0].Command
+	end := h.Hooks["SessionEnd"][0].Hooks[0].Command
+	sh := func(pathDir, cmd string) (string, int) {
+		c := exec.Command("/bin/sh", "-c", cmd)
+		c.Env = []string{"PATH=" + pathDir, "HOME=" + t.TempDir()}
+		c.Stdin = strings.NewReader(`{"session_id":"s"}`)
+		out, err := c.Output()
+		code := 0
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		return string(out), code
+	}
+	empty := t.TempDir()
+	out, code := sh(empty, start)
+	var v struct {
+		HookSpecificOutput struct{ HookEventName, AdditionalContext string }
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &v) != nil || v.HookSpecificOutput.HookEventName != "SessionStart" ||
+		!strings.Contains(v.HookSpecificOutput.AdditionalContext, "orbit-mem install") || !strings.Contains(v.HookSpecificOutput.AdditionalContext, "https://github.com/onidot-labs/orbit-mem") {
+		t.Fatalf("없을 때 시작 훅 %d %q", code, out)
+	}
+	for _, c := range []string{prompt, end} {
+		if out, code := sh(empty, c); code != 0 || out != "" {
+			t.Fatalf("없을 때 %q → %d %q", c, code, out)
+		}
+	}
+	dir := t.TempDir()
+	log := filepath.Join(t.TempDir(), "args")
+	os.WriteFile(filepath.Join(dir, "orbit-mem"), []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >>'"+log+"'\nread x\nprintf 'IN=%s\\n' \"$x\"\n"), 0o755)
+	if out, code := sh(dir, start); code != 0 || out != "IN={\"session_id\":\"s\"}\n" {
+		t.Fatalf("있을 때 %d %q", code, out)
+	}
+	sh(dir, prompt)
+	got, _ := os.ReadFile(log)
+	if string(got) != "hook session-start --host claude --plugin-version 0.4.0\nhook prompt --host claude --plugin-version 0.4.0\n" {
+		t.Fatalf("인자 %q", got)
+	}
+	os.WriteFile(filepath.Join(dir, "orbit-mem"), []byte("#!/bin/sh\nexit 3\n"), 0o755)
+	if out, code := sh(dir, start); out != "" || code != 3 {
+		t.Fatalf("실패한 orbit-mem 뒤에 안내가 섞였습니다: %d %q", code, out)
+	}
+}
+
+// 끝 기준: 원본 검사. Codex는 SessionEnd 훅을 3초로 자르므로 더 길면 빌드가 멈춘다. 모르는 칸·사건도 멈춘다.
+func TestValidate(t *testing.T) {
+	ok := func() Manifest {
+		m, err := loadManifest()
 		if err != nil {
 			t.Fatal(err)
 		}
-		var f fragment
-		if err := json.Unmarshal(b, &f); err != nil {
-			t.Fatalf("%s: JSON이 깨졌습니다: %v\n%s", bin, err, b)
-		}
-		if f.MCPServers["orbit-mem"].Command != bin {
-			t.Errorf("%s: MCP %+v", bin, f.MCPServers)
-		}
-		want := Vars(bin)["memcmd"] + " hook session-start --host {{host}}"
-		if got := f.Hooks["SessionStart"][0].Command; got != want {
-			t.Errorf("%s: 훅 %q, 기대 %q", bin, got, want)
-		}
-		if strings.Contains(string(b), `\u0026`) || !strings.HasSuffix(string(b), "}\n") {
-			t.Errorf("%s: 모양 %s", bin, b)
-		}
+		return m
 	}
-	b, _ := Fragment("/o")
-	var f fragment
-	json.Unmarshal(b, &f)
-	if f.Hooks["SessionEnd"][0].Timeout != 3 || f.Hooks["UserPromptSubmit"][0].Timeout != 5 || f.Hooks["SessionStart"][0].Timeout != 10 {
-		t.Errorf("시간 제한 %+v", f.Hooks)
+	m := ok()
+	m.Hooks["SessionEnd"][0].Timeout = 4
+	if err := m.validate("0.4.0"); err == nil || !strings.Contains(err.Error(), "SessionEnd") {
+		t.Fatalf("Codex SessionEnd 4초: %v", err)
 	}
-}
-
-// 끝 기준(M8): 실험실 후보 빌드는 OpenOrbit orb plugin build <원본> --out <폴더> --fragment <조각 파일>을
-// 부르고, 조각 파일은 부르는 동안만 있다.
-func TestBuild_orb_plugin_build를_부른다(t *testing.T) {
-	var got []string
-	var frag []byte
-	run := func(name string, args ...string) ([]byte, error) {
-		got = append([]string{name}, args...)
-		frag, _ = os.ReadFile(args[len(args)-1])
-		return nil, nil
+	m = ok()
+	m.Hooks["Bogus"] = m.Hooks["SessionEnd"]
+	if err := m.validate("0.4.0"); err == nil {
+		t.Fatal("모르는 사건")
 	}
-	if err := Build("/bin/orb", "/src", "/out", "/x/orbit-mem", run); err != nil {
-		t.Fatal(err)
+	m = ok()
+	m.Hooks["SessionStart"][0].Missing = "it's"
+	if err := m.validate("0.4.0"); err == nil {
+		t.Fatal("작은따옴표는 sh 꼴을 깬다")
 	}
-	if len(got) != 8 || !slices.Equal(got[:7], []string{"/bin/orb", "plugin", "build", "/src", "--out", "/out", "--fragment"}) {
-		t.Fatalf("호출 %q", got)
+	if err := ok().validate("0.4"); err == nil {
+		t.Fatal("판 꼴")
 	}
-	want, _ := Fragment("/x/orbit-mem")
-	if string(frag) != string(want) {
-		t.Fatalf("조각 파일:\n%s", frag)
-	}
-	if _, err := os.Stat(got[7]); !os.IsNotExist(err) {
-		t.Errorf("임시 조각 파일이 남았습니다: %s", got[7])
-	}
-	// 실패는 그 출력과 함께 알린다
-	fail := func(string, ...string) ([]byte, error) {
-		return []byte("원본에 plugin.json이 없습니다"), errors.New("exit status 1")
-	}
-	if err := Build("/bin/orb", "/src", "/out", "/x/orbit-mem", fail); err == nil || !strings.Contains(err.Error(), "원본에 plugin.json이 없습니다") {
-		t.Fatalf("실패 %v", err)
+	if _, err := parseManifest([]byte(`{"name":"orbit-mem","bogus":1}`)); err == nil {
+		t.Fatal("모르는 칸")
 	}
 }
 

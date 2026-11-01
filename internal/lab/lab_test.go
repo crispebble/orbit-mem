@@ -60,7 +60,7 @@ func setup(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	rounds := map[string]int{}
-	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Mem: "/opt/orbit-mem", Source: e.src, Now: func() time.Time { return now },
+	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Source: e.src, Now: func() time.Time { return now },
 		Shuffle: func(round int) bool { return round%2 == 1 }, // 홀수 회차는 고침이 A
 		Build: func(source, out string) error { // 원본을 그대로 플러그인 폴더로
 			return copyTree(source, filepath.Join(out, "plugins", "orbit"))
