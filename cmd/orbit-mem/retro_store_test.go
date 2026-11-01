@@ -254,7 +254,7 @@ func TestRetroStore_상태_목록_세션_백업_판정_정리(t *testing.T) {
 func TestRetroStore_설치_전이면_기억_DB를_만들지_않는다(t *testing.T) {
 	h := home(t)
 	for _, args := range [][]string{{"state"}, {"list"}, {"queue", "list"}, {"queue", "add", "--host", "claude", "--session", "s"}, {"backup"}, {"judge"}, {"settle"},
-		{"prepare", "--kind", "tidy"}, {"finish", "--id", "r-1"}, {"sessions", "--day", dayBefore(1)}} {
+		{"prepare", "--kind", "tidy"}, {"prepare", "--kind", "work"}, {"finish", "--id", "r-1"}, {"sessions", "--day", dayBefore(1)}} {
 		out, errOut, code := run(t, "{}", append([]string{"retro-store"}, args...)...)
 		if code != 1 || out != "" || strings.Count(strings.TrimSpace(errOut), "\n") != 0 || errOut == "" {
 			t.Errorf("%v: code=%d out=%q err=%q", args, code, out, errOut)
@@ -276,5 +276,61 @@ func TestRetroStore_정리와_옛_기억_준비(t *testing.T) {
 	}
 	if l := storeJSON(t, "", "list"); len(l["retros"].([]any)) != 1 {
 		t.Fatalf("legacy with nothing to judge must keep no row: %v", l)
+	}
+}
+
+// AU-5: 작업 회고 준비는 stdin의 작업 기록 JSON 하나를 읽는다.
+func TestRetroStore_작업_회고_준비(t *testing.T) {
+	storeHome(t)
+	cwd := t.TempDir()
+	ended := time.Now().Add(-time.Hour)
+	day := ended.Format("2006-01-02")
+	rec := func(ref string, endedAt int64, text string) string {
+		b, _ := json.Marshal(map[string]any{"ref": ref, "cwd": cwd, "title": "로그인 고치기", "status": "completed", "endedAt": endedAt, "text": text,
+			"userWords": []map[string]any{{"ref": "d-1", "text": "세션 만료도 봐 줘", "at": endedAt, "correction": false}},
+			"evidence":  []map[string]any{{"ref": "step s1", "text": "npm test → ok: Tests 5 passed"}}, "recalled": []string{}, "verified": true})
+		return string(b)
+	}
+	p := storeJSON(t, rec("w-1", ended.UnixMilli(), "로그인을 고쳤다"), "prepare", "--kind", "work", "--host", "codex")
+	if keys(p) != "id,kind,period,session,sourceChecks,status" || p["status"] != "running" || p["kind"] != "work" || p["period"] != day || p["session"] != "openorbit:w-1" {
+		t.Fatalf("prepare = %v", p)
+	}
+	s := seed(t)
+	page, _, err := retro.ReadPage(s, paths(), p["id"].(string), 1)
+	if err != nil || !strings.Contains(page, "Tests 5 passed") || !strings.Contains(page, "세션 만료도 봐 줘") {
+		t.Fatalf("material: %v\n%s", err, page)
+	}
+	if again := storeJSON(t, rec("w-1", ended.UnixMilli(), "로그인을 고쳤다"), "prepare", "--kind", "work"); marshalString(t, again) != `{"kind":"work","period":"`+day+`","status":"skipped"}` {
+		t.Fatalf("again = %v", again)
+	}
+	if empty := storeJSON(t, rec("w-2", ended.UnixMilli(), " "), "prepare", "--kind", "work"); keys(empty) != "id,kind,period,status" || empty["status"] != "empty" {
+		t.Fatalf("empty = %v", empty)
+	}
+	bad := func(mut func(map[string]any)) string {
+		var v map[string]any
+		json.Unmarshal([]byte(rec("w-3", ended.UnixMilli(), "기록")), &v)
+		mut(v)
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+	for name, stdin := range map[string]string{
+		"not json":    "not json",
+		"array":       "[]",
+		"two objects": rec("w-3", ended.UnixMilli(), "기록") + rec("w-4", ended.UnixMilli(), "기록"),
+		"no ref":      bad(func(v map[string]any) { v["ref"] = "" }),
+		"relative":    bad(func(v map[string]any) { v["cwd"] = "app" }),
+		"endedAt":     bad(func(v map[string]any) { v["endedAt"] = 0 }),
+		"status":      bad(func(v map[string]any) { v["status"] = "done" }),
+	} {
+		out, errOut, code := run(t, stdin, "retro-store", "prepare", "--kind", "work")
+		if code != 1 || out != "" || strings.TrimSpace(errOut) == "" || strings.Count(strings.TrimSpace(errOut), "\n") != 0 {
+			t.Errorf("%s: code=%d out=%q err=%q", name, code, out, errOut)
+		}
+	}
+	if _, errOut, code := run(t, rec("w-5", ended.UnixMilli(), "기록"), "retro-store", "prepare", "--kind", "work", "--host", "pi"); code != 1 || errOut == "" {
+		t.Errorf("bad host: code=%d", code)
+	}
+	if l := storeJSON(t, "", "list"); len(l["retros"].([]any)) != 2 {
+		t.Fatalf("rows = %v", l)
 	}
 }

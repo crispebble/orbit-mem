@@ -141,7 +141,11 @@ func (a *app) printCorrection(r memory.RepeatedCorrection) {
 	if r.Title != "" {
 		name += " " + oneLine(r.Title, 50)
 	}
-	line := fmt.Sprintf("  %s  %s · %s", r.Key, name, i18n.T("cli.audit.sessions", r.Sessions, r.Corrections))
+	count := i18n.T("cli.audit.sessions", r.Sessions, r.Corrections)
+	if r.TargetKind == memory.TargetKindProcedure {
+		count = i18n.T("cli.audit.works", r.Sessions)
+	}
+	line := fmt.Sprintf("  %s  %s · %s", r.Key, name, count)
 	if r.Harness {
 		line += " · " + i18n.T("cli.audit.harness")
 	}
