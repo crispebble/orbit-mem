@@ -122,7 +122,7 @@ export function WorkTab({ctx, tab}: TabProps) {
         </div>
       </header>
       <WorkBrief work={work} onSelectStep={id => { setMode('flow'); select(id); }} />
-      <WorkLearning workId={work.id} updatedAt={work.updatedAt} />
+      <WorkLearning workId={work.id} state={work.state} />
       {mode === 'flow' ? (
         <div className="orbit-work-graph">
           <FlowGraph

@@ -85,8 +85,11 @@ export function LearningSection({result}: {result: MetricsResult}) {
   );
 }
 
-/** 작업 탭이 그린다: 지표를 읽어 구역을 보이고, 작업이 바뀌면 다시 읽는다 */
-export function WorkLearning({workId, updatedAt}: {workId: string; updatedAt: string}) {
+/**
+ * 작업 탭이 그린다: 지표를 읽어 구역을 보인다. 작업이 열려 있는 동안의 갱신마다 다시 읽지 않고(읽기마다 비슷한 일을
+ * 계산하고 orbit-mem을 부른다), 작업이 열림↔끝남으로 바뀔 때만 다시 읽는다.
+ */
+export function WorkLearning({workId, state}: {workId: string; state: string}) {
   const {store} = useWork();
   const [result, setResult] = useState<MetricsResult>();
   useEffect(() => {
@@ -97,6 +100,6 @@ export function WorkLearning({workId, updatedAt}: {workId: string; updatedAt: st
       () => { if (alive) setResult(undefined); },
     );
     return () => { alive = false; };
-  }, [store, workId, updatedAt]);
+  }, [store, workId, state]);
   return result ? <LearningSection result={result} /> : null;
 }
