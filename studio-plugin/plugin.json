@@ -84,6 +84,14 @@
         "id": "work",
         "command": "orb",
         "args": [
+          "work",
+          "mcp"
+        ]
+      },
+      {
+        "id": "mem",
+        "command": "orb",
+        "args": [
           "mcp",
           "--reader"
         ]

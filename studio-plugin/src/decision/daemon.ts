@@ -1,4 +1,4 @@
-// 결정 카드 출처 합성(Studio 4차 S4-5, C5): orbit-pi 데몬의 열린 질문·권한 카드 + `orb mcp --reader`의 카드.
+// 결정 카드 출처 합성(Studio 4차 S4-5, C5): orbit-pi 데몬의 열린 질문·권한 카드 + `orb work mcp`의 카드.
 // - 데몬 카드의 정본은 데몬 실행이다. 열린 카드는 ListRuns(open_decisions), 글(질문·선택지)은 decision.asked 사건의 key/args로 만든다.
 //   닫힌 카드는 전역 스트림의 decision.answered·run.finished로 따라가고, 재시작 때는 오늘 실행들의 history로 복원한다(최선).
 // - 카드 id는 `daemon:<runId>:<decisionId>`. 답하기는 AnswerDecision이고 accepted=false면 CONFLICT.

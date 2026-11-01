@@ -1,4 +1,4 @@
-// 지금의 카드 출처: 이 플러그인의 읽는 쪽 연결(`orb mcp --reader`)의 decision_* 도구.
+// 지금의 카드 출처: 이 플러그인의 작업 연결(`orb work mcp`)의 decision_* 도구.
 // R4-4 orbit-pi 데몬이 생기면 데몬 이벤트 구독으로 같은 DecisionSource를 만들어 index.tsx에서 바꿔 끼운다.
 import {errorMessage} from '../orb.ts';
 import {readerCall, type CallOptions} from '../work/client.ts';

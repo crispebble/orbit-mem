@@ -14,11 +14,12 @@ const ok = (name: string): McpResultLike => ({isError: false, text: '', structur
 const err = (name: string): McpResultLike => ({isError: true, text: '', structured: example(name).result});
 
 describe('memory_graph 호출', () => {
-  it('읽는 쪽 연결로 major 1을 붙여 부르고, 숨김 포함이면 states에 hidden을 더한다', async () => {
+  it('기억 연결(mem)로 major 1을 붙여 부르고, 숨김 포함이면 states에 hidden을 더한다', async () => {
     const f = fakeWorkCtx({memory_graph: () => ok('memory_graph.all')});
     const g = await memoryGraph(f.ctx);
     assert.equal(g.nodes.length, 8);
     await memoryGraph(f.ctx, {includeHidden: true});
+    assert.deepEqual(f.calls.map(c => c.connection), ['mem', 'mem']);
     assert.deepEqual(f.calls.map(c => c.args), [{major: 1}, {states: ['candidate', 'confirmed', 'stale', 'hidden'], major: 1}]);
   });
 

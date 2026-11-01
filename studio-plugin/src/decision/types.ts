@@ -62,7 +62,7 @@ export type AnswerOutcome =
 
 /**
  * 카드 출처. 저장소·Studio 공급자는 이것만 안다.
- * 지금 구현은 `orb mcp --reader`(source.ts)이고, R4-4 orbit-pi 데몬이 생기면 데몬 이벤트 구독으로 같은 모양을 하나 더 만들어 바꿔 끼운다.
+ * 지금 구현은 `orb work mcp`(source.ts)이고, R4-4 orbit-pi 데몬이 생기면 데몬 이벤트 구독으로 같은 모양을 하나 더 만들어 바꿔 끼운다.
  */
 export interface DecisionSource {
   /** 카드 목록. `updatedSince`(RFC 3339) 뒤에 바뀐 것만 */

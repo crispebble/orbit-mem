@@ -105,7 +105,7 @@ export default definePlugin({
     offLocale = followStudio(ctx.locale);
     store = createStore(ctx);
     setStore(store);
-    // 작업 기록은 읽는 쪽 연결(`orb mcp --reader`)로 따로 읽는다. 판이 맞지 않으면 작업·세션 화면만 멈춘다.
+    // 작업 기록·결정 카드는 작업 연결(`orb work mcp`), 기억 그래프는 기억 연결(`orb mcp --reader`)로 따로 읽는다. 판이 맞지 않으면 작업·세션 화면만 멈춘다.
     workStore = createWorkStore(ctx);
     setWorkStore(workStore);
     // 데몬 클라이언트(S4-5). 데몬은 여기서 띄우지 않는다: 상태를 한 번 읽을 뿐이고, 띄우기는 작업 대화의 「시작」이 ensure로 한다.
