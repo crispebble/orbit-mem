@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
@@ -31,8 +33,8 @@ type Config struct {
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
 	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
 	PluginSource    string   `json:"pluginSource,omitempty"` // OpenOrbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
-	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 OpenOrbit으로 옮겨 가며 없앴다.
-	// 그 키가 남은 config.json도 그대로 읽고(모르는 키는 무시), 다시 저장할 때 빠진다.
+	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 OpenOrbit으로 옮겨 갔고
+	// OpenOrbit이 같은 config.json에서 아직 읽는다. 모르는 키는 읽을 때 무시하고, 저장할 때는 파일에 있던 그대로 보존한다.
 
 	SessionRetro         bool   `json:"sessionRetro"`                // 세션이 끝나면 그 세션만 짧게 회고한다
 	SessionRetroModel    string `json:"sessionRetroModel,omitempty"` // 비우면 claude는 haiku, codex는 호스트 기본
@@ -179,7 +181,8 @@ func Load(path string) (Config, error) {
 	return c, c.Validate()
 }
 
-// Save writes the configuration.
+// Save writes the configuration. Keys in the file that Config does not know (OpenOrbit's
+// work settings, a newer version's) are kept as they were; the known keys are overwritten.
 func Save(path string, c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -187,6 +190,36 @@ func Save(path string, c Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	b, _ := json.MarshalIndent(c, "", "  ")
+	cur, _ := json.Marshal(c)
+	var mine map[string]json.RawMessage
+	_ = json.Unmarshal(cur, &mine)
+	out := map[string]json.RawMessage{}
+	if old, err := os.ReadFile(path); err == nil {
+		var prev map[string]json.RawMessage
+		if json.Unmarshal(old, &prev) == nil {
+			known := knownKeys()
+			for k, v := range prev {
+				if !known[k] {
+					out[k] = v
+				}
+			}
+		}
+	}
+	for k, v := range mine {
+		out[k] = v
+	}
+	b, _ := json.MarshalIndent(out, "", "  ") // 맵은 키 순서로 쓴다
 	return os.WriteFile(path, append(b, '\n'), 0o600)
+}
+
+// knownKeys are the JSON keys of Config's fields (also those left out when empty).
+func knownKeys() map[string]bool {
+	known := map[string]bool{}
+	t := reflect.TypeOf(Config{})
+	for i := 0; i < t.NumField(); i++ {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			known[name] = true
+		}
+	}
+	return known
 }

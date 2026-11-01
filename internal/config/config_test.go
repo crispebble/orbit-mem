@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,9 +51,9 @@ func TestValidate_잘못된_값은_거절(t *testing.T) {
 	}
 }
 
-// 끝 기준(M6): 작업 기록 설정(work·workStaleAfter·workTestCommands)은 없앴다. 이미 그 키가 있는
-// config.json도 값과 무관하게 실패 없이 읽고, 다시 저장하면 그 키는 빠진다.
-func TestLoad_옛_작업_기록_키는_무시한다(t *testing.T) {
+// 작업 기록 설정(work·workStaleAfter·workTestCommands)은 OpenOrbit이 읽는다. 값과 무관하게
+// 실패 없이 읽고, 다시 저장해도 그 키는 그대로 남는다.
+func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존한다(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	os.WriteFile(p, []byte(`{"retroHost":"codex","work":"bogus","workStaleAfter":"x","workTestCommands":["make t"]}`), 0o600)
 	c, err := Load(p)
@@ -63,8 +64,8 @@ func TestLoad_옛_작업_기록_키는_무시한다(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(p)
-	if strings.Contains(string(b), "work") {
-		t.Fatalf("옛 키가 남았습니다: %s", b)
+	if !strings.Contains(string(b), `"work": "bogus"`) || !strings.Contains(string(b), "workStaleAfter") || !strings.Contains(string(b), "workTestCommands") {
+		t.Fatalf("키가 사라졌습니다: %s", b)
 	}
 }
 
@@ -200,5 +201,35 @@ func TestLanguage_손으로_쓴_언어도_읽고_맞춰_둔다(t *testing.T) {
 	c, err := Load(path)
 	if err != nil || c.Language != "ko" {
 		t.Fatalf("%+v %v", c.Language, err)
+	}
+}
+
+func TestSave_모르는_키는_보존(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"language":"en","work":"off","workStaleAfter":"72h","workTestCommands":{"go":"go test ./..."},"claudePath":"/x/claude"}`
+	if err := os.WriteFile(p, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Language, c.ClaudePath = "ko", ""
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["work"] != "off" || got["workStaleAfter"] != "72h" || got["workTestCommands"].(map[string]any)["go"] != "go test ./..." {
+		t.Fatalf("모르는 키가 사라졌습니다: %s", b)
+	}
+	if got["language"] != "ko" {
+		t.Fatalf("아는 키는 덮어씁니다: %s", b)
+	}
+	if _, ok := got["claudePath"]; ok {
+		t.Fatalf("비운 아는 키는 지웁니다: %s", b)
 	}
 }
