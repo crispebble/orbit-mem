@@ -20,12 +20,40 @@ type Options struct {
 	ProjectLabel string
 	Version      string
 	WorkDB       string // 옛 작업 기록 work.db(activity_find가 읽기 전용으로 읽는다)
+	// Actor is who writes through this server (A2): ai for a host's AI (the
+	// default), user for a person's app (Orbit Studio), automation inside a
+	// retrospective. A tool argument never changes it.
+	Actor string
+}
+
+// ResolveActor picks the writer of a server or command: inside a
+// retrospective run (ORBIT_RETRO_ID) always automation, else the flag, else
+// ORBIT_ACTOR, else def. Unknown values fall back.
+func ResolveActor(flag, env, retroID, def string) string {
+	if retroID != "" {
+		return memory.ActorAutomation
+	}
+	for _, v := range []string{flag, env} {
+		if slices.Contains(memory.Actors, v) {
+			return v
+		}
+	}
+	return def
+}
+
+func (o Options) who(quote, ref string) memory.Who {
+	actor := o.Actor
+	if actor == "" {
+		actor = memory.ActorAI
+	}
+	return memory.Who{Actor: actor, UserQuote: quote, Ref: ref}
 }
 
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
-사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다.
-저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다.
-틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.
+사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다. 후보는 바로 회상에 쓰이고, 증거(다른 날 다시 나옴, 회상돼 따른 일이 검증을 통과하고 교정이 없음, 작업 검증이 확인한 프로젝트 사실=source kind verification)가 쌓이면 스스로 확정된다.
+저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다. 사용자 규칙과 어긋나는 후보면 conflictsWith에 그 규칙 id를 준다.
+틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자 말을 담은 기억(출처 quote)은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
+proposals는 감사·교정용이다: status=audit이면 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정을 보여 준다. 사용자가 "제안 보여줘"·"감사 목록 보여줘"라고 하면 보여 주고, 사용자의 답대로 proposal_decide(approve·reject·revert·dismiss)를 부른다.
 활동 기록: 이 프로젝트에서 언제·어느 호스트가 무엇을 했는지(이전 세션, 이어 할 일의 실마리)가 필요하면 activity_find로 찾는다. 세션 훅이 남긴 기록과 옛 작업 기록을 함께 최신순으로 준다.`
 
 // New builds the server over the store.
@@ -51,19 +79,19 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 같은 제목의 후보가 다른 날 다시 저장되면 확정된다.", Annotations: writeHints(false, false)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 후보는 증거로 스스로 확정된다: 같은 제목이 다른 날 다시 저장됨, 회상돼 따른 일이 검증 통과·교정 없음, 작업 검증이 확인한 프로젝트 사실(source kind verification, 종류 fact, 범위 project).", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out MemoryOut) map[string]any {
 			return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale(낡음)·supersede(supersededBy가 대체)·restore(후보로 되돌림).", Annotations: writeHints(false, false)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale(낡음)·supersede(supersededBy가 대체)·restore(후보로 되돌림). 사용자 말을 담은 기억(출처 quote)을 바꾸거나 후보를 확정하려면 그렇게 하라는 사용자 말을 userQuote로 준다(그 말이 새 출처로 남는다).", Annotations: writeHints(false, false)},
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "대기 중인 제안(후보 확정, 낡은 기억 정리·합치기, 재분류, 파일 반영 diff, 방향, 기억 고치기, 변경 되돌리기, 관련 기억 잇기, 태그 묶기·달기)을 대상 기억과 함께 보여 준다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "감사·교정용 목록. status=audit이면 감사 목록(최근 자동 확정·자동 정리와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 사용자 규칙과 어긋나는 후보, 기준을 넘은 반복 교정·하네스 개선 후보)을, 기본(pending)은 사람의 결정을 기다리는 제안(고치기, 재분류, 파일 반영 diff, 방향, 사용자 말을 담은 기억에 닿는 정리)을 대상 기억과 함께 보여 준다. 사람은 틀린 것만 고치거나 되돌린다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안을 승인·거절한다. title·body를 주면 고쳐서 승인한다(되돌리기·파일 반영·잇기·태그는 고쳐서 승인할 수 없다). ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안·감사 항목을 결정한다. approve·reject: 대기 제안을 승인·거절(title·body를 주면 고쳐서 승인, 되돌리기·파일 반영·잇기·태그는 고쳐서 승인할 수 없다). revert: 감사 목록의 자동 변경(proposalId나 ledgerId)을 되돌려 전 판으로(자동 확정은 후보로). dismiss: 어긋남 표시(f-…)나 반복 교정(correction:…)을 확인함으로 닫는다. ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
@@ -214,7 +242,7 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 
 // SourceIn is where a memory came from.
 type SourceIn struct {
-	Kind    string `json:"kind" jsonschema:"quote(사용자 말 그대로)·file·command·session·host_memory"`
+	Kind    string `json:"kind" jsonschema:"quote(사용자 말 그대로)·file·command·session·host_memory·verification(작업 검증이 직접 확인: ref에 명령·작업 id, excerpt에 결과)"`
 	Ref     string `json:"ref,omitempty" jsonschema:"파일 절대경로, 명령, 세션 id 같은 위치"`
 	Excerpt string `json:"excerpt,omitempty" jsonschema:"인용이나 발췌. quote면 사용자 말 그대로"`
 }
@@ -229,6 +257,8 @@ type SaveIn struct {
 	Project string   `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
 	Source  SourceIn `json:"source"`
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"관련 있는 기존 기억과 잇는다(같은 내용이면 잇지 말고 그 기억을 고친다)"`
+	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
+	ConflictsWith []string `json:"conflictsWith,omitempty" jsonschema:"이 후보와 어긋나는 사용자 규칙 id. 어긋남이 표시된 후보는 자동 확정되지 않고 감사 목록에 보인다"`
 }
 
 // LinkIn links to another memory.
@@ -322,6 +352,21 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
+	if err := h.checkLinks("", in.ConflictsWith...); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	if len(in.ConflictsWith) > 0 && in.Source.Kind != memory.SourceQuote {
+		// 어긋남은 확정 전에 표시해야 한다: 같은 제목 후보가 이 저장으로 확정되지 않게 먼저 단다.
+		if m, ok := h.existingCandidate(in, scope); ok {
+			for _, rule := range in.ConflictsWith {
+				if _, err := h.s.FlagConflict(m.ID, rule, "memory_save: 사용자 규칙과 어긋남", h.o.who("", "")); err != nil {
+					r, _ := toolError(err)
+					return r, MemoryOut{}, nil
+				}
+			}
+		}
+	}
 	m, err := h.s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}})
 	if err != nil {
@@ -334,7 +379,30 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 			return r, MemoryOut{}, nil
 		}
 	}
+	if m.State == memory.StateCandidate {
+		for _, rule := range in.ConflictsWith {
+			if _, err := h.s.FlagConflict(m.ID, rule, "memory_save: 사용자 규칙과 어긋남", h.o.who("", "")); err != nil {
+				r, _ := toolError(err)
+				return r, MemoryOut{}, nil
+			}
+		}
+	}
 	return nil, MemoryOut{Memory: m}, nil
+}
+
+// existingCandidate is the candidate a save of in would add to (same kind, scope and title).
+func (h handlers) existingCandidate(in SaveIn, scope string) (memory.Memory, bool) {
+	ms, err := h.s.Find(memory.FindInput{Kinds: []string{in.Kind}, States: []string{memory.StateCandidate}, AllProjects: true, Limit: 50})
+	if err != nil {
+		return memory.Memory{}, false
+	}
+	key := memory.TitleKey(in.Title)
+	for _, m := range ms {
+		if m.Scope == scope && memory.TitleKey(m.Title) == key {
+			return m, true
+		}
+	}
+	return memory.Memory{}, false
 }
 
 // UpdateIn is memory_update's input.
@@ -350,6 +418,7 @@ type UpdateIn struct {
 	Project         string     `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
+	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억을 바꾸거나 후보를 확정할 때, 그렇게 하라는 사용자 말 그대로. 새 출처로 남는다"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"관련 있는 기억과 잇는다. 연결만 바꾸면 판은 그대로다"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다(기록은 남는다)"`
 }
@@ -386,7 +455,8 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
-		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Reason: in.Reason, Action: in.Action}
+		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Reason: in.Reason, Action: in.Action,
+			Who: h.o.who(in.UserQuote, "")}
 		if in.Scope != "" {
 			sc, label, serr := h.scope(in.Scope, in.Project)
 			if serr != nil {
@@ -405,7 +475,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 			err = fmt.Errorf("supersede에는 supersededBy가 필요합니다")
 			break
 		}
-		m, err = h.s.Supersede(in.ID, in.SupersededBy, in.Reason)
+		m, err = h.s.SupersedeAs(in.ID, in.SupersededBy, in.Reason, h.o.who(in.UserQuote, ""))
 	default:
 		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore입니다")
 	}
@@ -421,7 +491,8 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 
 // ProposalsIn is proposals' input.
 type ProposalsIn struct {
-	Status string `json:"status,omitempty" jsonschema:"pending(기본)·approved·rejected·all"`
+	Status string `json:"status,omitempty" jsonschema:"pending(기본)·approved·rejected·auto(자동 변경)·all·audit(감사 목록)"`
+	Days   int    `json:"days,omitempty" jsonschema:"audit: 자동 변경을 볼 날 수(기본 14)"`
 }
 
 // ProposalView is a proposal with the memories it concerns.
@@ -433,6 +504,7 @@ type ProposalView struct {
 // ProposalsOut is proposals' result.
 type ProposalsOut struct {
 	Items []ProposalView `json:"items"`
+	Audit *memory.Audit  `json:"audit,omitempty"` // status=audit
 }
 
 func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in ProposalsIn) (*mcp.CallToolResult, ProposalsOut, error) {
@@ -442,6 +514,13 @@ func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in Propos
 		status = memory.StatusPending
 	case "all":
 		status = ""
+	case "audit":
+		a, err := h.s.Audit(memory.AuditFilter{Days: in.Days})
+		if err != nil {
+			r, _ := toolError(err)
+			return r, ProposalsOut{}, nil
+		}
+		return nil, ProposalsOut{Items: []ProposalView{}, Audit: &a}, nil
 	}
 	ps, err := h.s.Proposals(status)
 	if err != nil {
@@ -465,7 +544,7 @@ func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in Propos
 type DecideIn struct {
 	ID       string   `json:"id,omitempty" jsonschema:"결정할 제안 하나"`
 	IDs      []string `json:"ids,omitempty" jsonschema:"같은 답으로 한 번에 결정할 제안들(승인·거절만, 고쳐서 승인은 하나씩)"`
-	Decision string   `json:"decision" jsonschema:"approve 또는 reject"`
+	Decision string   `json:"decision" jsonschema:"approve·reject(대기 제안), revert(자동 변경 되돌리기), dismiss(어긋남·반복 교정 확인함)"`
 	Title    *string  `json:"title,omitempty" jsonschema:"고쳐서 승인할 제목"`
 	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문(파일 반영이면 새 파일 내용 전체)"`
 	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
@@ -480,6 +559,33 @@ type DecideOut struct {
 }
 
 func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn) (*mcp.CallToolResult, DecideOut, error) {
+	if in.Decision == "revert" || in.Decision == "dismiss" {
+		ids := in.IDs
+		if in.ID != "" {
+			ids = append([]string{in.ID}, ids...)
+		}
+		if len(ids) == 0 || in.Title != nil || in.Body != nil {
+			r, _ := toolError(fmt.Errorf("%w: %s에는 id(또는 ids)만 줍니다", memory.ErrInvalid, in.Decision))
+			return r, DecideOut{}, nil
+		}
+		out := DecideOut{}
+		for _, id := range ids {
+			res, err := h.auditDecide(id, in.Decision, in.Note)
+			if err != nil {
+				if len(ids) == 1 {
+					r, _ := toolError(err)
+					return r, DecideOut{}, nil
+				}
+				out.Failed = append(out.Failed, memory.BatchFailure{ID: id, Error: err.Error()})
+				continue
+			}
+			out.Decided = append(out.Decided, res)
+		}
+		if len(ids) == 1 {
+			out.DecideResult, out.Decided = out.Decided[0], nil
+		}
+		return nil, out, nil
+	}
 	if len(in.IDs) > 0 {
 		if in.Title != nil || in.Body != nil {
 			r, _ := toolError(fmt.Errorf("%w: 고쳐서 승인은 하나씩 id로 합니다", memory.ErrInvalid))
@@ -514,4 +620,18 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 		return r, DecideOut{}, nil
 	}
 	return nil, DecideOut{DecideResult: res}, nil
+}
+
+// auditDecide settles one audit item: revert an automatic change (by its
+// proposal or ledger id), or dismiss a conflict mark or a repeated correction.
+func (h handlers) auditDecide(id, decision, note string) (memory.DecideResult, error) {
+	w := h.o.who("", "")
+	switch {
+	case decision == "revert":
+		return h.s.RevertChange(id, w, note)
+	case strings.HasPrefix(id, "correction:"):
+		return memory.DecideResult{}, h.s.Acknowledge(id, w)
+	default:
+		return memory.DecideResult{}, h.s.ResolveFlag(id, "dismissed", w)
+	}
 }

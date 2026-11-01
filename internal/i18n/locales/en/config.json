@@ -1,14 +1,15 @@
 {
-  "config.err.language": "language is en or ko: %q",
-  "config.err.retro_host": "retroHost is claude or codex: %q",
-  "config.err.retro_hour": "retroHour is 0-23: %d",
-  "config.err.inject": "inject is full|rules|off: %q",
-  "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
-  "config.err.recall_chars": "recallChars is 100-%d: %d",
-  "config.err.ledger_session": "check ledgerWindowDays (1-90) and sessionRetroDailyMax (0 or more)",
+  "config.err.evidence": "check confirmSeenDays, confirmFollowedVerified and correctionRepeatSessions (1-30)",
   "config.err.graph_tidy": "check graphTidyMemories and graphTidyUntagged (0-200) and graphTidyProposals (0-20)",
-  "config.err.legacy": "check legacyMemories (1-100) and legacyBatches (0-20)",
+  "config.err.inject": "inject is full|rules|off: %q",
   "config.err.lab_budget": "check labRuns (1-10), labRunUSD (over 0, up to 20) and labExperimentUSD (labRunUSD to 200)",
   "config.err.lab_models": "labModel and labJudgeModel must be set and differ (so no model picks its own results)",
-  "config.err.read": "cannot read the settings file (%s): %w"
+  "config.err.language": "language is en or ko: %q",
+  "config.err.ledger_session": "check ledgerWindowDays (1-90) and sessionRetroDailyMax (0 or more)",
+  "config.err.legacy": "check legacyMemories (1-100) and legacyBatches (0-20)",
+  "config.err.read": "cannot read the settings file (%s): %w",
+  "config.err.recall_chars": "recallChars is 100-%d: %d",
+  "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
+  "config.err.retro_host": "retroHost is claude or codex: %q",
+  "config.err.retro_hour": "retroHour is 0-23: %d"
 }

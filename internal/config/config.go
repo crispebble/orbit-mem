@@ -62,6 +62,13 @@ type Config struct {
 	LabExperimentUSD float64 `json:"labExperimentUSD"` // 실험 하나(모든 실행+고르기) 누적 상한(USD)
 	LabModel         string  `json:"labModel"`         // 후보 실행 모델
 	LabJudgeModel    string  `json:"labJudgeModel"`    // 결과물을 익명으로 고르는 모델(후보 실행 모델과 달라야 한다)
+
+	// 확정 규칙(A2, 계획 · AU-6). 후보가 스스로 확정되는 증거의 횟수와 반복 교정 표시 기준.
+	// confirmFollowedVerified·correctionRepeatSessions는 E2: 이 PC 기억 DB 사본(2026-10-26~11-01)으로 잰
+	// 추천값이며 사용자 결정 대기다. 근거는 Atlas 계획 · AU-6 「E2 측정」.
+	ConfirmSeenDays          int `json:"confirmSeenDays"`          // ① 서로 다른 날 다시 나온 날 수(지금 규칙 2)
+	ConfirmFollowedVerified  int `json:"confirmFollowedVerified"`  // ② 회상돼 따랐고 검증 통과·교정 없는 세션 수
+	CorrectionRepeatSessions int `json:"correctionRepeatSessions"` // 같은 대상 교정이 나온 세션 수가 이 이상이면 표시
 }
 
 // maxRecallChars keeps the per-request context under the hosts' hook context
@@ -85,7 +92,8 @@ func Default() Config {
 	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
 		LegacyMemories: 30, LegacyBatches: 1,
-		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus"}
+		LabRuns: 3, LabRunUSD: 1, LabExperimentUSD: 10, LabModel: "sonnet", LabJudgeModel: "opus",
+		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -122,6 +130,11 @@ func (c Config) Validate() error {
 	}
 	if c.LabModel == "" || c.LabJudgeModel == "" || c.LabModel == c.LabJudgeModel {
 		return i18n.Errorf("config.err.lab_models")
+	}
+	for _, n := range []int{c.ConfirmSeenDays, c.ConfirmFollowedVerified, c.CorrectionRepeatSessions} {
+		if n < 1 || n > 30 {
+			return i18n.Errorf("config.err.evidence")
+		}
 	}
 	return nil
 }

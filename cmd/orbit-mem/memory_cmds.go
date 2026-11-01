@@ -28,7 +28,28 @@ func paths() config.Paths { return config.Paths{Home: config.Home()} }
 
 func loadConfig() (config.Config, error) { return config.Load(paths().Config()) }
 
-func openStore() (*memory.Store, error) { return memory.Open(paths().DB()) }
+// openStore opens this PC's memory database with the configured confirmation
+// counts (A2). A configuration that does not load leaves the defaults.
+func openStore() (*memory.Store, error) {
+	s, err := memory.Open(paths().DB())
+	if err != nil {
+		return nil, err
+	}
+	if cfg, err := loadConfig(); err == nil {
+		s.Policy = policyOf(cfg)
+	}
+	return s, nil
+}
+
+func policyOf(cfg config.Config) memory.Policy {
+	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
+}
+
+// actorOf is who writes through a command: inside a retrospective run always
+// automation, else the flag, else ORBIT_ACTOR, else def.
+func actorOf(flag, def string) string {
+	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), os.Getenv("ORBIT_RETRO_ID"), def)
+}
 
 func cmdVersion(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, "orbit-mem "+version.Version)
@@ -47,6 +68,7 @@ func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
 	retroID := fs.String("retro", "", i18n.T("flag.mcp.retro"))
 	reader := fs.Bool("reader", false, i18n.T("flag.mcp.reader"))
+	actor := fs.String("actor", "", i18n.T("flag.mcp.actor"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -72,7 +94,8 @@ func cmdMCP(a *app, args []string) error {
 	if *retroID != "" {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB()})
+		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB(),
+			Actor: actorOf(*actor, memory.ActorAI)})
 	}
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
@@ -600,16 +623,18 @@ func cmdConfig(a *app, args []string) error {
 				cfg.RetiredNames = append(cfg.RetiredNames, n)
 			}
 		}
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches", "labRuns":
+	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches", "labRuns",
+		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
-			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns}[key] = n
+			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns,
+			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
