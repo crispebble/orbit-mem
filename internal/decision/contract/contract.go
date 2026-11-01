@@ -1,7 +1,7 @@
 // Package contract holds the orbit.decision contract (결정 카드): the tool
 // input table, the input and response JSON Schemas and example responses for
 // each major version. Readers (Orbit Studio Needs you, orbit-pi, its Telegram
-// channel) copy the examples; orb's tests check real responses against the schemas.
+// channel) copy the examples; orbit-mem's tests check real responses against the schemas.
 package contract
 
 import (
@@ -13,13 +13,13 @@ import (
 // Name is the contract name in every response.
 const Name = "orbit.decision"
 
-// Major and Minor are the version orb answers by default.
+// Major and Minor are the version orbit-mem answers by default.
 const (
 	Major = 1
 	Minor = 0
 )
 
-// SupportedMajors are the major versions orb answers.
+// SupportedMajors are the major versions orbit-mem answers.
 var SupportedMajors = []int{1}
 
 //go:embed v1

@@ -21,8 +21,8 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
-	"github.com/onidot-labs/orbit-mem/internal/work"
 )
 
 // Kinds and statuses of a retrospective.
@@ -70,7 +70,7 @@ type Runner struct {
 	Roots transcript.Roots
 	Loc   *time.Location
 	Now   func() time.Time
-	Orb   string // MCP 서버로 띄울 orb 절대경로
+	Mem   string // MCP 서버로 띄울 orbit-mem 절대경로
 	Exec  func(context.Context, Cmd) (string, error)
 }
 
@@ -342,8 +342,8 @@ func (r *Runner) CatchUp(ctx context.Context) ([]Result, error) {
 	}
 	var results []Result
 	var errs []error
-	// 작업 기록 DB도 같은 날 함께 복사한다(설계 · Orbit 2차 「저장」). 실패해도 회고는 돈다
-	if _, err := work.DailyBackup(r.Paths.WorkDB(), r.Paths.Backups(), max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
+	// 옛 작업 기록 DB(work.db)도 같은 날 함께 복사한다(읽기 전용으로 연다). 실패해도 회고는 돈다
+	if _, err := sqlitedb.BackupDaily(r.Paths.WorkDB(), r.Paths.Backups(), "work", max(r.Cfg.BackupKeep, 1), r.now()); err != nil {
 		errs = append(errs, i18n.Errorf("retro.err.backup", err))
 	}
 	// 세션 끝 회고를 먼저 끝내야 하루 회고가 그 결과를 모으고 남은 발화만 읽는다.
@@ -442,7 +442,7 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 		q := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 		args := []string{"exec", "--ephemeral", "--skip-git-repo-check", "-C", dir, "-s", "read-only",
 			"-c", `approval_policy="never"`,
-			"-c", "mcp_servers.orbit-retro.command=" + q(r.Orb),
+			"-c", "mcp_servers.orbit-retro.command=" + q(r.Mem),
 			"-c", `mcp_servers.orbit-retro.args=["mcp","--retro",` + q(id) + `]`,
 			"-c", "mcp_servers.orbit-retro.env={ORBIT_HOME=" + q(r.Paths.Home) + "}",
 			"-c", `mcp_servers.orbit-retro.default_tools_approval_mode="approve"`}
@@ -456,7 +456,7 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 		name = "claude"
 	}
 	mcpConfig, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"orbit-retro": map[string]any{
-		"type": "stdio", "command": r.Orb, "args": []string{"mcp", "--retro", id}, "env": map[string]string{"ORBIT_HOME": r.Paths.Home}}}})
+		"type": "stdio", "command": r.Mem, "args": []string{"mcp", "--retro", id}, "env": map[string]string{"ORBIT_HOME": r.Paths.Home}}}})
 	configPath := filepath.Join(r.Paths.RetroDir(), id, "mcp.json")
 	_ = os.MkdirAll(filepath.Dir(configPath), 0o700)
 	_ = os.WriteFile(configPath, mcpConfig, 0o600)

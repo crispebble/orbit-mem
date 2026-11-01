@@ -3,8 +3,6 @@
   "config.err.retro_host": "retroHost is claude or codex: %q",
   "config.err.retro_hour": "retroHour is 0-23: %d",
   "config.err.inject": "inject is full|rules|off: %q",
-  "config.err.work": "work is on|off: %q",
-  "config.err.work_stale_after": "workStaleAfter is a positive duration such as 20m: %q",
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
   "config.err.recall_chars": "recallChars is 100-%d: %d",
   "config.err.ledger_session": "check ledgerWindowDays (1-90) and sessionRetroDailyMax (0 or more)",

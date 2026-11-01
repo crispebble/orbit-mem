@@ -1,9 +1,0 @@
-{
- "session_id": "ba9cceae-9566-4355-bbc3-e9f153a5018d",
- "transcript_path": "/home/.claude/projects/-repo/ba9cceae-9566-4355-bbc3-e9f153a5018d.jsonl",
- "cwd": "/repo",
- "scratchpad_dir": "/tmp/scratch",
- "prompt_id": "d734d3cf-4ce2-4d5a-837d-8632ab1d59be",
- "hook_event_name": "SessionEnd",
- "reason": "other"
-}

@@ -1,6 +1,4 @@
 {
-  "install.err.alias_self": "the oni alias would point at itself: %s",
-  "install.err.no_schedule": "scheduling is not supported on %s. Schedule orb retro run yourself",
-  "install.err.replace_binary": "cannot replace the existing orb (close the running sessions and try again): %w",
-  "install.err.no_daemon_agent": "starting the daemon at login is not supported on %s yet; run orb daemon start"
+  "install.err.no_schedule": "scheduling is not supported on %s. Schedule orbit-mem retro run yourself",
+  "install.err.replace_binary": "cannot replace the existing orbit-mem (close the running sessions and try again): %w"
 }

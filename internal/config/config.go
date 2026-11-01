@@ -1,4 +1,4 @@
-// Package config holds this PC's OpenOrbit settings and file locations.
+// Package config holds this PC's orbit-mem settings and file locations.
 package config
 
 import (
@@ -6,7 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"time"
+	"reflect"
+	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
@@ -20,7 +21,7 @@ const (
 
 // Config is this PC's settings.
 type Config struct {
-	Language        string   `json:"language,omitempty"`     // en(기본) | ko: orb가 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
+	Language        string   `json:"language,omitempty"`     // en(기본) | ko: orbit-mem이 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
 	RetroHost       string   `json:"retroHost"`              // claude | codex
 	RetroModel      string   `json:"retroModel"`             // 비우면 호스트 기본값
 	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
@@ -32,10 +33,8 @@ type Config struct {
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
 	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
 	PluginSource    string   `json:"pluginSource,omitempty"` // OpenOrbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
-	// 작업 그래프(설계 · Orbit 2차 「구성」 PC 설정). 이름은 제안이다.
-	Work             string   `json:"work,omitempty"`             // on(기본) | off: 작업 기록 켜기
-	WorkTestCommands []string `json:"workTestCommands,omitempty"` // 기본 시험 명령 목록에 더할 명령(설계 O6)
-	WorkStaleAfter   string   `json:"workStaleAfter,omitempty"`   // 응답 없음으로 볼 시간(예: 20m). 비우면 계산하지 않는다(설계 O5)
+	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 OpenOrbit으로 옮겨 갔고
+	// OpenOrbit이 같은 config.json에서 아직 읽는다. 모르는 키는 읽을 때 무시하고, 저장할 때는 파일에 있던 그대로 보존한다.
 
 	SessionRetro         bool   `json:"sessionRetro"`                // 세션이 끝나면 그 세션만 짧게 회고한다
 	SessionRetroModel    string `json:"sessionRetroModel,omitempty"` // 비우면 claude는 haiku, codex는 호스트 기본
@@ -50,7 +49,7 @@ type Config struct {
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
 
 	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. 예약 회고가 하루에
-	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orb retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
+	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orbit-mem retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
 	// 첫 실행 실측(30개 묶음 2회, 약 50초·$0.27~0.40)을 보고 사용자가 정했다(2026-10-30, 남은 것은 한 번에 판정하고 예약은 하루 1묶음).
 	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
 	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
@@ -63,24 +62,6 @@ type Config struct {
 	LabExperimentUSD float64 `json:"labExperimentUSD"` // 실험 하나(모든 실행+고르기) 누적 상한(USD)
 	LabModel         string  `json:"labModel"`         // 후보 실행 모델
 	LabJudgeModel    string  `json:"labJudgeModel"`    // 결과물을 익명으로 고르는 모델(후보 실행 모델과 달라야 한다)
-}
-
-// Work recording switch values.
-const (
-	WorkOnValue = "on"
-	WorkOff     = "off"
-)
-
-// WorkOn says whether hooks record the work graph.
-func (c Config) WorkOn() bool { return c.Work != WorkOff }
-
-// StaleAfter is the no-response time, or 0 when it is not set.
-func (c Config) StaleAfter() time.Duration {
-	d, err := time.ParseDuration(c.WorkStaleAfter)
-	if err != nil || d <= 0 {
-		return 0
-	}
-	return d
 }
 
 // maxRecallChars keeps the per-request context under the hosts' hook context
@@ -120,14 +101,6 @@ func (c Config) Validate() error {
 	}
 	if c.Inject != InjectFull && c.Inject != InjectRules && c.Inject != InjectOff {
 		return i18n.Errorf("config.err.inject", c.Inject)
-	}
-	if c.Work != "" && c.Work != WorkOnValue && c.Work != WorkOff {
-		return i18n.Errorf("config.err.work", c.Work)
-	}
-	if c.WorkStaleAfter != "" {
-		if d, err := time.ParseDuration(c.WorkStaleAfter); err != nil || d <= 0 {
-			return i18n.Errorf("config.err.work_stale_after", c.WorkStaleAfter)
-		}
 	}
 	if c.RecentDecisions < 0 || c.RecentDecisions > 20 || c.BackupKeep < 1 {
 		return i18n.Errorf("config.err.recent_backup")
@@ -187,8 +160,7 @@ func (p Paths) Backups() string     { return filepath.Join(p.Home, "backups") }
 func (p Paths) Marketplace() string { return filepath.Join(p.Home, "plugin") }
 func (p Paths) RetroDir() string    { return filepath.Join(p.Home, "retro") }
 func (p Paths) Logs() string        { return filepath.Join(p.Home, "logs") }
-func (p Paths) WorkDB() string      { return filepath.Join(p.Home, "work.db") }
-func (p Paths) WorkSpool() string   { return filepath.Join(p.Home, "work", "spool") }
+func (p Paths) WorkDB() string      { return filepath.Join(p.Home, "work.db") } // 옛 작업 기록(읽기·하루 백업만)
 
 // Load reads the configuration; a missing file gives the defaults.
 func Load(path string) (Config, error) {
@@ -209,7 +181,8 @@ func Load(path string) (Config, error) {
 	return c, c.Validate()
 }
 
-// Save writes the configuration.
+// Save writes the configuration. Keys in the file that Config does not know (OpenOrbit's
+// work settings, a newer version's) are kept as they were; the known keys are overwritten.
 func Save(path string, c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -217,6 +190,36 @@ func Save(path string, c Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	b, _ := json.MarshalIndent(c, "", "  ")
+	cur, _ := json.Marshal(c)
+	var mine map[string]json.RawMessage
+	_ = json.Unmarshal(cur, &mine)
+	out := map[string]json.RawMessage{}
+	if old, err := os.ReadFile(path); err == nil {
+		var prev map[string]json.RawMessage
+		if json.Unmarshal(old, &prev) == nil {
+			known := knownKeys()
+			for k, v := range prev {
+				if !known[k] {
+					out[k] = v
+				}
+			}
+		}
+	}
+	for k, v := range mine {
+		out[k] = v
+	}
+	b, _ := json.MarshalIndent(out, "", "  ") // 맵은 키 순서로 쓴다
 	return os.WriteFile(path, append(b, '\n'), 0o600)
+}
+
+// knownKeys are the JSON keys of Config's fields (also those left out when empty).
+func knownKeys() map[string]bool {
+	known := map[string]bool{}
+	t := reflect.TypeOf(Config{})
+	for i := 0; i < t.NumField(); i++ {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+			known[name] = true
+		}
+	}
+	return known
 }

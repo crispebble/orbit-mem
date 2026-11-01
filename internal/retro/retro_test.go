@@ -46,7 +46,7 @@ func setup(t *testing.T, now time.Time) *env {
 	t.Cleanup(func() { s.Close() })
 	s.Now = func() time.Time { return now }
 	e := &env{s: s, roots: transcript.Roots{Claude: t.TempDir(), Codex: t.TempDir()}}
-	e.r = &Runner{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }, Orb: "/opt/orb",
+	e.r = &Runner{Store: s, Cfg: config.Default(), Paths: paths, Roots: e.roots, Loc: kst, Now: func() time.Time { return now }, Mem: "/opt/orbit-mem",
 		Exec: func(ctx context.Context, c Cmd) (string, error) {
 			e.calls = append(e.calls, c)
 			if e.ai == nil {

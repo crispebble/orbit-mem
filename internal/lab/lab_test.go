@@ -55,12 +55,12 @@ func setup(t *testing.T) *env {
 	now := time.Date(2026, 10, 31, 10, 0, 0, 0, time.Local)
 	s.Now = func() time.Time { return now }
 	e := &env{s: s, src: filepath.Join(t.TempDir(), "source"), cost: 0.1, better: "무엇을 정할지"}
-	// 시험이 읽는 파일만 둔 작은 원본. 실제 빌드(openorbit-harness)는 가짜 빌드로 바꿔 끼운다.
+	// 시험이 읽는 파일만 둔 작은 원본. 실제 빌드(OpenOrbit orb plugin build)는 가짜 빌드로 바꿔 끼운다.
 	if err := copyTree("testdata/source", e.src); err != nil {
 		t.Fatal(err)
 	}
 	rounds := map[string]int{}
-	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Orb: "/opt/orb", Source: e.src, Now: func() time.Time { return now },
+	e.l = &Lab{Store: s, Cfg: config.Default(), Paths: config.Paths{Home: home}, Source: e.src, Now: func() time.Time { return now },
 		Shuffle: func(round int) bool { return round%2 == 1 }, // 홀수 회차는 고침이 A
 		Build: func(source, out string) error { // 원본을 그대로 플러그인 폴더로
 			return copyTree(source, filepath.Join(out, "plugins", "orbit"))
@@ -210,8 +210,8 @@ func TestRun_두_후보를_돌려_익명으로_고르고_원장에_남긴다(t *
 			}
 		}
 	}
-	if cfg, err := config.Load(filepath.Join(labHome, "config.json")); err != nil || cfg.SessionRetro || cfg.WorkOn() {
-		t.Errorf("실험 전용 설정은 세션 끝 회고·작업 기록을 끈다: %+v %v", cfg, err)
+	if cfg, err := config.Load(filepath.Join(labHome, "config.json")); err != nil || cfg.SessionRetro {
+		t.Errorf("실험 전용 설정은 세션 끝 회고를 끈다: %+v %v", cfg, err)
 	}
 	// 회차마다 지금·고침을 번갈아 돈다.
 	cur, chg := argOf(runs[0].Args, "--plugin-dir"), argOf(runs[1].Args, "--plugin-dir")
@@ -401,14 +401,15 @@ func TestShow_기본은_영어_라벨이고_한국어를_고르면_한국어_라
 }
 
 // 끝 기준: 빌드 칸이 비면 OpenOrbit 하네스 빌드를 부른다. 하네스가 없으면 실행하지 않고 런타임 설치를 안내한다.
-func TestRun_기본_빌드는_하네스다(t *testing.T) {
+func TestRun_기본_빌드는_OpenOrbit_orb다(t *testing.T) {
 	e := setup(t)
 	task := e.task(t)
 	e.l.Build = nil
-	t.Setenv("ORBIT_HARNESS_CLI", "")
-	t.Setenv("ORBIT_PI_DIR", "")
+	t.Setenv("ORBIT_ORB", "")
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
 	_, err := e.l.Run(context.Background(), RunInput{TaskID: task.ID, ChangeDir: e.changeDir(t)})
-	if err == nil || !strings.Contains(err.Error(), "openorbit-harness") || !strings.Contains(err.Error(), "orb runtime install") || len(e.calls) != 0 {
+	if err == nil || !strings.Contains(err.Error(), "ORBIT_ORB") || len(e.calls) != 0 {
 		t.Fatalf("%v calls=%d", err, len(e.calls))
 	}
 }

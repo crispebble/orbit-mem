@@ -1,7 +1,0 @@
-{
-  "openorbit.err.bad_cli": "%s points at %s, which is not a file",
-  "openorbit.err.bad_node": "ORBIT_NODE %s cannot be run: %v",
-  "openorbit.err.failed": "%s failed (exit %d): %s",
-  "openorbit.err.no_cli": "%s was not found (%s). Install OpenOrbit's runtime with orb runtime install, or update it with orb runtime update (or point %s at its dist/cli.js).",
-  "openorbit.err.no_node": "node was not found (ORBIT_NODE, PATH, %s). Node 22.19 or later is needed; set ORBIT_NODE to its path if it is somewhere else."
-}

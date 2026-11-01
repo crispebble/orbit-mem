@@ -273,3 +273,46 @@ func TestMaskSecrets(t *testing.T) {
 		t.Error("plain text changed")
 	}
 }
+
+// 스키마 2(활동 표가 없던 때)의 DB를 열면 3으로 올라가고, 기억은 그대로이며 activity 표가 생긴다.
+func TestOpen_스키마_2를_3으로_올린다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memory.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, title := range []string{"하나", "둘", "셋"} {
+		m, err := s.Save(SaveInput{Kind: KindFact, Title: title, Scope: ScopeGlobal, Source: Source{Kind: SourceQuote, Excerpt: title}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, m.ID)
+	}
+	// v2로 되돌린다: activity 표를 없애고 user_version을 2로.
+	if _, err := s.DB().Exec(`DROP TABLE activity; PRAGMA user_version=2`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var v, n int
+	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != 3 {
+		t.Fatalf("user_version %d %v", v, err)
+	}
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('activity')`).Scan(&n); err != nil || n == 0 {
+		t.Fatalf("activity 표가 없습니다: %d %v", n, err)
+	}
+	if c, _ := s.Count(); c != 3 {
+		t.Fatalf("기억 수 %d", c)
+	}
+	for _, id := range ids {
+		if _, err := s.Get(id); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+	}
+}

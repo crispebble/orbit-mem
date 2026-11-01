@@ -1,4 +1,4 @@
-// Package i18n holds the messages orb shows people, in English (the default)
+// Package i18n holds the messages orbit-mem shows people, in English (the default)
 // and Korean (명세: Atlas ONID-61). Messages are kept by key in
 // locales/<lang>/*.json; every language has the same keys.
 //
@@ -33,7 +33,7 @@ const EnvVar = "ORBIT_LANG"
 
 // DynamicPrefixes are key prefixes the code completes with a value (for
 // example a memory kind), so the keys do not appear literally in the code.
-var DynamicPrefixes = []string{"usage.", "kind.", "state.", "verdict.", "target."}
+var DynamicPrefixes = []string{"usage.", "kind.", "state.", "verdict.", "target.", "cli.doctor.problem."}
 
 //go:embed locales
 var files embed.FS

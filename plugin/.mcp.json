@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "orbit-mem": {
+      "args": [
+        "mcp"
+      ],
+      "command": "orbit-mem"
+    }
+  }
+}

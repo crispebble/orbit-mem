@@ -16,11 +16,11 @@
 - 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.decision", major: 1, minor: 0, supportedMajors: [1]}`가 있다.
 - 선택 칸·열거값·도구 추가는 `minor`, 칸 삭제·이름·뜻 변경은 `major`를 올린다.
 - 읽는 쪽은 모르는 칸을 무시한다. 모르는 상태·출처·owner·`by`·연결 종류는 「알 수 없음」으로 보인다.
-- `response.schema.json`은 orb가 내는 1.0 응답을 엄격하게 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.**
+- `response.schema.json`은 결정 카드 도구가 내는 1.0 응답을 엄격하게 검사한다. **읽는 쪽은 이 Schema로 응답을 거르지 않는다.**
 
 ## 도구
 
-모두 `orb mcp --reader`(Orbit Studio·orbit-pi 같은 앱)에 있다. AI 호스트(`orb mcp`)에는 없다. 에이전트는 질문 도구로 묻고 훅이 카드를 연다.
+결정 카드 도구는 OpenOrbit의 `orb work mcp`(Orbit Studio·orbit-pi 같은 앱이 읽는 쪽)에 있다. 이 저장소의 `orbit-mem mcp`(AI 호스트용)와 `orbit-mem mcp --reader`에는 없다. 플러그인 훅은 작업이나 카드를 기록하지 않는다(orbit-mem 훅은 활동 기록만 한다). 카드는 orbit-pi가 `decision_open`으로 연다.
 
 | 도구 | 하는 일 |
 | --- | --- |
@@ -81,13 +81,13 @@
 
 ## Claude 엔진 중복 규칙
 
-orbit-pi가 띄운 `claude` 세션에도 OpenOrbit 플러그인 훅이 돈다. orbit-pi는 실행 환경에 `ORBIT_RUNTIME=orbit-pi`를 넣는다.
+orbit-pi가 띄운 `claude` 세션에도 orbit-mem 플러그인 훅이 돈다. orbit-pi는 실행 환경에 `ORBIT_RUNTIME=orbit-pi`를 넣는다.
 
 | 부른 쪽 | 하는 일 |
 | --- | --- |
-| 플러그인 훅(`orb hook …`, `ORBIT_RUNTIME=orbit-pi`) | 아무것도 하지 않는다(기억 주입·작업 기록·카드 모두 끔) |
-| orbit-pi가 같은 훅 입력으로 부름(`orb hook … --runtime orbit-pi [--launcher studio\|telegram\|workflow]`) | 기억 문맥을 돌려주고 작업을 기록한다(`origin.launcher`). 카드는 열지 않는다(orbit-pi가 `decision_open`) |
-| 사람이 직접 연 세션(표식 없음) | 지금처럼 플러그인 훅이 모두 한다(`origin.launcher=human`) |
+| 플러그인 훅(`orbit-mem hook …`, `ORBIT_RUNTIME=orbit-pi`) | 아무것도 하지 않는다(기억 주입·활동 기록 모두 끔) |
+| orbit-pi가 같은 훅 입력으로 부름(`orbit-mem hook session-start\|prompt\|session-end --runtime orbit-pi [--launcher studio\|telegram\|workflow]`) | 기억 문맥을 돌려주고 활동을 기록한다(`launcher`). 작업 현황은 orbit-pi가 `orb work emit`으로 남기고, 카드는 열지 않는다(orbit-pi가 `decision_open`) |
+| 사람이 직접 연 세션(표식 없음) | 플러그인 훅이 기억 주입과 활동 기록을 한다(`launcher=human`) |
 
 `--launcher`가 없으면 `ORBIT_LAUNCHER`를 보고, 모르는 값이면 `orbit-pi`로 남긴다.
 

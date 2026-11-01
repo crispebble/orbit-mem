@@ -59,7 +59,7 @@ func text(res *mcp.CallToolResult) string {
 	return b.String()
 }
 
-func TestTools_여섯개(t *testing.T) {
+func TestTools_기억_여섯개와_활동_기록(t *testing.T) {
 	cs, _ := connect(t)
 	res, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestTools_여섯개(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	sort.Strings(names)
-	want := "memory_find,memory_get,memory_save,memory_update,proposal_decide,proposals"
+	want := "activity_find,memory_find,memory_get,memory_save,memory_update,proposal_decide,proposals"
 	if strings.Join(names, ",") != want {
 		t.Fatalf("tools = %v", names)
 	}

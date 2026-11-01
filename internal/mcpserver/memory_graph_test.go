@@ -11,10 +11,10 @@ import (
 	memcontract "github.com/onidot-labs/orbit-mem/internal/memory/contract"
 )
 
-func (e workEnv) memDB() string { return filepath.Join(e.dir, "m.db") }
+func (e graphEnv) memDB() string { return filepath.Join(e.dir, "m.db") }
 
 // seedMemory는 연결·대체·태그·세션·파일 묶음과 숨김을 하나씩 만든다. 이름 → id를 돌려준다.
-func seedMemory(t *testing.T, e workEnv) map[string]string {
+func seedMemory(t *testing.T, e graphEnv) map[string]string {
 	t.Helper()
 	s, err := memory.Open(e.memDB())
 	if err != nil {
@@ -64,7 +64,7 @@ func validateMemory(t *testing.T, def string, res *mcp.CallToolResult) map[strin
 
 // 끝 기준: 실제 응답이 모두 orbit.memory 1판 Schema를 통과하고, 글 칸의 비밀값은 가려진다.
 func TestMemoryGraphMatchesContract(t *testing.T) {
-	e := newWorkEnv(t)
+	e := newGraphEnv(t)
 	ids := seedMemory(t, e)
 	cs := readerHost(t, e)
 	all := validateMemory(t, "memory_graph", callRaw(t, cs, "memory_graph", nil))
@@ -103,7 +103,7 @@ func TestMemoryGraphMatchesContract(t *testing.T) {
 
 // 끝 기준: major 2는 UNSUPPORTED_MAJOR, 모르는 칸은 ignoredArgs, 형이 틀리면 INVALID_ARGUMENT, 없는 focus는 NOT_FOUND.
 func TestMemoryGraphErrors(t *testing.T) {
-	e := newWorkEnv(t)
+	e := newGraphEnv(t)
 	seedMemory(t, e)
 	cs := readerHost(t, e)
 	res := callRaw(t, cs, "memory_graph", map[string]any{"major": 2})
@@ -141,7 +141,7 @@ func TestMemoryGraphErrors(t *testing.T) {
 
 // 끝 기준: memory_graph는 읽는 쪽에만 있고 AI 호스트에는 없다. 읽기 전용 주석이 붙는다.
 func TestMemoryGraphOnlyForReaders(t *testing.T) {
-	e := newWorkEnv(t)
+	e := newGraphEnv(t)
 	if ai := strings.Join(toolNames(t, aiHost(t, e)), ","); strings.Contains(ai, "memory_graph") {
 		t.Errorf("AI 호스트에 memory_graph가 있습니다: %s", ai)
 	}
@@ -176,7 +176,7 @@ func TestMemoryGraphUnavailable(t *testing.T) {
 
 // 끝 기준: reader 서버 이름은 그대로 orbit-work다(바깥 식별자).
 func TestReaderServerName(t *testing.T) {
-	e := newWorkEnv(t)
+	e := newGraphEnv(t)
 	if got := readerHost(t, e).InitializeResult().ServerInfo.Name; got != "orbit-work" {
 		t.Errorf("서버 이름: %s", got)
 	}
