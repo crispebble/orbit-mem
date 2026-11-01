@@ -281,15 +281,6 @@ func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T
 	}
 }
 
-func TestRetroSessions_대기열이_비면_조용히_끝난다(t *testing.T) {
-	home(t)
-	seed(t)
-	out, errOut, code := run(t, "", "retro", "sessions")
-	if code != 0 || !strings.Contains(out, "0 sessions waiting") {
-		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
-	}
-}
-
 func TestLedger_승인한_변경을_보여_준다(t *testing.T) {
 	home(t)
 	s := seed(t)

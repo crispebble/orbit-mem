@@ -52,7 +52,7 @@ func commands() []command {
 		{"import", "usage.import", cmdImport},
 		{"activity", "usage.activity", cmdActivity},
 		{"proposals", "usage.proposals", cmdProposals},
-		{"retro", "usage.retro", cmdRetro},
+		{"retro-store", "usage.retro-store", cmdRetroStore},
 		{"mcp", "usage.mcp", cmdMCP},
 		{"hook", "usage.hook", cmdHook},
 		{"inject", "usage.inject", cmdInject},

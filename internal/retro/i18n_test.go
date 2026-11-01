@@ -1,7 +1,6 @@
 package retro
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -20,7 +19,7 @@ func TestErrors_언어를_따른다(t *testing.T) {
 	if err == nil || err.Error() != "회고가 없습니다: r-none" {
 		t.Fatalf("ko = %v", err)
 	}
-	if ErrBusy.Error() != "다른 회고가 이미 돌고 있습니다" || !errors.Is(ErrBusy, ErrBusy) {
-		t.Fatalf("busy = %v", ErrBusy)
+	if _, err := e.r.Prepare("monthly", "2026-10-27", "claude"); err == nil || err.Error() != "회고 종류는 daily 또는 weekly입니다" {
+		t.Fatalf("kind = %v", err)
 	}
 }

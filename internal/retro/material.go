@@ -128,7 +128,7 @@ func maskSessions(ss []transcript.Session) {
 
 // commonMaterial adds what every retrospective needs: the memories already
 // kept (to avoid duplicates) and recent rejections (to avoid repeating them).
-func (r *Runner) commonMaterial(mat *Material) error {
+func (r *Keeper) commonMaterial(mat *Material) error {
 	active, err := r.Store.List(memory.StateCandidate, memory.StateConfirmed)
 	if err != nil {
 		return err
@@ -187,7 +187,7 @@ func clipBytes(s string, n int) string {
 	return s[:n] + "\n…(잘림)"
 }
 
-func (r *Runner) material(kind, period string) (Material, error) {
+func (r *Keeper) material(kind, period string) (Material, error) {
 	mat := Material{Kind: kind, Period: period, Targets: r.Cfg.ApplyTargets, PluginSource: r.Cfg.PluginSource}
 	active, err := r.Store.List(memory.StateCandidate, memory.StateConfirmed)
 	if err != nil {
@@ -283,7 +283,7 @@ func hasLegacyTag(m memory.Memory) bool {
 	return false
 }
 
-func (r *Runner) hasProposalFor(id, kind string) bool {
+func (r *Keeper) hasProposalFor(id, kind string) bool {
 	var n int
 	_ = r.Store.DB().QueryRow(`SELECT COUNT(*) FROM proposals WHERE kind=? AND memory_ids LIKE ?`, kind, `%"`+id+`"%`).Scan(&n)
 	return n > 0
