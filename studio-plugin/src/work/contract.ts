@@ -3,7 +3,7 @@
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import type {
-  ChangesResult, ContractInfo, GetResult, ListPage, SessionPage, SessionsPage,
+  Assumption, ChangesResult, ContractInfo, Discovery, GetResult, ListPage, SessionPage, SessionsPage,
 } from './types.ts';
 
 export const READ_MAJOR = 1;
@@ -116,6 +116,53 @@ export function parseList(out: unknown): ListPage {
   };
 }
 
+const optStr = (v: unknown): string | undefined => (str(v) && v !== '' ? v : undefined);
+
+/** 조사(1.3). 객체가 아니면 없는 것으로 본다(`problem`이 없거나 틀리면 빈 글로 두고 나머지는 살린다)(조사 칸 때문에 작업 전체를 못 읽게 하지 않는다). */
+export function normalizeDiscovery(v: unknown): Discovery | undefined {
+  if (!isObj(v)) return undefined;
+  const decisions = objList(v.decisions).flatMap(d =>
+    isObj(d) && str(d.point) ? [{point: d.point, evidence: strList(d.evidence), ...(optStr(d.settled) ? {settled: optStr(d.settled)} : {})}] : []);
+  return {
+    problem: str(v.problem) ? v.problem : '',
+    decisions,
+    ...(optStr(v.idealEnd) ? {idealEnd: optStr(v.idealEnd)} : {}),
+    unknowns: strList(v.unknowns),
+    sources: strList(v.sources),
+    ...(optStr(v.size) ? {size: optStr(v.size)} : {}),
+    ...(isInt(v.rounds) ? {rounds: v.rounds} : {}),
+    ...(optStr(v.by) ? {by: optStr(v.by)} : {}),
+    at: str(v.at) ? v.at : '',
+  };
+}
+
+/** 가정 목록(1.3). id·point가 없는 줄은 버리고, 모르는 열거값은 그대로 둔다. */
+export function normalizeAssumptions(v: unknown): Assumption[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const byId = new Map<string, Assumption>();
+  v.forEach(a => {
+    for (const x of one(a)) byId.set(x.id, x); // 같은 id는 나중 줄이 이긴다(생산 쪽 upsert와 같다). 자리는 처음 나온 자리
+  });
+  const list = [...byId.values()];
+  return list.length ? list : undefined;
+
+  function one(a: unknown): Assumption[] {
+    if (!isObj(a) || !str(a.id) || a.id === '' || !str(a.point)) return [];
+    const options = strList(a.options);
+    return [{
+      id: a.id, point: a.point, chosen: str(a.chosen) ? a.chosen : '', basis: str(a.basis) ? a.basis : '',
+      confidence: str(a.confidence) ? a.confidence : '', rung: str(a.rung) ? a.rung : '', state: str(a.state) ? a.state : '',
+      ...(options.length ? {options} : {}),
+      ...(optStr(a.cardId) ? {cardId: optStr(a.cardId)} : {}),
+      steps: strList(a.steps),
+      ...(optStr(a.answer) ? {answer: optStr(a.answer)} : {}),
+      ...(optStr(a.answeredBy) ? {answeredBy: optStr(a.answeredBy)} : {}),
+      ...(typeof a.answeredAt === 'number' && Number.isFinite(a.answeredAt) ? {answeredAt: a.answeredAt} : {}),
+      at: str(a.at) ? a.at : '',
+    }];
+  }
+}
+
 function normalizeWork(w: unknown, tool: string): GetResult['work'] {
   checkWorkHead(w, tool);
   const o = w as Record<string, unknown>;
@@ -124,8 +171,13 @@ function normalizeWork(w: unknown, tool: string): GetResult['work'] {
     need(isObj(s) && str(s.id) && str(s.title) && str(s.status) && isObj(s.verification), tool, pick(workText).error.whyStep);
   }
   const children = Array.isArray(o.children) ? o.children.map(c => normalizeWork(c, tool)) : undefined;
+  const discovery = normalizeDiscovery(o.discovery);
+  const assumptions = normalizeAssumptions(o.assumptions);
+  const {discovery: _d, assumptions: _a, ...rest} = o;
   return {
-    ...(o as unknown as GetResult['work']),
+    ...(rest as unknown as GetResult['work']),
+    ...(discovery ? {discovery} : {}),
+    ...(assumptions ? {assumptions} : {}),
     steps: (o.steps as GetResult['work']['steps']).map(s => ({
       ...s,
       after: objList(s.after) as GetResult['work']['steps'][number]['after'],

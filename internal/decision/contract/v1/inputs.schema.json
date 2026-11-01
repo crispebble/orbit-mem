@@ -114,7 +114,8 @@
               "question",
               "permission",
               "ops",
-              "plugin"
+              "plugin",
+              "assumption"
             ]
           },
           "description": "카드 출처. 기본 모두"
@@ -189,7 +190,8 @@
             "question",
             "permission",
             "ops",
-            "plugin"
+            "plugin",
+            "assumption"
           ]
         },
         "owner": {
@@ -223,7 +225,8 @@
             "host": {
               "enum": [
                 "claude",
-                "codex"
+                "codex",
+                "orbit-pi"
               ]
             },
             "sessionId": {

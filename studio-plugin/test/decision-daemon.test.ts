@@ -160,6 +160,16 @@ describe('데몬 카드', () => {
     assert.deepEqual(ids, ['daemon:r1:d1', 'other-session', 'claude-code', 'no-work']);
   });
 
+  it('가정 카드(assumption)는 데몬이 아는 세션과 겹쳐도 가리지 않는다', async () => {
+    const t = stubClient({runs: [OPEN_RUN()], history: {r1: [asked('r1', 'd1')]}});
+    const {orb} = fakeOrb([
+      orbCard({id: 'assume', source: 'assumption', work: {host: 'orbit-pi', sessionId: 'S-1'}}),
+      orbCard({id: 'dup', work: {host: 'orbit-pi', sessionId: 'S-1'}}),
+    ]);
+    const ids = (await daemonDecisionSource(t.client, orb).list({state: ['open']})).items.map(d => d.id);
+    assert.deepEqual(ids, ['daemon:r1:d1', 'assume']);
+  });
+
   it('데몬이 내려가 있거나 짝이 없으면 orb 카드만, 가리지도 않는다', async () => {
     for (const status of [{daemon: 'down' as const}, {paired: false}]) {
       const t = stubClient({status, runs: [OPEN_RUN()]});

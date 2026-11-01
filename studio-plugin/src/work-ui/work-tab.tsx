@@ -13,6 +13,7 @@ import {agoText, toFlowGraph} from '../work/graph.ts';
 import {ownerWorkers} from '../work/owners.ts';
 import {summaryOf} from '../work/store.ts';
 import type {Work} from '../work/types.ts';
+import {WorkBrief} from './brief.tsx';
 import {StageDetail, type StageNav} from './stage-detail.tsx';
 import {useNow, useWork} from './runtime.ts';
 import {Paused} from './paused.tsx';
@@ -119,6 +120,7 @@ export function WorkTab({ctx, tab}: TabProps) {
             options={[{value: 'flow', label: t.flow}, {value: 'owner', label: t.byOwner}]} />
         </div>
       </header>
+      <WorkBrief work={work} onSelectStep={id => { setMode('flow'); select(id); }} />
       {mode === 'flow' ? (
         <div className="orbit-work-graph">
           <FlowGraph

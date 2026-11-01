@@ -16,7 +16,7 @@ const Name = "orbit.decision"
 // Major and Minor are the version orbit-mem answers by default.
 const (
 	Major = 1
-	Minor = 0
+	Minor = 1
 )
 
 // SupportedMajors are the major versions orbit-mem answers.

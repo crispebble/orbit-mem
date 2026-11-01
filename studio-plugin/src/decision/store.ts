@@ -105,6 +105,8 @@ export function createDecisionStore(source: DecisionSource, options: DecisionSto
       const workIds = new Set<string>();
       const sessionIds = new Set<string>();
       for (const d of state.open) {
+        // 가정 카드(AU-3)는 일을 막지 않는다: 지도의 「답 기다림」에 세지 않는다(목록에는 그대로 있다)
+        if (d.source === 'assumption') continue;
         if (d.work?.workId) workIds.add(d.work.workId);
         if (d.work?.sessionId) sessionIds.add(d.work.sessionId);
       }

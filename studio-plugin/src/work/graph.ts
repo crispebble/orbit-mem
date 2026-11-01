@@ -3,6 +3,7 @@
 import type {FlowGraphBadge, FlowGraphColumn, FlowGraphEdge, FlowGraphNode} from '@onidot-labs/orbit-studio-plugin/ai';
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
+import {stepMarks, stepMarkView} from './assumptions.ts';
 import {blockText, stepRuns, stepStatusView, verificationBadge} from './display.ts';
 import type {Step, Work} from './types.ts';
 
@@ -66,7 +67,7 @@ export function activeColumnOf(steps: readonly Step[]): number | undefined {
   return first(s => s.status === 'in_progress') ?? first(s => s.status !== 'done' && s.status !== 'cancelled');
 }
 
-function node(step: Step, work: Pick<Work, 'runs'>, now: number): FlowGraphNode {
+function node(step: Step, work: Pick<Work, 'runs' | 'assumptions'>, now: number): FlowGraphNode {
   const view = stepStatusView(step.status, step.block);
   const badges: FlowGraphBadge[] = [];
   const v = verificationBadge(step.verification, step.status);
@@ -74,6 +75,11 @@ function node(step: Step, work: Pick<Work, 'runs'>, now: number): FlowGraphNode 
   if (step.status === 'in_progress') {
     const runs = stepRuns(work, step.id, now);
     if (runs.active.length === 0 && runs.observationOld.length > 0) badges.push({label: pick(workText).staleObservation, tone: 'warning'});
+  }
+  // 가정(AU-3): 열린 가정에 기댄 단계·답을 기다리는 단계·뒤집혀 다시 열린 단계
+  for (const mark of stepMarks(work, step)) {
+    const m = stepMarkView(mark);
+    badges.push({label: m.label, tone: m.tone});
   }
   if (step.childWorkIds.length) badges.push({label: pick(workText).graph.childWorks(step.childWorkIds.length), tone: 'violet'});
 
@@ -107,7 +113,7 @@ function node(step: Step, work: Pick<Work, 'runs'>, now: number): FlowGraphNode 
 }
 
 /** 작업 → FlowGraph props. 카드는 `order` 순(목록 보기가 order 순), 열은 `wave`, 선은 `after` */
-export function toFlowGraph(work: Pick<Work, 'steps' | 'runs'>, now: number): GraphData {
+export function toFlowGraph(work: Pick<Work, 'steps' | 'runs' | 'assumptions'>, now: number): GraphData {
   const steps = [...work.steps].sort((a, b) => a.order - b.order);
   const nodes = steps.map(s => node(s, work, now));
   const edges: FlowGraphEdge[] = steps.flatMap(s =>

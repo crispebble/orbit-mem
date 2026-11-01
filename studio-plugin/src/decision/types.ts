@@ -25,7 +25,7 @@ export interface Decision {
   id: string;
   /** open·answered·withdrawn·expired. 모르는 값도 그대로 둔다 */
   state: string;
-  /** question·permission·ops·plugin */
+  /** question·permission·ops·plugin·assumption */
   source: string;
   /** orbit-pi·human·studio */
   owner: string;
