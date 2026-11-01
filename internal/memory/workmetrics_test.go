@@ -103,17 +103,25 @@ func TestLedger_작업_지표가_판정의_근거가_된다(t *testing.T) {
 			s, clk := newTestStore(t)
 			m := candidate(t, s, "대상 교훈")
 			start := clk.t
-			b := start.Add(-2 * day)
-			injectWork(t, s, "w-b", b, m.ID)
+			// 변경 전·후 각각 같은 지표의 작업 둘(작업 근거는 한쪽에 둘 이상: MinWorksPerSide)
+			for i, w := range []string{"w-b1", "w-b2"} {
+				b := start.Add(-time.Duration(2+i) * day)
+				injectWork(t, s, w, b, m.ID)
+				if _, err := s.RecordWorkMetrics([]WorkRecord{workRec(w, b.Add(time.Hour), tc.before)}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			// 기억이 붙지 않은 작업: 문제가 많아도 보지 않는다
-			if _, err := s.RecordWorkMetrics([]WorkRecord{workRec("w-b", b.Add(time.Hour), tc.before), workRec("w-x", b.Add(time.Hour), WorkMetrics{Asked: 9})}); err != nil {
+			if _, err := s.RecordWorkMetrics([]WorkRecord{workRec("w-x", start.Add(-day), WorkMetrics{Asked: 9})}); err != nil {
 				t.Fatal(err)
 			}
 			id := approveEdit(t, s, m.ID, "고친 교훈")
-			a := start.Add(2 * day)
-			injectWork(t, s, "w-a", a, m.ID)
-			if _, err := s.RecordWorkMetrics([]WorkRecord{workRec("w-a", a.Add(time.Hour), tc.after)}); err != nil {
-				t.Fatal(err)
+			for i, w := range []string{"w-a1", "w-a2"} {
+				a := start.Add(time.Duration(2+i) * day)
+				injectWork(t, s, w, a, m.ID)
+				if _, err := s.RecordWorkMetrics([]WorkRecord{workRec(w, a.Add(time.Hour), tc.after)}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			clk.t = start.Add(window*day + time.Minute)
 			if n, err := s.JudgeLedger(window); err != nil || n != 1 {
@@ -124,7 +132,7 @@ func TestLedger_작업_지표가_판정의_근거가_된다(t *testing.T) {
 				t.Fatalf("entry = %s evidence=%v %+v", e.Verdict, e.Evidence, e.Observation)
 			}
 			o := e.Observation
-			if o.Before.Works != 1 || o.After.Works != 1 || o.Before.FirstSteps != tc.before.FirstSteps {
+			if o.Before.Works != 2 || o.After.Works != 2 || o.Before.FirstSteps != 2*tc.before.FirstSteps {
 				t.Fatalf("observation = %+v", o)
 			}
 		})
@@ -137,11 +145,17 @@ func TestLedger_작업_교정이_문제_수에_든다(t *testing.T) {
 	m := candidate(t, s, "대상")
 	start := clk.t
 	day := 24 * time.Hour
-	injectWork(t, s, "w-b", start.Add(-day), m.ID)
-	s.RecordWorkMetrics([]WorkRecord{workRec("w-b", start.Add(-day+time.Hour), WorkMetrics{FirstPassed: 1, FirstSteps: 1})})
+	for i, w := range []string{"w-b", "w-b2"} {
+		at := start.Add(-time.Duration(i+1) * day)
+		injectWork(t, s, w, at, m.ID)
+		s.RecordWorkMetrics([]WorkRecord{workRec(w, at.Add(time.Hour), WorkMetrics{FirstPassed: 1, FirstSteps: 1})})
+	}
 	id := approveEdit(t, s, m.ID, "고침")
-	injectWork(t, s, "w-a", start.Add(day), m.ID)
-	s.RecordWorkMetrics([]WorkRecord{workRec("w-a", start.Add(day+time.Hour), WorkMetrics{FirstPassed: 1, FirstSteps: 1})})
+	for i, w := range []string{"w-a", "w-a2"} {
+		at := start.Add(time.Duration(i+1) * day)
+		injectWork(t, s, w, at, m.ID)
+		s.RecordWorkMetrics([]WorkRecord{workRec(w, at.Add(time.Hour), WorkMetrics{FirstPassed: 1, FirstSteps: 1})})
+	}
 	// 작업 회고가 w-a에서 교정을 찾았다(기억을 가리키지 않는 교정: 어김 신호가 아니다)
 	if err := s.RecordCorrection(CorrectionInput{Quote: "그 방식 말고", Host: WorkMetricsHost, Session: "w-a", OccurredAt: start.Add(day + 2*time.Hour).UnixMilli()}); err != nil {
 		t.Fatal(err)
@@ -182,15 +196,17 @@ func TestLedger_자동_확정도_작업_지표로_판정하고_해로우면_되�
 	}
 	autoLine := all[0].ID
 	// 확정된 뒤 붙은 작업은 질문·재계획이 늘고 첫 통과가 떨어졌다
-	at := clk.t.Add(day)
-	injectWork(t, s, "w-3", at, m.ID)
-	s.RecordWorkMetrics([]WorkRecord{workRec("w-3", at.Add(time.Hour), WorkMetrics{Asked: 2, Replans: 1, FirstPassed: 0, FirstSteps: 2})})
+	for i, w := range []string{"w-3", "w-4"} {
+		at := clk.t.Add(time.Duration(i+1) * day)
+		injectWork(t, s, w, at, m.ID)
+		s.RecordWorkMetrics([]WorkRecord{workRec(w, at.Add(time.Hour), WorkMetrics{Asked: 2, Replans: 1, FirstPassed: 0, FirstSteps: 2})})
+	}
 	clk.t = clk.t.Add(8 * day)
 	if _, err := s.JudgeLedger(7); err != nil {
 		t.Fatal(err)
 	}
 	e, _ := s.LedgerEntry(autoLine)
-	if e.Verdict != VerdictHarmful || !e.Evidence || e.Observation.Before.Works != 2 || e.Observation.After.Works != 1 {
+	if e.Verdict != VerdictHarmful || !e.Evidence || e.Observation.Before.Works != 2 || e.Observation.After.Works != 2 {
 		t.Fatalf("auto line = %s %+v", e.Verdict, e.Observation)
 	}
 	reverted, err := s.RevertHarmfulAuto()
@@ -215,5 +231,48 @@ func TestLedger_작업이_한쪽에만_있으면_근거가_아니다(t *testing.
 	e, _ := s.LedgerEntry(id)
 	if e.Verdict != VerdictNoEffect || e.Evidence {
 		t.Fatalf("entry = %s %v %+v", e.Verdict, e.Evidence, e.Observation)
+	}
+}
+
+// 작업 하나 대 하나는 근거가 아니다(MinWorksPerSide): 큰 작업 하나가 자동 확정을 되돌리지 않게.
+func TestLedger_작업이_한쪽에_하나뿐이면_근거가_아니다(t *testing.T) {
+	s, clk := newTestStore(t)
+	m := candidate(t, s, "대상")
+	start := clk.t
+	day := 24 * time.Hour
+	injectWork(t, s, "w-b", start.Add(-day), m.ID)
+	s.RecordWorkMetrics([]WorkRecord{workRec("w-b", start.Add(-day+time.Hour), WorkMetrics{})})
+	id := approveEdit(t, s, m.ID, "고침")
+	for i, w := range []string{"w-a1", "w-a2"} {
+		at := start.Add(time.Duration(i+1) * day)
+		injectWork(t, s, w, at, m.ID)
+		s.RecordWorkMetrics([]WorkRecord{workRec(w, at.Add(time.Hour), WorkMetrics{Asked: 5})})
+	}
+	clk.t = start.Add(8 * day)
+	s.JudgeLedger(7)
+	e, _ := s.LedgerEntry(id)
+	if e.Verdict != VerdictNoEffect || e.Evidence || e.Observation.Before.Works != 1 || e.Observation.After.Works != 2 {
+		t.Fatalf("entry = %s %v %+v", e.Verdict, e.Evidence, e.Observation)
+	}
+}
+
+// 입력 검사: 빈 세션, 음수 지표, 통과가 단계보다 많은 값은 거절한다.
+func TestWorkMetrics_틀린_입력은_거절한다(t *testing.T) {
+	s, c := newTestStore(t)
+	for _, r := range []WorkRecord{
+		workRec("w-1", c.t, WorkMetrics{}, WorkSession{Session: " ", From: 1}),
+		workRec("w-1", c.t, WorkMetrics{Asked: -1}),
+		workRec("w-1", c.t, WorkMetrics{FirstPassed: 2, FirstSteps: 1}),
+		workRec("w-1", c.t, WorkMetrics{}, WorkSession{Session: "S", From: 5, To: 4}),
+	} {
+		if _, err := s.RecordWorkMetrics([]WorkRecord{r}); err == nil {
+			t.Fatalf("받았습니다: %+v", r)
+		}
+	}
+	// 빈 세션 창은 교정을 끌어오지 않는다
+	s.RecordCorrection(CorrectionInput{Quote: "아니", Session: ""})
+	got, _ := s.WorkCorrections([]WorkRef{{WorkID: "w-1", Sessions: []WorkSession{{Session: "", From: 0}}}})
+	if got["w-1"] != 0 {
+		t.Fatalf("corrections = %v", got)
 	}
 }

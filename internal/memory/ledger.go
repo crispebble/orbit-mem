@@ -584,8 +584,16 @@ func compareRate(before, after, sb, sa int) int {
 	return 0
 }
 
-// worksBothSides says whether OpenOrbit works with the memory ended before and after the change.
-func worksBothSides(obs Observation) bool { return obs.Before.Works > 0 && obs.After.Works > 0 }
+// MinWorksPerSide is how many OpenOrbit works with the memory must have ended on each side of a
+// change before their metrics count as evidence. One work against one says more about the two
+// tasks than about the change, and an automatic change judged harmful is reverted by itself (A2);
+// two is the same bar as evidence ② (confirmFollowedVerified, E2).
+const MinWorksPerSide = 2
+
+// worksBothSides says whether enough OpenOrbit works with the memory ended before and after the change.
+func worksBothSides(obs Observation) bool {
+	return obs.Before.Works >= MinWorksPerSide && obs.After.Works >= MinWorksPerSide
+}
 
 // judge reads the signals in order (AU-7): corrections and violations, then the works' trouble
 // per work, then their first-attempt verification rate, then irrelevant verdicts.

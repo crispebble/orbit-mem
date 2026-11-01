@@ -62,7 +62,14 @@ type WorkRef struct {
 var workIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 func (r WorkRecord) validate() error {
-	if !workIDPattern.MatchString(r.WorkID) || r.EndedAt <= 0 {
+	m := r.Metrics
+	bad := !workIDPattern.MatchString(r.WorkID) || r.EndedAt <= 0 || len(r.Sessions) > 20 ||
+		m.Asked < 0 || m.Assumed < 0 || m.Overturned < 0 || m.Repeats < 0 || m.Replans < 0 ||
+		m.FirstPassed < 0 || m.FirstSteps < 0 || m.FirstPassed > m.FirstSteps || m.CostUSD < 0 || m.Turns < 0 || m.Minutes < 0
+	for _, w := range r.Sessions {
+		bad = bad || strings.TrimSpace(w.Session) == "" || len(w.Session) > 200 || (w.To != 0 && w.To < w.From)
+	}
+	if bad || len(r.Project) > 500 || len(r.Kind) > 40 || len(r.Size) > 40 || len(r.Status) > 40 {
 		return i18n.Errorf("memory.err.work_record", ErrInvalid)
 	}
 	return nil
@@ -146,6 +153,9 @@ func (s *Store) WorkRecords(fromMs, toMs int64) ([]WorkRecord, error) {
 // inWindow says whether an event of host and session at time at falls in one of the work's windows,
 // or belongs to the work's own session (host openorbit, session = work id).
 func (r WorkRef) inWindow(host, session string, at int64) bool {
+	if session == "" {
+		return false
+	}
 	if session == r.WorkID {
 		return true
 	}
@@ -176,9 +186,13 @@ func eventTime(e Event) int64 {
 func (s *Store) sessionEvents(refs []WorkRef, kinds ...string) ([]Event, error) {
 	set := map[string]bool{}
 	for _, r := range refs {
-		set[r.WorkID] = true
+		if r.WorkID != "" {
+			set[r.WorkID] = true
+		}
 		for _, w := range r.Sessions {
-			set[w.Session] = true
+			if w.Session != "" {
+				set[w.Session] = true
+			}
 		}
 	}
 	if len(set) == 0 || len(kinds) == 0 {
@@ -237,7 +251,8 @@ func (m WorkMetrics) Trouble(corrections int) int {
 }
 
 // observeWorks adds the works that had one of ids put in (by step recall or into one of their
-// sessions) to obs: before or after obs.Split by the work's end.
+// sessions) to obs: before or after obs.Split by the work's end (a work given the memory before
+// the change that ended after it counts after: it ran with the changed memory's latest state).
 func (s *Store) observeWorks(obs *Observation, ids []string) error {
 	recs, err := s.WorkRecords(obs.From, obs.To)
 	if err != nil || len(recs) == 0 {
