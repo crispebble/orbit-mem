@@ -12,10 +12,10 @@ DIST="dist/$VERSION"
 rm -rf "$DIST"; mkdir -p "$DIST"
 
 build() { # os arch ext
-	local os=$1 arch=$2 name="orb-$VERSION-$1-$2" bin=orb
-	[[ $os == windows ]] && bin=orb.exe
+	local os=$1 arch=$2 name="orbit-mem-$VERSION-$1-$2" bin=orbit-mem
+	[[ $os == windows ]] && bin=orbit-mem.exe
 	local stage="$DIST/$name"; mkdir -p "$stage"
-	GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o "$stage/$bin" ./cmd/orb
+	GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o "$stage/$bin" ./cmd/orbit-mem
 	cp README.md "$stage/"
 	if [[ $os == windows ]]; then (cd "$DIST" && zip -qr "$name.zip" "$name"); else tar -C "$DIST" -czf "$DIST/$name.tar.gz" "$name"; fi
 	rm -rf "$stage"
@@ -23,11 +23,11 @@ build() { # os arch ext
 build darwin arm64
 build darwin amd64
 build windows amd64 # Windows는 빌드만 한다(설치 확인은 사용자가 지시할 때)
-(cd "$DIST" && shasum -a 256 orb-* > SHA256SUMS)
+(cd "$DIST" && shasum -a 256 orbit-mem-* > SHA256SUMS)
 echo "빌드 완료: $DIST (commit $COMMIT)"; cat "$DIST/SHA256SUMS"
 
 [[ "${1:-}" == "--publish" ]] || exit 0
 [[ -z "$(git status --porcelain)" ]] || { echo "작업 트리가 깨끗하지 않습니다." >&2; exit 1; }
 git fetch -q origin main
 [[ "$COMMIT" == "$(git rev-parse origin/main)" ]] || { echo "HEAD가 origin/main 끝이 아닙니다." >&2; exit 1; }
-gh release create "v$VERSION" --target "$COMMIT" --title "OpenOrbit $VERSION" --notes-file "${RELEASE_NOTES:-/dev/null}" "$DIST"/orb-* "$DIST/SHA256SUMS"
+gh release create "v$VERSION" --target "$COMMIT" --title "orbit-mem $VERSION" --notes-file "${RELEASE_NOTES:-/dev/null}" "$DIST"/orbit-mem-* "$DIST/SHA256SUMS"

@@ -1,5 +1,5 @@
 /dist/
-/orb
-/orb.exe
+/orbit-mem
+/orbit-mem.exe
 *.test
 .DS_Store
