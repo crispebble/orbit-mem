@@ -1,5 +1,5 @@
 {
-  "retro.err.backup": "작업 기록 DB를 백업하지 못했습니다: %w",
+  "retro.err.backup": "옛 작업 기록 DB(work.db)를 백업하지 못했습니다: %w",
   "retro.err.busy": "다른 회고가 이미 돌고 있습니다",
   "retro.err.daily_until_yesterday": "하루 회고는 어제까지만 돌립니다: %s",
   "retro.err.date_format": "날짜는 YYYY-MM-DD입니다: %s",

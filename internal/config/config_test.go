@@ -50,28 +50,21 @@ func TestValidate_잘못된_값은_거절(t *testing.T) {
 	}
 }
 
-func TestWork_작업_기록_설정(t *testing.T) {
-	c := Default()
-	if !c.WorkOn() || c.StaleAfter() != 0 {
-		t.Fatalf("기본은 켜짐, 응답 없음 계산 안 함: %+v", c)
+// 끝 기준(M6): 작업 기록 설정(work·workStaleAfter·workTestCommands)은 없앴다. 이미 그 키가 있는
+// config.json도 값과 무관하게 실패 없이 읽고, 다시 저장하면 그 키는 빠진다.
+func TestLoad_옛_작업_기록_키는_무시한다(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(p, []byte(`{"retroHost":"codex","work":"bogus","workStaleAfter":"x","workTestCommands":["make t"]}`), 0o600)
+	c, err := Load(p)
+	if err != nil || c.RetroHost != "codex" {
+		t.Fatalf("%+v %v", c, err)
 	}
-	c.Work, c.WorkStaleAfter = WorkOff, "20m"
-	if c.Validate() != nil || c.WorkOn() || c.StaleAfter().Minutes() != 20 {
-		t.Fatalf("%+v", c)
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
 	}
-	for _, bad := range []Config{{Work: "maybe"}, {WorkStaleAfter: "soon"}, {WorkStaleAfter: "-1m"}} {
-		b := Default()
-		if bad.Work != "" {
-			b.Work = bad.Work
-		}
-		b.WorkStaleAfter = bad.WorkStaleAfter
-		if b.Validate() == nil {
-			t.Errorf("잘못된 값을 받았습니다: %+v", bad)
-		}
-	}
-	p := Paths{Home: "/h"}
-	if p.WorkDB() != "/h/work.db" || p.WorkSpool() != "/h/work/spool" {
-		t.Error(p.WorkDB(), p.WorkSpool())
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "work") {
+		t.Fatalf("옛 키가 남았습니다: %s", b)
 	}
 }
 

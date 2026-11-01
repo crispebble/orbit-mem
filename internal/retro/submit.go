@@ -403,7 +403,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	}
 	report = append(report, fmt.Sprintf("제안 %d건", proposed))
 	if labbed > 0 {
-		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(orb lab candidates)", labbed))
+		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(orbit-mem lab candidates)", labbed))
 	}
 	if mat.Kind == KindLegacy {
 		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))

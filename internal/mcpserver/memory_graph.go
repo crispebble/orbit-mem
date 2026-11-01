@@ -23,8 +23,8 @@ func unavailable(err error) *callError {
 const readerInstructions = `OpenOrbit 기억 그래프(orbit.memory 1판)를 memory_graph로 읽는다.
 응답의 contract 판을 확인하고, 모르는 칸과 값은 견딘다. id는 받은 그대로 돌려준다.`
 
-// NewReader is orb mcp --reader: memory_graph for apps such as Orbit Studio and orbit-pi.
-// The work and decision card tools for apps are openorbit-work's (orb work mcp). memDB is
+// NewReader is orbit-mem mcp --reader: memory_graph for apps such as Orbit Studio and orbit-pi.
+// The work and decision card tools for apps are OpenOrbit's. memDB is
 // opened on the first memory_graph call. The server name stays orbit-work (an outside name).
 func NewReader(memDB, version string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-work", Version: version}, &mcp.ServerOptions{Instructions: readerInstructions})

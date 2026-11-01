@@ -1,5 +1,5 @@
 {
-  "retro.err.backup": "cannot back up the work log DB: %w",
+  "retro.err.backup": "cannot back up the old work log DB (work.db): %w",
   "retro.err.busy": "another retrospective is already running",
   "retro.err.daily_until_yesterday": "a daily retrospective runs only up to yesterday: %s",
   "retro.err.date_format": "the date is YYYY-MM-DD: %s",

@@ -1,5 +1,5 @@
-// Package mcpserver is the OpenOrbit MCP server: six tools to find, read, save and
-// fix memories and to see and decide proposals.
+// Package mcpserver is orbit-mem's MCP server: six tools to find, read, save and fix
+// memories and to see and decide proposals, and activity_find over the activity log.
 package mcpserver
 
 import (
@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/onidot-labs/orbit-mem/internal/activity"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
@@ -18,24 +19,18 @@ type Options struct {
 	Project      string // 이 세션의 프로젝트 범위("project:<키>")
 	ProjectLabel string
 	Version      string
-	Work         *WorkOptions // 있으면 작업 도구(work_list·work_get·work_title)를 연다
+	WorkDB       string // 옛 작업 기록 work.db(activity_find가 읽기 전용으로 읽는다)
 }
 
-const instructions = `OpenOrbit은 이 PC의 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
+const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다.
 저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다.
-틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.`
-
-const workInstructions = `
-작업 기록: 재개할 때 work_list·work_get으로 이전 작업과 단계를 읽는다. 작업 목록 도구로 작업을 처음 열면 work_title로 무엇을 하는 작업인지 한 줄 제목을 정한다(단계 기록은 훅이 한다).`
+틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자가 "제안 보여줘"라고 하면 proposals로 보여 주고 사용자의 답대로 proposal_decide를 부른다.
+활동 기록: 이 프로젝트에서 언제·어느 호스트가 무엇을 했는지(이전 세션, 이어 할 일의 실마리)가 필요하면 activity_find로 찾는다. 세션 훅이 남긴 기록과 옛 작업 기록을 함께 최신순으로 준다.`
 
 // New builds the server over the store.
 func New(s *memory.Store, o Options) *mcp.Server {
-	ins := instructions
-	if o.Work != nil {
-		ins += workInstructions
-	}
-	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit", Version: o.Version}, &mcp.ServerOptions{Instructions: ins})
+	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-mem", Version: o.Version}, &mcp.ServerOptions{Instructions: instructions})
 	h := handlers{s: s, o: o}
 	// memory_save and memory_update only add: an edit, stale or supersede keeps
 	// every earlier version. proposal_decide can overwrite or remove a user's
@@ -72,9 +67,10 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
-	if o.Work != nil {
-		addWorkTools(srv, newWorkTools(*o.Work))
-	}
+	mcp.AddTool(srv, &mcp.Tool{Name: "activity_find", Description: "세션 활동 기록(언제·어느 호스트·어느 프로젝트·무슨 요청)을 찾는다. 기본은 이 프로젝트, project=all이면 전부. 옛 작업 기록(work.db)의 세션과 그 작업 제목도 함께, 출처(source)를 붙여 최신순으로 준다.", Annotations: readHints()},
+		track(h, "activity_find", h.activity, func(in ActivityIn, out activity.Result) map[string]any {
+			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "project": in.Project, "results": len(out.Items)}
+		}))
 	return srv
 }
 
@@ -310,7 +306,7 @@ func (h handlers) scope(scope, dir string) (string, string, error) {
 
 func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
 	if in.Source.Kind == memory.SourceLegacy {
-		r, _ := toolError(fmt.Errorf("legacy 출처는 orb migrate만 씁니다"))
+		r, _ := toolError(fmt.Errorf("legacy 출처는 orbit-mem migrate만 씁니다"))
 		return r, MemoryOut{}, nil
 	}
 	scope, label, err := h.scope(in.Scope, in.Project)

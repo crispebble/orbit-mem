@@ -3,8 +3,6 @@
   "config.err.retro_host": "retroHost는 claude 또는 codex입니다: %q",
   "config.err.retro_hour": "retroHour는 0-23입니다: %d",
   "config.err.inject": "inject는 full|rules|off입니다: %q",
-  "config.err.work": "work는 on|off입니다: %q",
-  "config.err.work_stale_after": "workStaleAfter는 20m 같은 양의 시간입니다: %q",
   "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
   "config.err.recall_chars": "recallChars는 100-%d입니다: %d",
   "config.err.ledger_session": "ledgerWindowDays(1-90)·sessionRetroDailyMax(0 이상)을 확인해 주세요",

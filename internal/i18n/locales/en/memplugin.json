@@ -1,0 +1,4 @@
+{
+  "memplugin.err.bad_orb": "ORBIT_ORB points at %s, which is not OpenOrbit's orb",
+  "memplugin.err.no_orb": "OpenOrbit's orb was not found (ORBIT_ORB, PATH, ~/.local/bin/orb). Install OpenOrbit, or set ORBIT_ORB to its path"
+}

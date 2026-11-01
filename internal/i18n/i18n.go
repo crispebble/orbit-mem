@@ -1,4 +1,4 @@
-// Package i18n holds the messages orb shows people, in English (the default)
+// Package i18n holds the messages orbit-mem shows people, in English (the default)
 // and Korean (명세: Atlas ONID-61). Messages are kept by key in
 // locales/<lang>/*.json; every language has the same keys.
 //

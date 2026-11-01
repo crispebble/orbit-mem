@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS ledger (
   verdict TEXT NOT NULL, evidence INTEGER NOT NULL DEFAULT 0, observation TEXT NOT NULL DEFAULT '{}', judged_at INTEGER NOT NULL DEFAULT 0,
   lesson_id TEXT NOT NULL DEFAULT '', revert_of TEXT NOT NULL DEFAULT '', reverted_by TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ledger_at ON ledger(at);
-PRAGMA user_version=2;
+PRAGMA user_version=3;
 `
 
 // addColumns adds the columns later versions put on tables an older OpenOrbit made.
@@ -122,7 +122,7 @@ func migrate(db *sql.DB) error {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
@@ -832,7 +832,14 @@ func (s *Store) Snapshot(dir, name string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	dst := filepath.Join(dir, name+"-"+s.Now().Local().Format("20060102T150405")+".sqlite")
+	base := filepath.Join(dir, name+"-"+s.Now().Local().Format("20060102T150405"))
+	dst := base + ".sqlite"
+	for i := 2; ; i++ { // 같은 초에 두 번 찍어도 앞 사본을 덮지 않는다
+		if _, err := os.Stat(dst); os.IsNotExist(err) {
+			break
+		}
+		dst = fmt.Sprintf("%s-%d.sqlite", base, i)
+	}
 	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
 		return "", i18n.Errorf("memory.err.copy", err)
 	}

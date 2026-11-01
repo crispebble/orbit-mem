@@ -26,7 +26,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/memplugin"
-	"github.com/onidot-labs/orbit-mem/internal/openorbit"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 )
 
@@ -47,14 +46,14 @@ type Lab struct {
 	Store  *memory.Store
 	Cfg    config.Config
 	Paths  config.Paths
-	Orb    string // 후보 플러그인의 훅·MCP가 부를 orb
+	Mem    string // 후보 플러그인의 훅·MCP가 부를 orbit-mem
 	Source string // 지금 쓰는 플러그인 원본
 	Exec   func(context.Context, retro.Cmd) (string, error)
 	Now    func() time.Time
 	// Shuffle says whether the changed candidate is shown as A in a round. Nil is random.
 	Shuffle func(round int) bool
-	// Build builds a candidate's marketplace from a plugin source into out. Nil is the
-	// OpenOrbit harness build with orb's memory fragment for Orb (tests replace it).
+	// Build builds a candidate's marketplace from a plugin source into out. Nil is OpenOrbit's
+	// orb plugin build with orbit-mem's memory fragment for Mem (tests replace it).
 	Build func(source, out string) error
 }
 
@@ -283,7 +282,11 @@ func (l *Lab) build(source, out string) (string, string, error) {
 	build := l.Build
 	if build == nil {
 		build = func(source, out string) error {
-			return memplugin.Build(openorbit.New(l.Paths.Home, string(i18n.Current())), source, out, l.Orb)
+			orb, err := memplugin.FindOrb()
+			if err != nil {
+				return err
+			}
+			return memplugin.Build(orb, source, out, l.Mem, nil)
 		}
 	}
 	if err := build(source, out); err != nil {
@@ -365,10 +368,10 @@ func (l *Lab) Run(ctx context.Context, in RunInput) (memory.LabExperiment, error
 		}
 		plugins[cand], x.Hashes[cand] = p, h
 	}
-	// 실험 전용 OpenOrbit 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
+	// 실험 전용 orbit-mem 폴더: 후보 플러그인의 훅·MCP가 이 PC 기억·활동 기록을 읽거나 쓰지 않고, 세션 끝 회고도 띄우지 않는다.
 	home := filepath.Join(dir, "home")
 	hc := config.Default()
-	hc.SessionRetro, hc.Work = false, config.WorkOff
+	hc.SessionRetro = false
 	if err := config.Save(filepath.Join(home, "config.json"), hc); err != nil {
 		return memory.LabExperiment{}, err
 	}

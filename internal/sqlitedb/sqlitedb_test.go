@@ -2,6 +2,7 @@ package sqlitedb
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -72,5 +73,54 @@ func TestOpen_한_연결과_요청한_PRAGMA를_쓴다(t *testing.T) {
 	db.QueryRow(`PRAGMA busy_timeout`).Scan(&busy)
 	if fk != 1 || busy != 1000 || db.Stats().MaxOpenConnections != 1 {
 		t.Fatalf("foreign_keys %d, busy_timeout %d, 연결 %d", fk, busy, db.Stats().MaxOpenConnections)
+	}
+}
+
+// 끝 기준(M6): 하루 백업은 원본을 읽기 전용으로 열어 <prefix>-YYYYMMDD.sqlite로 복사하고 keep개만 남긴다.
+// 원본 파일은 바뀌지 않고, 원본이 없으면 건너뛴다.
+func TestBackupDaily_읽기_전용_복사와_돌려_쓰기(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "work.db")
+	db, err := Open(src, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec(`CREATE TABLE t (v TEXT)`)
+	db.Exec(`INSERT INTO t VALUES ('a')`)
+	db.Close()
+	before, _ := os.ReadFile(src)
+	backups := filepath.Join(dir, "backups")
+	var last string
+	for d := 1; d <= 4; d++ {
+		p, err := BackupDaily(src, backups, "work", 2, time.Date(2026, 10, d, 4, 0, 0, 0, time.Local))
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = p
+	}
+	if filepath.Base(last) != "work-20261004.sqlite" {
+		t.Fatalf("이름 %s", last)
+	}
+	entries, _ := os.ReadDir(backups)
+	if len(entries) != 2 || entries[0].Name() != "work-20261003.sqlite" {
+		t.Fatalf("돌려 쓰기 %v", entries)
+	}
+	c, err := Open(last, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v string
+	if err := c.QueryRow(`SELECT v FROM t`).Scan(&v); err != nil || v != "a" {
+		t.Fatalf("사본 %q %v", v, err)
+	}
+	c.Close()
+	if after, _ := os.ReadFile(src); string(after) != string(before) {
+		t.Fatal("원본이 바뀌었습니다")
+	}
+	if p, err := BackupDaily(filepath.Join(dir, "none.db"), backups, "work", 2, time.Now()); p != "" || err != nil {
+		t.Fatalf("없는 원본 %q %v", p, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "none.db")); !os.IsNotExist(err) {
+		t.Fatal("없는 원본을 만들었습니다")
 	}
 }

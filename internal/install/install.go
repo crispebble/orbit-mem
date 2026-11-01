@@ -1,12 +1,11 @@
-// Package install puts orb on this PC: the binary and the OS schedule for
-// retrospectives (launchd on Mac, Task Scheduler on Windows), and takes the
-// OpenOrbit plugin out of the hosts again. Building and registering the plugin
-// is the OpenOrbit harness's (openorbit-harness build|install).
+// Package install puts orbit-mem on this PC: the binary and the OS schedule for
+// retrospectives (launchd on Mac, Task Scheduler on Windows). Building the OpenOrbit
+// plugin and registering it in the hosts (and taking it out again) is OpenOrbit's
+// orb install|uninstall.
 package install
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -52,31 +51,9 @@ func FindHosts() Hosts {
 	return h
 }
 
-// UnregisterPlugin removes plugin name and its marketplace from every host present.
-func (h Hosts) UnregisterPlugin(name, market string) error {
-	var errs []error
-	if h.Claude != "" {
-		if _, err := h.Run(h.Claude, "plugin", "uninstall", name+"@"+market, "--scope", "user"); err != nil {
-			errs = append(errs, err)
-		}
-		if _, err := h.Run(h.Claude, "plugin", "marketplace", "remove", market); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if h.Codex != "" {
-		if _, err := h.Run(h.Codex, "plugin", "remove", name+"@"+market); err != nil {
-			errs = append(errs, err)
-		}
-		if _, err := h.Run(h.Codex, "plugin", "marketplace", "remove", market); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
 // Schedule is the retrospective schedule of this PC.
 type Schedule struct {
-	Orb      string   // orb 절대경로
+	Bin      string   // orbit-mem 절대경로
 	Hour     int      // 하루 회고 시각
 	Home     string   // ORBIT_HOME(기본 위치가 아니면)
 	PathDirs []string // claude·codex가 있는 디렉터리
@@ -131,7 +108,7 @@ func LaunchdPlist(s Schedule) string {
 	<string>Background</string>
 </dict>
 </plist>
-`, LaunchdLabel, xmlEscape(s.Orb), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
+`, LaunchdLabel, xmlEscape(s.Bin), s.Hour, env, xmlEscape(filepath.Join(s.Logs, "retro.log")), xmlEscape(filepath.Join(s.Logs, "retro.log")))
 }
 
 // TaskXML is the Windows Task Scheduler definition (UTF-16LE with BOM, as
@@ -151,7 +128,7 @@ func TaskXML(s Schedule) []byte {
 	if s.Home != "" {
 		inner = `set "ORBIT_HOME=` + s.Home + `" && `
 	}
-	inner += `"` + s.Orb + `" retro run`
+	inner += `"` + s.Bin + `" retro run`
 	if s.Logs != "" {
 		inner += ` >> "` + filepath.Join(s.Logs, "retro.log") + `" 2>&1`
 	}
@@ -265,7 +242,7 @@ func ScheduleInstalled(run func(string, ...string) (string, error)) bool {
 	return false
 }
 
-// DefaultBinDir is where orb is installed: ~/.local/bin on Mac and Linux,
+// DefaultBinDir is where orbit-mem is installed: ~/.local/bin on Mac and Linux,
 // %LOCALAPPDATA%\Programs\orbit on Windows.
 func DefaultBinDir() string {
 	if runtime.GOOS == "windows" {
@@ -277,15 +254,15 @@ func DefaultBinDir() string {
 	return filepath.Join(home, ".local", "bin")
 }
 
-// BinaryName is orb's file name on this OS.
+// BinaryName is orbit-mem's file name on this OS.
 func BinaryName() string {
 	if runtime.GOOS == "windows" {
-		return "orb.exe"
+		return "orbit-mem.exe"
 	}
-	return "orb"
+	return "orbit-mem"
 }
 
-// CopyBinary installs the running orb at dst (atomically) unless it already is dst.
+// CopyBinary installs the running orbit-mem at dst (atomically) unless it already is dst.
 func CopyBinary(src, dst string) (bool, error) {
 	if a, err := filepath.EvalSymlinks(src); err == nil {
 		src = a

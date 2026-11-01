@@ -1,0 +1,4 @@
+{
+  "memplugin.err.bad_orb": "ORBIT_ORB가 가리키는 %s는 OpenOrbit orb가 아닙니다",
+  "memplugin.err.no_orb": "OpenOrbit orb를 찾지 못했습니다(ORBIT_ORB, PATH, ~/.local/bin/orb). OpenOrbit을 설치하거나 ORBIT_ORB에 그 경로를 두세요"
+}
