@@ -53,7 +53,7 @@ export function buildStartInput(form: ComposerForm): {ok: true; input: StartRunI
   return {ok: true, input};
 }
 
-/** 「이어가기」: 같은 폴더·프로필, 모드는 default, 그 작업(workId)을 이어간다. */
+/** 「이어가기」: 같은 폴더·프로필, 모드는 ultrawork(기록된 계획을 그대로 실행), 그 작업(workId)을 이어간다. */
 export function resumeInput(run: Pick<RunSummary, 'cwd' | 'profile' | 'workId' | 'request'>): StartRunInput {
   const input: StartRunInput = {request: '', cwd: run.cwd, mode: 'ultrawork', resume: {workId: run.workId}};
   if (run.profile) input.profile = run.profile;
