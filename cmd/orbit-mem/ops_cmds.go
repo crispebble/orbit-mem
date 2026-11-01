@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/onidot-labs/orbit-mem/internal/activity"
 	"github.com/onidot-labs/orbit-mem/internal/config"
@@ -371,7 +372,8 @@ type doctorReport struct {
 	SessionQueue int                 `json:"sessionQueue"`
 	Activity     activityStatus      `json:"activity"`
 	LastRetros   []retro.RetroStatus `json:"lastRetros"`
-	LastBackup   string              `json:"lastBackup,omitempty"`
+	LastBackup   string              `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
+	Backups      backupStatus        `json:"backups"`
 	Claude       claudeStatus        `json:"claude"`
 	Codex        codexStatus         `json:"codex"`
 	Problems     []problem           `json:"problems"`
@@ -455,9 +457,8 @@ func cmdDoctor(a *app, args []string) error {
 		add("db-missing", "orbit-mem install")
 	}
 	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
-	if entries, err := os.ReadDir(p.Backups()); err == nil && len(entries) > 0 {
-		rep.LastBackup = filepath.Join(p.Backups(), entries[len(entries)-1].Name())
-	}
+	rep.Backups = readBackupStatus(p, rep.Config, time.Now())
+	rep.LastBackup = rep.Backups.LastPath
 	h := install.FindHosts()
 	rep.Claude = claudeStatus{Path: h.Claude, Plugin: pluginNoHost}
 	if h.Claude != "" {
@@ -520,8 +521,8 @@ func cmdDoctor(a *app, args []string) error {
 	for _, r := range rep.LastRetros {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_retro", r.Period, r.Kind, r.Status, oneLine(r.Summary+" "+r.Error, 80)))
 	}
-	if rep.LastBackup != "" {
-		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_backup", rep.LastBackup))
+	if b := rep.Backups; b.Last != "" {
+		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.backups", timeText(b.LastAt), b.Last, b.Count, b.Keep, onOff(b.Auto)))
 	}
 	if len(rep.Problems) == 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.no_problems"))

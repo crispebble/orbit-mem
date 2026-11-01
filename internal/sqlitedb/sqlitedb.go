@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit-mem/internal/backup"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -75,8 +75,9 @@ func wal(db *sql.DB, busy time.Duration) error {
 }
 
 // BackupDaily copies the database at src into dir as <prefix>-YYYYMMDD.sqlite and keeps the
-// newest keep copies of that prefix. src is opened read only (VACUUM INTO writes only the
-// copy); a missing src is skipped.
+// newest keep daily copies of that prefix (only that exact name: backup.Prune). src is opened
+// read only (VACUUM INTO writes only the copy); a missing src is skipped. The copy is written
+// to a temporary name first, so a failed copy never replaces the day's earlier one.
 func BackupDaily(src, dir, prefix string, keep int, now time.Time) (string, error) {
 	if _, err := os.Stat(src); err != nil {
 		return "", nil
@@ -90,25 +91,17 @@ func BackupDaily(src, dir, prefix string, keep int, now time.Time) (string, erro
 	}
 	defer db.Close()
 	dst := filepath.Join(dir, prefix+"-"+now.Local().Format("20060102")+".sqlite")
-	_ = os.Remove(dst)
-	if _, err := db.Exec(`VACUUM INTO ?`, dst); err != nil {
+	tmp := dst + ".tmp"
+	_ = os.Remove(tmp)
+	if _, err := db.Exec(`VACUUM INTO ?`, tmp); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
-	_ = os.Chmod(dst, 0o600)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return dst, err
+	_ = os.Chmod(tmp, 0o600)
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
 	}
-	var names []string
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), prefix+"-") && strings.HasSuffix(e.Name(), ".sqlite") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for keep > 0 && len(names) > keep {
-		_ = os.Remove(filepath.Join(dir, names[0]))
-		names = names[1:]
-	}
-	return dst, nil
+	_, err = backup.Prune(dir, prefix, keep)
+	return dst, err
 }

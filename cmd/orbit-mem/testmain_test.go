@@ -21,6 +21,8 @@ func TestMain(m *testing.M) {
 		defaultSchedule.calls = append(defaultSchedule.calls, name+" "+strings.Join(args, " "))
 		return "", nil
 	}
+	// 훅이 뒤에서 띄우는 사본 프로세스(backup auto)도 기본은 가짜다: 시험 바이너리를 다시 띄우지 않는다.
+	startBackground = func(args ...string) error { return nil }
 	os.Exit(m.Run())
 }
 

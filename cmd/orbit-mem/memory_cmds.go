@@ -18,7 +18,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/project"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
@@ -177,6 +176,9 @@ func cmdHook(a *app, args []string) error {
 		}
 		memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
 		recordActivity(s, pos[0], *host, in, p, who, at)
+		if pos[0] == "session-start" {
+			autoBackup(cfg)
+		}
 	}()
 	select {
 	case out := <-done:
@@ -484,31 +486,6 @@ func (a *app) review(s *memory.Store) error {
 	return nil
 }
 
-func cmdBackup(a *app, args []string) error {
-	cfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
-	s, err := openStore()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	path, err := s.Backup(paths().Backups(), cfg.BackupKeep)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", path))
-	wpath, err := sqlitedb.BackupDaily(paths().WorkDB(), paths().Backups(), "work", cfg.BackupKeep, time.Now()) // 옛 작업 기록(읽기 전용으로 연다)
-	if err != nil {
-		return err
-	}
-	if wpath != "" {
-		fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", wpath))
-	}
-	return nil
-}
-
 func cmdConfig(a *app, args []string) error {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -559,6 +536,12 @@ func cmdConfig(a *app, args []string) error {
 				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
 			}
 		}
+	case "autoBackup":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.bool", key, val)
+		}
+		cfg.AutoBackup = b
 	case "sessionRetro":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
@@ -595,7 +578,7 @@ func cmdConfig(a *app, args []string) error {
 			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches, "labRuns": &cfg.LabRuns,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·labRuns·labRunUSD·labExperimentUSD·labModel·labJudgeModel·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

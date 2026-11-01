@@ -56,16 +56,17 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem activity [질의] [--host H] [--project all\|DIR] [--since 날짜] [-n N]` | 활동 기록 찾기(`activity_find`) |
 | `orbit-mem proposals` | 사람의 결정을 기다리는 제안 보기·하나씩 결정(`review`)·승인·거절·고쳐서 승인 |
 | `orbit-mem audit [--days N] [--json]`, `audit revert <원장·제안 id> [--note]`, `audit dismiss <f-…\|correction:…>`, `audit harness [--json]` | 감사 목록(아래 「확정 규칙과 감사 목록」): 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정. 틀린 것만 되돌리거나 확인함으로 닫는다. `harness --json`은 하네스 개선 후보(스킬·역할 반복 교정, 서로 다른 작업 여럿에서 나온 절차 교훈)를 openorbit 실험실(개발 도구)이 읽기만 하는 꼴로 준다 |
-| `orbit-mem retro-store <op>` | OpenOrbit `orb retro`가 부르는 회고 저장 API(기계용). 결과는 stdout에 JSON 객체 하나, 실패는 종료 1과 stderr 한 줄, 기억 DB가 없으면 만들지 않는다. `prepare --kind daily\|weekly --period YYYY-MM-DD`·`--kind tidy\|legacy`·`--kind session --session-host H --session S --ended-at MS [--daily-max N]`·`--kind work`(stdin의 끝난 작업 기록 JSON 하나 `{ref,cwd,title,status,endedAt,text,userWords,evidence,recalled,verified}`, 4MB까지. 같은 작업의 같은 `endedAt`이 실행 중이거나 끝났으면 `skipped`(실행·제출 중으로 45분이 지난 줄은 실패로 닫고 다시 돈다), `text`가 비면 `empty`)(재료를 `retro/<id>/material.json`에 두고 실행 줄을 연다, `--host` 기본 `retroHost`), `finish --id ID`(stdin의 호스트 결과 JSON으로 재료를 지우고 사건 `retro.run`을 남기며, 제출이 없으면 실패로 닫는다), `queue list\|add\|mark`(세션 끝 회고 대기열), `state`, `list [--n N]`, `sessions --day D`, `backup`, `judge`(효과 판정·해로운 자동 변경 되돌리기), `settle`(증거 확정·정착한 제안 닫기·오래된 세션 상태 정리) |
+| `orbit-mem retro-store <op>` | OpenOrbit `orb retro`가 부르는 회고 저장 API(기계용). 결과는 stdout에 JSON 객체 하나, 실패는 종료 1과 stderr 한 줄, 기억 DB가 없으면 만들지 않는다. `prepare --kind daily\|weekly --period YYYY-MM-DD`·`--kind tidy\|legacy`·`--kind session --session-host H --session S --ended-at MS [--daily-max N]`·`--kind work`(stdin의 끝난 작업 기록 JSON 하나 `{ref,cwd,title,status,endedAt,text,userWords,evidence,recalled,verified}`, 4MB까지. 같은 작업의 같은 `endedAt`이 실행 중이거나 끝났으면 `skipped`(실행·제출 중으로 45분이 지난 줄은 실패로 닫고 다시 돈다), `text`가 비면 `empty`)(재료를 `retro/<id>/material.json`에 두고 실행 줄을 연다, `--host` 기본 `retroHost`), `finish --id ID`(stdin의 호스트 결과 JSON으로 재료를 지우고 사건 `retro.run`을 남기며, 제출이 없으면 실패로 닫는다), `queue list\|add\|mark`(세션 끝 회고 대기열), `state`, `list [--n N]`, `sessions --day D`, `backup`(세션 시작 훅과 같은 하루 규칙: 마지막 기억 사본이 24시간 안이면 새로 만들지 않고 그 사본 경로를 준다), `judge`(효과 판정·해로운 자동 변경 되돌리기), `settle`(증거 확정·정착한 제안 닫기·오래된 세션 상태 정리) |
 | `orbit-mem mcp [--actor ai\|user\|automation] [--retro ID \| --reader]` | 호스트가 띄우는 MCP 서버(stdio). 아래 「MCP 도구」. `--actor`는 이 서버로 쓰는 쪽(기본 ai, Orbit Studio는 user) |
-| `orbit-mem hook session-start\|prompt\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 준다. 셋 다 활동 기록을 남기고, 세션 끝 훅은 활동 기록의 끝 시각만 남긴다(세션 끝 회고 대기열은 OpenOrbit이 채운다, 뒤 프로세스를 띄우지 않는다). 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). `hook work`(옛 플러그인의 작업 기록 훅)는 입력을 버리고 아무것도 하지 않는다 |
+| `orbit-mem hook session-start\|prompt\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(확정 규칙 전문·최근 결정 제목·회고 한 줄, 세션 안에서는 바뀌지 않음), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 준다. 셋 다 활동 기록을 남기고, 세션 끝 훅은 활동 기록의 끝 시각만 남긴다(세션 끝 회고 대기열은 OpenOrbit이 채운다). 세션 시작 훅은 마지막 기억 사본이 24시간보다 오래됐으면 `orbit-mem backup auto`를 따로 띄우고 기다리지 않는다(아래 「백업」). 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). `hook work`(옛 플러그인의 작업 기록 훅)는 입력을 버리고 아무것도 하지 않는다 |
 | `orbit-mem inject session-start\|prompt [--cwd D] [--session S]` | orbit-pi에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 요청 글은 stdin |
 | `orbit-mem plugin build [--out D \| --repo R]` | 내장 원본으로 플러그인을 만든다. `--out`(기본 `$ORBIT_HOME/plugins/orbit-mem`)에는 Claude·Codex 꼴과 두 로컬 마켓을, `--repo`에는 GitHub 마켓(`.claude-plugin/marketplace.json`과 `plugin/`, Claude 꼴만)을 쓴다. `plugin/` 안의 남은 파일은 지운다 |
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `orbit-mem stats [--days N \| --week 월요일]` | 지표: 반복 교정, 요청 적중, 사용 판정, 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정, 효과 원장, 회고 비용, 기억 그래프, 옛 기억 정리 |
 | `orbit-mem ledger [--all]` | 승인한 변경과 자동 변경(기억·하네스·지침)의 효과 판정 |
 | `orbit-mem lab` | 하네스 실험실. 지금 플러그인과 고친 플러그인을 `labRuns`번씩 실험 전용 `ORBIT_HOME`에서 돌리고 결과물을 익명으로 고른다. 후보 플러그인은 OpenOrbit `orb plugin build <원본> --out <폴더>`로 하네스 플러그인만 빌드한다(`orb`는 `ORBIT_ORB`, PATH, `~/.local/bin/orb` 순으로 찾는다). 실행은 실험 전용 빈 `ORBIT_HOME`과 `--setting-sources project`로 돌아 이 PC에 깔린 플러그인(`orbit-mem` 포함)을 싣지 않으므로 기억은 비교에 끼지 않는다. 플러그인 원본(`pluginSource`)을 쓰는 PC에서만 돈다 |
-| `orbit-mem config`, `orbit-mem backup`, `orbit-mem version` | 설정 보기·바꾸기, 즉시 백업(기억 DB와 옛 `work.db`), 판 |
+| `orbit-mem backup [list\|status\|restore <사본> [--yes]]` | 지금 사본 만들기(하루 규칙과 관계없이, 기억 DB와 옛 `work.db`), 사본 목록, 상태, 복구. 아래 「백업」 |
+| `orbit-mem config`, `orbit-mem version` | 설정 보기·바꾸기, 판 |
 
 ## 얇은 CLI의 출력
 
@@ -126,10 +127,24 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 ## 데이터
 
 - 위치: `ORBIT_HOME`, 없으면 Mac `~/Library/Application Support/orbit`, Windows `%AppData%\orbit`.
-- `memory.db`(SQLite: 기억·제안(자동 변경 포함)·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록·감사 표시), `config.json`, `backups/`(매일 사본 기본 14개: `memory-*`와 옛 `work-*`, 옮기기·들여오기 전 사본은 따로), `retro/`(진행 중 회고 재료: `prepare`가 만들고 `finish`가 지운다), `logs/`, `lab/`(실험실).
+- `memory.db`(SQLite: 기억·제안(자동 변경 포함)·회고·지표용 사건·쓰기 판정·효과 원장·세션 끝 회고 대기열·활동 기록·감사 표시), `config.json`, `backups/`(아래 「백업」), `retro/`(진행 중 회고 재료: `prepare`가 만들고 `finish`가 지운다), `logs/`, `lab/`(실험실).
 - `work.db`: 옛 작업 기록. 읽기 전용으로 활동 기록 찾기에 보이고 하루 백업만 이어 간다. 새로 쓰지 않는다.
 - 옛 설정 키 `work`·`workStaleAfter`·`workTestCommands`는 읽을 때 무시하고 다시 저장하면 빠진다.
 - PC끼리 공유하지 않는다.
+
+## 백업
+
+`backups/`에 기억 DB 사본을 둔다. 사본은 SQLite `VACUUM INTO`로 만든다: 읽기 트랜잭션 하나의 일관된 모습을 임시 이름(`*.tmp`)에 쓰고 다 쓴 뒤에 이름을 바꾸므로, 쓰는 쪽(훅·MCP)을 막지 않고 덜 쓴 사본이 이름을 얻지 않는다.
+
+| 사본 | 언제 | 정리 |
+| --- | --- | --- |
+| `memory-YYYYMMDD.sqlite`(하루 사본)와 옛 `work-YYYYMMDD.sqlite` | 세션 시작 훅이 마지막 하루 기억 사본이 24시간보다 오래됐을 때(사본이 없을 때 포함) 뒤에서, OpenOrbit `orb retro` 앞(`retro-store backup`, 같은 규칙), 사람이 `orbit-mem backup`을 실행할 때(규칙과 관계없이) | 이름 꼴마다 `backupKeep`(기본 14)개를 넘는 가장 오래된 것부터 지운다. 정확히 이 이름 꼴인 파일만 지운다 |
+| `before-schema-*`·`before-restore-*`·`before-import-*`·`before-migrate-*.sqlite` | 스키마 이전(새 판이 기억 DB의 표·열·`user_version`을 바꿀 때)·복구·들여오기·옮기기 바로 전, 하루 규칙과 관계없이 | 지우지 않는다 |
+
+- 세션 시작 훅은 폴더를 한 번 읽어 24시간 규칙만 보고, 사본이 필요하면 `orbit-mem backup auto`를 따로(새 세션, 입출력 없이) 띄운 뒤 기다리지 않는다. `backup auto`는 `backups/.backup.lock`(OS 파일 잠금)을 잡은 뒤 규칙을 다시 보고, 다른 프로세스가 잠금을 쥐고 있으면 건너뛴다. 실패는 `logs/backup.log`에 남기고 훅은 언제나 종료 0이다. `orbit-mem config set autoBackup false`로 끈다(기본 켜짐).
+- 스키마 이전 전 사본을 만들지 못하면 스키마를 바꾸지 않고 기억 DB 열기가 실패한다.
+- `orbit-mem backup list`: 사본(이름·종류·시각·크기)을 최신순으로. `orbit-mem backup status`: 폴더, 자동 켜짐, 보관 개수, 마지막 하루 사본 시각·개수, 다음 자동 사본 시각. 둘 다 파이프면 JSON이다.
+- `orbit-mem backup restore <사본 이름 또는 경로> [--yes]`: 먼저 무엇을 무엇으로 바꾸는지(기억 수와 함께) 출력한다. `--yes`가 없으면 터미널에서는 묻고, 터미널이 아니면 바꾸지 않고 종료 1이다. 사본의 무결성(`PRAGMA integrity_check`)과 기억 표를 확인한 뒤, 지금 DB를 `before-restore-*.sqlite`로 남기고, SQLite 온라인 백업 API로 사본을 한 트랜잭션에 들여온다. 파일을 갈아 끼우지 않으므로 열려 있는 MCP 서버도 바뀐 내용을 본다. 들여온 뒤 다시 검사해 실패하면 남긴 사본으로 되돌린다.
 
 ## 개발
 
@@ -143,7 +158,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/orbit-mem.exe ./cmd/orbit-mem
 | 패키지 | 내용 |
 | --- | --- |
 | `cmd/orbit-mem` | 명령 |
-| `internal/memory` | 기억 저장소(SQLite), 찾기·연결·태그·제안·지표 사건·원장·활동 기록·내보내기·들여오기 |
+| `internal/memory` | 기억 저장소(SQLite), 찾기·연결·태그·제안·지표 사건·원장·활동 기록·내보내기·들여오기·사본(하루 사본·스키마 이전 전 사본)·복구 |
 | `internal/activity` | 활동 기록 찾기(새 기록 + 옛 `work.db` 읽기 전용) |
 | `internal/mcpserver` | MCP 서버(기억·활동 기록 도구, `memory_graph`, 회고용 도구)와 얇은 CLI가 부르는 `Tools` |
 | `internal/inject` | 세션 시작 묶음·요청 회상 |
@@ -151,7 +166,8 @@ GOOS=windows GOARCH=amd64 go build -o dist/orbit-mem.exe ./cmd/orbit-mem
 | `internal/memplugin` | 플러그인 원본(`source/`, go:embed)과 Claude·Codex 꼴·마켓 빌드, OpenOrbit `orb` 찾기(실험실) |
 | `internal/lab` | 하네스 실험실. `orbit-mem`에서 헤드리스 호스트를 부르는 유일한 곳(ONID-124에서 빠진다) |
 | `internal/install` | 실행 파일 복사, 예전 `orbit-mem` 회고 예약 지우기(`legacy.go`), 호스트 플러그인 등록·해제·상태(`hosts.go`) |
-| `internal/config`, `internal/i18n`, `internal/sqlitedb`, `internal/project` | 설정, 문구, SQLite 열기·하루 백업, 프로젝트 범위 |
+| `internal/config`, `internal/i18n`, `internal/sqlitedb`, `internal/project` | 설정, 문구, SQLite 열기·옛 `work.db` 하루 사본, 프로젝트 범위 |
+| `internal/backup` | 백업 폴더의 사본 이름·목록·보관 정리·24시간 규칙·잠금 |
 | `internal/memory/contract`, `internal/decision/contract` | 읽기 계약 `orbit.memory`와 옛 `orbit.decision` 예시(Orbit Studio 플러그인 시험이 읽는다) |
 
 ## 플러그인 고치기·다시 만들기
@@ -182,7 +198,8 @@ OpenOrbit `orb doctor`가 읽는다. 키를 바꾸지 않는다.
 | `pathBinary` | 훅·MCP가 부를 PATH의 `orbit-mem`(없으면 빈 문자열) |
 | `home`, `db`, `config` | 데이터 경로, `memory.db`가 있는지, 설정 |
 | `memories`, `pendingProposals`, `sessionQueue`, `activity` | 상태별 기억 수, 대기 제안, 세션 끝 회고 대기열, 활동 기록 세션 수(`sessions`·`legacySessions`) |
-| `lastRetros`, `lastBackup` | 최근 회고, 최근 백업(0.6.0에서 `schedule`은 뺐다: 회고 예약은 OpenOrbit이 맡는다) |
+| `lastRetros`, `lastBackup` | 최근 회고, 마지막 기억 하루 사본 경로(0.6.0에서 `schedule`은 뺐다: 회고 예약은 OpenOrbit이 맡는다) |
+| `backups` | `dir`, `auto`, `keep`, `count`(기억 하루 사본 수), `last`·`lastPath`·`lastAt`, `due`, `nextAfter`, `workCopies`, `snapshots` |
 | `claude` | `path`, `plugin`(`installed`·`missing`·`unknown`·`no-host`), `version`, `enabled`, `marketplace`(`github:<owner/repo>`·`directory:<경로>`) |
 | `codex` | `path`, `config`(읽은 `config.toml`), `marketplace`, `plugin`(`installed`·`missing`), `enabled`, `hooksTrusted` |
 | `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted` |
