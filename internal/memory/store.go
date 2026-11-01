@@ -255,10 +255,9 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 	if err != nil || m.State != StateCandidate {
 		return m, err
 	}
+	// 기억은 이미 저장됐다: 표시는 할 수 있는 만큼 단다(없는 규칙 id는 부르는 쪽이 먼저 거른다).
 	for _, rule := range in.ConflictsWith {
-		if _, err := s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who); err != nil {
-			return m, err
-		}
+		_, _ = s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who)
 	}
 	if in.noEvidence {
 		return m, nil

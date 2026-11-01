@@ -295,9 +295,17 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 				scope, label = pr.Scope, pr.Label
 			}
 		}
+		var conflicts []string
+		for _, rule := range in.ConflictsWith {
+			if _, err := s.Get(rule); err != nil {
+				notes = append(notes, fmt.Sprintf("%s: 어긋나는 규칙 %s가 없어 표시하지 않음", in.Title, rule))
+				continue
+			}
+			conflicts = append(conflicts, rule)
+		}
 		before, _ := s.Count()
 		m, err := s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label, Source: src, Day: day,
-			ConflictsWith: in.ConflictsWith, Who: memory.Who{Actor: memory.ActorAutomation}})
+			ConflictsWith: conflicts, Who: memory.Who{Actor: memory.ActorAutomation}})
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s: %v", in.Title, err))
 			continue
