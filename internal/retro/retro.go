@@ -480,13 +480,6 @@ func (r *Runner) hostCommand(id, dir, text, model string) Cmd {
 	return Cmd{Name: name, Args: args, Dir: dir, Env: env, Stdin: text}
 }
 
-// ExecHost runs a host process with stdin closed and returns all of its output
-// (stdout and stderr). The harness lab runs its candidates and judge with it.
-func ExecHost(ctx context.Context, c Cmd) (string, error) { return execHost(ctx, c) }
-
-// ParseHostOutput reads cost, tokens and the answer from a host's JSON output.
-func ParseHostOutput(out string) HostOutput { return parseHostOutput(out) }
-
 // execHost runs a host process with stdin closed and returns the tail of its output.
 func execHost(ctx context.Context, c Cmd) (string, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
