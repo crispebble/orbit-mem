@@ -33,6 +33,11 @@ describe('plugin.json', () => {
     const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {command: string}[]}};
     assert.deepEqual([...new Set(full.connections.mcp.map(c => c.command))], ['orb']);
   });
+
+  it('MCP 연결 id와 명령: work는 `orb work mcp`, mem은 기억 그래프만 내는 `orb mcp --reader`', () => {
+    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {id: string; args: string[]}[]}};
+    assert.deepEqual(full.connections.mcp.map(c => [c.id, c.args.join(' ')]), [['oni', 'mcp'], ['work', 'work mcp'], ['mem', 'mcp --reader']]);
+  });
 });
 
 describe('plugin.json 언어', () => {

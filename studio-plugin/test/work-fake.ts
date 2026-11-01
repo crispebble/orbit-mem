@@ -19,6 +19,8 @@ export function asResult(ex: Example): McpResultLike {
 }
 
 export interface CallRecord {
+  /** 부른 연결 id */
+  connection?: string;
   tool: string;
   args?: Record<string, unknown>;
   options?: {timeoutMs?: number; signal?: AbortSignal};
@@ -34,8 +36,8 @@ export function fakeWorkCtx(handlers: Record<string, Handler>, initialScope: Stu
   const scopeListeners = new Set<(s: StudioScope) => void>();
   const ctx: WorkCtx = {
     mcp: {
-      async call<T>(_id: string, tool: string, args?: Record<string, unknown>, options?: CallRecord['options']) {
-        calls.push({tool, args, options});
+      async call<T>(id: string, tool: string, args?: Record<string, unknown>, options?: CallRecord['options']) {
+        calls.push({connection: id, tool, args, options});
         const h = handlers[tool];
         if (!h) throw new Error(`연결 없음: ${tool}`);
         return (await h(args, options)) as McpResultLike<T>;

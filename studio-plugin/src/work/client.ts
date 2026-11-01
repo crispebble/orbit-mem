@@ -1,4 +1,4 @@
-// 읽는 쪽 연결(`work`)로 작업 도구를 부르고 응답을 검사해 돌려준다. orb 호출 경계 하나.
+// 작업 연결(`work` = `orb work mcp`)로 작업 도구를 부르고 응답을 검사해 돌려준다. orb 호출 경계 하나.
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import {errorMessage, OrbitError} from '../orb.ts';
@@ -10,6 +10,8 @@ import type {
 } from './types.ts';
 
 export const WORK_CONNECTION_ID = 'work';
+/** 기억 그래프 연결(`mem` = `orb mcp --reader`). memory_graph만 낸다. */
+export const MEM_CONNECTION_ID = 'mem';
 export const READ_MAJOR_ARG = 1;
 
 export interface CallOptions {
@@ -17,11 +19,11 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
-/** 도구 하나를 부르고 계약 판을 확인한 응답 본문을 돌려준다. 연결 실패는 OrbitError(connection), 판 문제는 WorkPaused. */
-async function call(ctx: WorkCtx, tool: string, args: Record<string, unknown>, options?: CallOptions): Promise<unknown> {
+/** 도구 하나를 `connectionId` 연결로 부르고 계약 판을 확인한 응답 본문을 돌려준다. 연결 실패는 OrbitError(connection), 판 문제는 WorkPaused. */
+async function callOn(connectionId: string, ctx: WorkCtx, tool: string, args: Record<string, unknown>, options?: CallOptions): Promise<unknown> {
   let result;
   try {
-    result = await ctx.mcp.call<unknown>(WORK_CONNECTION_ID, tool, {...args, major: READ_MAJOR_ARG}, options);
+    result = await ctx.mcp.call<unknown>(connectionId, tool, {...args, major: READ_MAJOR_ARG}, options);
   } catch (e) {
     throw new OrbitError(pick(workText).error.connect(errorMessage(e)), {connection: true});
   }
@@ -33,6 +35,8 @@ async function call(ctx: WorkCtx, tool: string, args: Record<string, unknown>, o
   checkContract(out, tool);
   return out;
 }
+
+const call = (ctx: WorkCtx, tool: string, args: Record<string, unknown>, options?: CallOptions) => callOn(WORK_CONNECTION_ID, ctx, tool, args, options);
 
 /** 범위가 프로젝트면 디렉토리들로 거른다(계약 `cwdPrefix`). 디렉토리가 없는 프로젝트는 빈 목록이 맞다. */
 export function scopeArgs(scope: StudioScope): Record<string, unknown> {
@@ -92,5 +96,8 @@ export async function workChanges(ctx: WorkCtx, p: ChangesParams, options?: Call
   return parseChanges(await call(ctx, 'work_changes', args, options));
 }
 
-/** 읽는 쪽 연결의 다른 계약 도구(orbit.memory memory_graph)도 같은 경계로 부른다 */
+/** 작업 연결의 다른 계약 도구(decision_*)도 같은 경계로 부른다 */
 export {call as readerCall, WorkPaused, WorkToolError};
+
+/** 기억 연결(`mem`)의 memory_graph도 같은 판·오류 경계로 부른다 */
+export const memCall = (ctx: WorkCtx, tool: string, args: Record<string, unknown>, options?: CallOptions) => callOn(MEM_CONNECTION_ID, ctx, tool, args, options);
