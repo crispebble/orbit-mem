@@ -333,7 +333,7 @@ func exportMarkdown(dir string, ms []memory.Memory) error {
 				fmt.Fprintf(&b, "- [%s](%s.md) %s\n", l.MemoryID, l.MemoryID, l.Note)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, m.ID+".md"), []byte(b.String()), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(m.ID)+".md"), []byte(b.String()), 0o600); err != nil {
 			return err
 		}
 		fmt.Fprintf(&index, "- [%s](%s.md) · %s · %s\n", m.Title, m.ID, m.Kind, m.State)

@@ -259,3 +259,37 @@ func TestThin_memory_명령은_없다(t *testing.T) {
 		t.Fatalf("%d %q", code, errOut)
 	}
 }
+
+// id가 폴더 밖을 가리키면 들여오지 않고, 내보내기도 폴더 밖에 쓰지 않는다.
+func TestThin_import는_이상한_id를_거절하고_export는_폴더_밖에_쓰지_않는다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	bad := filepath.Join(t.TempDir(), "bad.jsonl")
+	line := func(id string) string {
+		return `{"id":"` + id + `","kind":"fact","title":"t-` + strings.ReplaceAll(id, "/", "_") + `","scope":"global","state":"confirmed"}` + "\n"
+	}
+	os.WriteFile(bad, []byte(line("../escaped")+line("a/b")+line("m-ok1")), 0o600)
+	var rep struct {
+		Imported []string
+		Skipped  []struct{ ID, Reason string }
+	}
+	json.Unmarshal([]byte(runOK(t, "", "import", bad)), &rep)
+	if len(rep.Imported) != 1 || rep.Imported[0] != "m-ok1" || len(rep.Skipped) != 2 || rep.Skipped[0].Reason != "invalid" || rep.Skipped[1].Reason != "invalid" {
+		t.Fatalf("이상한 id는 invalid: %+v", rep)
+	}
+	if n, _ := s.Count(); n != 1 {
+		t.Fatalf("기억 수 %d", n)
+	}
+	// export md: 방어선(DB에 이미 이상한 id가 있어도 폴더 안에만 쓴다)
+	root := t.TempDir()
+	dir := filepath.Join(root, "out")
+	if err := exportMarkdown(dir, []memory.Memory{{ID: "../escaped", Title: "x", Kind: "fact", State: "confirmed", Scope: "global"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "escaped.md")); err == nil {
+		t.Fatal("폴더 밖에 썼습니다")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "escaped.md")); err != nil {
+		t.Fatalf("폴더 안에는 써야 합니다: %v", err)
+	}
+}

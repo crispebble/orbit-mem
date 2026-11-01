@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -44,13 +45,18 @@ func (s *Store) Export(states ...string) ([]Memory, error) {
 	return out, nil
 }
 
+var memoryIDForm = regexp.MustCompile(`^m-[0-9A-Za-z]+$`)
+
+// ValidMemoryID tells whether id has the form NewID("m-") gives (it is used as a file name on export).
+func ValidMemoryID(id string) bool { return memoryIDForm.MatchString(id) }
+
 // Import adds an exported memory as it was: the same id, kind, scope, state, texts, times
 // and sources, with one history entry "import" (reason). It never changes a memory that is
 // already there. With dry, it only says what it would do. Links are left to the caller
 // (both ends must be there first).
 func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 	m.Title = strings.TrimSpace(m.Title)
-	if strings.TrimSpace(m.ID) == "" || !validKind(m.Kind) || m.Title == "" || strings.ContainsAny(m.Title, "\r\n") ||
+	if !ValidMemoryID(m.ID) || !validKind(m.Kind) || m.Title == "" || strings.ContainsAny(m.Title, "\r\n") ||
 		utf8.RuneCountInString(m.Title) > 200 || len(m.Body) > 32<<10 || !validScope(m.Scope) || !contains(States, m.State) {
 		return ImportInvalid, nil
 	}
