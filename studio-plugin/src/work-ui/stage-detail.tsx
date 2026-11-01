@@ -179,6 +179,20 @@ export function StageDetail({ctx, work, step, now, works, sessions, nav, onClose
       </span>
     )});
   }
+  // AU-4: 단계를 내줄 때 붙인 기억(orbit.work 1.4). 글은 단계 지시에 들어간 그대로, id는 기억에서 찾을 때 쓴다.
+  if (step.recall?.memories.length) {
+    items.push({label: t.recalled, value: (
+      <span className="orbit-work-links">
+        {step.recall.memories.map(m => (
+          <span key={m.id} className="orbit-row">
+            {m.kind && <Badge tone="neutral">{m.kind}</Badge>}
+            <span className="orbit-work-text">{m.text ?? m.id}</span>
+            {!m.text?.includes(m.id) && <span className="orbit-mono orbit-meta">{m.id}</span>}
+          </span>
+        ))}
+      </span>
+    )});
+  }
   if (step.childWorkIds.length) {
     items.push({label: t.childWorks, value: (
       <span className="orbit-work-links">

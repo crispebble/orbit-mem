@@ -3,7 +3,7 @@
 import {pick} from '../i18n/index.ts';
 import {workText} from '../i18n/messages/work.ts';
 import type {
-  Assumption, ChangesResult, ContractInfo, Discovery, GetResult, ListPage, SessionPage, SessionsPage,
+  Assumption, ChangesResult, ContractInfo, Discovery, GetResult, ListPage, SessionPage, SessionsPage, StepRecall,
 } from './types.ts';
 
 export const READ_MAJOR = 1;
@@ -163,6 +163,22 @@ export function normalizeAssumptions(v: unknown): Assumption[] | undefined {
   }
 }
 
+/** 단계별 회상(1.4). 객체가 아니거나 id 있는 기억이 하나도 없으면 없는 것으로 본다(회상 칸 때문에 작업을 못 읽게 하지 않는다). */
+export function normalizeRecall(v: unknown): StepRecall | undefined {
+  if (!isObj(v)) return undefined;
+  const memories = objList(v.memories).flatMap(m =>
+    isObj(m) && str(m.id) && m.id !== ''
+      ? [{id: m.id, ...(optStr(m.kind) ? {kind: optStr(m.kind)} : {}), ...(optStr(m.text) ? {text: optStr(m.text)} : {})}]
+      : []);
+  if (memories.length === 0) return undefined;
+  return {
+    ...(isInt(v.attempt) ? {attempt: v.attempt} : {}),
+    ...(optStr(v.query) ? {query: optStr(v.query)} : {}),
+    memories,
+    at: str(v.at) ? v.at : '',
+  };
+}
+
 function normalizeWork(w: unknown, tool: string): GetResult['work'] {
   checkWorkHead(w, tool);
   const o = w as Record<string, unknown>;
@@ -178,12 +194,16 @@ function normalizeWork(w: unknown, tool: string): GetResult['work'] {
     ...(rest as unknown as GetResult['work']),
     ...(discovery ? {discovery} : {}),
     ...(assumptions ? {assumptions} : {}),
-    steps: (o.steps as GetResult['work']['steps']).map(s => ({
-      ...s,
-      after: objList(s.after) as GetResult['work']['steps'][number]['after'],
-      evidenceIds: strList(s.evidenceIds),
-      childWorkIds: strList(s.childWorkIds),
-    })),
+    steps: (o.steps as GetResult['work']['steps']).map(({recall: rawRecall, ...s}) => {
+      const recall = normalizeRecall(rawRecall);
+      return {
+        ...s,
+        after: objList(s.after) as GetResult['work']['steps'][number]['after'],
+        evidenceIds: strList(s.evidenceIds),
+        childWorkIds: strList(s.childWorkIds),
+        ...(recall ? {recall} : {}),
+      };
+    }),
     runs: objList(o.runs) as GetResult['work']['runs'],
     evidence: objList(o.evidence) as GetResult['work']['evidence'],
     children,

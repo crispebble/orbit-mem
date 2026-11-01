@@ -175,8 +175,8 @@ describe('감사 목록 화면', () => {
 
 describe('plugin.json 감사 이름', () => {
   const m = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8'));
-  it('보기 id는 그대로, 제목은 Audit/감사, 버전 0.3.0', () => {
-    assert.equal(m.version, '0.3.0');
+  it('보기 id는 그대로, 제목은 Audit/감사, 버전 0.4.0', () => {
+    assert.equal(m.version, '0.4.0');
     assert.deepEqual(m.apps[0].views[0], {id: 'proposals', title: 'Audit'});
     assert.equal(m.locales.ko.apps.orbit.views.proposals, '감사');
     assert.equal(m.commands.find((c: {id: string}) => c.id === 'orbit.proposals').title, 'Show audit list');
