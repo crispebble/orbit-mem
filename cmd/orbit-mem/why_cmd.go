@@ -58,6 +58,9 @@ func cmdWhy(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.why.head", d.MemoryID, d.Title))
 	for _, st := range d.Stages {
+		if st.Code == "stored" && len(st.Args) == 2 {
+			st.Args = []string{stateName(st.Args[0]), kindName(st.Args[1])}
+		}
 		fmt.Fprintf(a.stdout, "  %s %-6s %s\n", whyMark(st.Status), whyStage(st.Name), whyText(st.Code, st.Args))
 	}
 	for _, n := range d.Notes {
