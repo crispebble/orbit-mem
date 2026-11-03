@@ -80,6 +80,8 @@
   "memory.err.scope_is": "%w: 범위는 global 또는 project:<키>입니다",
   "memory.err.source_kind": "%w: 출처 종류는 %s 중 하나입니다",
   "memory.err.topic_size": "%w: 주제는 200자 이하입니다",
+  "memory.err.tool_name": "%w: 도구 트리거는 도구 이름이나 *로 끝나는 접두입니다(%s)",
+  "memory.err.tool_count": "%w: 도구 트리거는 %d개까지입니다",
   "memory.err.ttl_volatile_only": "%w: 만료일(ttlDays)은 휘발 기억에만 줍니다",
   "memory.err.usage_verdict": "%w: 사용 판정에는 기억 id와 %s 중 하나가 필요합니다",
   "memory.err.verdict_title": "%w: 판정은 %s, 제목이 필요합니다",

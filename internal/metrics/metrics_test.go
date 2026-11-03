@@ -40,7 +40,7 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	rec("2026-10-10", memory.Event{Kind: memory.EventCorrection}, map[string]any{"memoryId": "m-r", "injected": "yes"})
 	// 세션 시작 2번
 	rec("2026-10-21", memory.Event{Kind: memory.EventInjectSessionStart, Session: "a"}, map[string]any{"memoryIds": []string{"m-r"}, "chars": 3000, "titleOnly": 2})
-	rec("2026-10-22", memory.Event{Kind: memory.EventInjectSessionStart, Session: "b"}, map[string]any{"memoryIds": []string{"m-r"}, "chars": 1000, "titleOnly": 0})
+	rec("2026-10-22", memory.Event{Kind: memory.EventInjectSessionStart, Session: "b"}, map[string]any{"memoryIds": []string{"m-r"}, "chars": 1000, "omitted": 5})
 	rec("2026-10-22", memory.Event{Kind: memory.EventInjectSessionStart, Session: "b"}, map[string]any{"memoryIds": []string{"m-r"}, "chars": 2000, "titleOnly": 0}) // 같은 세션 재개
 	// 요청 4번 중 1번 적중
 	for i := 0; i < 3; i++ {
@@ -97,7 +97,7 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	if rep.Saves.Total != 2 || rep.Saves.Quote != 1 || rep.Saves.Other != 1 {
 		t.Errorf("saves = %+v", rep.Saves)
 	}
-	if rep.SessionStart.Sessions != 2 || rep.SessionStart.Starts != 3 || rep.SessionStart.AvgChars != 2000 || rep.SessionStart.TitleOnlyMax != 2 {
+	if rep.SessionStart.Sessions != 2 || rep.SessionStart.Starts != 3 || rep.SessionStart.AvgChars != 2000 || rep.SessionStart.TitleOnlyMax != 2 || rep.SessionStart.OmittedMax != 5 {
 		t.Errorf("session start = %+v", rep.SessionStart)
 	}
 	p := rep.Proposals

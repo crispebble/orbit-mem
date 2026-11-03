@@ -16,7 +16,7 @@
   "metrics.find": "- 빈 검색 %d/%d (%s)",
   "metrics.query_count": "%q %d회",
   "metrics.saves": "- 저장 %d건 (인용 %d · 그 밖 %d)",
-  "metrics.session_start": "- 세션 %d개(시작 훅 %d번), 평균 %d자, 제목만 넣은 규칙 최대 %d개",
+  "metrics.session_start": "- 세션 %d개(시작 훅 %d번), 평균 %d자, 제목만 넣은 규칙 최대 %d개, 길이 때문에 못 넣은 규칙 최대 %d개",
   "metrics.proposals": "- 제안: 새로 %d건, 승인 %d · 고쳐서 승인 %d · 거절 %d, 지금 대기 %d건(가장 오래된 것 %d일)",
   "metrics.sources": "- 근거 파일 변경: 기억 %d건 감지 → 제안 %d건 (발췌 그대로 %d · 파일 없어짐 %d · 발췌 사라짐 %d · 판정 맞음 %d · 고칠 것 %d · 낡음 %d)",
   "metrics.writes": "- 쓰기 판정: 유지 %d · 보류 %d · 거절 %d, 사용자 거절 %d · 고쳐서 승인 %d",

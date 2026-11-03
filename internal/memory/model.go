@@ -84,6 +84,7 @@ type Memory struct {
 	ReviewAt     int64        `json:"reviewAt,omitempty"`   // 재검토일(Unix ms): 지나면 낡음 후보
 	ExpiresAt    int64        `json:"expiresAt,omitempty"`  // 휘발 기억이 회상에서 빠지는 때(Unix ms)
 	Topic        string       `json:"topic,omitempty"`      // 주제 키: 같은 범위·주제는 최신 판만 회상
+	Tools        []string     `json:"tools,omitempty"`      // 도구 트리거: 이 도구(이름 또는 접두*)를 부르기 직전에 회상
 }
 
 // Doc returns the searchable view.

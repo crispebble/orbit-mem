@@ -113,7 +113,7 @@ func TestHookOutput_호스트가_읽는_JSON(t *testing.T) {
 	}
 }
 
-func TestSessionStartInjection_넣은_기억_id와_제목만_넣은_규칙_수(t *testing.T) {
+func TestSessionStartInjection_넣은_기억_id와_넣지_못한_규칙_수(t *testing.T) {
 	s := store(t)
 	long := strings.Repeat("가", 2500)
 	var rules []memory.Memory
@@ -124,20 +124,22 @@ func TestSessionStartInjection_넣은_기억_id와_제목만_넣은_규칙_수(t
 	other := save(t, s, memory.KindRule, "다른 앱 규칙", "", "project:github.com/me/other", true)
 
 	inj := SessionStartInjection(s, config.Default(), here)
-	if inj.Text != SessionStart(s, config.Default(), here) || inj.Chars == 0 {
-		t.Fatalf("text mismatch")
+	if inj.Text != SessionStart(s, config.Default(), here) || inj.Chars == 0 || inj.Chars > MaxSessionStartRunes {
+		t.Fatalf("text mismatch or too long: %d", inj.Chars)
 	}
 	ids := strings.Join(inj.MemoryIDs, ",")
-	for _, m := range append(rules, d) {
-		if !strings.Contains(ids, m.ID) {
-			t.Errorf("missing %s in %s", m.ID, ids)
+	in := 0
+	for _, m := range rules {
+		if strings.Contains(ids, m.ID) {
+			in++
 		}
 	}
-	if strings.Contains(ids, other.ID) {
-		t.Errorf("other project id leaked")
+	if !strings.Contains(ids, d.ID) || strings.Contains(ids, other.ID) {
+		t.Errorf("ids %s", ids)
 	}
-	if inj.TitleOnly < 1 {
-		t.Errorf("titleOnly = %d", inj.TitleOnly)
+	// 넣은 규칙은 전문, 못 넣은 규칙은 id도 넣지 않고 수만 센다.
+	if in+inj.Omitted != len(rules) || inj.Omitted < 1 || in < 1 {
+		t.Errorf("in=%d omitted=%d", in, inj.Omitted)
 	}
 }
 

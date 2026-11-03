@@ -277,7 +277,7 @@ func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
 	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
-	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"compact"}`, "hook", "session-start", "--host", "claude")
+	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"resume"}`, "hook", "session-start", "--host", "claude") // compact·clear는 v2_test
 	if first != again || strings.Contains(again, "새로 확정된 규칙") {
 		t.Fatalf("bundle changed:\n%s\n%s", first, again)
 	}

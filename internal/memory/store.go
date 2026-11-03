@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS ledger (
   verdict TEXT NOT NULL, evidence INTEGER NOT NULL DEFAULT 0, observation TEXT NOT NULL DEFAULT '{}', judged_at INTEGER NOT NULL DEFAULT 0,
   lesson_id TEXT NOT NULL DEFAULT '', revert_of TEXT NOT NULL DEFAULT '', reverted_by TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS ledger_at ON ledger(at);
+CREATE TABLE IF NOT EXISTS session_marks (
+  host TEXT NOT NULL, session TEXT NOT NULL, memory_id TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY(host, session, kind, memory_id));
 PRAGMA user_version=3;
 `
 
@@ -104,6 +107,8 @@ func addColumns(db *sql.Tx) error {
 		{"memories", "review_at", "INTEGER NOT NULL DEFAULT 0"},
 		{"memories", "expires_at", "INTEGER NOT NULL DEFAULT 0"},
 		{"memories", "topic", "TEXT NOT NULL DEFAULT ''"},
+		// 도구 트리거(설계 · orbit-mem 2판 6절). 옛 판은 이 열을 모르고 쓰므로 그 줄은 트리거가 없다.
+		{"memories", "tools", "TEXT NOT NULL DEFAULT '[]'"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -215,8 +220,13 @@ type SaveInput struct {
 	TTLDays int
 	// ReviewAfterDays is the review cadence (durable 90 when 0, normal none when 0).
 	ReviewAfterDays int
-	// Topic groups the values of one thing: recall serves only the newest of a topic.
+	// Topic groups the values of one thing: recall serves only the newest of a topic, and
+	// saving a new value supersedes the current one of the same scope and topic (SaveWith).
 	Topic string
+	// Supersedes are older memories (any scope) the new one replaces in the same transaction.
+	Supersedes []string
+	// Tools are the tool names or prefixes (ending in *) right before whose call the memory is recalled.
+	Tools []string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -268,6 +278,11 @@ func (in *SaveInput) validate() error {
 		return ErrInvalid
 	}
 	in.Tags = cleanTags(in.Tags)
+	tools, err := cleanTools(in.Tools)
+	if err != nil {
+		return err
+	}
+	in.Tools = tools
 	return in.validateLifecycle()
 }
 
@@ -279,26 +294,54 @@ func (in *SaveInput) validate() error {
 // the confirmation kept in the ledger (A2). A hidden (rejected) candidate
 // stays hidden unless the new source is the user's own quote.
 func (s *Store) Save(in SaveInput) (Memory, error) {
-	m, err := s.save(in)
-	if err != nil || m.State != StateCandidate {
-		return m, err
+	m, _, err := s.SaveWith(in)
+	return m, err
+}
+
+// SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
+type SaveReport struct {
+	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
+	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말
+}
+
+// SaveWith is Save that also supersedes, in the same transaction, the current value of
+// the same scope and topic and the memories in in.Supersedes, by the source rules of
+// 설계 · orbit-mem 2판 4.2: the user's words replace anything (D1, no userQuote needed:
+// the new words are the ground); what an AI learned or an automation wrote does not
+// replace the user's words and is marked as going against them instead. A volatile
+// memory (the user said it is for now) does not replace its topic's value.
+func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
+	m, rep, err := s.save(in)
+	if err != nil {
+		return m, rep, err
+	}
+	for _, id := range rep.Superseded {
+		s.closeFlagsOf(id, StateStale)
+	}
+	if m.State != StateCandidate {
+		return m, rep, nil
 	}
 	// 기억은 이미 저장됐다: 표시는 할 수 있는 만큼 단다(없는 규칙 id는 부르는 쪽이 먼저 거른다).
 	for _, rule := range in.ConflictsWith {
 		_, _ = s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who)
 	}
+	for _, id := range rep.Conflicts {
+		_, _ = s.FlagConflict(m.ID, id, "같은 주제의 사용자 말과 어긋남(대체하지 않음)", in.Who)
+	}
 	if in.noEvidence {
-		return m, nil
+		return m, rep, nil
 	}
 	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
-		return m, nil // 확정하지 못해도 저장은 됐다
+		return m, rep, nil // 확정하지 못해도 저장은 됐다
 	}
-	return s.Get(m.ID)
+	m, err = s.Get(m.ID)
+	return m, rep, err
 }
 
-func (s *Store) save(in SaveInput) (Memory, error) {
+func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
+	var rep SaveReport
 	if err := in.validate(); err != nil {
-		return Memory{}, err
+		return Memory{}, rep, err
 	}
 	now := s.nowMs()
 	at := in.At
@@ -311,9 +354,14 @@ func (s *Store) save(in SaveInput) (Memory, error) {
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return Memory{}, err
+		return Memory{}, rep, err
 	}
 	defer tx.Rollback()
+	for _, id := range in.Supersedes { // 없는 기억을 지목하면 아무것도 쓰지 않는다
+		if _, err := getTx(tx, id); err != nil {
+			return Memory{}, rep, err
+		}
+	}
 
 	key := TitleKey(in.Title)
 	var existingID string
@@ -323,12 +371,22 @@ func (s *Store) save(in SaveInput) (Memory, error) {
 	}
 	if existingID != "" {
 		if err := sightTx(tx, existingID, in.Source, day, now); err != nil {
-			return Memory{}, err
+			return Memory{}, rep, err
+		}
+		cur, err := getTx(tx, existingID)
+		if err != nil {
+			return Memory{}, rep, err
+		}
+		if cur.State == StateCandidate || cur.State == StateConfirmed { // 거절된(hidden) 판은 아무것도 대체하지 않는다
+			if rep, err = supersedeTx(tx, cur, in, false, now); err != nil {
+				return Memory{}, rep, err
+			}
 		}
 		if err := tx.Commit(); err != nil {
-			return Memory{}, err
+			return Memory{}, rep, err
 		}
-		return s.Get(existingID)
+		m, err := s.Get(existingID)
+		return m, rep, err
 	}
 
 	state := in.State
@@ -339,7 +397,7 @@ func (s *Store) save(in SaveInput) (Memory, error) {
 		}
 	}
 	m := Memory{ID: NewID("m-"), Kind: in.Kind, Scope: in.Scope, Project: in.Project, State: state, Title: in.Title,
-		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID}
+		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID, Tools: in.Tools}
 	in.lifecycle(&m, at)
 	var legacy any
 	if in.LegacyID != "" {
@@ -347,33 +405,37 @@ func (s *Store) save(in SaveInput) (Memory, error) {
 	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,legacy_id,
-		retention,review_days,review_at,expires_at,topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic); err != nil {
-		return Memory{}, err
+		retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools)); err != nil {
+		return Memory{}, rep, err
 	}
 	if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
-		return Memory{}, err
+		return Memory{}, rep, err
 	}
 	for _, src := range in.Extra {
 		if !contains(SourceKinds, src.Kind) {
-			return Memory{}, ErrInvalid
+			return Memory{}, rep, ErrInvalid
 		}
 		if err := addSourceTx(tx, m.ID, src, now); err != nil {
-			return Memory{}, err
+			return Memory{}, rep, err
 		}
 	}
 	if state == StateCandidate {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
-			return Memory{}, err
+			return Memory{}, rep, err
 		}
 	}
 	if err := versionTx(tx, m, "create", "", now); err != nil {
-		return Memory{}, err
+		return Memory{}, rep, err
+	}
+	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
+		return Memory{}, rep, err
 	}
 	if err := tx.Commit(); err != nil {
-		return Memory{}, err
+		return Memory{}, rep, err
 	}
-	return s.Get(m.ID)
+	m, err = s.Get(m.ID)
+	return m, rep, err
 }
 
 // sightTx records that memory id came up again on day with src. A quote of
@@ -474,9 +536,9 @@ func truncateBytes(s string, n int) string {
 func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=?,
-		retention=?,review_days=?,review_at=?,expires_at=?,topic=? WHERE id=?`,
+		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, m.ID); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.ID); err != nil {
 		return err
 	}
 	return versionTx(tx, m, action, reason, now)
@@ -495,14 +557,18 @@ type querier interface {
 }
 
 const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,''),
-	retention,review_days,review_at,expires_at,topic`
+	retention,review_days,review_at,expires_at,topic,tools`
 
 func scanMemory(row interface{ Scan(...any) error }) (Memory, error) {
 	var m Memory
-	var tags string
+	var tags, tools string
 	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID,
-		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic); err != nil {
+		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools); err != nil {
 		return m, err
+	}
+	_ = json.Unmarshal([]byte(tools), &m.Tools)
+	if len(m.Tools) == 0 {
+		m.Tools = nil
 	}
 	_ = json.Unmarshal([]byte(tags), &m.Tags)
 	if m.Tags == nil {
@@ -568,6 +634,7 @@ type UpdateInput struct {
 	Title           *string
 	Body            *string
 	Tags            *[]string
+	Tools           *[]string // 도구 트리거를 바꾼다(빈 목록이면 없앤다)
 	Scope           *string
 	Project         *string
 	State           *string
@@ -622,6 +689,13 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	}
 	if in.Tags != nil {
 		m.Tags = cleanTags(*in.Tags)
+	}
+	if in.Tools != nil {
+		tools, err := cleanTools(*in.Tools)
+		if err != nil {
+			return m, err
+		}
+		m.Tools = tools
 	}
 	if in.Scope != nil {
 		if !validScope(*in.Scope) {

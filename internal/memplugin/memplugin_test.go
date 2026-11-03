@@ -93,13 +93,13 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 		events = append(events, e)
 	}
 	slices.Sort(events)
-	if !slices.Equal(events, []string{"SessionEnd", "SessionStart", "UserPromptSubmit"}) {
+	if !slices.Equal(events, []string{"PreToolUse", "SessionEnd", "SessionStart", "UserPromptSubmit"}) {
 		t.Fatalf("%s 훅 %v", path, events)
 	}
 	for e, want := range map[string]struct {
 		name    string
 		timeout int
-	}{"SessionStart": {"session-start", 10}, "UserPromptSubmit": {"prompt", 5}, "SessionEnd": {"session-end", 3}} {
+	}{"SessionStart": {"session-start", 10}, "UserPromptSubmit": {"prompt", 5}, "PreToolUse": {"pre-tool", 5}, "SessionEnd": {"session-end", 3}} {
 		g := h.Hooks[e]
 		if len(g) != 1 || len(g[0].Hooks) != 1 {
 			t.Fatalf("%s %s: %+v", path, e, g)
@@ -110,7 +110,7 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 			t.Errorf("%s %s: %+v", path, e, hk)
 		}
 	}
-	if h.Hooks["SessionStart"][0].Matcher != "startup|resume|clear|compact|fork" || h.Hooks["UserPromptSubmit"][0].Matcher != "" {
+	if h.Hooks["SessionStart"][0].Matcher != "startup|resume|clear|compact|fork" || h.Hooks["UserPromptSubmit"][0].Matcher != "" || h.Hooks["PreToolUse"][0].Matcher != "" {
 		t.Errorf("%s matcher %+v", path, h.Hooks)
 	}
 }

@@ -20,6 +20,7 @@ func cmdInject(a *app, args []string) error {
 	host := fs.String("host", runtimeOrbitPi, i18n.T("flag.inject.host"))
 	rules := fs.String("rules", "", i18n.T("flag.inject.rules"))
 	ids := fs.String("ids", "", i18n.T("flag.inject.ids"))
+	source := fs.String("source", "", i18n.T("flag.inject.source"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -61,12 +62,16 @@ func cmdInject(a *app, args []string) error {
 	var inj inject.Injection
 	kind, prompt := memory.EventInjectSessionStart, ""
 	if pos[0] == "session-start" {
+		if renewsBundle(*source) {
+			inject.ResetSession(s, *host, *session)
+		}
 		inj = inject.SessionBundleWith(s, cfg, scope, *host, *session, opts)
 	} else {
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
 		kind, prompt = memory.EventInjectPrompt, string(b)
-		inj = inject.PromptInjectionWith(s, cfg, scope, prompt, opts)
+		inj = inject.PromptInjectionFor(s, cfg, scope, prompt, *host, *session, opts)
 	}
+	inject.RecordShown(s, *host, *session, inj)
 	recordInjection(s, cfg, kind, *host, *session, scope, prompt, inj)
 	out["text"] = inj.Text
 	if inj.MemoryIDs != nil {

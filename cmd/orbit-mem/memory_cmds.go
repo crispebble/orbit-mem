@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -103,13 +104,15 @@ type hookInput struct {
 	SessionID      string `json:"session_id"`
 	Event          string `json:"hook_event_name"`
 	TranscriptPath string `json:"transcript_path"`
+	Source         string `json:"source"`    // SessionStart: startup·resume·clear·compact·fork
+	ToolName       string `json:"tool_name"` // PreToolUse
 }
 
 // cmdHook never fails the host: any problem, wrong arguments included, prints
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
-// session-start and prompt give the memory context; all three keep the activity
-// log. session-end only ends the activity row: the retrospectives (and their
-// session-end queue) are OpenOrbit's.
+// session-start, prompt and pre-tool give the memory context; session-start, prompt
+// and session-end keep the activity log. session-end only ends the activity row: the
+// retrospectives (and their session-end queue) are OpenOrbit's.
 func cmdHook(a *app, args []string) error {
 	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
 	fs := a.flags("hook")
@@ -128,7 +131,7 @@ func cmdHook(a *app, args []string) error {
 		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
 		return nil
 	}
-	if err != nil || len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt" && pos[0] != "session-end") || (*host != "claude" && *host != "codex") ||
+	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") ||
 		(*runtime != "" && *runtime != runtimeOrbitPi) || (*recordOnly && pos[0] != "prompt") {
 		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
@@ -182,7 +185,9 @@ func cmdHook(a *app, args []string) error {
 		} else {
 			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
 		}
-		recordActivity(s, pos[0], *host, in, p, who, at)
+		if pos[0] != "pre-tool" { // 도구 호출은 활동 기록이 아니다
+			recordActivity(s, pos[0], *host, in, p, who, at)
+		}
 		if pos[0] == "session-start" {
 			autoBackup(cfg)
 		}
@@ -258,17 +263,31 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 	}
 	var inj inject.Injection
 	kind := memory.EventInjectSessionStart
-	if which == "session-start" {
+	switch which {
+	case "session-start":
+		if renewsBundle(in.Source) {
+			inject.ResetSession(s, host, in.SessionID)
+		}
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
 		done <- inject.HookOutput("SessionStart", withVersionNote(inj.Text, pluginVersion))
-	} else {
+	case "pre-tool":
+		kind = memory.EventInjectTool
+		inj = inject.ToolInjection(s, cfg, scope, host, in.SessionID, in.ToolName)
+		done <- inject.HookOutput("PreToolUse", inj.Text)
+	default:
 		kind = memory.EventInjectPrompt
-		inj = inject.PromptInjection(s, cfg, scope, in.Prompt)
+		inj = inject.PromptInjectionFor(s, cfg, scope, in.Prompt, host, in.SessionID, inject.Options{})
 		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
 	}
-	// 문맥을 먼저 내보내고 지표용 사건을 남긴다(설계 「측정」).
+	// 문맥을 먼저 내보내고 세션 표시와 지표용 사건을 남긴다(설계 「측정」).
+	inject.RecordShown(s, host, in.SessionID, inj)
 	recordInjection(s, cfg, kind, host, in.SessionID, scope, in.Prompt, inj)
 }
+
+// renewsBundle says whether a session start makes the session's bundle anew: after a
+// compaction or /clear the earlier context is gone, so the cache it kept is too
+// (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle.
+func renewsBundle(source string) bool { return source == "compact" || source == "clear" }
 
 // withVersionNote adds one line at the end of the session-start context when the plugin
 // that called the hook is another version than this orbit-mem (the plugin from GitHub and
@@ -289,12 +308,13 @@ func withVersionNote(text, pluginVersion string) string {
 // empty requests and hooks inside a retrospective run are not use, so they are not counted.
 func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
 	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
-		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) {
+		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) ||
+		(kind == memory.EventInjectTool && len(inj.MemoryIDs) == 0) { // 도구 호출마다 부르므로 넣은 것이 있을 때만 센다
 		return
 	}
 	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
 	if kind == memory.EventInjectSessionStart {
-		data["titleOnly"] = inj.TitleOnly
+		data["omitted"] = inj.Omitted
 	}
 	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: session, Scope: scope}, data)
 }

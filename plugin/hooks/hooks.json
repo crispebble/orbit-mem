@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook pre-tool --host claude --plugin-version 0.10.0; fi",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [

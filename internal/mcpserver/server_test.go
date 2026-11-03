@@ -79,7 +79,7 @@ func TestTools_기억_여섯개와_활동_기록(t *testing.T) {
 func TestSave_찾기_읽기_고치기(t *testing.T) {
 	cs, _ := connect(t)
 	var saved MemoryOut
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "커밋은 경로를 명시한다", "body": "git add -A 금지",
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "커밋은 경로를 명시한다", "topic": "커밋 스테이징", "body": "git add -A 금지",
 		"scope": "project", "source": map[string]any{"kind": "quote", "excerpt": "커밋은 경로 명시해"}}, &saved)
 	if saved.Memory.State != "confirmed" || saved.Memory.Scope != "project:github.com/me/app" {
 		t.Fatalf("saved = %+v", saved.Memory)
@@ -210,7 +210,7 @@ func toolEvents(t *testing.T, s *memory.Store) map[string][]map[string]any {
 func TestTools_호출을_사건으로_남긴다(t *testing.T) {
 	cs, s := connect(t)
 	call(t, cs, "memory_find", map[string]any{"query": "없는 말 token=sk-abcdefghijklmnopqrstuvwx"}, nil)
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "답은 존댓말", "source": map[string]any{"kind": "quote", "excerpt": "존댓말로 답해"}}, nil)
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "답은 존댓말", "topic": "답 말투", "source": map[string]any{"kind": "quote", "excerpt": "존댓말로 답해"}}, nil)
 	call(t, cs, "memory_find", map[string]any{"query": "존댓말"}, nil)
 	call(t, cs, "memory_get", map[string]any{"ids": []string{"m-없음"}}, nil)
 
