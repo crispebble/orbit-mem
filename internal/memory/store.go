@@ -97,6 +97,13 @@ PRAGMA user_version=3;
 func addColumns(db *sql.Tx) error {
 	for _, c := range []struct{ table, column, def string }{
 		{"retros", "session", "TEXT NOT NULL DEFAULT ''"},
+		// 보존 등급·재검토일·주제(기획 · Orbit Code K15). 옛 판 실행 파일은 열 이름을 대어 읽고 쓰므로
+		// 이 열을 모른 채 같은 DB를 써도 깨지지 않고, 옛 판이 넣은 줄은 기본값(보통·날짜 없음·주제 없음)이 된다.
+		{"memories", "retention", "TEXT NOT NULL DEFAULT ''"},
+		{"memories", "review_days", "INTEGER NOT NULL DEFAULT 0"},
+		{"memories", "review_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"memories", "expires_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"memories", "topic", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -109,7 +116,10 @@ func addColumns(db *sql.Tx) error {
 			}
 		}
 	}
-	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS retros_session ON retros(session) WHERE session <> ''`)
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS retros_session ON retros(session) WHERE session <> ''`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS memories_topic ON memories(scope, topic) WHERE topic <> ''`)
 	return err
 }
 
@@ -199,6 +209,14 @@ type SaveInput struct {
 	// user before its evidence is checked (A2): it is then not confirmed automatically.
 	ConflictsWith []string
 	Who           Who // 어긋남 표시를 남기는 쪽
+	// Retention is the retention class: volatile, normal ("") or durable (lifecycle.go).
+	Retention string
+	// TTLDays is how long a volatile memory lasts (1-7, 7 when 0).
+	TTLDays int
+	// ReviewAfterDays is the review cadence (durable 90 when 0, normal none when 0).
+	ReviewAfterDays int
+	// Topic groups the values of one thing: recall serves only the newest of a topic.
+	Topic string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -250,7 +268,7 @@ func (in *SaveInput) validate() error {
 		return ErrInvalid
 	}
 	in.Tags = cleanTags(in.Tags)
-	return nil
+	return in.validateLifecycle()
 }
 
 // Save stores a memory with its source. A direct quote of the user is
@@ -322,13 +340,15 @@ func (s *Store) save(in SaveInput) (Memory, error) {
 	}
 	m := Memory{ID: NewID("m-"), Kind: in.Kind, Scope: in.Scope, Project: in.Project, State: state, Title: in.Title,
 		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID}
+	in.lifecycle(&m, at)
 	var legacy any
 	if in.LegacyID != "" {
 		legacy = in.LegacyID
 	}
 	tags, _ := json.Marshal(m.Tags)
-	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,legacy_id)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy); err != nil {
+	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,legacy_id,
+		retention,review_days,review_at,expires_at,topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic); err != nil {
 		return Memory{}, err
 	}
 	if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
@@ -453,8 +473,10 @@ func truncateBytes(s string, n int) string {
 
 func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 	tags, _ := json.Marshal(m.Tags)
-	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=? WHERE id=?`,
-		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason, m.ID); err != nil {
+	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=?,
+		retention=?,review_days=?,review_at=?,expires_at=?,topic=? WHERE id=?`,
+		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, m.ID); err != nil {
 		return err
 	}
 	return versionTx(tx, m, action, reason, now)
@@ -472,12 +494,14 @@ type querier interface {
 	Query(string, ...any) (*sql.Rows, error)
 }
 
-const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,'')`
+const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,''),
+	retention,review_days,review_at,expires_at,topic`
 
 func scanMemory(row interface{ Scan(...any) error }) (Memory, error) {
 	var m Memory
 	var tags string
-	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID); err != nil {
+	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID,
+		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic); err != nil {
 		return m, err
 	}
 	_ = json.Unmarshal([]byte(tags), &m.Tags)
