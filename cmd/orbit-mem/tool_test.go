@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
@@ -52,5 +53,31 @@ func TestTool_Orbit_Code가_기억_도구를_CLI로_부른다(t *testing.T) {
 	}
 	if _, _, code := run(t, `{}`, "tool", "proposal_decide"); code != 2 {
 		t.Fatalf("unknown tool code %d", code)
+	}
+}
+
+// 「왜 안 나왔나」 진단: 여섯 단계를 JSON(파이프)이나 사람 글로 준다.
+func TestWhy_기억이_안_나온_까닭을_단계로_보인다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "codex exec는 stdin을 닫는다", Source: memory.Source{Kind: "session"}})
+	out, errOut, code := run(t, "", "why", m.ID, "codex", "설치", "방법", "--cwd", "/tmp")
+	var d struct {
+		StoppedAt  string `json:"stoppedAt"`
+		LastProven string `json:"lastProven"`
+		Stages     []struct {
+			Name, Status, Code string
+		} `json:"stages"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &d) != nil || d.StoppedAt != "selected" || len(d.Stages) != 6 || d.Stages[2].Code != "weak_match" {
+		t.Fatalf("why: %d %s %s", code, out, errOut)
+	}
+	i18n.Set(i18n.KO)
+	defer i18n.Set(i18n.EN)
+	if got := whyText("weak_match", []string{"codex", "codex 설치 방법"}); !strings.Contains(got, "맞은 낱말 [codex] / 요청 낱말 [codex 설치 방법]") {
+		t.Fatalf("ko: %s", got)
+	}
+	if _, _, code := run(t, "", "why"); code != 2 {
+		t.Fatalf("no id code %d", code)
 	}
 }

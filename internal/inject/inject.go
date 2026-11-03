@@ -191,7 +191,9 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	if line := retroLine(s); line != "" {
 		b.WriteString(line + "\n")
 	}
-	if b.Len() > 0 {
+	if b.Len() > 0 && opts.Brief {
+		b.WriteString("기억은 memory_find·memory_get·memory_save로 찾고 남긴다.")
+	} else if b.Len() > 0 {
 		b.WriteString("기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다.")
 	}
 	return inj.done(&b)

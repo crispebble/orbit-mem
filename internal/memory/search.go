@@ -177,3 +177,6 @@ func Strong(docs []Doc, q string) []Match {
 	})
 	return hits
 }
+
+// PromptTerms are the words of a user prompt the work recall matches.
+func PromptTerms(q string) []string { return promptTerms(q) }
