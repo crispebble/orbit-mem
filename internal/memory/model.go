@@ -78,7 +78,12 @@ type Memory struct {
 	LegacyID     string       `json:"legacyId,omitempty"`
 	Days         []string     `json:"days,omitempty"` // 후보가 나온 날
 	Sources      []Source     `json:"sources,omitempty"`
-	Links        []MemoryLink `json:"links,omitempty"` // 살아 있는 명시 연결(읽을 때 붙는다, 판 스냅샷에는 없다)
+	Links        []MemoryLink `json:"links,omitempty"`      // 살아 있는 명시 연결(읽을 때 붙는다, 판 스냅샷에는 없다)
+	Retention    string       `json:"retention,omitempty"`  // 보존 등급: volatile·durable, 비면 보통(lifecycle.go)
+	ReviewDays   int          `json:"reviewDays,omitempty"` // 재검토 주기(일)
+	ReviewAt     int64        `json:"reviewAt,omitempty"`   // 재검토일(Unix ms): 지나면 낡음 후보
+	ExpiresAt    int64        `json:"expiresAt,omitempty"`  // 휘발 기억이 회상에서 빠지는 때(Unix ms)
+	Topic        string       `json:"topic,omitempty"`      // 주제 키: 같은 범위·주제는 최신 판만 회상
 }
 
 // Doc returns the searchable view.

@@ -340,3 +340,34 @@ func TestUpdate_project에_디렉터리를_주면_그_저장소의_범위로_옮
 		t.Fatalf("moved = %+v", moved.Memory)
 	}
 }
+
+// 저장 거부 목록·상대 시간·보존 등급·주제(기획 · Orbit Code K15).
+func TestSave_거부_목록과_상대_시간과_보존_등급(t *testing.T) {
+	cs, s := connect(t)
+	res := call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "배포 토큰", "body": "token: ghp_abcdefghijklmnopqrstuvwxyz0123",
+		"source": map[string]any{"kind": "session"}}, nil)
+	if !res.IsError || !strings.Contains(text(res), "비밀값") {
+		t.Fatalf("secret saved: %s", text(res))
+	}
+	res = call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "S4 진행률 3/7 완료", "source": map[string]any{"kind": "session"}}, nil)
+	if !res.IsError || !strings.Contains(text(res), "진행 상태") {
+		t.Fatalf("progress saved: %s", text(res))
+	}
+	var out MemoryOut
+	res = call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "계약 만료는 3주 뒤", "retention": "durable", "reviewAfterDays": 30,
+		"topic": "계약 만료", "source": map[string]any{"kind": "session"}}, &out)
+	if res.IsError || strings.Contains(out.Memory.Title, "3주 뒤") || len(out.Rewrites) != 1 || out.Memory.Retention != "durable" || out.Memory.Topic != "계약 만료" || out.Memory.ReviewAt == 0 {
+		t.Fatalf("save = %s %+v", text(res), out)
+	}
+	res = call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "이번 주만", "retention": "volatile", "ttlDays": 9, "source": map[string]any{"kind": "session"}}, nil)
+	if !res.IsError {
+		t.Fatal("ttl 9 saved")
+	}
+	// 재검토함: 내용은 그대로 두고 재검토일만 민다.
+	before, _ := s.Get(out.Memory.ID)
+	var upd MemoryOut
+	res = call(t, cs, "memory_update", map[string]any{"id": out.Memory.ID, "action": "reviewed"}, &upd)
+	if res.IsError || upd.Memory.Version != before.Version+1 || upd.Memory.Title != before.Title {
+		t.Fatalf("reviewed = %s %+v", text(res), upd)
+	}
+}

@@ -385,6 +385,10 @@ func (r *Keeper) Settle() []string {
 	if _, err := r.Store.CloseSettled(); err != nil {
 		errs = append(errs, err.Error())
 	}
+	// 날이 지난 휘발 기억을 정리하고, 재검토일이 지난 기억은 낡음 후보로 묻는다(기획 · Orbit Code K15).
+	if _, err := r.Store.ReviewDue(); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if err := r.Store.PruneSessionState(SessionStateDays); err != nil {
 		errs = append(errs, err.Error())
 	}

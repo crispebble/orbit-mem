@@ -5,6 +5,7 @@ package inject
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -23,6 +24,39 @@ const maxRulesRunes = 6000
 func inScope(m memory.Memory, scope string) bool {
 	return m.Scope == memory.ScopeGlobal || (scope != "" && m.Scope == scope)
 }
+
+// Options picks the form of what is injected. The hooks of Claude Code and
+// Codex use the zero value (the full form); Orbit Code asks for the brief one.
+type Options struct {
+	// Brief lists each confirmed rule on one line (title and id) at session
+	// start instead of its full text, and lets the work recall bring the full
+	// text of the confirmed rules a request strongly matches. Nothing is left
+	// out: every rule keeps its line, and memory_get reads the rest.
+	Brief bool
+}
+
+// Not eligible for recall (subject): a volatile
+// memory past its days, or an older value of a topic.
+const (
+	ExcludedExpired    = "expired"
+	ExcludedSuperseded = "superseded_by_topic"
+)
+
+// excluded says why a live memory is kept out of recall, or "".
+func excluded(m memory.Memory, now time.Time, heads memory.TopicHeads) string {
+	if m.Freshness(now) == memory.FreshExpired {
+		return ExcludedExpired
+	}
+	if heads.Superseding(m) != "" {
+		return ExcludedSuperseded
+	}
+	return ""
+}
+
+// briefTitle drops a trailing date in parentheses, which the brief form does not need.
+var trailingDate = regexp.MustCompile(`\s*\(\d{4}-\d{2}-\d{2}\)\s*$`)
+
+func briefTitle(t string) string { return trailingDate.ReplaceAllString(t, "") }
 
 // Injection is what a hook adds and which memories it named, for the metrics.
 type Injection struct {
@@ -46,6 +80,12 @@ func (in Injection) done(b *strings.Builder) Injection {
 // session starts again (resume, compaction), so the host's prompt cache holds.
 // Without a session id it is built afresh.
 func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session string) Injection {
+	return SessionBundleWith(s, cfg, scope, host, session, Options{})
+}
+
+// SessionBundleWith is SessionBundle in the given form. A session keeps the
+// form it was built in; the bundle is kept per host and session.
+func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, opts Options) Injection {
 	if session != "" {
 		if text, ids, ok := s.SessionBundle(host, session); ok {
 			var b strings.Builder
@@ -53,7 +93,7 @@ func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 			return Injection{MemoryIDs: ids}.done(&b)
 		}
 	}
-	inj := SessionStartInjection(s, cfg, scope)
+	inj := SessionStartInjectionWith(s, cfg, scope, opts)
 	if session != "" && inj.Text != "" {
 		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
@@ -69,6 +109,11 @@ func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 
 // SessionStartInjection is SessionStart with the memories it named.
 func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Injection {
+	return SessionStartInjectionWith(s, cfg, scope, Options{})
+}
+
+// SessionStartInjectionWith is SessionStartInjection in the given form.
+func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
 	if cfg.Inject == config.InjectOff {
@@ -78,9 +123,14 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	if err != nil {
 		return inj.done(&b)
 	}
+	heads, _ := s.TopicHeads()
+	now := s.Now()
 	var rules, decisions []memory.Memory
 	for _, m := range confirmed {
 		if !inScope(m, scope) || memory.DomainOf(m) != "" { // 분야 지식은 요청에 맞을 때 신호로만 넣는다
+			continue
+		}
+		if excluded(m, now, heads) != "" {
 			continue
 		}
 		switch m.Kind {
@@ -90,7 +140,13 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 			decisions = append(decisions, m)
 		}
 	}
-	if len(rules) > 0 {
+	if len(rules) > 0 && opts.Brief {
+		b.WriteString("[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n")
+		for _, m := range rules {
+			fmt.Fprintf(&b, "- %s (%s)\n", briefTitle(m.Title), m.ID)
+			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+		}
+	} else if len(rules) > 0 {
 		b.WriteString("[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n")
 		var titlesOnly []memory.Memory
 		for _, m := range rules { // 최근에 고친 규칙부터 전문으로
@@ -135,7 +191,9 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	if line := retroLine(s); line != "" {
 		b.WriteString(line + "\n")
 	}
-	if b.Len() > 0 {
+	if b.Len() > 0 && opts.Brief {
+		b.WriteString("기억은 memory_find·memory_get·memory_save로 찾고 남긴다.")
+	} else if b.Len() > 0 {
 		b.WriteString("기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다.")
 	}
 	return inj.done(&b)
@@ -171,6 +229,10 @@ func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 	return PromptInjection(s, cfg, scope, prompt).Text
 }
 
+// ruleBodyRunes is how much of a confirmed rule's body the brief form's work
+// recall shows: the rule itself, not a summary of it.
+const ruleBodyRunes = 600
+
 // recallBodyRunes is how much of a memory's body the work recall shows, the
 // same length as a memory_find summary.
 const recallBodyRunes = 200
@@ -182,26 +244,55 @@ const recallBodyRunes = 200
 // cfg.RecallChars. A body that does not fit is left out; a title that does
 // not fit ends the list.
 func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) Injection {
+	return PromptInjectionWith(s, cfg, scope, prompt, Options{})
+}
+
+// Candidates are the live memories the work recall looks at for scope, and
+// why the rest of the live ones in scope are left out (memory id → reason).
+func Candidates(s *memory.Store, scope string, opts Options) (map[string]memory.Memory, map[string]string, error) {
+	active, err := s.List(memory.StateCandidate, memory.StateConfirmed)
+	if err != nil {
+		return nil, nil, err
+	}
+	heads, _ := s.TopicHeads()
+	now := s.Now()
+	byID := map[string]memory.Memory{}
+	out := map[string]string{}
+	for _, m := range active {
+		// 확정 규칙은 세션 시작에 이미 들어갔다(분야 규칙과 짧은 꼴은 빼고). 일지는 대화 맥락이 아니다.
+		domain := memory.DomainOf(m) != ""
+		switch why := excluded(m, now, heads); {
+		case !inScope(m, scope):
+			out[m.ID] = "scope"
+		case m.Kind == memory.KindJournal:
+			out[m.ID] = "journal"
+		case why != "":
+			out[m.ID] = why
+		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && !opts.Brief:
+			out[m.ID] = "session_rule"
+		default:
+			byID[m.ID] = m
+		}
+	}
+	return byID, out, nil
+}
+
+// PromptInjectionWith is PromptInjection in the given form.
+func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
 	if cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "" {
 		return inj.done(&b)
 	}
-	active, err := s.List(memory.StateCandidate, memory.StateConfirmed)
+	byID, _, err := Candidates(s, scope, opts)
 	if err != nil {
 		return inj.done(&b)
 	}
-	byID := map[string]memory.Memory{}
-	var docs []memory.Doc
-	for _, m := range active {
-		// 확정 규칙은 세션 시작에 이미 들어갔다(분야 규칙은 빼고). 일지는 대화 맥락이 아니다.
-		domain := memory.DomainOf(m) != ""
-		if !inScope(m, scope) || m.Kind == memory.KindJournal || (m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain) {
-			continue
-		}
-		byID[m.ID] = m
+	docs := make([]memory.Doc, 0, len(byID))
+	for _, m := range byID {
 		docs = append(docs, m.Doc())
 	}
+	sort.Slice(docs, func(i, j int) bool { return docs[i].ID < docs[j].ID })
 	hits := memory.Strong(docs, prompt)
 	if len(hits) == 0 {
 		return inj.done(&b)
@@ -221,6 +312,10 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		}
 		if la, lc := local(a.Doc.ID), local(c.Doc.ID); la != lc {
 			return la
+		}
+		// 나이 감쇠: 관련도가 같으면 최근에 바뀌거나 다시 나온 기억이 앞이다.
+		if wa, wc := memory.AgeWeight(byID[a.Doc.ID], now), memory.AgeWeight(byID[c.Doc.ID], now); wa != wc {
+			return wa > wc
 		}
 		if na, nc := net(a.Doc.ID), net(c.Doc.ID); na != nc {
 			return na > nc
@@ -247,10 +342,21 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 		if m.State == memory.StateCandidate {
 			state = "후보"
 		}
+		if m.Freshness(now) == memory.FreshReviewDue {
+			state += " · 재검토일 지남"
+		}
 		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
 		body := ""
+		clip := recallBodyRunes
+		if m.Kind == memory.KindRule && m.State == memory.StateConfirmed {
+			clip = ruleBodyRunes
+		}
 		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			body = "  " + memory.ClipRunes(text, recallBodyRunes) + "\n"
+			body = "  " + memory.ClipRunes(text, clip)
+			if clip == ruleBodyRunes && utf8.RuneCountInString(text) > clip {
+				body += " (전문은 memory_get)"
+			}
+			body += "\n"
 		}
 		n := utf8.RuneCountInString(line)
 		if used+n > budget {
