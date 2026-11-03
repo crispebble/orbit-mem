@@ -238,5 +238,7 @@
   "verdict.no_effect": "no effect",
   "verdict.pending": "observing",
   "flag.inject.rules": "form of the confirmed rules: brief (one line each) or full; brief for --host orbit-code",
-  "flag.inject.ids": "delivered: memory ids the host put into the model request, comma separated"
+  "flag.inject.ids": "delivered: memory ids the host put into the model request, comma separated",
+  "usage.tool": "orbit-mem tool memory_find|memory_get|memory_save|memory_update [--cwd DIR] [--host orbit-code] [--session ID] [--actor ai]   # a memory tool for a host without MCP (Orbit Code): MCP input JSON on stdin, output JSON on stdout",
+  "cli.tool.no_db": "there is no memory database yet (save a memory first, or run orbit-mem install)"
 }

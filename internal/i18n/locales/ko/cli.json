@@ -238,5 +238,7 @@
   "verdict.no_effect": "효과 없음",
   "verdict.pending": "관찰 중",
   "flag.inject.rules": "확정 규칙의 꼴: brief(규칙마다 한 줄)·full. --host orbit-code면 brief",
-  "flag.inject.ids": "delivered: 호스트가 모델 요청에 실은 기억 id(쉼표로 구분)"
+  "flag.inject.ids": "delivered: 호스트가 모델 요청에 실은 기억 id(쉼표로 구분)",
+  "usage.tool": "orbit-mem tool memory_find|memory_get|memory_save|memory_update [--cwd DIR] [--host orbit-code] [--session ID] [--actor ai]   # MCP 없는 호스트(Orbit Code)용 기억 도구: 입력 JSON은 stdin, 결과 JSON은 stdout",
+  "cli.tool.no_db": "기억 DB가 아직 없습니다(먼저 기억을 저장하거나 orbit-mem install을 실행)"
 }

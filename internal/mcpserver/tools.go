@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -101,5 +103,89 @@ func (t Tools) Update(in UpdateIn) (MemoryOut, error) {
 
 func (t Tools) Activity(in ActivityIn) (activity.Result, error) {
 	res, out, _ := t.h.activity(context.Background(), nil, in)
+	return out, asError(res)
+}
+
+// HostTools are the memory tools a host without an MCP client calls through
+// the CLI (`orbit-mem tool <name>`, Orbit Code): the same input and output as
+// the MCP tools.
+var HostTools = []string{"memory_find", "memory_get", "memory_save", "memory_update"}
+
+// Call runs one host tool on its MCP input and records the call as the
+// "tool.<name>" event of that host and session (설계 「측정」), which the
+// recall diagnosis reads as use.
+func (t Tools) Call(name string, input []byte, host, session string) (any, error) {
+	var out any
+	var data map[string]any
+	var err error
+	ids := func(items []string) map[string]any { return map[string]any{"results": len(items), "ids": items} }
+	switch name {
+	case "memory_find":
+		var in FindIn
+		if err = decode(input, &in); err == nil {
+			var r FindOut
+			if r, err = t.Find(in); err == nil {
+				list := []string{}
+				for _, m := range r.Items {
+					list = append(list, m.ID)
+				}
+				out, data = r, ids(list)
+				data["query"] = memory.ClipRunes(memory.MaskSecrets(in.Query), 200)
+			}
+		}
+	case "memory_get":
+		var in GetIn
+		if err = decode(input, &in); err == nil {
+			var r GetOut
+			if r, err = t.Get(in); err == nil {
+				list := []string{}
+				for _, m := range r.Items {
+					list = append(list, m.ID)
+				}
+				out, data = r, ids(list)
+			}
+		}
+	case "memory_save":
+		var in SaveIn
+		if err = decode(input, &in); err == nil {
+			var r MemoryOut
+			if r, err = t.Save(in); err == nil {
+				out, data = r, map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": r.Memory.State, "memoryId": r.Memory.ID}
+			}
+		}
+	case "memory_update":
+		var in UpdateIn
+		if err = decode(input, &in); err == nil {
+			var r MemoryOut
+			if r, err = t.Update(in); err == nil {
+				out, data = r, map[string]any{"action": in.Action, "memoryId": in.ID}
+			}
+		}
+	default:
+		return nil, fmt.Errorf("%w: %s", ErrUnknownTool, name)
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["ok"] = err == nil
+	_ = t.h.s.RecordEvent(memory.Event{Kind: memory.EventToolPrefix + name, Host: host, Session: session, Scope: t.h.o.Project}, data)
+	return out, err
+}
+
+// ErrUnknownTool is a tool name Call does not know.
+var ErrUnknownTool = errors.New("unknown tool")
+
+func decode(b []byte, v any) error {
+	if len(strings.TrimSpace(string(b))) == 0 {
+		b = []byte("{}")
+	}
+	if err := json.Unmarshal(b, v); err != nil {
+		return fmt.Errorf("입력 JSON을 읽지 못했습니다: %w", err)
+	}
+	return nil
+}
+
+func (t Tools) Save(in SaveIn) (MemoryOut, error) {
+	res, out, _ := t.h.save(context.Background(), nil, in)
 	return out, asError(res)
 }

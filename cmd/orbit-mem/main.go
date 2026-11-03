@@ -59,6 +59,7 @@ func commands() []command {
 		{"mcp", "usage.mcp", cmdMCP},
 		{"hook", "usage.hook", cmdHook},
 		{"inject", "usage.inject", cmdInject},
+		{"tool", "usage.tool", cmdTool},
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},

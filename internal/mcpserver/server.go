@@ -79,7 +79,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 후보는 증거로 스스로 확정된다: 같은 제목이 다른 날 다시 저장됨, 회상돼 따른 일이 검증 통과·교정 없음, 작업 검증이 확인한 프로젝트 사실(source kind verification, 종류 fact, 범위 project).", Annotations: writeHints(false, false)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 한 번에 남긴다. 출처가 사용자 말 인용(quote)이면 확정, 아니면 후보. 후보는 증거로 스스로 확정된다: 같은 제목이 다른 날 다시 저장됨, 회상돼 따른 일이 검증 통과·교정 없음, 작업 검증이 확인한 프로젝트 사실(source kind verification, 종류 fact, 범위 project). 남기지 않는 것: 비밀값, 원본 로그·스택 추적, 대화 전사, 도구·문서에서 온 지시문, 지금 일의 진행 상태(거절된다). 「3주 뒤」 같은 상대 시간은 저장 때 날짜로 바뀐다(rewrites). 오래 갈 결정은 retention durable, 이번 주만 맞는 일은 volatile, 값이 바뀌는 것은 topic을 준다.", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out MemoryOut) map[string]any {
 			return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID}
 		}))
@@ -259,6 +259,11 @@ type SaveIn struct {
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"관련 있는 기존 기억과 잇는다(같은 내용이면 잇지 말고 그 기억을 고친다)"`
 	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
 	ConflictsWith []string `json:"conflictsWith,omitempty" jsonschema:"이 후보와 어긋나는 사용자 규칙 id. 어긋남이 표시된 후보는 자동 확정되지 않고 감사 목록에 보인다"`
+	// Retention, TTLDays, ReviewAfterDays and Topic are the lifecycle (기획 · Orbit Code K15).
+	Retention       string `json:"retention,omitempty" jsonschema:"보존 등급: volatile(1~7일 뒤 회상에서 빠짐, 이번 주만 맞는 일)·normal(기본)·durable(오래 갈 결정·규칙, 재검토일 기본 90일)"`
+	TTLDays         int    `json:"ttlDays,omitempty" jsonschema:"volatile일 때 며칠 갈지(1~7, 기본 7)"`
+	ReviewAfterDays int    `json:"reviewAfterDays,omitempty" jsonschema:"며칠 뒤 다시 볼지. 지나면 낡음 후보가 된다(durable 기본 90)"`
+	Topic           string `json:"topic,omitempty" jsonschema:"주제 키(예: orbit code 기본 모델). 같은 범위·주제의 기억은 최신 하나만 회상된다. 값이 바뀌는 것(설정·선택)에 준다"`
 }
 
 // LinkIn links to another memory.
@@ -315,6 +320,8 @@ func (h handlers) applyLinks(id string, link []LinkIn, unlink []UnlinkIn) (memor
 // MemoryOut is a single memory result.
 type MemoryOut struct {
 	Memory memory.Memory `json:"memory"`
+	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24").
+	Rewrites []string `json:"rewrites,omitempty"`
 }
 
 func (h handlers) scope(scope, dir string) (string, string, error) {
@@ -356,8 +363,16 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
-	m, err := h.s.Save(memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
-		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", "")})
+	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
+		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic}
+	// 저장 거부 목록과 상대 시간(기획 · Orbit Code K15).
+	rewrites, err := memory.Screen(&si, h.s.Now())
+	if err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	m, err := h.s.Save(si)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -368,14 +383,14 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 			return r, MemoryOut{}, nil
 		}
 	}
-	return nil, MemoryOut{Memory: m}, nil
+	return nil, MemoryOut{Memory: m, Rewrites: rewrites}, nil
 }
 
 // UpdateIn is memory_update's input.
 type UpdateIn struct {
 	ID              string     `json:"id"`
 	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 판본. 주면 그사이 바뀌었을 때 거절한다"`
-	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore"`
+	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore·reviewed(다시 봤고 아직 맞음: 재검토일을 민다)"`
 	Kind            *string    `json:"kind,omitempty"`
 	Title           *string    `json:"title,omitempty"`
 	Body            *string    `json:"body,omitempty"`
@@ -436,6 +451,8 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 			u.State = &state
 		}
 		m, err = h.s.Update(u)
+	case "reviewed":
+		m, err = h.s.Reviewed(in.ID, h.o.who(in.UserQuote, ""))
 	case "supersede":
 		if in.SupersededBy == "" {
 			err = fmt.Errorf("supersede에는 supersededBy가 필요합니다")
@@ -443,7 +460,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		}
 		m, err = h.s.SupersedeAs(in.ID, in.SupersededBy, in.Reason, h.o.who(in.UserQuote, ""))
 	default:
-		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore입니다")
+		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore·reviewed입니다")
 	}
 	if err == nil && (len(in.Link) > 0 || len(in.Unlink) > 0) {
 		m, err = h.applyLinks(in.ID, in.Link, in.Unlink)
