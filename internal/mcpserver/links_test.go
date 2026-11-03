@@ -10,7 +10,7 @@ func TestLinks_저장_고치기_읽기(t *testing.T) {
 	cs, s := connect(t)
 	src := map[string]any{"kind": "session", "ref": "claude:abc"}
 	var a, b, c MemoryOut
-	call(t, cs, "memory_save", map[string]any{"kind": "decision", "title": "기억 그래프는 명시 연결과 파생으로", "source": src}, &a)
+	call(t, cs, "memory_save", map[string]any{"kind": "decision", "title": "기억 그래프는 명시 연결과 파생으로", "topic": "기억 그래프 선", "source": src}, &a)
 	call(t, cs, "memory_save", map[string]any{"kind": "lesson", "title": "같은 태그를 쌍으로 이으면 선이 수만 개", "source": src,
 		"links": []map[string]any{{"id": a.Memory.ID, "note": "같은 결정의 측정 근거"}}}, &b)
 	if len(b.Memory.Links) != 1 || b.Memory.Links[0].MemoryID != a.Memory.ID || b.Memory.Links[0].Origin != "ai" {

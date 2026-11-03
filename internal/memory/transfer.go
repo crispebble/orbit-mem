@@ -95,10 +95,14 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 	}
 	m.Tags = cleanTags(m.Tags)
 	tags, _ := json.Marshal(m.Tags)
+	tools, err := cleanTools(m.Tools)
+	if err != nil {
+		tools = nil // 옛 판이 내보낸 줄에는 없고, 틀린 이름은 트리거 없이 들여온다
+	}
 	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,superseded_by,stale_reason,legacy_id,
-		retention,review_days,review_at,expires_at,topic) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.CreatedAt, m.UpdatedAt, m.SupersededBy, m.StaleReason, nullIfEmpty(m.LegacyID),
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, TopicKey(m.Topic)); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, TopicKey(m.Topic), toolsJSON(tools)); err != nil {
 		return "", err
 	}
 	for _, src := range m.Sources {

@@ -495,6 +495,13 @@ func cmdDoctor(a *app, args []string) error {
 			add("codex-hooks-untrusted", i18n.T("cli.doctor.fix.codex_hooks"))
 		}
 	}
+	// 기억은 orbit-mem 하나만 쓴다(설계 · orbit-mem 2판 9절).
+	if path, on := claudeAutoMemory(); on {
+		add("claude-auto-memory", i18n.T("cli.doctor.fix.claude_auto_memory", path), path)
+	}
+	if codexMemories(install.CodexConfigPath()) {
+		add("codex-memories", i18n.T("cli.doctor.fix.codex_memories", install.CodexConfigPath()), install.CodexConfigPath())
+	}
 	if a.wantJSON(*asJSON) {
 		return a.json(rep)
 	}

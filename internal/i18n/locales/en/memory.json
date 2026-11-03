@@ -80,6 +80,8 @@
   "memory.err.scope_is": "%w: the scope is global or project:<key>",
   "memory.err.source_kind": "%w: the source kind is one of %s",
   "memory.err.topic_size": "%w: keep the topic within 200 characters",
+  "memory.err.tool_name": "%w: a tool trigger is a tool name or a prefix ending in * (%s)",
+  "memory.err.tool_count": "%w: at most %d tool triggers",
   "memory.err.ttl_volatile_only": "%w: only a volatile memory takes ttlDays",
   "memory.err.usage_verdict": "%w: a usage verdict needs a memory id and one of %s",
   "memory.err.verdict_title": "%w: a verdict (%s) and a title are required",

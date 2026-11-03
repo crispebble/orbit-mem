@@ -10,7 +10,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
-func TestSessionStart_짧은_꼴은_규칙마다_한_줄이고_전부_넣는다(t *testing.T) {
+func TestSessionStart_짧은_꼴은_규칙마다_한_줄이고_한도_안이면_전부_넣는다(t *testing.T) {
 	s := store(t)
 	long := strings.Repeat("본문이 길다. ", 400)
 	var rules []memory.Memory
@@ -21,8 +21,8 @@ func TestSessionStart_짧은_꼴은_규칙마다_한_줄이고_전부_넣는다(
 
 	full := SessionStartInjection(s, config.Default(), here)
 	brief := SessionStartInjectionWith(s, config.Default(), here, Options{Brief: true})
-	if brief.TitleOnly != 0 || len(brief.MemoryIDs) != 31 {
-		t.Fatalf("brief ids=%d titleOnly=%d", len(brief.MemoryIDs), brief.TitleOnly)
+	if brief.Omitted != 0 || len(brief.MemoryIDs) != 31 {
+		t.Fatalf("brief ids=%d omitted=%d", len(brief.MemoryIDs), brief.Omitted)
 	}
 	for _, m := range rules {
 		if !strings.Contains(brief.Text, m.ID) {

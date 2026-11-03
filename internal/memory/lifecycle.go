@@ -141,10 +141,11 @@ func (h TopicHeads) Superseding(m Memory) string {
 // never hides a confirmed value or the user's own words. A topic with no
 // confirmed memory takes its newest candidate or stale one, so an older value
 // does not come back when the newest one is marked stale. Rejected (hidden)
-// memories do not count.
+// memories and volatile ones past their days do not count, so a temporary value
+// leads only while it lasts.
 func (s *Store) TopicHeads() (TopicHeads, error) {
 	rows, err := s.db.Query(`SELECT scope, topic, id FROM memories WHERE topic<>'' AND state IN ('candidate','confirmed','stale')
-		ORDER BY state='confirmed' DESC, created_at DESC, id`)
+		AND NOT (expires_at>0 AND expires_at<=?) ORDER BY state='confirmed' DESC, created_at DESC, id`, s.nowMs())
 	if err != nil {
 		return nil, err
 	}

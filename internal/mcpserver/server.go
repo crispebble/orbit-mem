@@ -4,10 +4,13 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onidot-labs/orbit-mem/internal/activity"
@@ -53,6 +56,9 @@ func (o Options) who(quote, ref string) memory.Who {
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다. 후보는 바로 회상에 쓰이고, 증거(다른 날 다시 나옴, 회상돼 따른 일이 검증을 통과하고 교정이 없음, 작업 검증이 확인한 프로젝트 사실=source kind verification)가 쌓이면 스스로 확정된다.
 저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다. 사용자 규칙과 어긋나는 후보면 conflictsWith에 그 규칙 id를 준다.
+규칙·결정은 topic(주제 키)이 있어야 저장된다. 한 기억에 주장 하나만 담고 본문은 1,000자 이하로 쓴다(넘으면 나눠 저장한다). 같은 범위·topic으로 저장하면 옛 현재값은 대체(낡음 + superseded_by)된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다.
+사용자의 새 말은 같은 주제의 옛 사용자 말을 userQuote 없이 대체한다. 사용자가 「이번엔」「이번 주만」처럼 임시라고 밝힌 말은 retention volatile로 저장하고 대체하지 않는다. 새 말이 옛 결정을 바꾸는 것인지 그때만 하는 말인지 애매하면 저장하기 전에 사용자에게 묻는다. AI가 배운 것은 사용자 말을 대체하지 못하고 어긋남으로 남는다.
+어떤 도구를 부를 때 꼭 떠올려야 하는 규칙(예: 문서 발행 위치)은 tools에 그 도구 이름(mcp__atlas__write_page)이나 접두(mcp__atlas__*)를 단다. 그 도구를 부르기 직전에 들어간다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자 말을 담은 기억(출처 quote)은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
 proposals는 감사·교정용이다: status=audit이면 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정을 보여 준다. 사용자가 "제안 보여줘"·"감사 목록 보여줘"라고 하면 보여 주고, 사용자의 답대로 proposal_decide(approve·reject·revert·dismiss)를 부른다.
 활동 기록: 이 프로젝트에서 언제·어느 호스트가 무엇을 했는지(이전 세션, 이어 할 일의 실마리)가 필요하면 activity_find로 찾는다. 세션 훅이 남긴 기록과 옛 작업 기록을 함께 최신순으로 준다.`
@@ -264,7 +270,10 @@ type SaveIn struct {
 	Retention       string `json:"retention,omitempty" jsonschema:"보존 등급: volatile(1~7일 뒤 회상에서 빠짐, 이번 주만 맞는 일)·normal(기본)·durable(오래 갈 결정·규칙, 재검토일 기본 90일)"`
 	TTLDays         int    `json:"ttlDays,omitempty" jsonschema:"volatile일 때 며칠 갈지(1~7, 기본 7)"`
 	ReviewAfterDays int    `json:"reviewAfterDays,omitempty" jsonschema:"며칠 뒤 다시 볼지. 지나면 낡음 후보가 된다(durable 기본 90)"`
-	Topic           string `json:"topic,omitempty" jsonschema:"주제 키(예: orbit code 기본 모델). 같은 범위·주제의 기억은 최신 하나만 회상된다. 값이 바뀌는 것(설정·선택)에 준다"`
+	Topic           string `json:"topic,omitempty" jsonschema:"주제 키(예: orbit code 기본 모델). 규칙·결정은 필수다. 같은 범위·주제로 저장하면 옛 현재값을 대체한다(임시인 volatile은 대체하지 않음)"`
+	// Supersedes and Tools are 설계 · orbit-mem 2판 4.2·6절.
+	Supersedes []string `json:"supersedes,omitempty" jsonschema:"이 저장이 대체하는 옛 기억 id(주제·범위가 달라도). 저장과 함께 낡음 + superseded_by가 된다. AI가 배운 것은 사용자 말을 대체하지 못한다"`
+	Tools      []string `json:"tools,omitempty" jsonschema:"이 도구를 부르기 직전에 회상한다: 도구 이름(mcp__atlas__write_page) 또는 *로 끝나는 접두(mcp__atlas__*)"`
 }
 
 // LinkIn links to another memory.
@@ -323,6 +332,9 @@ type MemoryOut struct {
 	Memory memory.Memory `json:"memory"`
 	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24").
 	Rewrites []string `json:"rewrites,omitempty"`
+	// Superseded and Conflicts are what memory_save replaced and the user's words it left alone.
+	Superseded []string `json:"superseded,omitempty"`
+	Conflicts  []string `json:"conflicts,omitempty"`
 }
 
 func (h handlers) scope(scope, dir string) (string, string, error) {
@@ -364,9 +376,17 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
+	if err := h.checkClaim(in.Kind, in.Body); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	if err := h.checkTopic(in, scope); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
-		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic}
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {
@@ -379,7 +399,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
-	m, err := h.s.Save(si)
+	m, rep, err := h.s.SaveWith(si)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -390,7 +410,72 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 			return r, MemoryOut{}, nil
 		}
 	}
-	return nil, MemoryOut{Memory: m, Rewrites: rewrites}, nil
+	return nil, MemoryOut{Memory: m, Rewrites: rewrites, Superseded: rep.Superseded, Conflicts: rep.Conflicts}, nil
+}
+
+// maxClaimRunes bounds the body of a rule or decision: one memory holds one claim, so a
+// later value replaces all of it (설계 · orbit-mem 2판 4.3.1, AC-9).
+const maxClaimRunes = 1000
+
+func (h handlers) checkClaim(kind, body string) error {
+	if (kind == memory.KindRule || kind == memory.KindDecision) && utf8.RuneCountInString(body) > maxClaimRunes {
+		return fmt.Errorf("%w: 규칙·결정 본문은 %d자 이하입니다(지금 %d자). 한 기억에 주장 하나만 담는다: 주장마다 나눠 저장하고, 긴 경위는 문서 링크로 대신한다",
+			memory.ErrInvalid, maxClaimRunes, utf8.RuneCountInString(body))
+	}
+	return nil
+}
+
+// checkTopic refuses a rule or decision without a topic and shows the topics of the
+// scope and the three current values most like the new one, so the caller picks the
+// slot (설계 · orbit-mem 2판 4.2).
+func (h handlers) checkTopic(in SaveIn, scope string) error {
+	if (in.Kind != memory.KindRule && in.Kind != memory.KindDecision) || memory.TopicKey(in.Topic) != "" {
+		return nil
+	}
+	live, err := h.s.List(memory.StateCandidate, memory.StateConfirmed)
+	if err != nil {
+		return err
+	}
+	var topics []string
+	type near struct {
+		m     memory.Memory
+		score float64
+	}
+	var similar []near
+	for _, m := range live {
+		if m.Scope != scope && m.Scope != memory.ScopeGlobal {
+			continue
+		}
+		if m.Topic != "" && m.Scope == scope && !slices.Contains(topics, m.Topic) && len(topics) < 30 {
+			topics = append(topics, m.Topic)
+		}
+		if m.Kind != memory.KindRule && m.Kind != memory.KindDecision {
+			continue
+		}
+		if r := memory.Relevance(m.Doc(), in.Title+" "+in.Body); r.Score > 0 {
+			similar = append(similar, near{m, r.Score})
+		}
+	}
+	sort.SliceStable(similar, func(i, j int) bool { return similar[i].score > similar[j].score })
+	var b strings.Builder
+	fmt.Fprintf(&b, "%v: 규칙·결정에는 topic(주제 키)이 필요합니다. 같은 주제의 옛 값은 이 저장이 대체합니다.", memory.ErrInvalid)
+	if len(topics) > 0 {
+		b.WriteString("\n이 범위의 기존 주제: " + strings.Join(topics, " · "))
+	}
+	if len(similar) > 0 {
+		b.WriteString("\n비슷한 현재값(같은 주제면 그 topic을 쓰고, 바꾸는 것이면 supersedes에 id를 준다):")
+		for i, n := range similar {
+			if i == 3 {
+				break
+			}
+			topic := n.m.Topic
+			if topic == "" {
+				topic = "주제 없음"
+			}
+			fmt.Fprintf(&b, "\n- %s · %s · topic %s", n.m.ID, n.m.Title, topic)
+		}
+	}
+	return errors.New(b.String())
 }
 
 // UpdateIn is memory_update's input.
@@ -407,13 +492,14 @@ type UpdateIn struct {
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
 	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억을 바꾸거나 후보를 확정할 때, 그렇게 하라는 사용자 말 그대로. 새 출처로 남는다"`
+	Tools           *[]string  `json:"tools,omitempty" jsonschema:"도구 트리거를 바꾼다(빈 목록이면 없앤다): 도구 이름 또는 *로 끝나는 접두"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"관련 있는 기억과 잇는다. 연결만 바꾸면 판은 그대로다"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다(기록은 남는다)"`
 }
 
 // edits says whether the update changes the memory itself (not only its links).
 func (in UpdateIn) edits() bool {
-	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Scope != "" || in.SupersededBy != ""
+	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Scope != "" || in.SupersededBy != ""
 }
 
 func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn) (*mcp.CallToolResult, MemoryOut, error) {
@@ -443,8 +529,23 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
-		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Reason: in.Reason, Action: in.Action,
+		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Tools: in.Tools, Reason: in.Reason, Action: in.Action,
 			Who: h.o.who(in.UserQuote, "")}
+		if in.Body != nil || in.Kind != nil { // 고친 뒤의 종류·본문으로 본다
+			if cur, gerr := h.s.Get(in.ID); gerr == nil {
+				kind, body := cur.Kind, cur.Body
+				if in.Kind != nil {
+					kind = *in.Kind
+				}
+				if in.Body != nil {
+					body = *in.Body
+				}
+				if err := h.checkClaim(kind, body); err != nil {
+					r, _ := toolError(err)
+					return r, MemoryOut{}, nil
+				}
+			}
+		}
 		if in.Scope != "" {
 			sc, label, serr := h.scope(in.Scope, in.Project)
 			if serr != nil {

@@ -277,7 +277,7 @@ func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
 	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
-	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"compact"}`, "hook", "session-start", "--host", "claude")
+	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"resume"}`, "hook", "session-start", "--host", "claude") // compact·clear는 v2_test
 	if first != again || strings.Contains(again, "새로 확정된 규칙") {
 		t.Fatalf("bundle changed:\n%s\n%s", first, again)
 	}
@@ -346,7 +346,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.10.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.11.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -356,7 +356,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.10.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.11.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {

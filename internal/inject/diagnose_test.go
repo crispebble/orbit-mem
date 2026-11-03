@@ -41,7 +41,9 @@ func TestDiagnose_적격이_아닌_까닭(t *testing.T) {
 	v, _ := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "배포 동결", Retention: memory.RetentionVolatile, TTLDays: 1, Source: memory.Source{Kind: memory.SourceSession}})
 	old, _ := s.Save(memory.SaveInput{Kind: memory.KindDecision, Title: "기본 모델 sonnet", Topic: "기본 모델", Source: memory.Source{Kind: memory.SourceSession}})
 	s.Now = func() time.Time { return time.Date(2026, 10, 29, 9, 0, 0, 0, time.Local) }
-	cur, _ := s.Save(memory.SaveInput{Kind: memory.KindDecision, Title: "기본 모델 opus", Topic: "기본 모델", Source: memory.Source{Kind: memory.SourceSession}})
+	// 저장 때 대체하지 않는 새 판(이번 주만)은 읽을 때 고르기(TopicHeads)로 옛 판을 가린다.
+	cur, _ := s.Save(memory.SaveInput{Kind: memory.KindDecision, Title: "기본 모델 opus", Topic: "기본 모델", Retention: memory.RetentionVolatile,
+		Source: memory.Source{Kind: memory.SourceSession}})
 	other := save(t, s, memory.KindFact, "다른 앱 사실", "", "project:github.com/me/other", false)
 	for id, want := range map[string]string{v.ID: "expired", old.ID: "superseded", other.ID: "out_of_scope"} {
 		d := Diagnose(s, config.Default(), DiagnoseInput{ID: id, Scope: here, Prompt: "배포 동결 기본 모델"})

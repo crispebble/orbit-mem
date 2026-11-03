@@ -26,7 +26,7 @@
   "metrics.retro_weekly": "weekly",
   "metrics.retros": "- Retrospectives %d: done %d · empty %d · failed %d, average %d s",
   "metrics.saves": "- Saves: %d (quote %d · other %d)",
-  "metrics.session_start": "- %d sessions (%d start hook calls), average %d chars, at most %d title-only rules",
+  "metrics.session_start": "- %d sessions (%d start hook calls), average %d chars, at most %d title-only rules, at most %d rules left out for length",
   "metrics.sources": "- Source file changes: %d memories detected → %d proposals (excerpt kept %d · file gone %d · excerpt gone %d · verdict ok %d · to edit %d · stale %d)",
   "metrics.states": "candidate %d · confirmed %d · stale %d · hidden %d",
   "metrics.states_line": "- Memory states: %s",

@@ -78,7 +78,8 @@ type SessionStart struct {
 	Sessions     int `json:"sessions"` // 서로 다른 세션 수
 	Starts       int `json:"starts"`   // 시작 훅 호출 수(재개·압축 포함)
 	AvgChars     int `json:"avgChars"`
-	TitleOnlyMax int `json:"titleOnlyMax"`
+	TitleOnlyMax int `json:"titleOnlyMax"` // 0.10.0까지: 제목만 넣은 규칙 수
+	OmittedMax   int `json:"omittedMax"`   // 0.11.0부터: 길이 때문에 세션 시작에 넣지 못한 규칙 수
 }
 
 // Proposals are decisions in the period and what still waits now.
@@ -251,6 +252,7 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			MemoryIDs  []string `json:"memoryIds"`
 			Chars      int      `json:"chars"`
 			TitleOnly  int      `json:"titleOnly"`
+			Omitted    int      `json:"omitted"`
 			OK         *bool    `json:"ok"`
 			Results    int      `json:"results"`
 			Query      string   `json:"query"`
@@ -278,9 +280,8 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 				sessions[e.Session] = true
 			}
 			chars += d.Chars
-			if d.TitleOnly > r.SessionStart.TitleOnlyMax {
-				r.SessionStart.TitleOnlyMax = d.TitleOnly
-			}
+			r.SessionStart.TitleOnlyMax = max(r.SessionStart.TitleOnlyMax, d.TitleOnly)
+			r.SessionStart.OmittedMax = max(r.SessionStart.OmittedMax, d.Omitted)
 		case e.Kind == memory.EventInjectPrompt:
 			r.Prompts.Total++
 			if len(d.MemoryIDs) > 0 {
@@ -551,7 +552,7 @@ func RenderIn(r Report, lg i18n.Lang) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(i18n.TIn(lg, "metrics.saves", r.Saves.Total, r.Saves.Quote, r.Saves.Other) + "\n")
-	b.WriteString(i18n.TIn(lg, "metrics.session_start", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax) + "\n")
+	b.WriteString(i18n.TIn(lg, "metrics.session_start", r.SessionStart.Sessions, r.SessionStart.Starts, r.SessionStart.AvgChars, r.SessionStart.TitleOnlyMax, r.SessionStart.OmittedMax) + "\n")
 	p := r.Proposals
 	b.WriteString(i18n.TIn(lg, "metrics.proposals", p.Created, p.Approved, p.Edited, p.Rejected, p.Pending, p.OldestPendingDays) + "\n")
 	sc := r.Sources
