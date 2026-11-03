@@ -217,7 +217,7 @@
   "usage.export": "orbit-mem export [--format jsonl|md] [--out 경로] [--all]   # jsonl은 stdout, md는 폴더에 파일로",
   "usage.hook": "orbit-mem hook session-start|prompt|session-end --host claude|codex [--runtime orbit-pi --launcher L]   # 호스트 훅(stdin JSON): 기억 문맥과 활동 기록",
   "usage.import": "orbit-mem import <파일.jsonl> [--dry-run] [--json]   # 내보낸 기억 들여오기, 있는 id는 건너뛴다",
-  "usage.inject": "orbit-mem inject session-start|prompt [--cwd DIR] [--session ID] [--host orbit-pi]   # orbit-pi에 줄 기억 문맥(JSON, 요청은 stdin)",
+  "usage.inject": "orbit-mem inject session-start|prompt [--cwd DIR] [--session ID] [--host orbit-pi|orbit-code] [--rules brief|full]   # orbit-pi·Orbit Code에 줄 기억 문맥(JSON, 요청은 stdin). inject delivered --host H --session S --ids A,B는 호스트가 모델에 실은 기억을 남긴다",
   "usage.install": "orbit-mem install [--bin-dir D] [--local-plugin] [--no-hosts] [--retro-host claude|codex] [--retro-model M] [--plugin-source DIR] [--apply-target PATH]... [--no-schedule] [--dry-run]",
   "usage.ledger": "orbit-mem ledger [--all] [--n N] [--json]   # 승인한 변경과 효과 판정",
   "usage.list": "orbit-mem list [--kind K]... [--state S]... [--tag T]... [--all] [-n N] [--json]   # 최근 기억",
@@ -236,5 +236,7 @@
   "verdict.helped": "도움됨",
   "verdict.mixed": "섞임",
   "verdict.no_effect": "효과 없음",
-  "verdict.pending": "관찰 중"
+  "verdict.pending": "관찰 중",
+  "flag.inject.rules": "확정 규칙의 꼴: brief(규칙마다 한 줄)·full. --host orbit-code면 brief",
+  "flag.inject.ids": "delivered: 호스트가 모델 요청에 실은 기억 id(쉼표로 구분)"
 }

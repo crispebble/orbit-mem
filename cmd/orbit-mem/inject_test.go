@@ -62,3 +62,43 @@ func containsID(ids []string, id string) bool {
 	}
 	return false
 }
+
+// Orbit Code는 확정 규칙을 짧은 꼴로 받는다. 다른 호스트의 꼴은 그대로다(기획 · Orbit Code S4).
+func TestInject_orbit_code는_규칙을_짧은_꼴로_받는다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말을 쓰지 않는다", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	code := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-1", "--host", "orbit-code")
+	if !containsID(code.MemoryIDs, r.ID) || strings.Contains(code.Text, "반말을 쓰지 않는다") || !strings.Contains(code.Text, "memory_get") {
+		t.Errorf("orbit-code 묶음 = %+v", code)
+	}
+	full := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-2", "--host", "orbit-code", "--rules", "full")
+	pi := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "p-1")
+	if !strings.Contains(full.Text, "반말을 쓰지 않는다") || !strings.Contains(pi.Text, "반말을 쓰지 않는다") {
+		t.Errorf("전문 꼴 = %q / %q", full.Text, pi.Text)
+	}
+	// 짧은 꼴에서는 요청과 맞는 확정 규칙이 전문과 함께 회상된다.
+	p := runInject(t, "답은 존댓말 반말 쓰면 안돼?", "prompt", "--cwd", "/tmp", "--session", "c-1", "--host", "orbit-code")
+	if !containsID(p.MemoryIDs, r.ID) || !strings.Contains(p.Text, "반말을 쓰지 않는다") {
+		t.Errorf("짧은 꼴 회상 = %+v", p)
+	}
+	if _, _, c := run(t, "", "inject", "session-start", "--rules", "tiny"); c != 2 {
+		t.Errorf("틀린 꼴 code %d", c)
+	}
+}
+
+// 호스트가 회상을 모델 요청에 실었다는 것(전달됨)을 남긴다. 「왜 안 나왔나」 진단이 읽는다.
+func TestInject_delivered는_전달_사건을_남긴다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	if _, _, c := run(t, "", "inject", "delivered", "--host", "orbit-code", "--session", "c-1", "--ids", "m-a,m-b"); c != 0 {
+		t.Fatalf("code %d", c)
+	}
+	evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31", KindPrefix: memory.EventInjectDelivered})
+	if len(evs) != 1 || evs[0].Host != "orbit-code" || evs[0].Session != "c-1" || !strings.Contains(string(evs[0].Data), `"m-b"`) {
+		t.Errorf("사건 = %+v", evs)
+	}
+	if _, _, c := run(t, "", "inject", "delivered", "--host", "orbit-code"); c != 2 {
+		t.Errorf("세션·id 없이 code %d", c)
+	}
+}

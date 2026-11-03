@@ -217,7 +217,7 @@
   "usage.export": "orbit-mem export [--format jsonl|md] [--out PATH] [--all]   # jsonl to stdout, or Markdown files in a folder",
   "usage.hook": "orbit-mem hook session-start|prompt|session-end --host claude|codex [--runtime orbit-pi --launcher L]   # host hooks (stdin JSON): memory context and the activity log",
   "usage.import": "orbit-mem import <file.jsonl> [--dry-run] [--json]   # add exported memories; ids already there are skipped",
-  "usage.inject": "orbit-mem inject session-start|prompt [--cwd DIR] [--session ID] [--host orbit-pi]   # memory context for orbit-pi as JSON (prompt on stdin)",
+  "usage.inject": "orbit-mem inject session-start|prompt [--cwd DIR] [--session ID] [--host orbit-pi|orbit-code] [--rules brief|full]   # memory context for orbit-pi and Orbit Code as JSON (prompt on stdin); inject delivered --host H --session S --ids A,B records what a host sent to the model",
   "usage.install": "orbit-mem install [--bin-dir D] [--local-plugin] [--no-hosts] [--retro-host claude|codex] [--retro-model M] [--plugin-source DIR] [--apply-target PATH]... [--no-schedule] [--dry-run]",
   "usage.ledger": "orbit-mem ledger [--all] [--n N] [--json]   # approved changes and their effect verdicts",
   "usage.list": "orbit-mem list [--kind K]... [--state S]... [--tag T]... [--all] [-n N] [--json]   # recent memories",
@@ -236,5 +236,7 @@
   "verdict.helped": "helped",
   "verdict.mixed": "mixed",
   "verdict.no_effect": "no effect",
-  "verdict.pending": "observing"
+  "verdict.pending": "observing",
+  "flag.inject.rules": "form of the confirmed rules: brief (one line each) or full; brief for --host orbit-code",
+  "flag.inject.ids": "delivered: memory ids the host put into the model request, comma separated"
 }
