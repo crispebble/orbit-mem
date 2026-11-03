@@ -1,6 +1,8 @@
 package inject
 
 import (
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,5 +91,31 @@ func TestDiagnose_훅_호스트는_돌려준_문맥이_전달이고_확정_규�
 	st := stages(d)
 	if d.Path != "session_rules" || st[StageSelected].Code != "in_bundle" || st[StageInjected].Status != Yes || st[StageDelivered].Code != "hook_returned" {
 		t.Fatalf("%+v", d)
+	}
+}
+
+func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
+	s := store(t)
+	r := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말 금지", memory.ScopeGlobal, true)
+	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
+	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "orbit-code", Session: "c-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectDelivered, Host: "orbit-code", Session: "c-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	d := Diagnose(s, config.Default(), in)
+	st := stages(d)
+	if d.Path != "session_rules" || st[StageSelected].Code != "in_bundle" || st[StageDelivered].Status != Yes || d.StoppedAt != "" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestPrompt_짧은_꼴에서_잘린_규칙_본문은_전문_자리를_알린다(t *testing.T) {
+	s := store(t)
+	r := save(t, s, memory.KindRule, "배포 전 확인 순서", strings.Repeat("확인한다. ", 200), memory.ScopeGlobal, true)
+	inj := PromptInjectionWith(s, config.Default(), here, "배포 전 확인 순서 알려줘", Options{Brief: true})
+	if !slices.Contains(inj.MemoryIDs, r.ID) || !strings.Contains(inj.Text, "memory_get") {
+		t.Fatalf("%s", inj.Text)
 	}
 }

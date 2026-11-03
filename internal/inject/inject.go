@@ -261,18 +261,16 @@ func Candidates(s *memory.Store, scope string, opts Options) (map[string]memory.
 	for _, m := range active {
 		// 확정 규칙은 세션 시작에 이미 들어갔다(분야 규칙과 짧은 꼴은 빼고). 일지는 대화 맥락이 아니다.
 		domain := memory.DomainOf(m) != ""
-		switch {
+		switch why := excluded(m, now, heads); {
 		case !inScope(m, scope):
 			out[m.ID] = "scope"
 		case m.Kind == memory.KindJournal:
 			out[m.ID] = "journal"
+		case why != "":
+			out[m.ID] = why
 		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && !opts.Brief:
 			out[m.ID] = "session_rule"
 		default:
-			if why := excluded(m, now, heads); why != "" {
-				out[m.ID] = why
-				continue
-			}
 			byID[m.ID] = m
 		}
 	}
@@ -354,7 +352,11 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 			clip = ruleBodyRunes
 		}
 		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			body = "  " + memory.ClipRunes(text, clip) + "\n"
+			body = "  " + memory.ClipRunes(text, clip)
+			if clip == ruleBodyRunes && utf8.RuneCountInString(text) > clip {
+				body += " (전문은 memory_get)"
+			}
+			body += "\n"
 		}
 		n := utf8.RuneCountInString(line)
 		if used+n > budget {

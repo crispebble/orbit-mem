@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -366,6 +367,12 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
 		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic}
+	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
+	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
+		if h := memory.FileHash(si.Source.Ref); h != "absent" {
+			si.Source.Hash = h
+		}
+	}
 	// 저장 거부 목록과 상대 시간(기획 · Orbit Code K15).
 	rewrites, err := memory.Screen(&si, h.s.Now())
 	if err != nil {

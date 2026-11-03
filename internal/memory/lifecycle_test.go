@@ -196,3 +196,21 @@ func TestReviewed는_재검토일을_다시_민다(t *testing.T) {
 		t.Fatalf("review_at = %d", m.ReviewAt)
 	}
 }
+
+func TestTopicHeads_후보는_확정된_주제를_가리지_못한다(t *testing.T) {
+	s, c := newTestStore(t)
+	user, _ := s.Save(SaveInput{Kind: KindRule, Title: "보고는 한국어로", Topic: "보고 언어", Source: Source{Kind: SourceQuote, Excerpt: "보고는 한국어로 해"}})
+	c.t = c.t.Add(time.Hour)
+	ai, _ := s.Save(SaveInput{Kind: KindRule, Title: "보고는 영어로", Topic: "보고 언어", Source: Source{Kind: SourceSession}})
+	heads, _ := s.TopicHeads()
+	if heads.Superseding(user) != "" || heads.Superseding(ai) != user.ID {
+		t.Fatalf("heads = %+v", heads)
+	}
+	// 확정된 새 판은 옛 확정 판을 대신한다.
+	c.t = c.t.Add(time.Hour)
+	newer, _ := s.Save(SaveInput{Kind: KindRule, Title: "보고는 한국어 존댓말로", Topic: "보고 언어", Source: Source{Kind: SourceQuote, Excerpt: "존댓말로"}})
+	heads, _ = s.TopicHeads()
+	if heads.Superseding(user) != newer.ID {
+		t.Fatalf("heads = %+v", heads)
+	}
+}

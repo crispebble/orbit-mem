@@ -29,6 +29,8 @@ func TestScreen_저장하지_않는_것(t *testing.T) {
 		{"진행 상태", KindFact, "S4 진행률 3/7 완료", "", SourceSession, RejectProgress},
 		{"지금 하는 중", KindFact, "지금 orbit-mem 시험을 고치는 중", "", SourceSession, RejectProgress},
 		{"WIP", KindLesson, "WIP: recall 정리", "", SourceSession, RejectProgress},
+		{"TODO 머리", KindFact, "TODO: 시험 고치기", "", SourceSession, RejectProgress},
+		{"진행률 숫자", KindFact, "orbit-mem S4 진행률 60%", "", SourceSession, RejectProgress},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, _, err := screen(t, c.kind, c.title, c.body, c.source)
@@ -48,6 +50,8 @@ func TestScreen_닮았지만_저장하는_것(t *testing.T) {
 		{"로그 한 줄 인용", KindLesson, "ERROR 줄만 보면 원인을 놓친다", "2026-11-03 10:01:02 ERROR build failed 한 줄은 결과일 뿐이다.", SourceSession},
 		{"비밀값 이야기", KindRule, "비밀값은 기억에 넣지 않는다", "password 같은 값은 1Password에 둔다.", SourceQuote},
 		{"사용자가 말한 사람", KindFact, "리뷰는 User 팀이 한다", "", SourceSession},
+		{"TODO를 다루는 교훈", KindLesson, "TODO 주석은 이슈 번호와 함께 단다", "WIP 커밋은 병합 전에 합친다.", SourceSession},
+		{"진행률 표시 규칙", KindRule, "긴 작업은 진행률을 상태줄에 보인다", "", SourceSession},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if _, _, err := screen(t, c.kind, c.title, c.body, c.source); err != nil {
@@ -69,9 +73,10 @@ func TestScreen_상대_시간은_절대_날짜로_바꿔_남긴다(t *testing.T)
 		{KindFact, "rotated 2 days ago", "rotated on 2026-11-01"},
 		{KindFact, "오늘날 쓰는 방식", "오늘날 쓰는 방식"},
 		{KindFact, "3개월 뒤 다시 본다", "2027-02-03 다시 본다"},
-		// 규칙의 「N일 전」은 사건 기준(「배포 3일 전에 알린다」)이라 바꾸지 않는다. 내일·어제 같은 말은 바꾼다.
+		// 규칙은 언제나 맞는 일하는 방식이라 바꾸지 않는다(「배포 3일 전에 알린다」는 사건 기준). 제목이 바뀌면
+		// 다른 날 같은 규칙을 다시 저장해도 같은 제목으로 모이지 않는다.
 		{KindRule, "배포 3일 전에 알린다", "배포 3일 전에 알린다"},
-		{KindRule, "내일부터 존댓말", "2026-11-04부터 존댓말"},
+		{KindRule, "내일부터 존댓말", "내일부터 존댓말"},
 	} {
 		got, notes, err := screen(t, c.kind, c.in, "본문도 "+c.in, SourceSession)
 		if err != nil {

@@ -94,19 +94,22 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 
 	_, why, _ := Candidates(s, in.Scope, in.Options)
 	now := s.Now()
-	switch why[m.ID] {
-	case "":
-		add(StageEligible, Yes, "eligible")
-	case "session_rule":
+	// 확정 규칙(분야 규칙 빼고)은 세션 시작 묶음으로 들어간다. 짧은 꼴에서는 요청 회상도 전문을 가져올 수 있지만
+	// 규칙이 모델에 닿는 길은 세션 묶음의 한 줄이다.
+	sessionRule := m.Kind == memory.KindRule && m.State == memory.StateConfirmed && memory.DomainOf(m) == ""
+	switch reason := why[m.ID]; {
+	case sessionRule && (reason == "" || reason == "session_rule"):
 		d.Path = "session_rules"
 		add(StageEligible, Yes, "session_rule")
-	case "scope":
+	case reason == "":
+		add(StageEligible, Yes, "eligible")
+	case reason == "scope":
 		add(StageEligible, No, "out_of_scope", m.Scope, in.Scope)
-	case "journal":
+	case reason == "journal":
 		add(StageEligible, No, "journal")
-	case ExcludedExpired:
+	case reason == ExcludedExpired:
 		add(StageEligible, No, "expired", day(m.ExpiresAt))
-	case ExcludedSuperseded:
+	case reason == ExcludedSuperseded:
 		heads, _ := s.TopicHeads()
 		add(StageEligible, No, "superseded", heads.Superseding(m), m.Topic)
 	default:

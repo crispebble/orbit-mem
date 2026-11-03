@@ -136,13 +136,15 @@ func (h TopicHeads) Superseding(m Memory) string {
 	return ""
 }
 
-// TopicHeads reads the current value of every topic: the newest memory made
-// with that topic in its scope among the live and stale ones, so an older
-// value does not come back when the newest one is marked stale. Rejected
-// (hidden) memories do not count.
+// TopicHeads reads the current value of every topic: the newest confirmed
+// memory with that topic in its scope, so a candidate (what an AI learned)
+// never hides a confirmed value or the user's own words. A topic with no
+// confirmed memory takes its newest candidate or stale one, so an older value
+// does not come back when the newest one is marked stale. Rejected (hidden)
+// memories do not count.
 func (s *Store) TopicHeads() (TopicHeads, error) {
 	rows, err := s.db.Query(`SELECT scope, topic, id FROM memories WHERE topic<>'' AND state IN ('candidate','confirmed','stale')
-		ORDER BY created_at DESC, id`)
+		ORDER BY state='confirmed' DESC, created_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}

@@ -64,8 +64,8 @@ var (
 		regexp.MustCompile(`시스템\s*프롬프트\S*\s*(무시|덮어|공개|보여)`),
 	}
 	progress = []*regexp.Regexp{
-		regexp.MustCompile(`진행률`),
-		regexp.MustCompile(`(?i)\b(in progress|WIP|TODO)\b`),
+		regexp.MustCompile(`진행률\s*\d+|\d+\s*%\s*(진행|완료)`),
+		regexp.MustCompile(`(?i)^\s*(WIP|TODO)\s*[:：]|\bin progress\b`),
 		regexp.MustCompile(`\d+\s*/\s*\d+\s*(완료|단계|끝남|done)`),
 		regexp.MustCompile(`(?i)\bstep \d+ of \d+\b`),
 		regexp.MustCompile(`^\s*(지금|현재|방금)\s.*\S+는\s*중(이다|임|입니다)?\s*$`),
@@ -117,9 +117,14 @@ func Screen(in *SaveInput, now time.Time) ([]string, error) {
 			}
 		}
 	}
+	// 규칙은 언제나 맞는 일하는 방식이라 바꾸지 않는다: 「배포 3일 전」은 사건 기준이고, 제목이 날마다 바뀌면 다른 날
+	// 다시 저장한 같은 규칙이 한 제목으로 모이지 않는다(증거 ① 「서로 다른 날 다시 나옴」).
 	var notes []string
-	in.Title = absoluteDates(in.Title, in.Kind, now, &notes)
-	in.Body = absoluteDates(in.Body, in.Kind, now, &notes)
+	if in.Kind == KindRule {
+		return notes, nil
+	}
+	in.Title = absoluteDates(in.Title, now, &notes)
+	in.Body = absoluteDates(in.Body, now, &notes)
 	return notes, nil
 }
 
@@ -150,38 +155,34 @@ func monday(t time.Time) time.Time {
 }
 
 // absoluteDates rewrites the relative time of s (written at now) to dates.
-// "3 weeks later" style spans are left alone in a rule, where they count from
-// an event ("배포 3일 전에 알린다"), not from the day the rule was written.
-func absoluteDates(s, kind string, now time.Time, notes *[]string) string {
+func absoluteDates(s string, now time.Time, notes *[]string) string {
 	date := func(t time.Time) string { return t.Format("2006-01-02") }
 	note := func(from, to string) { *notes = append(*notes, fmt.Sprintf("%s → %s", from, to)) }
-	if kind != KindRule {
-		s = koSpan.ReplaceAllStringFunc(s, func(m string) string {
-			p := koSpan.FindStringSubmatch(m)
-			n, _ := strconv.Atoi(p[1])
-			sign := 1
-			if p[3] == "전" {
-				sign = -1
-			}
-			to := date(span(now, n, p[2], sign))
-			note(m, to)
-			return to
-		})
-		s = enIn.ReplaceAllStringFunc(s, func(m string) string {
-			p := enIn.FindStringSubmatch(m)
-			n, _ := strconv.Atoi(p[1])
-			to := "on " + date(span(now, n, strings.ToLower(p[2]), 1))
-			note(m, to)
-			return to
-		})
-		s = enAgo.ReplaceAllStringFunc(s, func(m string) string {
-			p := enAgo.FindStringSubmatch(m)
-			n, _ := strconv.Atoi(p[1])
-			to := "on " + date(span(now, n, strings.ToLower(p[2]), -1))
-			note(m, to)
-			return to
-		})
-	}
+	s = koSpan.ReplaceAllStringFunc(s, func(m string) string {
+		p := koSpan.FindStringSubmatch(m)
+		n, _ := strconv.Atoi(p[1])
+		sign := 1
+		if p[3] == "전" {
+			sign = -1
+		}
+		to := date(span(now, n, p[2], sign))
+		note(m, to)
+		return to
+	})
+	s = enIn.ReplaceAllStringFunc(s, func(m string) string {
+		p := enIn.FindStringSubmatch(m)
+		n, _ := strconv.Atoi(p[1])
+		to := "on " + date(span(now, n, strings.ToLower(p[2]), 1))
+		note(m, to)
+		return to
+	})
+	s = enAgo.ReplaceAllStringFunc(s, func(m string) string {
+		p := enAgo.FindStringSubmatch(m)
+		n, _ := strconv.Atoi(p[1])
+		to := "on " + date(span(now, n, strings.ToLower(p[2]), -1))
+		note(m, to)
+		return to
+	})
 	s = replaceDeictic(s, deictic, func(w string) string {
 		switch strings.ReplaceAll(w, " ", "") {
 		case "그저께", "그제":
