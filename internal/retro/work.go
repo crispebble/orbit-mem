@@ -12,7 +12,6 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/project"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
@@ -229,7 +228,7 @@ func (r *Keeper) workMaterial(in WorkIn, period string) (Material, error) {
 		return mat, err
 	}
 	// 이 작업 폴더에서 보이는 저장소·제품 기억(제품 지도, 설계 · orbit-mem 2판 S3)과 전역 교훈.
-	here := place.Resolve(project.Resolve(in.Cwd).Scope, r.Cfg.Products)
+	here := place.Resolve(in.Cwd, r.Cfg.Products)
 	for _, m := range active { // 최근 것부터
 		if len(mat.Existing) >= maxWorkExisting {
 			break

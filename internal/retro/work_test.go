@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/project"
@@ -581,5 +583,28 @@ func TestWork_재료는_작업_폴더의_제품_기억도_싣는다(t *testing.T
 	text := readAll(t, e, e.prepWork(t, in).ID)
 	if !strings.Contains(text, desk.ID) || !strings.Contains(text, unsure.ID) || strings.Contains(text, atlas.ID) {
 		t.Fatalf("material:\n%s", text)
+	}
+}
+
+// S3-R5(명세 2.10): 회고 마무리가 제품 지도에 맞는 product:? 기억을 제품으로 옮긴다.
+func TestSettle_제품_지도에_맞는_product_물음표_기억을_옮긴다(t *testing.T) {
+	s, err := memory.Open(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	m, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "빌드는 make", Scope: place.ScopeUnknown, Project: "/w/desk",
+		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "make"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Products = place.Map{"desk": {Match: []string{"/w/desk"}}}
+	k := &Keeper{Store: s, Cfg: cfg}
+	if errs := k.Settle(); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got, _ := s.Get(m.ID); got.Scope != "product:desk" {
+		t.Fatalf("scope %s", got.Scope)
 	}
 }

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
@@ -26,6 +30,9 @@ func cmdPlace(a *app, args []string) error {
 	fs := a.flags("place")
 	cwd := fs.String("cwd", "", i18n.T("flag.place.cwd"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
+	suggest := fs.Bool("suggest", false, i18n.T("flag.place.suggest"))
+	root := fs.String("root", "", i18n.T("flag.place.root"))
+	move := fs.Bool("move", false, i18n.T("flag.place.move"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -33,15 +40,18 @@ func cmdPlace(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
+	switch {
+	case *suggest:
+		return placeSuggest(a, *root, *asJSON)
+	case *move:
+		return placeMove(a, cfg, *asJSON)
+	}
 	p := sessionProject()
 	if *cwd != "" {
 		p = project.Resolve(*cwd)
 	}
-	pl := place.Resolve(p.Scope, cfg.Products)
-	def := place.ScopeUnknown
-	if pr := pl.Product(); pr != "" {
-		def = "product:" + pr
-	}
+	pl := place.At(p.Scope, p.Dir, cfg.Products)
+	def := place.AppliesTo(pl.Default(p.Git, p.Temp, ""))
 	if *asJSON {
 		products := pl.Products
 		if products == nil {
@@ -64,4 +74,61 @@ func cmdPlace(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.place.default", def))
 	return nil
+}
+
+// placeSuggest prints a first product map from this PC's repositories and work folders (S3-R5). It does
+// not write the configuration: a person puts it into config.json products and fixes the wrong lines.
+func placeSuggest(a *app, root string, asJSON bool) error {
+	home, _ := os.UserHomeDir()
+	if root == "" {
+		root = filepath.Join(home, "_workspace")
+	}
+	if _, err := os.Stat(root); err != nil {
+		return err
+	}
+	remote := func(dir string) string {
+		if p := project.Resolve(dir); p.Git && !strings.HasPrefix(p.Label, "/") && !filepath.IsAbs(p.Label) {
+			return p.Label
+		}
+		return ""
+	}
+	m := place.Suggest([]string{root}, remote, filepath.ToSlash(home))
+	if asJSON {
+		return a.json(map[string]any{"products": m})
+	}
+	b, err := json.MarshalIndent(map[string]any{"products": m}, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.place.suggest_head", root, len(m)))
+	fmt.Fprintln(a.stdout, string(b))
+	fmt.Fprintln(a.stdout, i18n.T("cli.place.suggest_next"))
+	return nil
+}
+
+// placeMove moves the product:? memories the product map now places (S3-R5), as automatic changes the
+// audit list shows and undoes.
+func placeMove(a *app, cfg config.Config, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	moved, err := s.MoveUnknown(cfg.Products)
+	if asJSON {
+		if moved == nil {
+			moved = []memory.Moved{}
+		}
+		if jerr := a.json(moved); jerr != nil {
+			return jerr
+		}
+		return err
+	}
+	if len(moved) == 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.place.move_none"))
+	}
+	for _, mv := range moved {
+		fmt.Fprintln(a.stdout, i18n.T("cli.place.moved", mv.ID, mv.Title, mv.Folder, mv.To, mv.LedgerID))
+	}
+	return err
 }

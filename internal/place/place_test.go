@@ -1,6 +1,7 @@
 package place
 
 // 설계 · orbit-mem 2판 S3 명세 2.2·2.3(S3-2): 제품 지도가 폴더를 제품에 묶고, 적용 대상마다 어느 폴더에서 보이는지.
+// 이 표의 저장소 연결은 범위 키만 알아 checkout 폴더가 없다. 계층 상속은 hierarchy_test.go가 본다.
 
 import (
 	"os"
@@ -75,7 +76,7 @@ func TestSees_적용_대상마다_보이는_폴더(t *testing.T) {
 		{"product:atlas", ""}:              {"상위 폴더", "다른 제품"},
 		{"project:github.com/someone/unrelated", "github.com/someone/unrelated"}:           {"무관 저장소"},
 		{"product:?", "/Users/u/_workspace/onidot/prototypes/orbit-desktop-v4-2026-11-03"}: {"시안 폴더"},
-		{"product:?", "/Users/u/_workspace/onidot"}:                                        {"상위 폴더"},
+		{"product:?", "/Users/u/_workspace/onidot"}:                                        {"상위 폴더", "시안 폴더"}, // 아래 폴더로 상속(S3-R2)
 		{"product:없는-제품", ""}:                                                              nil,
 	}
 	for m, seenIn := range want {

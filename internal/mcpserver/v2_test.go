@@ -14,9 +14,9 @@ func TestSave_규칙_결정은_주제가_없으면_거절하고_후보_주제와
 	cs, _ := connect(t)
 	var first MemoryOut
 	call(t, cs, "memory_save", map[string]any{"kind": "decision", "title": "상단바 상태는 레일에 둔다", "topic": "상단바 상태 표시", "source": quote("레일에 둬")}, &first)
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "보고는 한국어로", "topic": "보고 언어", "source": quote("한국어로")}, nil)
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "보고는 한국어로", "topic": "보고 언어", "source": quote("한국어로")}, nil)
 	for _, kind := range []string{"rule", "decision"} {
-		res := call(t, cs, "memory_save", map[string]any{"kind": kind, "title": "상단바 상태는 알약으로", "source": quote("알약으로")}, nil)
+		res := call(t, cs, "memory_save", map[string]any{"kind": kind, "appliesTo": "user", "title": "상단바 상태는 알약으로", "source": quote("알약으로")}, nil)
 		msg := text(res)
 		if !res.IsError || !strings.Contains(msg, "topic") || !strings.Contains(msg, "상단바 상태 표시") || !strings.Contains(msg, "보고 언어") ||
 			!strings.Contains(msg, first.Memory.ID) {
@@ -32,7 +32,7 @@ func TestSave_규칙_결정은_주제가_없으면_거절하고_후보_주제와
 func TestSave_규칙_결정_본문이_1000자를_넘으면_나눠_저장하라고_거절한다(t *testing.T) {
 	cs, _ := connect(t)
 	long := strings.Repeat("가", 1001)
-	res := call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "긴 규칙", "topic": "긴 것", "body": long, "source": quote("x")}, nil)
+	res := call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "긴 규칙", "topic": "긴 것", "body": long, "source": quote("x")}, nil)
 	if !res.IsError || !strings.Contains(text(res), "나눠") {
 		t.Fatalf("long rule: %v %s", res.IsError, text(res))
 	}
@@ -40,7 +40,7 @@ func TestSave_규칙_결정_본문이_1000자를_넘으면_나눠_저장하라�
 		t.Fatalf("long lesson refused: %s", text(res))
 	}
 	var ok MemoryOut
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "짧은 규칙", "topic": "짧은 것", "body": strings.Repeat("가", 1000), "source": quote("x")}, &ok)
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "짧은 규칙", "topic": "짧은 것", "body": strings.Repeat("가", 1000), "source": quote("x")}, &ok)
 	if res := call(t, cs, "memory_update", map[string]any{"id": ok.Memory.ID, "body": long, "userQuote": "길게 고쳐"}, nil); !res.IsError || !strings.Contains(text(res), "나눠") {
 		t.Fatalf("long edit: %v %s", res.IsError, text(res))
 	}
@@ -74,7 +74,7 @@ func TestSave_supersedes와_같은_주제는_옛_판을_대체하고_응답에_�
 func TestSave_도구_트리거를_저장하고_고친다(t *testing.T) {
 	cs, _ := connect(t)
 	var m MemoryOut
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "Orbit 문서는 Orbit Space에", "topic": "atlas 문서 위치",
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "Orbit 문서는 Orbit Space에", "topic": "atlas 문서 위치",
 		"tools": []string{"mcp__atlas__write_page"}, "source": quote("Orbit Space에 써")}, &m)
 	if strings.Join(m.Memory.Tools, ",") != "mcp__atlas__write_page" {
 		t.Fatalf("tools %v", m.Memory.Tools)
@@ -96,7 +96,7 @@ func TestInstructions_임시인_말과_애매하면_묻기를_안내한다(t *te
 
 func TestSave_정규화하면_빈_주제와_종류만_바꾼_긴_본문도_거절한다(t *testing.T) {
 	cs, _ := connect(t)
-	if res := call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "x", "topic": "   ", "source": quote("x")}, nil); !res.IsError {
+	if res := call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "x", "topic": "   ", "source": quote("x")}, nil); !res.IsError {
 		t.Fatal("blank topic accepted")
 	}
 	var f MemoryOut

@@ -26,7 +26,8 @@ func s3Map() place.Map {
 func connectAt(t *testing.T, s *memory.Store, scope string) *mcp.ClientSession {
 	t.Helper()
 	label := strings.TrimPrefix(scope, "project:")
-	return connectServer(t, New(s, Options{Project: scope, ProjectLabel: label, Version: "test", Products: s3Map()}))
+	// 원격 키는 git 저장소다. 폴더 키는 git 밖 폴더로 둔다.
+	return connectServer(t, New(s, Options{Project: scope, ProjectLabel: label, Git: !strings.HasPrefix(label, "/"), Version: "test", Products: s3Map()}))
 }
 
 func s3Store(t *testing.T) *memory.Store {
@@ -55,7 +56,7 @@ func TestSave_적용_대상_기본값은_지금_폴더의_제품이고_모르면
 		{deskRepo, "product:orbit-code-desktop", ""},
 		{draft, "product:orbit-code-desktop", ""},
 		{parent, "product:?", "appliesTo"},
-		{other, "product:?", "appliesTo"},
+		{other, "repo:github.com/someone/unrelated", ""}, // 제품 없는 git 저장소는 그 저장소(S3-R1)
 	}
 	for i, c := range cases {
 		var out MemoryOut

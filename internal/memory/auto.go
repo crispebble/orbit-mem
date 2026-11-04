@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 // 자동 변경(A2 「자동화가 고칠 수 있다」): 자동화의 확정·합치기·낡음·대체·연결·retag·고치기·재분류는 승인 없이
@@ -34,6 +35,10 @@ type AutoInput struct {
 	RetroID   string
 	Who       Who    // 비우면 자동화
 	Evidence  string // 확정의 증거(EvidenceSeenDays…). 확정은 증거가 있어야 한다
+	// MapMove is a move by the product map (S3-R5): an edit that only takes one product:? memory to
+	// product:<name>. The map the person wrote is its ground, so it moves a memory holding the user's
+	// words too; its content does not change.
+	MapMove bool
 }
 
 // AutoApply applies one automatic change: it checks the rules (what the user
@@ -75,6 +80,12 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 	targets := pi.MemoryIDs
 	if in.Kind == ProposalSupersede {
 		targets = pi.MemoryIDs[:1] // 대신하는 기억은 바뀌지 않는다
+	}
+	if in.MapMove {
+		if err := s.mapMoveOnly(in); err != nil {
+			return DecideResult{}, err
+		}
+		targets = nil // 범위만 옮긴다: 사용자 말을 바꾸지 않는다
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -441,4 +452,20 @@ func errText(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// mapMoveOnly checks that a map move only takes one product:? memory to a product.
+func (s *Store) mapMoveOnly(in AutoInput) error {
+	pl := in.Payload
+	if in.Kind != ProposalEdit || len(in.MemoryIDs) != 1 || pl.Title != "" || pl.Body != "" || pl.Tags != nil || place.ProductOf(pl.Scope) == "" {
+		return fmt.Errorf("%w: map move is an edit of one product:? memory's scope to product:<name>", ErrInvalid)
+	}
+	m, err := getTx(s.db, in.MemoryIDs[0])
+	if err != nil {
+		return err
+	}
+	if m.Scope != place.ScopeUnknown {
+		return fmt.Errorf("%w: map move takes product:? only, not %s", ErrInvalid, m.Scope)
+	}
+	return nil
 }

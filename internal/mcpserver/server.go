@@ -29,6 +29,11 @@ type Options struct {
 	// default), user for a person's app (Orbit Studio), automation inside a
 	// retrospective. A tool argument never changes it.
 	Actor string
+	// Dir is the session folder (a real slash path), whose parents' memories the session sees (S3-R2),
+	// Git says it is in a git checkout and Temp under a temporary folder: they pick the default appliesTo
+	// (S3-R1·R4). Empty, the folder of a folder scope is used.
+	Dir       string
+	Git, Temp bool
 	// Products is the product map (config products): which product this session's folder belongs to,
 	// the default of appliesTo and what memory_find sees here (설계 · orbit-mem 2판 S3).
 	Products place.Map
@@ -48,7 +53,7 @@ func (o Options) products() (place.Map, error) {
 // here is the place of this connection's folder.
 func (o Options) here() place.Place {
 	m, _ := o.products()
-	return place.Resolve(o.Project, m)
+	return place.At(o.Project, o.Dir, m)
 }
 
 // ResolveActor picks the writer of a server or command: inside a
@@ -77,7 +82,7 @@ func (o Options) who(quote, ref string) memory.Who {
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다. 후보는 바로 회상에 쓰이고, 증거(다른 날 다시 나옴, 회상돼 따른 일이 검증을 통과하고 교정이 없음, 작업 검증이 확인한 프로젝트 사실=source kind verification)가 쌓이면 스스로 확정된다.
 저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다. 사용자 규칙과 어긋나는 후보면 conflictsWith에 그 규칙 id를 준다.
-적용 대상(appliesTo): 비우면 이 폴더의 제품(제품 지도로 정함, 모르면 product:? = 이 폴더에서만)이다. 모든 일에 맞는 사용자의 방식만 user로, 이 저장소에만 맞으면 repo로 준다. scope(global·project)는 옛 이름이라 0.15.0에서 뺀다.
+적용 대상(appliesTo): 규칙은 꼭 준다(사람의 일하는 방식은 대개 user). 그 밖에는 비우면 세션 폴더의 제품 → 그 저장소 → 그 폴더(product:?) 순이고, 저장소·폴더에 묶인 기억은 그 아래에서도 보인다. 이 저장소에만 맞으면 repo로 준다. scope(global·project)는 옛 이름이라 0.15.0에서 뺀다.
 사용자가 늘 지키라고 한 확정된 user·제품 기억은 pin(memory_save pin, memory_update action=pin)으로 상시 핵심에 올린다. 한도(user 3,000자, 제품마다 2,000자)를 넘으면 거절되고 지금 핵심 목록이 온다: 합치거나 내린(unpin) 뒤 다시 올린다.
 규칙·결정은 topic(주제 키)이 있어야 저장된다. 한 기억에 주장 하나만 담고 본문은 1,000자 이하로 쓴다(넘으면 나눠 저장한다). 같은 적용 대상·topic으로 저장하면 옛 현재값은 대체(낡음 + superseded_by)된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다.
 사용자의 새 말은 같은 주제의 옛 사용자 말을 userQuote 없이 대체한다. 사용자가 「이번엔」「이번 주만」처럼 임시라고 밝힌 말은 retention volatile로 저장하고 대체하지 않는다. 새 말이 옛 결정을 바꾸는 것인지 그때만 하는 말인지 애매하면 저장하기 전에 사용자에게 묻는다. AI가 배운 것은 사용자 말을 대체하지 못하고 어긋남으로 남는다.
@@ -289,7 +294,7 @@ type SaveIn struct {
 	Body  string   `json:"body,omitempty" jsonschema:"짧은 본문"`
 	Tags  []string `json:"tags,omitempty"`
 	// AppliesTo is 설계 · orbit-mem 2판 4.1 (S3 명세 2.4).
-	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"어디에 적용되나. 비우면 이 폴더의 제품(제품을 모르면 product:?, 이 폴더에서만 회상). user(모든 일에 적용: 사용자 말투·보고 방식처럼 정말 어디서나 맞을 때만)·product(이 폴더의 제품)·product:<이름>·product:?·repo(이 저장소에만)·repo:<키>"`
+	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"어디에 적용되나. 규칙(kind=rule)은 꼭 준다(사람의 일하는 방식은 대개 user). 비우면 세션 폴더의 제품 → (여러 제품 폴더면 제목·본문에 이름이 하나 나온 제품) → 그 저장소 → 그 폴더(product:?, 그 아래까지 회상). user(모든 일에 적용: 사용자 말투·보고 방식처럼 정말 어디서나 맞을 때만)·product(이 폴더의 제품)·product:<이름>·product:?·repo(이 저장소에만)·repo:<키>"`
 	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
 	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(0.15.0에서 뺀다): global=appliesTo user, project=이 저장소(repo). appliesTo를 쓴다"`
 	Project string   `json:"project,omitempty" jsonschema:"옛 scope project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
@@ -374,13 +379,15 @@ type MemoryOut struct {
 // appliesTo turns appliesTo (or the old scope and project, accepted for one version) into the stored
 // scope and the folder label, with what the caller should check (설계 · orbit-mem 2판 4.1, S3 명세 2.4·2.5).
 // With neither given and def false it gives "" (no change, memory_update).
-func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, string, []string, error) {
+// text is the title and body of a memory being saved: in a folder of several products, the one product it
+// names is the default (S3-R2b).
+func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string) (string, string, []string, error) {
 	var warns []string
 	products, perr := h.o.products()
 	if perr != nil {
 		warns = append(warns, fmt.Sprintf("제품 지도(config.json products)를 읽지 못해 제품이 없는 것으로 봤습니다: %v. 설정을 고친 뒤 적용 대상을 확인하세요", perr))
 	}
-	here := place.Resolve(h.o.Project, products)
+	here := place.At(h.o.Project, h.o.Dir, products)
 	label := h.o.ProjectLabel
 	if label == "" {
 		label = here.Label()
@@ -415,9 +422,31 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, st
 			applies = place.AppliesTo(aliasScope)
 		}
 	}
+	// 폴더 키: 세션 폴더(git 밖이면 범위 키와 같다).
+	folder := here.Dir
+	if folder == "" {
+		folder = label
+	}
 	unknown := func() (string, string) {
-		warns = append(warns, fmt.Sprintf("제품 미정: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않아 product:?(이 폴더에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", label))
-		return place.ScopeUnknown, label
+		switch {
+		case h.o.Temp:
+			warns = append(warns, fmt.Sprintf("임시 폴더(%s)라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 다른 곳에서도 쓸 것이면 appliesTo user·product:<이름>·repo:<키>로 고치세요(memory_update appliesTo)", folder))
+		default:
+			warns = append(warns, fmt.Sprintf("폴더에 묶음: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않고 git 저장소도 아니라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", folder))
+		}
+		return place.ScopeUnknown, folder
+	}
+	// 기본값(S3-R1): 그 폴더의 제품 → 여러 제품 폴더면 글에 이름이 하나 나온 제품(S3-R2b) → git 안이면 그 저장소 → 그 폴더.
+	// 임시 폴더는 늘 그 폴더다(S3-R4).
+	byDefault := func() (string, string) {
+		switch sc := here.Default(h.o.Git, h.o.Temp, text); {
+		case sc == place.ScopeUnknown:
+			return unknown()
+		case strings.HasPrefix(sc, "project:"):
+			return sc, label
+		default:
+			return sc, ""
+		}
 	}
 	var scope, lb string
 	switch applies {
@@ -425,11 +454,14 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, st
 		if !def {
 			return "", "", warns, nil
 		}
-		fallthrough
+		scope, lb = byDefault()
 	case "product":
-		if p := here.Product(); p != "" {
+		switch p := here.Product(); {
+		case p != "":
 			scope = "product:" + p
-		} else {
+		case here.Multi() && here.Narrow(text) != "":
+			scope = "product:" + here.Narrow(text)
+		default:
 			scope, lb = unknown()
 		}
 	case "repo":
@@ -439,7 +471,7 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, st
 		}
 		scope, lb = sc, l
 	case place.ScopeUnknown:
-		scope, lb = place.ScopeUnknown, label
+		scope, lb = place.ScopeUnknown, folder
 	default:
 		sc, ok := place.ScopeOf(applies)
 		if !ok {
@@ -468,12 +500,32 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, st
 	return scope, lb, warns, nil
 }
 
+// checkRuleApplies refuses a rule saved without saying whom it applies to (S3-R3): a person's way of
+// working is usually user, and a rule bound to this folder by default would be missing everywhere else.
+// The refusal names the choices and this folder's products.
+func (h handlers) checkRuleApplies(in SaveIn) error {
+	if in.Kind != memory.KindRule || strings.TrimSpace(in.AppliesTo) != "" || in.Scope != "" {
+		return nil
+	}
+	here := h.o.here()
+	products := "없음(제품 지도에 이 폴더가 없다)"
+	if len(here.Products) > 0 {
+		products = "product:" + strings.Join(here.Products, ", product:")
+	}
+	return fmt.Errorf("%w: 규칙(kind=rule)은 appliesTo가 있어야 저장합니다. 고를 것: user(모든 일 — 사람의 일하는 방식은 대개 이것), product:<이름>(한 제품), repo(이 저장소), product:?(이 폴더와 그 아래). 이 폴더(%s)의 제품: %s",
+		memory.ErrInvalid, here.Label(), products)
+}
+
 func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
 	if in.Source.Kind == memory.SourceLegacy {
 		r, _ := toolError(fmt.Errorf("legacy 출처는 orbit-mem migrate만 씁니다"))
 		return r, MemoryOut{}, nil
 	}
-	scope, label, warns, err := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, true)
+	if err := h.checkRuleApplies(in); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	scope, label, warns, err := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, true, in.Title+"\n"+in.Body)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -665,7 +717,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 			}
 		}
 		if in.Scope != "" || in.AppliesTo != "" {
-			sc, label, w, serr := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, false)
+			sc, label, w, serr := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, false, "")
 			if serr != nil {
 				r, _ := toolError(serr)
 				return r, MemoryOut{}, nil

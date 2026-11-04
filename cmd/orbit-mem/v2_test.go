@@ -71,7 +71,7 @@ func TestAC8_다른_세션의_저장이_요청과_PreToolUse_훅에_들어간다
 	s := seed(t)
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"A","source":"startup"}`, "hook", "session-start", "--host", "claude")
-	out, errOut, code := run(t, `{"kind":"rule","title":"Orbit 문서는 Orbit Space에 쓴다","body":"onidot Space에 쓰지 않는다","topic":"atlas 문서 위치",`+
+	out, errOut, code := run(t, `{"kind":"rule","appliesTo":"user","title":"Orbit 문서는 Orbit Space에 쓴다","body":"onidot Space에 쓰지 않는다","topic":"atlas 문서 위치",`+
 		`"tools":["mcp__atlas__write_page"],"source":{"kind":"quote","excerpt":"Orbit 문서는 Orbit Space에"}}`, "tool", "memory_save", "--session", "B", "--cwd", "/tmp")
 	if code != 0 {
 		t.Fatalf("save: %s %s", out, errOut)

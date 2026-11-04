@@ -4,6 +4,7 @@ package project
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,48 @@ import (
 )
 
 // Project identifies the project of a working directory. Scope is the memory
-// scope ("project:<key>"); Label is what a person reads.
-type Project struct{ Scope, Label string }
+// scope ("project:<key>"); Label is what a person reads. Dir is the working
+// directory itself as a real slash path (the session folder, S3 명세 2.2b), Git
+// says it is inside a git checkout, and Temp that it is under a temporary folder.
+type Project struct {
+	Scope, Label string
+	Dir          string
+	Git, Temp    bool
+}
+
+// realSlash is dir with its symbolic links resolved, as a clean slash path.
+func realSlash(dir string) string {
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	return filepath.ToSlash(filepath.Clean(dir))
+}
+
+// TempRoots gives the temporary folders of this machine (S3-R4): /tmp, /private/tmp and $TMPDIR, also
+// with their symbolic links resolved. Tests that work in a temporary home replace it.
+var TempRoots = tempRoots
+
+func tempRoots() []string {
+	roots := []string{"/tmp", "/private/tmp", filepath.ToSlash(filepath.Clean(os.TempDir()))}
+	for _, r := range roots[:] {
+		roots = append(roots, realSlash(filepath.FromSlash(r)))
+	}
+	return roots
+}
+
+// IsTemp says whether a slash path is a temporary folder or under one.
+func IsTemp(dir string) bool {
+	dir = filepath.ToSlash(filepath.Clean(dir))
+	for _, r := range TempRoots() {
+		if r == "" || r == "/" || r == "." {
+			continue
+		}
+		if dir == r || strings.HasPrefix(dir, r+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // NormalizeRemote turns the many spellings of a git remote into host/owner/repo.
 func NormalizeRemote(u string) string {
@@ -47,17 +88,28 @@ func Resolve(cwd string) Project {
 	if abs, err := filepath.Abs(cwd); err == nil {
 		cwd = abs
 	}
+	dir := realSlash(cwd)
+	p := Project{Dir: dir, Temp: IsTemp(dir)}
 	if remote := git(cwd, "config", "--get", "remote.origin.url"); remote != "" {
 		key := NormalizeRemote(remote)
-		return Project{Scope: "project:" + key, Label: key}
+		p.Scope, p.Label, p.Git = "project:"+key, key, true
+		return p
 	}
-	root := git(cwd, "rev-parse", "--show-toplevel")
+	// 원격이 없는 저장소는 주 저장소 경로를 키로 써서 worktree가 같은 키를 쓴다(S3-R4).
+	root := ""
+	if common := git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"); common != "" {
+		p.Git = true
+		root = common
+		if filepath.Base(common) == ".git" {
+			root = filepath.Dir(common)
+		}
+	} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" {
+		p.Git, root = true, top
+	}
 	if root == "" {
 		root = cwd
 	}
-	if real, err := filepath.EvalSymlinks(root); err == nil {
-		root = real
-	}
-	root = filepath.ToSlash(filepath.Clean(root))
-	return Project{Scope: "project:" + root, Label: root}
+	root = realSlash(root)
+	p.Scope, p.Label = "project:"+root, root
+	return p
 }

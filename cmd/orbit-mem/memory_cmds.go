@@ -55,6 +55,15 @@ func cmdVersion(a *app, args []string) error {
 	return nil
 }
 
+// whereOf is what the recall reads a session's place from: its folder (the parents it inherits, S3-R2),
+// or its scope key when the folder is not known.
+func whereOf(p project.Project) string {
+	if p.Dir != "" {
+		return p.Dir
+	}
+	return p.Scope
+}
+
 func sessionProject() project.Project {
 	dir := os.Getenv("CLAUDE_PROJECT_DIR")
 	if dir == "" {
@@ -93,7 +102,7 @@ func cmdMCP(a *app, args []string) error {
 	if *retroID != "" {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB(),
+		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version, WorkDB: paths().WorkDB(),
 			Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
 				cfg, err := loadConfig()
 				return cfg.Products, err
@@ -199,7 +208,7 @@ func cmdHook(a *app, args []string) error {
 		if *recordOnly {
 			done <- ""
 		} else {
-			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion, who)
+			memoryHook(a, s, done, pos[0], *host, in, p, cfg, *pluginVersion, who)
 		}
 		if pos[0] != "pre-tool" && pos[0] != "subagent-start" { // 도구 호출·서브에이전트 시작은 활동 기록이 아니다
 			recordActivity(s, pos[0], *host, in, p, who, at)
@@ -278,7 +287,8 @@ func recordActivity(s *memory.Store, which, host string, in hookInput, p project
 }
 
 // memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config, pluginVersion string, who hookCaller) {
+func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, p project.Project, cfg config.Config, pluginVersion string, who hookCaller) {
+	scope, where := p.Scope, whereOf(p)
 	if which == "session-end" {
 		done <- ""
 		return
@@ -290,7 +300,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		if renewsBundle(in.Source) {
 			inject.ResetSession(s, host, in.SessionID)
 		}
-		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
+		inj = inject.SessionBundle(s, cfg, where, host, in.SessionID)
 		text := withVersionNote(inj.Text, pluginVersion)
 		if who.askable() {
 			text = withHostMemoryNote(text, cfg, in.Cwd)
@@ -298,7 +308,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		done <- inject.HookOutput("SessionStart", text)
 	case "pre-tool":
 		kind = memory.EventInjectTool
-		inj = inject.ToolInjection(s, cfg, scope, host, in.sessionKey(), in.ToolName)
+		inj = inject.ToolInjection(s, cfg, where, host, in.sessionKey(), in.ToolName)
 		done <- inject.HookOutput("PreToolUse", inj.Text)
 	case "subagent-start":
 		kind = memory.EventInjectSubagent
@@ -306,7 +316,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		done <- inject.HookOutput("SubagentStart", inj.Text)
 	default:
 		kind = memory.EventInjectPrompt
-		inj = inject.PromptInjectionFor(s, cfg, scope, in.Prompt, host, in.SessionID, inject.Options{})
+		inj = inject.PromptInjectionFor(s, cfg, where, in.Prompt, host, in.SessionID, inject.Options{})
 		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
 	}
 	// 문맥을 먼저 내보내고 세션 표시와 지표용 사건을 남긴다(설계 「측정」).

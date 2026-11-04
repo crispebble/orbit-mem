@@ -15,6 +15,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
 // Stored scope values. The memories table keeps "global" and "project:<key>" as before (옛 판 실행
@@ -170,11 +172,16 @@ func fold(s string) string {
 	return s
 }
 
-// Place is where a session works: its scope key ("project:<key>") and the products the map gives it.
+// Place is where a session works: its scope key ("project:<key>"), the session folder and the products
+// the map gives it.
 type Place struct {
 	Scope    string
 	Products []string // 가장 구체적인 줄의 제품, 이름 순. 둘 이상이면 여러 제품 폴더
-	names    map[string][]string
+	// Dir is the session folder as a real slash path (S3 명세 2.2b): the folder whose parents a session
+	// inherits the memories of (S3-R2). For a folder scope without a session folder it is the folder.
+	Dir   string
+	home  string
+	names map[string][]string
 }
 
 // Multi says whether the folder belongs to several products (a parent folder like ~/_workspace/onidot).
@@ -191,23 +198,46 @@ func (p Place) Product() string {
 // Label is the scope key without its prefix (the remote key or the folder).
 func (p Place) Label() string { return strings.TrimPrefix(p.Scope, projectPrefix) }
 
-// Resolve is the place of a session whose project scope is scope, with this user's home.
-func Resolve(scope string, m Map) Place {
+// Resolve is the place of a session, with this user's home. where is the session folder (an absolute
+// path: its project is resolved) or a scope key ("project:<key>"); "" is no place.
+func Resolve(where string, m Map) Place {
 	home, _ := os.UserHomeDir()
-	return ResolveIn(scope, m, home)
+	if where != "" && !strings.HasPrefix(where, projectPrefix) {
+		p := project.Resolve(where)
+		return AtIn(p.Scope, p.Dir, m, home)
+	}
+	return ResolveIn(where, m, home)
 }
 
-// ResolveIn is Resolve with home given. A remote key line matches the scope of a repository with that
+// At is the place of a session whose project scope is scope and whose folder is dir.
+func At(scope, dir string, m Map) Place {
+	home, _ := os.UserHomeDir()
+	return AtIn(scope, dir, m, home)
+}
+
+// AtIn is At with home given. An empty dir is the folder of a folder scope.
+func AtIn(scope, dir string, m Map, home string) Place {
+	p := ResolveIn(scope, m, home)
+	if dir != "" {
+		p.Dir = path.Clean(filepath.ToSlash(dir))
+	}
+	return p
+}
+
+// ResolveIn is the place of a scope key with home given. A remote key line matches the scope of a repository with that
 // remote; a folder line matches a folder scope that is the folder or under it (a repository with a remote
 // is found by its remote key only, S3 명세 2.2). The most specific lines win: a remote key, then the folder
 // with the most path segments, a plain folder before a glob of as many; their products are the place's.
 func ResolveIn(scope string, m Map, home string) Place {
-	p := Place{Scope: scope}
+	p := Place{Scope: scope, home: path.Clean(filepath.ToSlash(home))}
 	key := strings.TrimPrefix(scope, projectPrefix)
 	if scope == "" || key == scope {
 		return p
 	}
 	folder := isFolder(key)
+	if folder {
+		p.Dir = path.Clean(filepath.ToSlash(key))
+	}
 	var dirs []string
 	if folder {
 		for d := path.Clean(filepath.ToSlash(key)); ; d = path.Dir(d) {
@@ -264,19 +294,61 @@ func ResolveIn(scope string, m Map, home string) Place {
 func segments(p string) int { return len(strings.Split(strings.Trim(p, "/"), "/")) }
 
 // Sees says whether a memory with this stored scope (and saving folder, for product:?) applies here:
-// user everywhere, a repository in that repository, a product in its folders and in a folder of several
-// products that includes it, product:? only in the folder it was saved in.
+// user everywhere, a product in its folders and in a folder of several products that includes it, a
+// repository or a folder (repo:<key>, product:? with its folder) in that repository or folder and in
+// every folder under it (S3-R2: the session inherits the memories of its parent folders).
 func (p Place) Sees(scope, project string) bool {
 	switch {
 	case scope == ScopeGlobal:
 		return true
 	case scope == ScopeUnknown:
-		return p.Scope != "" && project != "" && projectPrefix+project == p.Scope
+		return project != "" && p.within(project)
 	case strings.HasPrefix(scope, productPrefix):
 		return slices.Contains(p.Products, scope[len(productPrefix):])
-	default:
-		return p.Scope != "" && scope == p.Scope
+	case strings.HasPrefix(scope, projectPrefix):
+		return p.within(scope[len(projectPrefix):])
 	}
+	return false
+}
+
+// within says whether the session works in the repository or folder key: the session's own scope key, or
+// a folder that is the session folder or one of its parents. Parents stop below home (the folder right
+// under home is the last), and outside home above the top folder (/opt is not a parent, /opt/work is).
+func (p Place) within(key string) bool {
+	if p.Scope != "" && projectPrefix+key == p.Scope {
+		return true
+	}
+	if p.Dir == "" || !isFolder(key) {
+		return false
+	}
+	k, d := fold(path.Clean(filepath.ToSlash(key))), fold(p.Dir)
+	if k == d {
+		return true
+	}
+	if !strings.HasPrefix(d, strings.TrimSuffix(k, "/")+"/") {
+		return false
+	}
+	h := fold(p.home)
+	if p.home != "" && (d == h || strings.HasPrefix(d, h+"/")) {
+		return strings.HasPrefix(k, h+"/")
+	}
+	return segments(k) >= 2 && !(p.home != "" && (k == h || strings.HasPrefix(h, k+"/")))
+}
+
+// Default is the stored scope of a memory saved here without an applies-to (S3-R1): the folder's product;
+// in a folder of several products the one its text names (S3-R2b); else, in a git checkout, this
+// repository; else product:? (this folder). A temporary folder is always product:? (S3-R4).
+func (p Place) Default(git, temp bool, text string) string {
+	switch {
+	case p.Product() != "":
+		return productPrefix + p.Product()
+	case p.Multi() && p.Narrow(text) != "":
+		return productPrefix + p.Narrow(text)
+	case temp:
+	case git && p.Scope != "":
+		return p.Scope
+	}
+	return ScopeUnknown
 }
 
 // Local says whether a memory belongs to this folder more than to the user: this repository, the
@@ -299,7 +371,7 @@ func (p Place) Named(prompt string) []string {
 	var out []string
 	for _, name := range p.Products {
 		for _, w := range p.names[name] {
-			if w != "" && strings.Contains(text, w) {
+			if w != "" && containsWord(text, w) {
 				out = append(out, name)
 				break
 			}
@@ -307,3 +379,31 @@ func (p Place) Named(prompt string) []string {
 	}
 	return out
 }
+
+// Narrow is the one product of this folder that a saved memory's text names (S3-R2b: a folder of several
+// products narrows to the product named once), or "" when it names none or several. Words only, no model.
+func (p Place) Narrow(text string) string {
+	if named := p.Named(text); len(named) == 1 {
+		return named[0]
+	}
+	return ""
+}
+
+// containsWord finds w in text as a word: no ASCII letter or digit right before or after it, so forma is
+// not in format but is in "forma의" (lowercase text and w).
+func containsWord(text, w string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], w)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		end := at + len(w)
+		if (at == 0 || !asciiWord(text[at-1])) && (end == len(text) || !asciiWord(text[end])) {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+func asciiWord(c byte) bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' }
