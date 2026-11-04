@@ -335,5 +335,12 @@
   "cli.doctor.problem.claude-memory-mcp": "The Claude Code MCP server %s (%s) keeps memories: memories split between it and orbit-mem",
   "cli.doctor.problem.codex-memory-plugin": "The Codex memory plugin %s is on: memories split between it and orbit-mem",
   "cli.doctor.problem.codex-memory-mcp": "The Codex MCP server %s (%s) keeps memories: memories split between it and orbit-mem",
-  "cli.doctor.problem.host-settings-unreadable": "Could not read %s for the overlapping memory check: %s"
+  "cli.doctor.problem.host-settings-unreadable": "Could not read %s for the overlapping memory check: %s",
+  "usage.place": "orbit-mem place [--cwd DIR] [--json]   # which products the product map gives a folder (config products)",
+  "flag.place.cwd": "folder to look at (default: the current one)",
+  "cli.place.folder": "Folder %s (%s)",
+  "cli.place.one": "Product: %s",
+  "cli.place.multi": "Several products: %s (no product core at session start; a request that names one puts its memories first)",
+  "cli.place.none": "No product: the product map (config products) has no line for this folder",
+  "cli.place.default": "A memory saved here without appliesTo applies to: %s"
 }

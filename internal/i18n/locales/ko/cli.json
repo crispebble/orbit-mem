@@ -335,5 +335,12 @@
   "cli.doctor.problem.claude-memory-mcp": "Claude Code MCP 서버 %s(%s)가 기억을 남깁니다. 기억이 orbit-mem과 둘로 갈립니다",
   "cli.doctor.problem.codex-memory-plugin": "Codex 기억 플러그인 %s가 켜져 있습니다. 기억이 orbit-mem과 둘로 갈립니다",
   "cli.doctor.problem.codex-memory-mcp": "Codex MCP 서버 %s(%s)가 기억을 남깁니다. 기억이 orbit-mem과 둘로 갈립니다",
-  "cli.doctor.problem.host-settings-unreadable": "겹치는 기억 판정에서 %s를 읽지 못했습니다: %s"
+  "cli.doctor.problem.host-settings-unreadable": "겹치는 기억 판정에서 %s를 읽지 못했습니다: %s",
+  "usage.place": "orbit-mem place [--cwd DIR] [--json]   # 제품 지도(config products)가 폴더를 어느 제품으로 보나",
+  "flag.place.cwd": "볼 폴더(기본: 지금 폴더)",
+  "cli.place.folder": "폴더 %s (%s)",
+  "cli.place.one": "제품: %s",
+  "cli.place.multi": "여러 제품: %s (세션 시작에 제품 핵심을 넣지 않고, 요청 글에 이름이 나온 제품의 기억을 앞에 둔다)",
+  "cli.place.none": "제품 없음: 제품 지도(config products)에 이 폴더의 줄이 없다",
+  "cli.place.default": "appliesTo 없이 여기서 저장한 기억의 적용 대상: %s"
 }

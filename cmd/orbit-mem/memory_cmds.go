@@ -93,7 +93,7 @@ func cmdMCP(a *app, args []string) error {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
 		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB(),
-			Actor: actorOf(*actor, memory.ActorAI)})
+			Actor: actorOf(*actor, memory.ActorAI), Products: productsOf()})
 	}
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
@@ -106,6 +106,18 @@ type hookInput struct {
 	TranscriptPath string `json:"transcript_path"`
 	Source         string `json:"source"`    // SessionStart: startup·resume·clear·compact·fork
 	ToolName       string `json:"tool_name"` // PreToolUse
+	// AgentID is the subagent a hook fires in (SubagentStart, and tool hooks inside a subagent).
+	AgentID   string `json:"agent_id"`
+	AgentType string `json:"agent_type"`
+}
+
+// sessionKey is the session the injection marks are kept under: a subagent has its own context, so it is
+// told what the main session was told once more (설계 · orbit-mem 2판 6절 「중복 제거」, S3 명세 2.9).
+func (in hookInput) sessionKey() string {
+	if in.AgentID == "" || in.SessionID == "" {
+		return in.SessionID
+	}
+	return in.SessionID + "/" + in.AgentID
 }
 
 // cmdHook never fails the host: any problem, wrong arguments included, prints
@@ -131,7 +143,7 @@ func cmdHook(a *app, args []string) error {
 		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
 		return nil
 	}
-	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") ||
+	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "subagent-start", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") ||
 		(*runtime != "" && *runtime != runtimeOrbitPi) || (*recordOnly && pos[0] != "prompt") {
 		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
@@ -185,7 +197,7 @@ func cmdHook(a *app, args []string) error {
 		} else {
 			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion, who)
 		}
-		if pos[0] != "pre-tool" { // 도구 호출은 활동 기록이 아니다
+		if pos[0] != "pre-tool" && pos[0] != "subagent-start" { // 도구 호출·서브에이전트 시작은 활동 기록이 아니다
 			recordActivity(s, pos[0], *host, in, p, who, at)
 		}
 		if pos[0] == "session-start" {
@@ -282,16 +294,20 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		done <- inject.HookOutput("SessionStart", text)
 	case "pre-tool":
 		kind = memory.EventInjectTool
-		inj = inject.ToolInjection(s, cfg, scope, host, in.SessionID, in.ToolName)
+		inj = inject.ToolInjection(s, cfg, scope, host, in.sessionKey(), in.ToolName)
 		done <- inject.HookOutput("PreToolUse", inj.Text)
+	case "subagent-start":
+		kind = memory.EventInjectSubagent
+		inj = inject.SubagentStart(s, cfg)
+		done <- inject.HookOutput("SubagentStart", inj.Text)
 	default:
 		kind = memory.EventInjectPrompt
 		inj = inject.PromptInjectionFor(s, cfg, scope, in.Prompt, host, in.SessionID, inject.Options{})
 		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
 	}
 	// 문맥을 먼저 내보내고 세션 표시와 지표용 사건을 남긴다(설계 「측정」).
-	inject.RecordShown(s, host, in.SessionID, inj)
-	recordInjection(s, cfg, kind, host, in.SessionID, scope, in.Prompt, inj)
+	inject.RecordShown(s, host, in.sessionKey(), inj)
+	recordInjection(s, cfg, kind, host, in.sessionKey(), scope, in.Prompt, inj)
 }
 
 // renewsBundle says whether a session start makes the session's bundle anew: after a
@@ -319,7 +335,7 @@ func withVersionNote(text, pluginVersion string) string {
 func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
 	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
 		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) ||
-		(kind == memory.EventInjectTool && len(inj.MemoryIDs) == 0) { // 도구 호출마다 부르므로 넣은 것이 있을 때만 센다
+		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) { // 도구 호출·서브에이전트마다 부르므로 넣은 것이 있을 때만 센다
 		return
 	}
 	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}

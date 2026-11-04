@@ -87,7 +87,8 @@ func TestSave_찾기_읽기_고치기(t *testing.T) {
 	var cand MemoryOut
 	call(t, cs, "memory_save", map[string]any{"kind": "lesson", "title": "시험은 단독으로 돌린다",
 		"source": map[string]any{"kind": "session", "ref": "claude:abc"}}, &cand)
-	if cand.Memory.State != "candidate" || cand.Memory.Scope != "global" {
+	// 적용 대상을 비우면 이 폴더의 제품이고, 제품 지도가 없으면 product:?(이 폴더에서만)다(설계 · orbit-mem 2판 D3).
+	if cand.Memory.State != "candidate" || cand.Memory.Scope != "product:?" || cand.Memory.Project != "github.com/me/app" {
 		t.Fatalf("cand = %+v", cand.Memory)
 	}
 

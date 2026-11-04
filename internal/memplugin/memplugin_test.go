@@ -93,7 +93,11 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 		events = append(events, e)
 	}
 	slices.Sort(events)
-	if !slices.Equal(events, []string{"PreToolUse", "SessionEnd", "SessionStart", "UserPromptSubmit"}) {
+	want := []string{"PreToolUse", "SessionEnd", "SessionStart", "UserPromptSubmit"}
+	if host == "claude" { // 서브에이전트 시작 훅은 Claude 꼴에만(설계 · orbit-mem 2판 S3)
+		want = []string{"PreToolUse", "SessionEnd", "SessionStart", "SubagentStart", "UserPromptSubmit"}
+	}
+	if !slices.Equal(events, want) {
 		t.Fatalf("%s 훅 %v", path, events)
 	}
 	for e, want := range map[string]struct {
@@ -321,5 +325,28 @@ func TestValidate(t *testing.T) {
 	}
 	if _, err := parseManifest([]byte(`{"name":"orbit-mem","bogus":1}`)); err == nil {
 		t.Fatal("모르는 칸")
+	}
+}
+
+// 설계 · orbit-mem 2판 S3(S3-8): 서브에이전트 시작 훅은 Claude 꼴에만 싣는다(Codex는 차례 7).
+func TestSubagentStart_훅은_Claude_꼴에만_있다(t *testing.T) {
+	claude, err := Claude("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hf hookFile
+	mustJSON(t, claude, "hooks/hooks.json", &hf)
+	groups := hf.Hooks["SubagentStart"]
+	if len(groups) != 1 || len(groups[0].Hooks) != 1 || !strings.Contains(groups[0].Hooks[0].Command, "orbit-mem hook subagent-start --host claude") {
+		t.Fatalf("claude SubagentStart %+v", groups)
+	}
+	codex, err := Codex("0.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cf hookFile
+	mustJSON(t, codex, "hooks/codex.json", &cf)
+	if _, ok := cf.Hooks["SubagentStart"]; ok || len(cf.Hooks) == 0 {
+		t.Fatalf("codex hooks %v", cf.Hooks)
 	}
 }
