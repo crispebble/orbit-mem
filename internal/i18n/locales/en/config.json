@@ -1,4 +1,5 @@
 {
+  "config.err.candidate_expiry": "candidateExpiryDays is 0 (off) to 365 days: %d",
   "config.err.evidence": "check confirmSeenDays, confirmFollowedVerified and correctionRepeatSessions (1-30)",
   "config.err.graph_tidy": "check graphTidyMemories and graphTidyUntagged (0-200) and graphTidyProposals (0-20)",
   "config.err.inject": "inject is full|rules|off: %q",

@@ -52,7 +52,7 @@ type LinkIn struct {
 
 // ProposalIn is a proposal from the retrospective.
 type ProposalIn struct {
-	Kind        string   `json:"kind" jsonschema:"stale·merge·supersede·reclassify·apply_file·direction·edit·revert·link·retag. stale·merge·supersede(memoryIds: 대체할 기억, 대신하는 기억)·link·retag는 바로 적용되고 원장에 남는다(사용자 말을 담은 기억이면 사용자 결정을 기다린다)"`
+	Kind        string   `json:"kind" jsonschema:"stale·merge·supersede·reclassify·edit·link·retag·revert·apply_file(direction은 받지 않는다: flags·patterns에 쓴다). stale·merge·supersede(memoryIds: 대체할 기억, 대신하는 기억)·reclassify·edit·link·retag와 자동 변경의 revert는 바로 적용되고 원장에 남는다. 사용자 말을 담은 기억·지침 파일·사람이 한 변경에 닿으면 적용되지 않는다(대기하지 않는다). 플러그인 원본 apply_file은 실험실이 도움됨으로 판정하면 적용된다"`
 	Title       string   `json:"title"`
 	Body        string   `json:"body,omitempty" jsonschema:"왜 제안하는지"`
 	MemoryIDs   []string `json:"memoryIds,omitempty"`
@@ -486,11 +486,14 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 			continue
 		}
 		proposed++
-		if !out.Applied && out.Reason != "" {
-			waiting++
-		}
-		if pi.Lab {
+		switch {
+		case pi.Lab:
 			labbed++
+		case out.AskUser:
+			waiting++
+			notes = append(notes, fmt.Sprintf("%s: %s", in.Title, out.Reason))
+		case !out.Applied && out.Reason != "":
+			notes = append(notes, fmt.Sprintf("%s: %s", in.Title, out.Reason))
 		}
 		if tidy {
 			tidied++
@@ -509,12 +512,13 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 	} else if len(sub.Legacy) > 0 {
 		notes = append(notes, "옛 기억 판정(legacy)은 옛 기억 판정 회고에서만 받습니다")
 	}
-	// 정리(낡음·합치기·대체·연결·태그)는 승인 없이 적용되고 원장에 남는다(A2). 나머지는 사람의 결정을 기다린다.
+	// 정리(낡음·합치기·대체·연결·태그·고치기·재분류)는 승인 없이 적용되고 원장에 남는다. 사용자 말을 담은 기억과
+	// 지침 파일에 닿는 것은 적용하지 않고 까닭을 알린다. 대기 제안은 만들지 않는다(설계 · orbit-mem 2판 18.3).
 	var applied int
 	_ = s.DB().QueryRow(`SELECT COUNT(*) FROM proposals WHERE retro_id=? AND status=?`, id, memory.StatusAuto).Scan(&applied)
 	report = append(report, fmt.Sprintf("제안 %d건(그중 자동 적용 %d건, 원장에 남음)", proposed, applied))
 	if waiting > 0 {
-		report = append(report, fmt.Sprintf("그중 사용자 말을 담은 기억이거나 증거가 없어 결정을 기다리는 것 %d건", waiting))
+		report = append(report, fmt.Sprintf("그중 사용자 말을 담은 기억이나 지침 파일에 닿아 적용하지 않은 것 %d건(일하는 중에 사용자에게 묻고 userQuote로 다시)", waiting))
 	}
 	if labbed > 0 {
 		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(openorbit 개발 도구 npm run lab -- candidates)", labbed))
@@ -871,7 +875,7 @@ func attachWorkSources(s *memory.Store, m memory.Memory, extra []memory.Source, 
 }
 
 // submitLinks makes each link of a submitted memory an automatic link change
-// (kept in the ledger; one touching the user's words waits for the user).
+// (kept in the ledger; one touching the user's words is not made).
 func submitLinks(s *memory.Store, retroID, memoryID, title string, links []LinkIn) (int, []string) {
 	var notes []string
 	n := 0
@@ -896,8 +900,10 @@ func submitLinks(s *memory.Store, retroID, memoryID, title string, links []LinkI
 			}
 			continue
 		}
-		if out.Applied { // 사용자 말 기억에 닿는 연결은 사용자 결정을 기다린다(제안으로 남는다)
+		if out.Applied {
 			n++
+		} else if out.Reason != "" { // 사용자 말 기억에 닿는 연결은 적용하지 않는다
+			notes = append(notes, fmt.Sprintf("%s: 연결 %s: %s", title, l.ID, out.Reason))
 		}
 	}
 	return n, notes

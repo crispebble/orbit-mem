@@ -37,7 +37,7 @@ func save(t *testing.T, s *memory.Store, kind, title, body, scope string, quote 
 
 const here = "project:github.com/me/app"
 
-func TestSessionStart_확정_규칙_전문과_최근_결정_제목과_제안_수(t *testing.T) {
+func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안_줄은_없다(t *testing.T) {
 	s := store(t)
 	save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
 	save(t, s, memory.KindRule, "이 앱은 pnpm", "npm을 쓰지 않는다", here, true)
@@ -48,12 +48,13 @@ func TestSessionStart_확정_규칙_전문과_최근_결정_제목과_제안_수
 	s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "확정?", MemoryIDs: []string{c.ID}})
 
 	got := SessionStart(s, config.Default(), here)
-	for _, want := range []string{"답은 한글 존댓말", "반말을 쓰지 않는다", "이 앱은 pnpm", "npm을 쓰지 않는다", "Orbit 먼저 만든다", "제안 1건"} {
+	for _, want := range []string{"답은 한글 존댓말", "반말을 쓰지 않는다", "이 앱은 pnpm", "npm을 쓰지 않는다", "Orbit 먼저 만든다"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
-	for _, bad := range []string{"다른 앱 규칙", "후보 규칙", "본문은 안 넣음"} {
+	// 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6): 옛 대기 제안이 남아 있어도 줄을 붙이지 않는다.
+	for _, bad := range []string{"다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "제안 1건", "대기"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("must not contain %q", bad)
 		}

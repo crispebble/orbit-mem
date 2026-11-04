@@ -384,6 +384,7 @@ func cmdProposals(a *app, args []string) error {
 	body := fs.String("body", "", i18n.T("flag.proposals.body"))
 	bodyFile := fs.String("body-file", "", i18n.T("flag.proposals.body_file"))
 	note := fs.String("note", "", i18n.T("flag.proposals.note"))
+	dryRun := fs.Bool("dry-run", false, i18n.T("flag.proposals.dry_run"))
 	asJSON := fs.Bool("json", false, "JSON")
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -445,8 +446,55 @@ func cmdProposals(a *app, args []string) error {
 		return a.reportDecision(res)
 	case "review":
 		return a.review(s)
+	case "drain":
+		if len(pos) != 0 {
+			return errUsage
+		}
+		return a.drain(s, *dryRun, *asJSON)
 	}
 	return errUsage
+}
+
+// drain closes the pending proposals left from before the queue went away
+// (설계 · orbit-mem 2판 18.5). With dryRun it works on a copy of the
+// database and reports what would happen.
+func (a *app) drain(s *memory.Store, dryRun, asJSON bool) error {
+	target := s
+	if dryRun {
+		dir, err := os.MkdirTemp("", "orbit-mem-drain-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		path, err := s.Snapshot(dir, "drain")
+		if err != nil {
+			return err
+		}
+		if target, err = memory.Open(path); err != nil {
+			return err
+		}
+		defer target.Close()
+		target.Policy = s.Policy
+	}
+	res, err := target.DrainPending()
+	if asJSON {
+		if jerr := a.json(map[string]any{"dryRun": dryRun, "result": res}); jerr != nil {
+			return jerr
+		}
+		return err
+	}
+	for _, it := range res.Items {
+		fmt.Fprintf(a.stdout, "%s %s [%s] %s\n    %s\n", it.ProposalID, it.Kind, it.Status, it.Title, it.Note)
+	}
+	if dryRun {
+		fmt.Fprintln(a.stdout, i18n.T("cli.proposals.drain_dry", len(res.Items), res.Applied, res.Dropped))
+	} else {
+		fmt.Fprintln(a.stdout, i18n.T("cli.proposals.drained", len(res.Items), res.Applied, res.Dropped))
+	}
+	if res.Left > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.proposals.drain_left", res.Left))
+	}
+	return err
 }
 
 func (a *app) reportDecision(res memory.DecideResult) error {
@@ -597,7 +645,7 @@ func cmdConfig(a *app, args []string) error {
 			}
 		}
 	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches",
-		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions":
+		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
@@ -605,9 +653,10 @@ func cmdConfig(a *app, args []string) error {
 		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
 			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches,
-			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions}[key] = n
+			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
+			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·hostMemory")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

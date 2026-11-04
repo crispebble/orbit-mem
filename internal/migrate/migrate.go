@@ -36,7 +36,7 @@ type Report struct {
 	FilesSame    int            `json:"filesSame"`
 	FilesChanged int            `json:"filesChanged"`
 	FilesUnknown int            `json:"filesUnknown"`
-	Proposals    int            `json:"proposals"`
+	ToJudge      int            `json:"toJudge"` // 근거 파일이 바뀐 기억: 출처 해시를 비워 두어 하루 회고가 다시 판정한다
 	Absorbed     int            `json:"absorbed"`
 }
 
@@ -268,7 +268,7 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		rep.ByKind[kind]++
 		rep.Sources += len(sources) + 1
 		if len(changed) > 0 && state != memory.StateStale {
-			rep.Proposals++
+			rep.ToJudge++
 		}
 		if o.DryRun {
 			continue
@@ -287,11 +287,6 @@ func Run(s *memory.Store, o Options) (Report, error) {
 		if state == memory.StateStale && r.RetireReason != "" {
 			reason := "옛 Knowledge에서 은퇴: " + r.RetireReason
 			_, _ = s.Update(memory.UpdateInput{ID: m.ID, State: &state, Reason: reason, Action: "migrate"})
-		}
-		if len(changed) > 0 && state != memory.StateStale {
-			_, _ = s.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: i18n.TIn(i18n.KO, "migrate.source_changed_title", m.Title),
-				Body:      i18n.TIn(i18n.KO, "migrate.source_changed_body", strings.Join(changed, ", ")),
-				MemoryIDs: []string{m.ID}})
 		}
 	}
 	if !o.DryRun {

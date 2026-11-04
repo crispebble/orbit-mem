@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
@@ -376,7 +377,8 @@ func (r *Keeper) Judge() []string {
 }
 
 // Settle confirms the candidates whose evidence came in, closes the settled
-// proposals and prunes the old session state, after a catch-up.
+// proposals, marks expired volatile memories and long-unused candidates stale
+// and prunes the old session state, after a catch-up.
 func (r *Keeper) Settle() []string {
 	errs := []string{}
 	if _, err := r.Store.ConfirmCandidates(); err != nil {
@@ -385,9 +387,16 @@ func (r *Keeper) Settle() []string {
 	if _, err := r.Store.CloseSettled(); err != nil {
 		errs = append(errs, err.Error())
 	}
-	// 날이 지난 휘발 기억을 정리하고, 재검토일이 지난 기억은 낡음 후보로 묻는다(기획 · Orbit Code K15).
+	// 날이 지난 휘발 기억을 정리한다(기획 · Orbit Code K15). 재검토일이 지난 기억은 회상에 표시만 한다.
 	if _, err := r.Store.ReviewDue(); err != nil {
 		errs = append(errs, err.Error())
+	}
+	// 오래 쓰지 않은 후보를 낡음으로 돌린다(설계 · orbit-mem 2판 18.4).
+	// 회상을 넣지 않는 설정(inject rules·off)에서는 후보가 쓰일 기회가 없으니 하지 않는다.
+	if r.Cfg.Inject == config.InjectFull {
+		if _, err := r.Store.ExpireCandidates(r.Cfg.CandidateExpiryDays); err != nil {
+			errs = append(errs, err.Error())
+		}
 	}
 	if err := r.Store.PruneSessionState(SessionStateDays); err != nil {
 		errs = append(errs, err.Error())

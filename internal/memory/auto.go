@@ -10,14 +10,16 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
-// 자동 변경(A2 「자동화가 고칠 수 있다」): 자동화의 확정·합치기·낡음·대체·연결·retag는 승인 없이
+// 자동 변경(A2 「자동화가 고칠 수 있다」): 자동화의 확정·합치기·낡음·대체·연결·retag·고치기·재분류는 승인 없이
 // 적용하고, 제안 표에 상태 auto로, 효과 원장에 한 줄로 남겨 되돌릴 수 있게 한다.
 
 // StatusAuto is a change an automation applied without approval (kept for the audit list).
 const StatusAuto = "auto"
 
 // AutoKinds are the changes an automation applies without approval.
-var AutoKinds = []string{ProposalConfirm, ProposalMerge, ProposalStale, ProposalSupersede, ProposalLink, ProposalRetag}
+// Edit and reclassify change one memory's content like a merge does, and the
+// ledger keeps the version before (설계 · orbit-mem 2판 18.3).
+var AutoKinds = []string{ProposalConfirm, ProposalMerge, ProposalStale, ProposalSupersede, ProposalLink, ProposalRetag, ProposalEdit, ProposalReclassify}
 
 // EventAutoReverted is an automatic change the ledger judged harmful and the store undid.
 const EventAutoReverted = "audit.auto_reverted"
@@ -158,7 +160,7 @@ func (s *Store) autoReady(in AutoInput, pi ProposalInput) (string, error) {
 				evidence = ev
 			}
 		}
-	case ProposalStale, ProposalSupersede:
+	case ProposalStale, ProposalSupersede, ProposalEdit, ProposalReclassify:
 		ids := pi.MemoryIDs
 		if in.Kind == ProposalSupersede {
 			ids = ids[:1]
@@ -344,40 +346,99 @@ func (s *Store) autoRevertTried(ledgerID string) bool {
 	return n > 0
 }
 
-// ChangeOutcome says what happened to a change an automation submitted.
+// ChangeOutcome says what happened to a change an automation submitted. A
+// change is applied (and kept in the ledger) or not applied with the reason;
+// nothing waits for the person (설계 · orbit-mem 2판 18절).
 type ChangeOutcome struct {
 	Applied  bool     `json:"applied"`
 	LedgerID string   `json:"ledgerId,omitempty"`
 	Proposal Proposal `json:"proposal,omitzero"`
-	Reason   string   `json:"reason,omitempty"` // 바로 적용하지 않고 대기 제안으로 둔 까닭
+	Reason   string   `json:"reason,omitempty"`  // 적용하지 않은 까닭
+	AskUser  bool     `json:"askUser,omitempty"` // 사용자 말·지침 파일에 닿는다: 일하는 중에 사용자에게 묻고 그 말(userQuote)과 함께 다시
 	Changed  []string `json:"changed,omitempty"`
 }
 
-// SubmitChange is how an automation hands in a change: the kinds an
-// automation may apply are applied at once and kept in the ledger; a change to
-// what the user said (without the user's words), a confirmation without
-// evidence and every other kind wait for the person as a pending proposal.
+// SubmitChange is how an automation hands in a change. A change to what the
+// user said (a quoted memory, an instruction file, a change the person made)
+// without the user's words is not applied: the caller asks the user while
+// working and comes back with the user's words. A confirmation without
+// evidence leaves the candidate as it is, and a direction is the
+// retrospective's report, not a memory change. Everything else is applied at
+// once and kept in the ledger, where the person undoes what is wrong. No
+// pending proposal is made.
 func (s *Store) SubmitChange(in ProposalInput, w Who) (ChangeOutcome, error) {
 	if w.Actor == "" {
 		w.Actor = ActorAutomation
 	}
-	if slices.Contains(AutoKinds, in.Kind) && !in.Lab {
-		res, err := s.AutoApply(AutoInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload, RetroID: in.RetroID, Who: w})
+	switch in.Kind {
+	case ProposalDirection:
+		return ChangeOutcome{Reason: i18n.T("memory.reason.direction")}, nil
+	case ProposalRevert:
+		res, err := s.RevertChange(in.Payload.LedgerID, w, in.Body)
 		switch {
 		case err == nil:
 			return ChangeOutcome{Applied: true, LedgerID: res.LedgerID, Proposal: res.Proposal, Changed: res.Changed}, nil
-		case errors.Is(err, ErrAutoSkip), errors.Is(err, ErrDuplicateProposal):
-			return ChangeOutcome{Reason: err.Error()}, err
-		case errors.Is(err, ErrProtected), errors.Is(err, ErrNoEvidence):
-			p, perr := s.Propose(in)
-			if perr != nil {
-				return ChangeOutcome{Reason: err.Error()}, perr
+		case errors.Is(err, ErrProtected):
+			// 자동 변경인데 막혔으면 되돌릴 기억이 그 사이 사용자 말을 담게 된 것이다.
+			if e, lerr := s.ledgerFor(in.Payload.LedgerID); lerr == nil && s.isAuto(e) {
+				id := strings.TrimPrefix(err.Error(), ErrProtected.Error()+": ")
+				return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.ask_user", id)}, nil
 			}
-			return ChangeOutcome{Proposal: p, Reason: err.Error()}, nil
-		default:
-			return ChangeOutcome{}, err
+			return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.revert_human", in.Payload.LedgerID)}, nil
+		}
+		return ChangeOutcome{}, err
+	case ProposalApplyFile:
+		if in.Lab { // 하네스 변경은 실험실이 도움됨으로 판정하면 적용된다(ReleaseLabProposal)
+			p, err := s.Propose(in)
+			return ChangeOutcome{Proposal: p}, err
+		}
+		if FileTarget(in.Payload.Path) == TargetHarness {
+			return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.harness_no_lab", in.Payload.Path)}, nil
+		}
+		return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.instruction_file", in.Payload.Path)}, nil
+	}
+	if !slices.Contains(AutoKinds, in.Kind) {
+		return ChangeOutcome{}, i18n.Errorf("memory.err.proposal_kind_title", ErrInvalid, strings.Join(ProposalKinds, "|"))
+	}
+	// 여러 기억의 낡음은 사용자 말을 담은 기억만 빼고 적용한다: 그 하나 때문에 나머지 정리가 사라지지 않게.
+	var held []string
+	if in.Kind == ProposalStale && len(in.MemoryIDs) > 1 && w.quote() == "" && !w.human() {
+		var keep []string
+		for _, id := range in.MemoryIDs {
+			if p, err := s.Protected(id); err != nil {
+				return ChangeOutcome{}, err
+			} else if p {
+				held = append(held, id)
+			} else {
+				keep = append(keep, id)
+			}
+		}
+		if len(held) > 0 && len(keep) > 0 {
+			in.MemoryIDs = keep
+		} else {
+			held = nil
 		}
 	}
-	p, err := s.Propose(in)
-	return ChangeOutcome{Proposal: p}, err
+	res, err := s.AutoApply(AutoInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload, RetroID: in.RetroID, Who: w})
+	switch {
+	case err == nil:
+		out := ChangeOutcome{Applied: true, LedgerID: res.LedgerID, Proposal: res.Proposal, Changed: res.Changed}
+		if len(held) > 0 {
+			out.AskUser, out.Reason = true, i18n.T("memory.reason.ask_user", strings.Join(held, ", "))
+		}
+		return out, nil
+	case errors.Is(err, ErrProtected):
+		id := strings.TrimPrefix(err.Error(), ErrProtected.Error()+": ")
+		return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.ask_user", id)}, nil
+	case errors.Is(err, ErrNoEvidence):
+		return ChangeOutcome{Reason: i18n.T("memory.reason.no_evidence")}, nil
+	}
+	return ChangeOutcome{Reason: errText(err)}, err
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

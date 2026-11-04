@@ -87,6 +87,7 @@ func TestSources_발췌가_남은_파일이_바뀌면_제안하지_않고_해시
 	}
 }
 
+// 발췌가 사라진 기억은 대기 제안 없이 자동 낡음으로 정리되고 원장에 남는다(설계 · orbit-mem 2판 18.3).
 func TestSources_발췌가_사라진_파일은_같은_파일의_기억을_한_제안으로_묶는다(t *testing.T) {
 	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
 	f := filepath.Join(t.TempDir(), "rules.md")
@@ -97,13 +98,21 @@ func TestSources_발췌가_사라진_파일은_같은_파일의_기억을_한_�
 	w(t, f, "- 탭은 네 칸이다.\n- 커밋은 경로를 명시한다.\n")
 
 	e.r.Run(context.Background(), KindDaily, "2026-10-26")
-	pending, _ := e.s.Proposals(memory.StatusPending)
-	if len(pending) != 1 {
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
 		t.Fatalf("pending = %+v", pending)
 	}
-	p := pending[0]
-	if p.Kind != memory.ProposalStale || strings.Join(p.MemoryIDs, ",") != strings.Join(sorted(a.ID, b.ID), ",") {
+	applied := autoOf(t, e, memory.ProposalStale)
+	if len(applied) != 1 {
+		t.Fatalf("auto = %+v", applied)
+	}
+	p := applied[0]
+	if strings.Join(p.MemoryIDs, ",") != strings.Join(sorted(a.ID, b.ID), ",") {
 		t.Fatalf("proposal = %+v", p)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if m, _ := e.s.Get(id); m.State != memory.StateStale {
+			t.Fatalf("%s = %s", id, m.State)
+		}
 	}
 	for _, want := range []string{f, "탭은 두 칸이다.", "배포는 금요일에 하지 않는다."} {
 		if !strings.Contains(p.Body, want) {
@@ -122,11 +131,11 @@ func TestSources_발췌가_사라진_파일은_같은_파일의_기억을_한_�
 	if got[memory.SourceGone] != (checkEvent{Outcome: memory.SourceGone, Memories: 2, Proposed: true}) || got[memory.SourceKept].Memories != 1 {
 		t.Fatalf("events = %+v", got)
 	}
-	// 다음 회고는 같은 변경을 다시 제안하지 않는다
+	// 다음 회고는 같은 변경을 다시 하지 않는다
 	e.r.Now = func() time.Time { return time.Date(2026, 10, 28, 4, 0, 0, 0, kst) }
 	e.r.Run(context.Background(), KindDaily, "2026-10-27")
-	if again, _ := e.s.Proposals(memory.StatusPending); len(again) != 1 {
-		t.Fatalf("pending after next run = %+v", again)
+	if again := autoOf(t, e, memory.ProposalStale); len(again) != 1 {
+		t.Fatalf("auto after next run = %+v", again)
 	}
 }
 
@@ -151,8 +160,8 @@ func TestSources_파일이_없어지면_제안하지_않고_다시_생기면_다
 	w(t, f, `{"ok":false}`)
 	e.r.Now = func() time.Time { return time.Date(2026, 10, 28, 4, 0, 0, 0, kst) }
 	e.r.Run(context.Background(), KindDaily, "2026-10-27")
-	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 1 || !strings.Contains(pending[0].Body, `{"ok":true}`) {
-		t.Fatalf("a file that came back changed is checked again: %+v", pending)
+	if applied := autoOf(t, e, memory.ProposalStale); len(applied) != 1 || !strings.Contains(applied[0].Body, `{"ok":true}`) {
+		t.Fatalf("a file that came back changed is checked again: %+v", applied)
 	}
 }
 
@@ -210,14 +219,17 @@ func TestSources_발췌가_없으면_회고_모델이_파일을_읽고_판정한
 		t.Fatalf("material must not copy the file: %s", page)
 	}
 
-	// 고치기는 사람의 결정을 기다리고, 낡음은 승인 없이 적용되고 원장에 남는다(A2).
+	// 고치기와 낡음은 승인 없이 적용되고 원장에 남는다(설계 · orbit-mem 2판 18.3).
 	pending, _ := e.s.Proposals(memory.StatusPending)
 	kinds := map[string][]memory.Proposal{}
-	for _, p := range append(pending, autoOf(t, e, memory.ProposalStale)...) {
+	for _, p := range append(autoOf(t, e, memory.ProposalEdit), autoOf(t, e, memory.ProposalStale)...) {
 		kinds[p.Kind] = append(kinds[p.Kind], p)
 	}
-	if len(pending) != 1 || len(kinds[memory.ProposalEdit]) != 1 || len(kinds[memory.ProposalStale]) != 1 {
-		t.Fatalf("pending = %+v auto stale = %+v", pending, kinds[memory.ProposalStale])
+	if len(pending) != 0 || len(kinds[memory.ProposalEdit]) != 1 || len(kinds[memory.ProposalStale]) != 1 {
+		t.Fatalf("pending = %+v auto = %+v", pending, kinds)
+	}
+	if m, _ := e.s.Get(fix.ID); m.Body != "포트는 9090" {
+		t.Fatalf("고치기가 적용되지 않았습니다: %+v", m)
 	}
 	for _, id := range []string{old1.ID, old2.ID} {
 		if m, _ := e.s.Get(id); m.State != memory.StateStale {
@@ -327,21 +339,14 @@ func TestSources_옛_출처_파일이_바뀜_제안은_새_판정으로_대체�
 			t.Fatalf("legacy %s = %+v", id, p)
 		}
 	}
+	// 다른 옛 대기 제안은 그대로 남고(proposals drain이 정리한다), 사라진 발췌는 자동 낡음으로 다시 나온다.
 	pending, _ := e.s.Proposals(memory.StatusPending)
-	if len(pending) != 2 {
+	if len(pending) != 1 || pending[0].ID != other.ID {
 		t.Fatalf("pending = %+v", pending)
 	}
-	byID := map[string]memory.Proposal{}
-	for _, p := range pending {
-		byID[p.ID] = p
-	}
-	if _, ok := byID[other.ID]; !ok {
-		t.Fatalf("other stale proposals stay: %+v", pending)
-	}
-	for _, p := range pending {
-		if p.ID != other.ID && (p.MemoryIDs[0] != gone.ID || !strings.Contains(p.Body, "나 규칙")) {
-			t.Fatalf("the vanished excerpt comes back as a new proposal: %+v", p)
-		}
+	applied := autoOf(t, e, memory.ProposalStale)
+	if len(applied) != 1 || applied[0].MemoryIDs[0] != gone.ID || !strings.Contains(applied[0].Body, "나 규칙") {
+		t.Fatalf("the vanished excerpt comes back as an automatic change: %+v", applied)
 	}
 }
 
@@ -354,8 +359,8 @@ func TestSources_거절한_옛_제안이_새_판정을_막지_않는다(t *testi
 	e.s.Decide(memory.DecideInput{ID: old.ID, Decision: "reject", Note: "아직 맞음"})
 	w(t, f, "다른 규칙")
 	e.r.Run(context.Background(), KindDaily, "2026-10-26")
-	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 1 || pending[0].Payload.Path != f {
-		t.Fatalf("a vanished excerpt must come back despite an old rejection: %+v", pending)
+	if applied := autoOf(t, e, memory.ProposalStale); len(applied) != 1 || applied[0].Payload.Path != f {
+		t.Fatalf("a vanished excerpt must come back despite an old rejection: %+v", applied)
 	}
 }
 
@@ -447,9 +452,12 @@ func TestSources_고칠_것이_없는_edit_판정은_맞음으로_보고_비밀�
 	if sourceHash(t, e, same.ID) != memory.FileHash(f) {
 		t.Fatal("an edit with nothing to change must settle like ok")
 	}
-	pending, _ := e.s.Proposals(memory.StatusPending)
-	if len(pending) != 1 || strings.Contains(pending[0].Payload.Body, "sk-abc") {
-		t.Fatalf("pending = %+v", pending)
+	edits := autoOf(t, e, memory.ProposalEdit)
+	if len(edits) != 1 || strings.Contains(edits[0].Payload.Body, "sk-abc") {
+		t.Fatalf("edits = %+v", edits)
+	}
+	if m, _ := e.s.Get(fix.ID); strings.Contains(m.Body, "sk-abc") {
+		t.Fatalf("비밀값이 기억에 남았습니다: %+v", m)
 	}
 	counts := map[string]int{}
 	for _, ev := range sourceEvents(t, e) {
@@ -489,4 +497,40 @@ func sorted(ids ...string) []string {
 		}
 	}
 	return out
+}
+
+// 검토 지적 4: 사용자 말을 담은 기억의 발췌가 사라지면 낡음으로 하지 않고, 해시를 두어 회고 모델의 판정에 올린다.
+func TestSources_사라진_발췌가_사용자_말_기억이면_판정에_올린다(t *testing.T) {
+	e := setup(t, time.Date(2026, 10, 27, 4, 0, 0, 0, kst))
+	f := filepath.Join(t.TempDir(), "rules.md")
+	w(t, f, "- 탭은 두 칸이다.\n- 배포는 금요일에 하지 않는다.\n")
+	a := fileMemory(t, e, "탭 두 칸", f, "탭은 두 칸이다.")
+	q := fileMemory(t, e, "금요일 배포 금지", f, "배포는 금요일에 하지 않는다.")
+	if err := e.s.AddSource(q.ID, memory.Source{Kind: memory.SourceQuote, Excerpt: "금요일엔 배포하지 마"}); err != nil {
+		t.Fatal(err)
+	}
+	before := sourceHash(t, e, q.ID)
+	w(t, f, "- 탭은 네 칸이다.\n")
+	var page string
+	e.ai = func(id string) error {
+		page, _, _ = ReadPage(e.s, e.r.Paths, id, 1)
+		_, err := Submit(e.s, e.r.Paths, id, Submission{Summary: "x"})
+		return err
+	}
+	e.r.Run(context.Background(), KindDaily, "2026-10-26")
+	if m, _ := e.s.Get(a.ID); m.State != memory.StateStale {
+		t.Fatalf("a = %s", m.State)
+	}
+	if m, _ := e.s.Get(q.ID); m.State != memory.StateConfirmed {
+		t.Fatalf("q = %s", m.State)
+	}
+	if got := sourceHash(t, e, q.ID); got != before {
+		t.Fatalf("보호 기억의 해시를 갱신했습니다: %s", got)
+	}
+	if !strings.Contains(page, q.ID) {
+		t.Fatalf("판정 재료에 보호 기억이 없습니다: %s", page)
+	}
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
+		t.Fatalf("pending = %+v", pending)
+	}
 }

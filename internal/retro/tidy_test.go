@@ -169,10 +169,11 @@ func TestTidy_상한과_관계와_거절한_쌍(t *testing.T) {
 	if len(links) != 1 || links[0].Title != "결정과 근거" {
 		t.Errorf("link: %+v", links)
 	}
-	if len(autoOf(t, e, memory.ProposalRetag)) != 0 || len(pendingOf(t, e, memory.ProposalDirection)) != 1 {
-		t.Errorf("상한을 넘은 retag는 빠지고 direction은 남아야 합니다")
+	// 방향은 정리 상한에 세지 않고, orbit-mem이 받지 않으니 회고 결과에 까닭만 남는다(설계 · orbit-mem 2판 18.3).
+	if len(autoOf(t, e, memory.ProposalRetag)) != 0 || len(pendingOf(t, e, memory.ProposalDirection)) != 0 {
+		t.Errorf("상한을 넘은 retag는 빠지고 direction은 대기하지 않아야 합니다")
 	}
-	for _, want := range []string{"같은 태그라서: 잇는 관계", "넘치는 태그 달기: 회당 정리 제안 상한 1건"} {
+	for _, want := range []string{"같은 태그라서: 잇는 관계", "넘치는 태그 달기: 회당 정리 제안 상한 1건", "정리와 무관한 제안: "} {
 		if !strings.Contains(report, want) {
 			t.Errorf("보고에 %q가 없습니다:\n%s", want, report)
 		}
@@ -300,8 +301,8 @@ func TestTidy_제출_상한을_넘친_정리_제안만_뺀다(t *testing.T) {
 	if res, err := e.r.Run(context.Background(), KindDaily, "2026-10-26"); err != nil || res.Status != StatusDone {
 		t.Fatalf("daily %+v %v", res, err)
 	}
-	if len(pendingOf(t, e, memory.ProposalDirection)) != 3 || len(autoOf(t, e, memory.ProposalRetag)) != 17 {
-		t.Errorf("방향 %d, 태그 %d (%s)", len(pendingOf(t, e, memory.ProposalDirection)), len(autoOf(t, e, memory.ProposalRetag)), report)
+	if strings.Count(report, "방향 ") != 3 || len(pendingOf(t, e, memory.ProposalDirection)) != 0 || len(autoOf(t, e, memory.ProposalRetag)) != 17 {
+		t.Errorf("방향 대기 %d, 태그 %d (%s)", len(pendingOf(t, e, memory.ProposalDirection)), len(autoOf(t, e, memory.ProposalRetag)), report)
 	}
 	if !strings.Contains(report, "제출 상한 20건") || !strings.Contains(text, "일반 제안과 합쳐 20건") {
 		t.Errorf("보고·안내:\n%s\n%s", report, text)

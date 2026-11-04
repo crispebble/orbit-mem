@@ -88,6 +88,12 @@
   "memory.err.version_conflict": "다른 곳에서 먼저 고쳤습니다. 다시 읽고 고쳐 주세요",
   "memory.err.volatile_days": "%w: 휘발 기억은 1~%d일입니다",
   "memory.err.work_record": "작업 지표의 작업 id·끝 시각이 맞지 않습니다: %w",
+  "memory.reason.ask_user": "사용자 말을 담은 기억이라 적용하지 않았습니다. 일하는 중에 사용자에게 직접 묻고, 사용자가 그렇게 하라고 한 말을 userQuote로 함께 다시 보내세요(%s)",
+  "memory.reason.direction": "방향 제안은 orbit-mem이 받지 않습니다. 회고 보고(summary·flags·patterns)에 담아 사용자에게 전하세요",
+  "memory.reason.harness_no_lab": "하네스 변경은 실험실이 도움됨으로 판정해야 자동으로 적용됩니다. 실험실이 없으면 사용자에게 바꿀 내용을 보여 물으세요: %s",
+  "memory.reason.instruction_file": "사용자 지침 파일은 자동화가 고치지 않습니다. 일하는 중에 사용자에게 바꿀 내용을 보여 묻고, 사용자가 고치게 하세요: %s",
+  "memory.reason.no_evidence": "자동 확정할 증거가 없어 후보로 둡니다. 후보는 회상에 쓰이고, 증거가 쌓이면 스스로 확정되며, 오래 쓰이지 않으면 낡음이 됩니다",
+  "memory.reason.revert_human": "사람이 한 변경(%s)은 자동화가 되돌리지 않습니다. 일하는 중에 사용자에게 묻고, 사용자가 원하면 감사 목록에서 되돌리세요",
   "memory.settled.already_linked": "이미 이어짐",
   "memory.settled.already_retagged": "이미 태그가 바뀜",
   "memory.settled.merge_gone": "합칠 기억이 이미 정리됨"

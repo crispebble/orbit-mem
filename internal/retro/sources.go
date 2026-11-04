@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -142,22 +143,34 @@ func (r *Keeper) checkFile(path, cur string, rows []sourceRow, budget *int) (Sou
 	if len(gone) > 0 {
 		ids := sortedKeys(gone)
 		var body strings.Builder
-		fmt.Fprintf(&body, "근거 파일 %s 이 바뀌어, 아래 기억이 기댄 발췌가 파일에서 사라졌습니다. 기억이 아직 맞는지 보고 낡음으로 정리할지 정해 주세요.\n", path)
+		fmt.Fprintf(&body, "근거 파일 %s 이 바뀌어, 아래 기억이 기댄 발췌가 파일에서 사라져 낡음으로 정리했습니다(자동 정리, 감사 목록에서 되돌릴 수 있음).\n", path)
 		for _, id := range ids {
 			fmt.Fprintf(&body, "\n- %s (%s) 사라진 발췌:\n", titles[id], id)
 			for _, ex := range gone[id] {
 				fmt.Fprintf(&body, "  > %s\n", strings.ReplaceAll(memory.ClipRunes(strings.TrimSpace(ex), 300), "\n", "\n  > "))
 			}
 		}
-		_, err := r.Store.Propose(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 발췌가 사라짐", path, ids, titles),
-			Body: strings.TrimRight(body.String(), "\n"), MemoryIDs: ids, Payload: memory.Payload{Path: path}})
-		if err == nil || errors.Is(err, memory.ErrDuplicateProposal) {
+		// 사라진 발췌는 자동 낡음으로 정리한다(설계 · orbit-mem 2판 18.3). 사용자 말을 담은 기억이면 적용되지 않고
+		// 그대로 둔다: 사용자 말이 파일보다 앞선다.
+		out, err := r.Store.SubmitChange(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 발췌가 사라짐", path, ids, titles),
+			Body: strings.TrimRight(body.String(), "\n"), MemoryIDs: ids, Payload: memory.Payload{Path: path}}, memory.Who{Actor: memory.ActorAutomation})
+		if err == nil || errors.Is(err, memory.ErrDuplicateProposal) || errors.Is(err, memory.ErrAutoSkip) {
 			set := map[string]bool{}
 			for _, id := range ids {
 				set[id] = true
 			}
+			if out.AskUser {
+				// 사용자 말을 담은 기억은 낡음으로 하지 않았다. 해시를 두고 회고 모델의 판정에 올려, 그 판정이 회고
+				// 결과에 「사용자에게 물을 것」으로 남게 한다.
+				for _, id := range ids {
+					if !slices.Contains(out.Proposal.MemoryIDs, id) {
+						delete(set, id)
+						judge[id] = true
+					}
+				}
+			}
 			setHash(set)
-			recordCheck(r.Store, memory.SourceGone, len(ids), err == nil)
+			recordCheck(r.Store, memory.SourceGone, len(set), out.Applied)
 		} // 그 밖의 실패는 해시를 두어 다음 회고가 다시 본다
 	}
 	if len(judge) == 0 || *budget <= 0 {
@@ -271,27 +284,29 @@ func applySources(s *memory.Store, mat Material, readOf func(string) (hash strin
 			setHash(v.Path, v.MemoryID, read)
 			recordCheck(s, memory.SourceOK, 1, false)
 		case memory.SourceEdit:
-			body := "근거 파일 " + v.Path + " 이 바뀌어 기억을 고칠 것을 제안합니다."
+			body := "근거 파일 " + v.Path + " 이 바뀌어 기억을 고쳤습니다(자동 정리, 감사 목록에서 되돌릴 수 있음)."
 			if reason != "" {
 				body += "\n판정 근거: " + reason
 			}
-			_, err := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "근거 파일이 바뀌어 고칠 기억: " + target.Title, Body: body,
+			out, err := s.SubmitChange(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "근거 파일이 바뀌어 고친 기억: " + target.Title, Body: body,
 				MemoryIDs: []string{v.MemoryID}, RetroID: retroID,
-				Payload: memory.Payload{Title: memory.MaskSecrets(strings.TrimSpace(v.NewTitle)), Body: memory.MaskSecrets(v.NewBody)}})
+				Payload: memory.Payload{Title: memory.MaskSecrets(strings.TrimSpace(v.NewTitle)), Body: memory.MaskSecrets(v.NewBody)}}, memory.Who{Actor: memory.ActorAutomation})
 			if errors.Is(err, memory.ErrInvalid) { // 고칠 것이 없다: 아직 맞음과 같다
 				setHash(v.Path, v.MemoryID, read)
 				recordCheck(s, memory.SourceOK, 1, false)
 				break
 			}
-			if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) {
+			if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) && !errors.Is(err, memory.ErrAutoSkip) {
 				notes = append(notes, fmt.Sprintf("%s: %v", target.Title, err))
 				continue
 			}
-			if err == nil {
+			if out.Applied {
 				proposed++
+			} else if out.Reason != "" { // 사용자 말을 담은 기억: 고치지 않고 회고 결과에 알린다
+				notes = append(notes, fmt.Sprintf("%s: %s", target.Title, out.Reason))
 			}
 			setHash(v.Path, v.MemoryID, read)
-			recordCheck(s, memory.SourceEdit, 1, err == nil)
+			recordCheck(s, memory.SourceEdit, 1, out.Applied)
 		case memory.SourceStale:
 			if stale[v.Path] == nil {
 				stalePaths = append(stalePaths, v.Path)
@@ -318,20 +333,23 @@ func applySources(s *memory.Store, mat Material, readOf func(string) (hash strin
 			}
 		}
 		sort.Strings(ids)
-		_, err := s.SubmitChange(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 파일이 바뀌어 낡음", path, ids, titles),
+		out, err := s.SubmitChange(memory.ProposalInput{Kind: memory.ProposalStale, Title: staleTitle("근거 파일이 바뀌어 낡음", path, ids, titles),
 			Body: body.String(), MemoryIDs: ids, RetroID: retroID, Payload: memory.Payload{Path: path}}, memory.Who{Actor: memory.ActorAutomation})
-		if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) {
+		if err != nil && !errors.Is(err, memory.ErrDuplicateProposal) && !errors.Is(err, memory.ErrAutoSkip) {
 			notes = append(notes, fmt.Sprintf("%s: %v", path, err))
 			continue
 		}
-		if err == nil {
+		if out.Applied {
 			proposed++
+		}
+		if out.Reason != "" {
+			notes = append(notes, fmt.Sprintf("%s: %s", path, out.Reason))
 		}
 		read, _ := readOf(path)
 		for _, id := range ids {
 			setHash(path, id, read)
 		}
-		recordCheck(s, memory.SourceStale, len(ids), err == nil)
+		recordCheck(s, memory.SourceStale, len(ids), out.Applied)
 	}
 	return proposed, notes
 }

@@ -3,7 +3,5 @@
   "migrate.err.read_observations": "cannot read the old observations: %w",
   "migrate.err.read_records": "cannot read the old records: %w",
   "migrate.err.parse_records": "failed to parse the old records: %w",
-  "migrate.err.move_failed": "failed to move %s (%s): %w",
-  "migrate.source_changed_title": "Source file changed: %s",
-  "migrate.source_changed_body": "The files this migrated memory was based on changed or disappeared after the record was made: %s. Check whether it is still right and decide whether to clean it up."
+  "migrate.err.move_failed": "failed to move %s (%s): %w"
 }

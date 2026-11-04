@@ -512,7 +512,7 @@ type Audit struct {
 	Changes     []AuditChange        `json:"changes"`
 	Conflicts   []AuditConflict      `json:"conflicts"`
 	Corrections []RepeatedCorrection `json:"corrections"`
-	Pending     int                  `json:"pending"` // 사람의 결정을 기다리는 제안
+	Pending     int                  `json:"pending"` // 대기열을 없애기 전에 남은 옛 대기 제안(proposals drain으로 정리)
 	Policy      Policy               `json:"policy"`
 	// PolicyPending names the counts still waiting for the user's decision (E2).
 	PolicyPending []string `json:"policyPending,omitempty"`

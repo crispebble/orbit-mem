@@ -132,8 +132,14 @@ func TestProposals_보기와_결정(t *testing.T) {
 	cs, s := connect(t)
 	m, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "후보", Scope: "global", Source: memory.Source{Kind: "session"}})
 	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "후보 확정", MemoryIDs: []string{m.ID}})
+	// 기본은 감사 목록이다(설계 · orbit-mem 2판 18.6). 남은 옛 대기 제안은 status=pending으로 본다.
+	var audit ProposalsOut
+	call(t, cs, "proposals", map[string]any{}, &audit)
+	if audit.Audit == nil || len(audit.Items) != 0 {
+		t.Fatalf("default = %+v", audit)
+	}
 	var list ProposalsOut
-	call(t, cs, "proposals", map[string]any{}, &list)
+	call(t, cs, "proposals", map[string]any{"status": "pending"}, &list)
 	if len(list.Items) != 1 || list.Items[0].ID != p.ID || len(list.Items[0].Memories) != 1 {
 		t.Fatalf("list = %+v", list)
 	}
