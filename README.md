@@ -45,7 +45,26 @@
 
 ## 설치
 
-단독 설치: 릴리스에서 실행 파일을 받아(아래 「릴리스」) 한 번 실행한다.
+한 줄 설치(macOS·Linux, 공개 저장소라 로그인이 필요 없다). 스크립트는 OS·CPU에 맞는 릴리스를 받아 `SHA256SUMS`로 검증한 뒤 `orbit-mem install`을 실행한다. 스크립트 자신은 홈 디렉터리에 아무것도 쓰지 않는다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/onidot-labs/orbit-mem/main/scripts/install.sh | sh
+```
+
+`curl | sh`는 내용을 보기 전에 실행되므로 먼저 읽고 싶으면 내려받아 확인한 뒤 실행한다. 특정 판은 `ORBIT_MEM_VERSION=0.13.0` 환경 변수나 `--version 0.13.0`, `install`에 넘길 인자는 `sh -s -- --no-hosts`처럼 뒤에 붙인다.
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/onidot-labs/orbit-mem/main/scripts/install.sh
+less install.sh && sh install.sh
+```
+
+업데이트는 한 줄이다. 최신 릴리스를 받아 검증하고 실행 파일을 바꾼 뒤 Claude Code·Codex 플러그인을 같은 판으로 맞춘다. 기억 DB·설정·활동 기록은 건드리지 않는다. 세션 시작 훅은 하루에 한 번 이하로 새 판을 확인해 있으면 한 줄로 알린다(끄려면 `orbit-mem config set updateCheck false`).
+
+```bash
+orbit-mem update            # --check: 새 판이 있는지만, --dry-run: 하려는 일만, --json
+```
+
+수동 설치: 릴리스에서 실행 파일을 받아(아래 「릴리스」) 한 번 실행한다.
 
 ```bash
 ./orbit-mem install            # ~/.local/bin/orbit-mem, 설정·기억 DB, 호스트 플러그인 등록(예약은 하지 않음)
@@ -72,6 +91,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | --- | --- |
 | `orbit-mem install [--bin-dir D] [--local-plugin] [--no-hosts] [--no-schedule] [--dry-run] [--json]` | `orbit-mem`을 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고, 설정(`claudePath`·`codexPath`, `--plugin-source <원본>`, `--apply-target <경로>`)과 기억 DB를 만들고, 예전 `orbit-mem`이 등록한 회고 예약이 있으면 지운 뒤(`--no-schedule`이면 건드리지 않음) 플러그인을 호스트에 등록한다(위 「설치」). 예약은 하지 않는다. 끝에 「사용자에게 확인할 것」(겹치는 기억마다 질문과 끄는 명령)을 보이고, 끄지는 않는다. `--json`은 성공이든 실패든 `{ok, error?, dryRun, binary, home, steps, askUser:[{id, question, reason, apply, blockedBy?, keep}], warnings:[{path, reason}]}` 하나를 stdout에 낸다. 종료 코드는 0 성공, 1 실패, 2 인자 오류(위 「AI 에이전트가 설치할 때」) |
 | `orbit-mem host-memory [status\|off\|on] [--host claude\|codex\|all] [--only ID,…] [--json]` | orbit-mem과 겹치는 기억 시스템(위 「겹치는 기억」). `status`(기본, 읽기만)는 켜짐, 적용되는 값과 그 출처 파일, `lockedBy`, 끄는 명령, 기억 저장소의 위치·파일 수·크기, 읽지 못한 파일(`warnings`)과 `hostMemory` 설정을 보인다. `off`는 켜진 것 중 orbit-mem이 끌 수 있는 것만 끈다. 바꾸기 전에 `<파일>.bak-orbit-mem-<날짜>`로 백업하고, 다른 키·줄과 키 순서·들여쓰기는 그대로 두며(JSON 값은 다시 들여 쓴다), 임시 파일에 쓴 뒤 바꿔 넣고, 바꾼 값과 그 전 값을 `$ORBIT_HOME/host-memory.json`에 남긴다. 안전하게 바꿀 수 없는 TOML(인라인 표 `features = { … }`)은 거절하고 건드리지 않는다. `on`은 그 기록에 있는 값, 곧 orbit-mem이 끈 값만 되돌린다(그 뒤 사람이 바꾼 값은 둔다). 기억 파일은 지우지 않는다. 사용자가 동의한 뒤에만 쓴다 |
+| `orbit-mem update [--check] [--dry-run] [--version X] [--force] [--json]` | 최신 릴리스(공개 GitHub Releases)를 받아 `SHA256SUMS`로 검증하고, 실행 파일을 원자적으로 바꾼 뒤 새 판의 `install`을 다시 실행해 호스트 플러그인을 같은 판으로 맞춘다. 같거나 낮은 판이면 아무것도 바꾸지 않는다(`--version`으로 현재보다 낮은 판을 지정하면 거절하고, 낮추려면 `--force`를 준다). `--check`는 새 판이 있는지만 알리고(종료 코드 0), `--dry-run`은 할 일만 보이고, `--json`은 `{ok, error?, current, latest, updated, binary, steps}` 하나를 stdout에 낸다. 기억 DB·설정·활동 기록은 건드리지 않는다. 설정 `updateCheck`(기본 true)가 켜져 있으면 세션 시작 훅은 캐시(`update-check.json`)만 읽어 새 판이 있으면 문맥 끝에 한 줄로 알리고, 네트워크는 기다리지 않는다. 캐시가 없거나 24시간이 지났으면 `backup auto`처럼 떼어 낸 프로세스(숨은 `update --refresh-cache`)가 하루 한 번 이하로 갱신한다(실패는 조용히 넘기고 24시간 안에는 다시 하지 않는다). 그래서 새 판 안내는 갱신 뒤 다음 세션부터 나온다. `ORBIT_MEM_BASE_URL`로 조회·내려받기 주소를 바꿀 수 있다(시험용; `install.sh`는 뜻이 달라 `ORBIT_MEM_RELEASES_URL`·`ORBIT_MEM_LATEST_URL`을 쓴다) |
 | `orbit-mem uninstall` | 예전 `orbit-mem`이 등록한 회고 예약과 호스트의 플러그인·마켓을 뺀다. 기억 DB·활동 기록·백업·로컬 플러그인 폴더는 남긴다 |
 | `orbit-mem doctor [--json]` | 실행 파일 경로·판, PATH의 `orbit-mem`, 데이터 경로·기억 수·남은 옛 대기 제안·세션 끝 회고 대기열·활동 기록 수, Claude Code의 `orbit-mem@orbit-mem` 설치·판·마켓, Codex 등록·훅 신뢰, 문제마다 고칠 명령 한 줄. `--json` 키는 아래 「doctor --json」 |
 | `orbit-mem search <질의> [--kind K]… [--all] [--stale] [-n N]` | 기억 찾기(`memory_find`와 같은 함수) |
@@ -243,10 +263,13 @@ OpenOrbit `orb doctor`가 읽는다. 키를 바꾸지 않는다.
 | `memories`, `pendingProposals`, `sessionQueue`, `activity` | 상태별 기억 수, 남은 옛 대기 제안(0.13.0부터 새로 생기지 않는다), 세션 끝 회고 대기열, 활동 기록 세션 수(`sessions`·`legacySessions`) |
 | `lastRetros`, `lastBackup` | 최근 회고, 마지막 기억 하루 사본 경로(0.6.0에서 `schedule`은 뺐다: 회고 예약은 OpenOrbit이 맡는다) |
 | `backups` | `dir`, `auto`, `keep`, `count`(기억 하루 사본 수), `last`·`lastPath`·`lastAt`, `due`, `nextAfter`, `workCopies`, `snapshots` |
+| `update` | `current`, `latest`(하루 한 번 세션 시작 훅이 남긴 캐시 `update-check.json`의 최신 판, 없으면 빈 문자열), `checkedAt`, `available`(새 판이 있는가), `enabled`(설정 `updateCheck`). doctor는 네트워크를 하지 않고 캐시만 읽는다 |
 | `claude` | `path`, `plugin`(`installed`·`missing`·`unknown`·`no-host`), `version`, `enabled`, `marketplace`(`github:<owner/repo>`·`directory:<경로>`) |
 | `codex` | `path`, `config`(읽은 `config.toml`), `marketplace`, `plugin`(`installed`·`missing`), `enabled`, `hooksTrusted` |
 | `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted`, `claude-auto-memory`(Claude Code 자체 기억이 켜짐: `autoMemoryEnabled`가 false가 아니고 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`도 없음), `codex-memories`(Codex `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true), `claude-memory-plugin`·`claude-memory-mcp`·`codex-memory-plugin`·`codex-memory-mcp`(알려진 기억 플러그인·MCP 서버가 켜짐), `host-settings-unreadable`(겹침 판정에서 읽지 못한 설정 파일), `old-proposals`(0.13.0에서 없앤 승인 대기열에 남은 옛 제안: `orbit-mem backup && orbit-mem proposals drain`). 겹치는 기억의 `fix`는 `orbit-mem host-memory off --only <id>`(Claude MCP는 `claude mcp remove …`, 관리·프로젝트 설정이 켠 것은 그 파일)이고, 사용자가 유지하기로 했으면(`hostMemory` `keep`) 문제로 세지 않는다 |
 
 ## 릴리스
 
-`scripts/release.sh`가 `dist/<버전>/`에 darwin arm64·amd64, windows amd64(빌드만) 자산(`orbit-mem-<버전>-<os>-<arch>`)과 `SHA256SUMS`를 만든다. `--publish`는 깨끗한 `origin/main` 끝에서 태그 `v<버전>`으로 GitHub Release를 올린다(노트는 `RELEASE_NOTES` 파일). 서명이 없으므로 내려받은 바이너리는 `xattr -d com.apple.quarantine orbit-mem`으로 격리 속성을 풀고 `orbit-mem install`을 실행한다.
+`scripts/release.sh`가 `dist/<버전>/`에 darwin·linux arm64·amd64, windows amd64(빌드만) 자산(`orbit-mem-<버전>-<os>-<arch>`)과 `SHA256SUMS`를 만든다. `--publish`는 깨끗한 `origin/main` 끝에서 태그 `v<버전>`으로 GitHub Release를 올린다(노트는 `RELEASE_NOTES` 파일). 서명이 없으므로 내려받은 바이너리는 `xattr -d com.apple.quarantine orbit-mem`으로 격리 속성을 풀고 `orbit-mem install`을 실행한다.
+
+릴리스 전에 `internal/version`의 `Version`, `plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`의 판이 모두 같아야 한다(`scripts/release.sh`와 `go test`가 어긋남을 잡는다). Claude Code는 플러그인의 `version`을 업데이트 판단의 기준으로 쓰므로 판을 올리지 않으면 플러그인이 갱신되지 않는다. `curl`로 받은 파일에는 macOS 격리 속성이 붙지 않지만 브라우저로 받은 파일에는 붙으니 그때는 `xattr -d com.apple.quarantine orbit-mem`을 쓴다.
