@@ -73,8 +73,12 @@ func TestAC3_상위_폴더_기억은_아래_모든_폴더와_저장소에서_보
 				t.Errorf("%s 요청: %s shown %v, want %v\n%s", name, m.Title, !want, want, text)
 			}
 		}
-		if got := strings.Contains(SessionStartInjection(s, cfg, dir).Text, rule.ID); got != want {
-			t.Errorf("%s 세션 시작: folder rule %v, want %v", name, got, want)
+		// 물려받은 규칙은 세션 시작 묶음에는 없고(S3-R6) 요청에 맞으면 회상으로 온다(S3-R7).
+		if strings.Contains(SessionStartInjection(s, cfg, dir).Text, rule.ID) {
+			t.Errorf("%s 세션 시작: folder rule in the bundle", name)
+		}
+		if got := strings.Contains(PromptInjection(s, cfg, dir, "커밋 전 make check 규칙").Text, rule.ID); got != want {
+			t.Errorf("%s 요청: folder rule %v, want %v", name, got, want)
 		}
 		if got := strings.Contains(ToolInjection(s, cfg, dir, "h", "s-"+name, "mcp__atlas__write_page").Text, toolRule.ID); got != want {
 			t.Errorf("%s 도구 직전: folder tool rule %v, want %v", name, got, want)

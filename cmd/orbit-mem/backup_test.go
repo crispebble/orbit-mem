@@ -49,7 +49,7 @@ func dailyCopy(t *testing.T, h string, age time.Duration) string {
 func seedRule(t *testing.T) *memory.Store {
 	t.Helper()
 	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	return s
 }
 

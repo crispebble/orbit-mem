@@ -350,5 +350,19 @@
   "cli.place.suggest_head": "%s 아래에서 제품 %d개를 찾았다. 제안 표:",
   "cli.place.suggest_next": "config.json의 products에 넣고 틀린 줄만 고친다. 넣은 뒤 orbit-mem place --move로 갇힌 기억(product:?)을 옮긴다(회고 마무리도 옮긴다).",
   "cli.place.move_none": "옮길 product:? 기억이 없다",
-  "cli.place.moved": "- %s · %s: product:?(%s) → %s (원장 %s, 되돌리기: orbit-mem audit revert <원장 id>)"
+  "cli.place.moved": "- %s · %s: product:?(%s) → %s (원장 %s, 되돌리기: orbit-mem audit revert <원장 id>)",
+  "usage.core": "orbit-mem core --suggest [--scope user|product:<이름>] [--json] | --pin <id,…> [--quote \"사용자 말\"] [--json]   # 상시 핵심 처음 뽑기 제안, 고른 기억 승격",
+  "flag.core.suggest": "층마다 한도 안에서 늘 지킬 확정 기억을 제안한다(아무것도 바꾸지 않는다)",
+  "flag.core.scope": "볼 층: user 또는 product:<이름>(기본: user와 제품 층 모두)",
+  "flag.core.pin": "상시 핵심으로 승격할 기억 id(쉼표로 여럿)",
+  "flag.core.quote": "승격을 정한 사용자 말(사용자 말을 담은 기억에 남는다)",
+  "cli.core.layer": "%s 핵심: %d/%d자(이미 %d개, 제안 %d개, 후보 %d개)",
+  "cli.core.pinned": "  이미 핵심 %s · %s (%d자)",
+  "cli.core.pick": "- %s · %s (%d자, 점수 %d: %s)",
+  "cli.core.apply": "  적용: orbit-mem core --pin %s  (틀린 것은 빼고, 사용자 말 기억은 --quote로 사용자 말을 함께)",
+  "cli.core.why_corrections": "교정 %d",
+  "cli.core.why_violated": "어김 %d",
+  "cli.core.why_followed": "따름 %d",
+  "cli.core.why_quote": "사용자 말",
+  "cli.core.pin_ok": "승격: %s"
 }

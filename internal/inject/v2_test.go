@@ -55,8 +55,9 @@ func TestAC1_어떤_주입도_한도를_넘지_않고_제목만_목록이_없다
 		if strings.Contains(inj.Text, "제목만") {
 			t.Fatalf("brief=%v: the title-only list is back:\n%s", opts.Brief, inj.Text)
 		}
-		if inj.Omitted == 0 || !strings.Contains(inj.Text, fmt.Sprintf("%d개 더", inj.Omitted)) {
-			t.Fatalf("brief=%v: omitted=%d, the text must say how many more:\n%s", opts.Brief, inj.Omitted, inj.Text[len(inj.Text)-300:])
+		// 상시 핵심 밖 규칙은 넣지 않고 이 폴더에서 보이는 수와 먼저 찾을 곳을 알린다(S3-R6): 전역 300 + 이 앱 100.
+		if inj.Omitted != 0 || !strings.Contains(inj.Text, "확정 규칙 400개") || !strings.Contains(inj.Text, "memory_find") {
+			t.Fatalf("brief=%v: omitted=%d, find line:\n%s", opts.Brief, inj.Omitted, inj.Text)
 		}
 	}
 	cfg := config.Default()
@@ -70,6 +71,9 @@ func TestAC1_어떤_주입도_한도를_넘지_않고_제목만_목록이_없다
 func TestAC5_세션_시작에_못_들어간_확정_규칙은_요청_회상_후보다(t *testing.T) {
 	s := store(t)
 	rules := thousand(t, s)
+	if _, err := s.Pin(rules[0].ID, memory.Who{}); err != nil { // 묶음에는 상시 핵심만 든다(S3-R6)
+		t.Fatal(err)
+	}
 	bundle := SessionBundle(s, config.Default(), here, "claude", "s1")
 	byID, why, err := CandidatesFor(s, here, Options{}, bundle.MemoryIDs)
 	if err != nil {
@@ -97,7 +101,7 @@ func TestAC5_세션_시작에_못_들어간_확정_규칙은_요청_회상_후�
 		t.Fatalf("rule outside the bundle not recalled:\n%s", got.Text)
 	}
 	// 묶음 안 규칙은 다시 넣지 않는다.
-	inside := bundle.MemoryIDs[0]
+	inside := rules[0].ID
 	m, _ := s.Get(inside)
 	if got := PromptInjectionFor(s, config.Default(), here, m.Title, "claude", "s1", Options{}); slices.Contains(got.MemoryIDs, inside) {
 		t.Fatalf("rule in the bundle came again:\n%s", got.Text)
@@ -113,6 +117,9 @@ func TestAC4_세션_도중_대체된_기억은_정정으로_알리고_compact는
 	s := store(t)
 	old, _ := s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "보고는 영어로", Body: "영어로 쓴다", Topic: "보고 언어",
 		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "보고는 영어로"}})
+	if _, err := s.Pin(old.ID, memory.Who{}); err != nil { // 묶음에 드는 것은 상시 핵심이다(S3-R6). 새 판이 승격을 잇는다
+		t.Fatal(err)
+	}
 	first := SessionBundle(s, config.Default(), here, "claude", "s1")
 	if !slices.Contains(first.MemoryIDs, old.ID) {
 		t.Fatalf("bundle lacks the rule:\n%s", first.Text)
@@ -272,6 +279,9 @@ func TestNews_연속_대체는_살아_있는_끝_판으로_정정한다(t *testi
 		return memory.SaveInput{Kind: memory.KindRule, Title: title, Topic: "보고 언어", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: title}}
 	}
 	a, _ := s.Save(quote("보고는 영어로"))
+	if _, err := s.Pin(a.ID, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
 	SessionBundle(s, config.Default(), here, "claude", "A")
 	later(s, time.Minute)
 	b, _ := s.Save(quote("보고는 일본어로"))
@@ -285,7 +295,10 @@ func TestNews_연속_대체는_살아_있는_끝_판으로_정정한다(t *testi
 
 func TestSessionBundle_한도를_넘는_옛_묶음은_다시_만든다(t *testing.T) {
 	s := store(t)
-	save(t, s, memory.KindRule, "답은 존댓말", "", memory.ScopeGlobal, true)
+	r := save(t, s, memory.KindRule, "답은 존댓말", "", memory.ScopeGlobal, true)
+	if _, err := s.Pin(r.ID, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.SaveSessionBundle("claude", "old", strings.Repeat("가", 12540), []string{"m-x"}); err != nil {
 		t.Fatal(err)
 	}

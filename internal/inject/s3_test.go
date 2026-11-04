@@ -85,7 +85,7 @@ func TestAC3_제품_범위_기억은_그_제품의_폴더에서만_회상된다(
 	}
 }
 
-func TestS3_세션_시작은_user_핵심_제품_핵심_나머지_규칙_순이다(t *testing.T) {
+func TestS3_세션_시작은_user_핵심_제품_핵심_순이고_나머지_규칙은_넣지_않는다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
 	f := s3Folders(t)
@@ -110,7 +110,9 @@ func TestS3_세션_시작은_user_핵심_제품_핵심_나머지_규칙_순이�
 		return true
 	}
 	in := SessionStartInjection(s, cfg, f["시안 폴더"])
-	if !order(in.Text, userCore, deskCore, rule) || strings.Contains(in.Text, atlasCore.ID) || in.Chars > MaxSessionStartRunes {
+	// 핵심 밖 규칙은 넣지 않고 「먼저 찾는 곳」 줄이 핵심 뒤에 온다(S3-R6).
+	if !order(in.Text, userCore, deskCore) || strings.Contains(in.Text, rule.ID) || strings.Index(in.Text, "먼저 찾는 곳") < strings.Index(in.Text, deskCore.ID) ||
+		strings.Contains(in.Text, atlasCore.ID) || in.Chars > MaxSessionStartRunes {
 		t.Fatalf("시안 폴더:\n%s", in.Text)
 	}
 	// 핵심 규칙은 아래 규칙 목록에 다시 나오지 않는다.
@@ -118,11 +120,11 @@ func TestS3_세션_시작은_user_핵심_제품_핵심_나머지_규칙_순이�
 		t.Fatalf("user core twice:\n%s", in.Text)
 	}
 	in = SessionStartInjection(s, cfg, f["상위 폴더"])
-	if !order(in.Text, userCore, rule) || strings.Contains(in.Text, deskCore.ID) || strings.Contains(in.Text, atlasCore.ID) {
+	if !order(in.Text, userCore) || strings.Contains(in.Text, rule.ID) || strings.Contains(in.Text, deskCore.ID) || strings.Contains(in.Text, atlasCore.ID) {
 		t.Fatalf("여러 제품 폴더는 제품 핵심을 넣지 않는다:\n%s", in.Text)
 	}
 	in = SessionStartInjection(s, cfg, f["다른 제품"])
-	if !order(in.Text, userCore, atlasCore, rule) || strings.Contains(in.Text, deskCore.ID) {
+	if !order(in.Text, userCore, atlasCore) || strings.Contains(in.Text, rule.ID) || strings.Contains(in.Text, deskCore.ID) {
 		t.Fatalf("다른 제품:\n%s", in.Text)
 	}
 	// 승격된 기억은 그 층 이름 아래에 들어간다.

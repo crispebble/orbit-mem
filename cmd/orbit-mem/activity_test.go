@@ -91,7 +91,7 @@ func TestHook_회고_실행은_활동_기록에_남기지_않는다(t *testing.T
 // orbit-pi가 --runtime orbit-pi --launcher X로 부른 훅만 기록한다.
 func TestHook_orbit_pi_세션은_runtime_훅만_기록한다(t *testing.T) {
 	home(t)
-	seed(t).Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, seed(t), memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	t.Setenv("ORBIT_RUNTIME", "orbit-pi")
 	if out := hook(t, hookIn("R1", "/tmp", ""), "session-start", "--host", "claude"); strings.TrimSpace(out) != "" {
 		t.Fatalf("플러그인 훅의 주입: %q", out)
@@ -143,7 +143,7 @@ func TestHook_work는_아무것도_하지_않는다(t *testing.T) {
 // 끝 기준: 세션 시작 주입에 열린 작업 문맥(work.db)이 붙지 않는다.
 func TestHook_세션_시작에_작업_문맥이_없다(t *testing.T) {
 	home(t)
-	seed(t).Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, seed(t), memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	out := hook(t, hookIn("S9", "/tmp", ""), "session-start", "--host", "claude")
 	if !strings.Contains(out, "답은 존댓말") || strings.Contains(out, "work_title") || strings.Contains(out, "열린 작업") {
 		t.Fatalf("주입 %q", out)

@@ -50,9 +50,9 @@ func TestHook_세션_시작_문맥은_판_안내까지_6000자_이하다(t *test
 func TestHook_compact와_clear는_묶음을_다시_만들고_resume은_그대로다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
-	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
 	if again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"resume"}`, "hook", "session-start", "--host", "claude"); again != first {
 		t.Fatalf("resume changed the bundle:\n%s", again)
 	}

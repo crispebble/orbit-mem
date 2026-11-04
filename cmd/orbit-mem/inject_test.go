@@ -27,7 +27,7 @@ func runInject(t *testing.T, stdin string, args ...string) injected {
 func TestInject_orbit_pi에_기억_문맥을_JSON으로_준다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	r := pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	d, _ := s.Save(memory.SaveInput{Kind: "decision", Title: "atlas main 병합은 운영 배포", Body: "병합 전 확인", Source: memory.Source{Kind: "quote", Excerpt: "배포"}})
 
 	start := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "pi-1")
@@ -63,18 +63,18 @@ func containsID(ids []string, id string) bool {
 	return false
 }
 
-// Orbit Code는 확정 규칙을 짧은 꼴로 받는다. 다른 호스트의 꼴은 그대로다(기획 · Orbit Code S4).
+// Orbit Code는 짧은 꼴을 받는다. 세션 시작은 두 꼴 모두 상시 핵심과 「먼저 찾는 곳」 줄만이고(S3-R6), 짧은 꼴의 그 줄이 더 짧다.
 func TestInject_orbit_code는_규칙을_짧은_꼴로_받는다(t *testing.T) {
 	home(t)
 	s := seed(t)
 	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말을 쓰지 않는다", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	code := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-1", "--host", "orbit-code")
-	if !containsID(code.MemoryIDs, r.ID) || strings.Contains(code.Text, "반말을 쓰지 않는다") || !strings.Contains(code.Text, "memory_get") {
+	if containsID(code.MemoryIDs, r.ID) || !strings.Contains(code.Text, "먼저 찾는 곳") || !strings.Contains(code.Text, "memory_find") {
 		t.Errorf("orbit-code 묶음 = %+v", code)
 	}
 	full := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-2", "--host", "orbit-code", "--rules", "full")
 	pi := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "p-1")
-	if !strings.Contains(full.Text, "반말을 쓰지 않는다") || !strings.Contains(pi.Text, "반말을 쓰지 않는다") {
+	if !strings.Contains(full.Text, "무엇보다 먼저") || !strings.Contains(pi.Text, "무엇보다 먼저") || len(code.Text) >= len(full.Text) {
 		t.Errorf("전문 꼴 = %q / %q", full.Text, pi.Text)
 	}
 	// 짧은 꼴에서는 요청과 맞는 확정 규칙이 전문과 함께 회상된다.

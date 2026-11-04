@@ -100,9 +100,10 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 	}
 	_, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
 	now := s.Now()
-	// 세션 묶음에 든 확정 규칙(분야 규칙 빼고)은 세션 시작으로 들어간다. 짧은 꼴에서는 요청 회상도 전문을 가져올 수 있지만
-	// 규칙이 모델에 닿는 길은 세션 묶음의 한 줄이다. 길이 때문에 묶음에 못 든 규칙은 요청 회상 길로 본다.
-	sessionRule := m.Kind == memory.KindRule && m.State == memory.StateConfirmed && memory.DomainOf(m) == "" && slices.Contains(bundle, m.ID)
+	// 세션 묶음에 든 상시 핵심과 확정 규칙(inject=rules 판, 분야 규칙 빼고)은 세션 시작으로 들어간다(S3-R6).
+	// 묶음에 없는 규칙은 요청 회상 길로 본다.
+	sessionRule := m.State == memory.StateConfirmed && slices.Contains(bundle, m.ID) &&
+		(m.Pinned || m.Kind == memory.KindRule && memory.DomainOf(m) == "")
 	switch reason := why[m.ID]; {
 	case sessionRule && (reason == "" || reason == "session_rule"):
 		d.Path = "session_rules"

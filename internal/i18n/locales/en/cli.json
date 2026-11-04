@@ -350,5 +350,19 @@
   "cli.place.suggest_head": "Under %s: %d products. Suggested map:",
   "cli.place.suggest_next": "Put it into config.json products and fix the wrong lines, then run orbit-mem place --move to move the trapped product:? memories (the retrospective does too).",
   "cli.place.move_none": "No product:? memory to move",
-  "cli.place.moved": "- %s · %s: product:?(%s) → %s (ledger %s, undo: orbit-mem audit revert <ledger id>)"
+  "cli.place.moved": "- %s · %s: product:?(%s) → %s (ledger %s, undo: orbit-mem audit revert <ledger id>)",
+  "usage.core": "orbit-mem core --suggest [--scope user|product:<name>] [--json] | --pin <id,…> [--quote \"user's words\"] [--json]   # suggest the first always-on core, pin the memories kept",
+  "flag.core.suggest": "suggest, per layer, the confirmed memories to always keep within its limit (changes nothing)",
+  "flag.core.scope": "layer to look at: user or product:<name> (default: user and every product layer)",
+  "flag.core.pin": "ids of the memories to pin into the core (comma separated)",
+  "flag.core.quote": "the user's words that decided the pin (kept on memories holding the user's words)",
+  "cli.core.layer": "%s core: %d/%d chars (%d pinned, %d suggested, %d candidates)",
+  "cli.core.pinned": "  pinned %s · %s (%d chars)",
+  "cli.core.pick": "- %s · %s (%d chars, score %d: %s)",
+  "cli.core.apply": "  apply: orbit-mem core --pin %s  (drop the wrong ones; for memories holding the user's words add --quote with them)",
+  "cli.core.why_corrections": "corrected %d",
+  "cli.core.why_violated": "violated %d",
+  "cli.core.why_followed": "followed %d",
+  "cli.core.why_quote": "user's words",
+  "cli.core.pin_ok": "pinned: %s"
 }

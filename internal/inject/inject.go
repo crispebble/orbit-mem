@@ -158,10 +158,11 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	return SessionStartInjectionWith(s, cfg, scope, Options{})
 }
 
-// SessionStartInjectionWith is SessionStartInjection in the given form. The whole
-// text keeps within MaxSessionStartRunes: the decision titles, the retrospective
-// line and the closing line first, then the rules, most recently changed first, as
-// many as fit; the rest are counted in one line.
+// SessionStartInjectionWith is SessionStartInjection in the given form (S3-R6): the core layers, one
+// line on where to look first (how many confirmed rules and decisions this folder sees, memory_find
+// first), the titles of recent decisions and the retrospective line, within MaxSessionStartRunes. The
+// other memories come through the request recall, the tool recall and memory_find (S3-R7). Only
+// inject=rules, which has no request recall, fills the rest with confirmed rules as before.
 func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -233,72 +234,78 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	omittedLine := func(n int) string {
 		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
 	}
-	// 꼬리(결정 제목·회고 줄)는 핵심과 규칙 머리·생략 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도, 검토 지적 2026-11-04).
-	var tail strings.Builder // 결정 제목·회고 줄: 규칙 뒤에 붙는다
-	var tailIDs []string
-	if cfg.Inject != config.InjectRules {
-		room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(footer)
-		if len(rules) > 0 {
-			room -= runes(head) + runes(omittedLine(len(rules)))
-		}
-		retro := retroLine(s)
-		if retro != "" && runes(retro)+1 <= room {
-			room -= runes(retro) + 1
-		} else {
-			retro = ""
-		}
-		if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
-			line := "[최근 결정] "
-			for i := 0; i < len(decisions) && i < n; i++ {
-				entry := fmt.Sprintf("%s(%s)", decisions[i].Title, decisions[i].ID)
-				if i > 0 {
-					entry = " · " + entry
-				}
-				if runes(line)+runes(entry) > min(maxDecisionsRunes, room-1) {
-					break
-				}
-				line += entry
-				tailIDs = append(tailIDs, decisions[i].ID)
-			}
-			if len(tailIDs) > 0 {
-				tail.WriteString(line + "\n")
-			}
-		}
-		if retro != "" {
-			tail.WriteString(retro + "\n")
-		}
-	}
-	// 규칙 몫: 전체 한도에서 꼬리·맺음 줄·생략 줄 자리를 먼저 뺀다.
-	budget := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(tail.String()) - runes(footer) - runes(head) - runes(omittedLine(len(rules)))
-	if len(rules) > 0 {
-		var body strings.Builder
-		used := 0
-		for _, m := range rules { // 최근에 고친 규칙부터
-			entry := memory.CoreEntry(m)
-			if opts.Brief {
-				entry = fmt.Sprintf("- %s (%s)\n", briefTitle(m.Title), m.ID)
-			}
-			if n := runes(entry); used+n <= budget {
-				body.WriteString(entry)
-				used += n
-				inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-				continue
-			}
-			inj.Omitted++
-		}
-		if used > 0 || inj.Omitted > 0 {
-			b.WriteString(head)
-			b.WriteString(body.String())
-		}
-		if inj.Omitted > 0 {
-			b.WriteString(omittedLine(inj.Omitted))
-		}
-	}
 	if cfg.Inject == config.InjectRules {
+		// 요청 회상이 없는 판: 규칙이 들어올 다른 길이 없어 예전처럼 남는 칸을 확정 규칙으로 채운다(명세 2.7 예외).
+		budget := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(head) - runes(omittedLine(len(rules)))
+		if len(rules) > 0 {
+			var body strings.Builder
+			used := 0
+			for _, m := range rules { // 최근에 고친 규칙부터
+				entry := memory.CoreEntry(m)
+				if opts.Brief {
+					entry = fmt.Sprintf("- %s (%s)\n", briefTitle(m.Title), m.ID)
+				}
+				if n := runes(entry); used+n <= budget {
+					body.WriteString(entry)
+					used += n
+					inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+					continue
+				}
+				inj.Omitted++
+			}
+			if used > 0 || inj.Omitted > 0 {
+				b.WriteString(head)
+				b.WriteString(body.String())
+			}
+			if inj.Omitted > 0 {
+				b.WriteString(omittedLine(inj.Omitted))
+			}
+		}
 		return inj.done(&b)
 	}
+	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 이 폴더에서 보이는 수와 먼저 찾을 곳만 알리고, 나머지는
+	// 요청 회상·도구 직전·memory_find로 들어온다(S3-R7).
+	find := ""
+	if len(rules)+len(decisions) > 0 {
+		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개는 여기 없다. 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
+			len(rules), len(decisions))
+		if opts.Brief {
+			find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개는 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", len(rules), len(decisions))
+		}
+	}
+	// 꼬리(결정 제목·회고 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
+	var tail strings.Builder
+	room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(find) - runes(footer)
+	retro := retroLine(s)
+	if retro != "" && runes(retro)+1 <= room {
+		room -= runes(retro) + 1
+	} else {
+		retro = ""
+	}
+	if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
+		line := "[최근 결정] "
+		var ids []string
+		for i := 0; i < len(decisions) && i < n; i++ {
+			entry := fmt.Sprintf("%s(%s)", decisions[i].Title, decisions[i].ID)
+			if i > 0 {
+				entry = " · " + entry
+			}
+			if runes(line)+runes(entry) > min(maxDecisionsRunes, room-1) {
+				break
+			}
+			line += entry
+			ids = append(ids, decisions[i].ID)
+		}
+		if len(ids) > 0 {
+			tail.WriteString(line + "\n")
+			inj.MemoryIDs = append(inj.MemoryIDs, ids...)
+		}
+	}
+	if retro != "" {
+		tail.WriteString(retro + "\n")
+	}
+	b.WriteString(find)
 	b.WriteString(tail.String())
-	inj.MemoryIDs = append(inj.MemoryIDs, tailIDs...)
 	if b.Len() > 0 {
 		b.WriteString(footer)
 	}

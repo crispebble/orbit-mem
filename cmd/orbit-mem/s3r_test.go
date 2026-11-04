@@ -142,3 +142,53 @@ func TestHook_기준_폴더는_세션을_시작한_폴더다(t *testing.T) {
 		t.Fatal("start folder memory missing")
 	}
 }
+
+// pinSave saves a rule and pins it: the session start carries only the core (S3-R6).
+func pinSave(t *testing.T, s *memory.Store, in memory.SaveInput) memory.Memory {
+	t.Helper()
+	m, err := s.Save(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ = s.Get(m.ID)
+	return m
+}
+
+// 처음 핵심 뽑기(S3-18): core --suggest는 제안만 내고, core --pin이 승격 경로로 적용한다.
+func TestCore_suggest는_제안만_내고_pin이_적용한다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	a, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	b, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "커밋 경로 명시", Topic: "커밋", Source: memory.Source{Kind: "quote", Excerpt: "경로 명시"}})
+	s.RecordCorrection(memory.CorrectionInput{Quote: "존댓말", TargetKind: memory.TargetKindMemory, Target: a.ID})
+	out, errOut, code := run(t, "", "core", "--suggest", "--json")
+	var got struct {
+		Layers []memory.CoreSuggestion `json:"layers"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || len(got.Layers) != 1 || len(got.Layers[0].Picks) != 2 || got.Layers[0].Picks[0].ID != a.ID {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	if c, _ := s.Core(memory.ScopeGlobal); len(c) != 0 {
+		t.Fatal("suggest pinned")
+	}
+	if out, _, code := run(t, "", "core", "--suggest"); code != 0 || !strings.Contains(out, a.ID) || !strings.Contains(out, "core --pin "+a.ID+","+b.ID) {
+		t.Fatalf("text %d %s", code, out)
+	}
+	if out, errOut, code := run(t, "", "core", "--pin", a.ID+","+b.ID, "--quote", "이 둘은 늘 지켜"); code != 0 {
+		t.Fatalf("pin %d %s %s", code, out, errOut)
+	}
+	if c, _ := s.Core(memory.ScopeGlobal); len(c) != 2 {
+		t.Fatalf("core %d", len(c))
+	}
+	// 한도를 넘는 승격은 거절된다.
+	big, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "큰 규칙", Body: strings.Repeat("가", 2990), Source: memory.Source{Kind: "quote", Excerpt: "x"}})
+	if out, _, code := run(t, "", "core", "--pin", big.ID); code == 0 {
+		t.Fatalf("over the limit pinned: %d %s", code, out)
+	}
+	if got, _ := s.Get(big.ID); got.Pinned {
+		t.Fatal("big rule pinned")
+	}
+}
