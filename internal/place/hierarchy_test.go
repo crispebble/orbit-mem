@@ -81,7 +81,7 @@ func TestNarrow_여러_제품_폴더에서_이름이_하나면_그_제품(t *tes
 		"아무 제품도 아닌 이야기":            "",
 		"출력 format을 바꾼다":           "",
 		"forma 단추 크기":              "forma",
-		"atlas.example.com 주소":      "atlas",
+		"atlas.example.com 주소":     "atlas",
 	} {
 		if got := p.Narrow(text); got != want {
 			t.Errorf("Narrow(%q) = %q, want %q", text, got, want)
