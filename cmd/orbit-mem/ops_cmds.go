@@ -156,8 +156,30 @@ func cmdInstall(a *app, args []string) error {
 	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
 	noSchedule := fs.Bool("no-schedule", false, i18n.T("flag.install.no_schedule"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
+	asJSON := fs.Bool("json", false, i18n.T("flag.install.json"))
 	if _, err := parse(fs, args); err != nil {
 		return err
+	}
+	out := a.stdout
+	if *asJSON { // 사람이 읽는 진행 줄은 stderr로, stdout에는 결과 JSON 하나만 낸다
+		a.stdout = a.stderr
+		defer func() { a.stdout = out }()
+	}
+	var steps []string
+	// finish ends a successful install with the questions for the user (설계 · orbit-mem 2판 17.4).
+	// It never turns anything off: the user decides.
+	finish := func(dst string) error {
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		asks := askUsers(overlapsToAsk(cfg))
+		if !*asJSON {
+			a.printAskUser(asks)
+			return nil
+		}
+		a.stdout = out
+		return a.json(installResult{DryRun: *dry, Binary: dst, Home: paths().Home, Steps: steps, AskUser: asks})
 	}
 	p := paths()
 	h := install.FindHosts()
@@ -168,7 +190,7 @@ func cmdInstall(a *app, args []string) error {
 		claudeSource = dir
 	}
 	needLocal := !*noHosts && (h.Codex != "" || (*localPlugin && h.Claude != ""))
-	steps := []string{
+	steps = []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
 		i18n.T("cli.install.step_home", p.Home),
 	}
@@ -196,7 +218,7 @@ func cmdInstall(a *app, args []string) error {
 		for _, s := range steps {
 			fmt.Fprintln(a.stdout, "- "+s)
 		}
-		return nil
+		return finish(dst)
 	}
 	copied, err := install.CopyBinary(selfPath(), dst)
 	if err != nil {
@@ -253,13 +275,23 @@ func cmdInstall(a *app, args []string) error {
 	if *noHosts {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
-		return nil
+		return finish(dst)
 	}
 	if err := a.registerHosts(h, needLocal, dir, claudeSource); err != nil {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
-	return nil
+	return finish(dst)
+}
+
+// installResult is what install --json prints (설계 · orbit-mem 2판 17.4): the steps, and the
+// questions the agent puts to the user as they are.
+type installResult struct {
+	DryRun  bool      `json:"dryRun"`
+	Binary  string    `json:"binary"`
+	Home    string    `json:"home"`
+	Steps   []string  `json:"steps"`
+	AskUser []askUser `json:"askUser"`
 }
 
 // registerHosts builds the local plugin folder when a host needs it and registers the plugin
@@ -495,12 +527,16 @@ func cmdDoctor(a *app, args []string) error {
 			add("codex-hooks-untrusted", i18n.T("cli.doctor.fix.codex_hooks"))
 		}
 	}
-	// 기억은 orbit-mem 하나만 쓴다(설계 · orbit-mem 2판 9절).
-	if path, on := claudeAutoMemory(); on {
-		add("claude-auto-memory", i18n.T("cli.doctor.fix.claude_auto_memory", path), path)
-	}
-	if codexMemories(install.CodexConfigPath()) {
-		add("codex-memories", i18n.T("cli.doctor.fix.codex_memories", install.CodexConfigPath()), install.CodexConfigPath())
+	// 기억은 orbit-mem 하나만 쓴다(설계 · orbit-mem 2판 9절·17절). 사용자가 유지하기로 했으면(hostMemory keep) 문제로 세지 않는다.
+	for _, o := range overlapsToAsk(cfg) {
+		switch {
+		case o.ID == overlapClaude:
+			add("claude-auto-memory", i18n.T("cli.doctor.fix.claude_auto_memory", o.Off, o.Settings), o.Settings)
+		case o.ID == overlapCodex:
+			add("codex-memories", i18n.T("cli.doctor.fix.codex_memories", o.Off, o.Settings), o.Settings)
+		default:
+			add("claude-memory-plugin", o.Off, strings.TrimPrefix(o.ID, overlapPluginPrefix))
+		}
 	}
 	if a.wantJSON(*asJSON) {
 		return a.json(rep)

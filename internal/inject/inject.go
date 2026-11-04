@@ -27,8 +27,8 @@ const (
 	MaxHookRunes         = 9000
 	MaxSessionStartRunes = 6000
 	// sessionNoteRunes is kept free for the lines a hook adds after the bundle (the
-	// plugin version note).
-	sessionNoteRunes = 200
+	// plugin version note and the overlapping memory note, 17절).
+	sessionNoteRunes = 600
 	// maxDecisionsRunes bounds the line of recent decision titles.
 	maxDecisionsRunes = 1000
 	// MaxToolRunes and MaxToolMemories bound what a tool call brings (6절).

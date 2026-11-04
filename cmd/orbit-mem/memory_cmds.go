@@ -183,7 +183,7 @@ func cmdHook(a *app, args []string) error {
 		if *recordOnly {
 			done <- ""
 		} else {
-			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion)
+			memoryHook(a, s, done, pos[0], *host, in, p.Scope, cfg, *pluginVersion, who)
 		}
 		if pos[0] != "pre-tool" { // 도구 호출은 활동 기록이 아니다
 			recordActivity(s, pos[0], *host, in, p, who, at)
@@ -227,6 +227,12 @@ type hookCaller struct {
 	runtime  bool
 }
 
+// askable says whether a person is in the session to answer a question: their own session,
+// or one orbit-pi started for Studio or Telegram (not a workflow, not an unknown launcher).
+func (c hookCaller) askable() bool {
+	return c.launcher == "human" || c.launcher == "studio" || c.launcher == "telegram"
+}
+
 // launcherOf is the activity log's launcher: human for a person's own session; for
 // orbit-pi the launcher it names (studio·telegram·workflow…), else orbit-pi.
 func launcherOf(runtime, launcher string) hookCaller {
@@ -256,7 +262,7 @@ func recordActivity(s *memory.Store, which, host string, in hookInput, p project
 }
 
 // memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config, pluginVersion string) {
+func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, scope string, cfg config.Config, pluginVersion string, who hookCaller) {
 	if which == "session-end" {
 		done <- ""
 		return
@@ -269,7 +275,11 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 			inject.ResetSession(s, host, in.SessionID)
 		}
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
-		done <- inject.HookOutput("SessionStart", withVersionNote(inj.Text, pluginVersion))
+		text := withVersionNote(inj.Text, pluginVersion)
+		if who.askable() {
+			text = withHostMemoryNote(text, cfg)
+		}
+		done <- inject.HookOutput("SessionStart", text)
 	case "pre-tool":
 		kind = memory.EventInjectTool
 		inj = inject.ToolInjection(s, cfg, scope, host, in.SessionID, in.ToolName)
@@ -577,6 +587,8 @@ func cmdConfig(a *app, args []string) error {
 		cfg.SessionRetro = b
 	case "sessionRetroModel":
 		cfg.SessionRetroModel = val
+	case "hostMemory":
+		cfg.HostMemory = val
 	case "retiredNames":
 		cfg.RetiredNames = nil
 		for _, n := range strings.Split(val, ",") {
@@ -595,7 +607,7 @@ func cmdConfig(a *app, args []string) error {
 			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·hostMemory")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

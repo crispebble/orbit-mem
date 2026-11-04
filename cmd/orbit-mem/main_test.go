@@ -27,6 +27,9 @@ func home(t *testing.T) string {
 	h := t.TempDir()
 	t.Setenv("ORBIT_HOME", h)
 	t.Setenv("ORBIT_LANG", "") // 이 PC의 언어 설정과 무관하게 기본(영어)으로 돈다
+	// 이 PC의 Claude Code·Codex 설정(호스트 자체 기억 판정)과 무관하게 돈다. HOME은 두어 go build 캐시를 쓴다.
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(h, "no-claude"))
+	t.Setenv("CODEX_HOME", filepath.Join(h, "no-codex"))
 	return h
 }
 

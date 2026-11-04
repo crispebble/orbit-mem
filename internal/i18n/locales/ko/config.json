@@ -9,5 +9,6 @@
   "config.err.recall_chars": "recallChars는 100-%d입니다: %d",
   "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
   "config.err.retro_host": "retroHost는 claude 또는 codex입니다: %q",
-  "config.err.retro_hour": "retroHour는 0-23입니다: %d"
+  "config.err.retro_hour": "retroHour는 0-23입니다: %d",
+  "config.err.host_memory": "hostMemory는 ask 또는 keep입니다: %q"
 }

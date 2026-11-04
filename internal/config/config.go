@@ -62,7 +62,17 @@ type Config struct {
 	ConfirmSeenDays          int `json:"confirmSeenDays"`          // ① 서로 다른 날 다시 나온 날 수(지금 규칙 2)
 	ConfirmFollowedVerified  int `json:"confirmFollowedVerified"`  // ② 회상돼 따랐고 검증 통과·교정 없는 세션 수
 	CorrectionRepeatSessions int `json:"correctionRepeatSessions"` // 같은 대상 교정이 나온 세션 수가 이 이상이면 표시
+
+	// 겹치는 기억(설계 · orbit-mem 2판 17절): ask(기본, 비어 있어도 같음)면 install·세션 시작 훅이 사용자에게 끌지 묻게 하고,
+	// keep이면 사용자가 유지하기로 정한 것이라 더 묻지 않는다.
+	HostMemory string `json:"hostMemory,omitempty"`
 }
+
+// HostMemory values.
+const (
+	HostMemoryAsk  = "ask"
+	HostMemoryKeep = "keep"
+)
 
 // maxRecallChars keeps the per-request context under the hosts' hook context
 // limit (about 10,000 characters in Claude Code).
@@ -104,6 +114,9 @@ func (c Config) Validate() error {
 	}
 	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
 		return i18n.Errorf("config.err.legacy")
+	}
+	if c.HostMemory != "" && c.HostMemory != HostMemoryAsk && c.HostMemory != HostMemoryKeep {
+		return i18n.Errorf("config.err.host_memory", c.HostMemory)
 	}
 	for _, n := range []int{c.ConfirmSeenDays, c.ConfirmFollowedVerified, c.CorrectionRepeatSessions} {
 		if n < 1 || n > 30 {
