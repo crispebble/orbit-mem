@@ -77,7 +77,7 @@ func TestProposals_터미널에서_승인(t *testing.T) {
 	m, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "후보", Source: memory.Source{Kind: "session"}})
 	p, _ := s.Propose(memory.ProposalInput{Kind: "confirm", Title: "후보 확정", MemoryIDs: []string{m.ID}})
 	out, _, _ := run(t, "", "proposals")
-	if !strings.Contains(out, p.ID) || !strings.Contains(out, "1 waiting") {
+	if !strings.Contains(out, p.ID) || !strings.Contains(out, "1 pending") || !strings.Contains(out, "proposals drain") {
 		t.Fatalf("list: %s", out)
 	}
 	out, errOut, code := run(t, "", "proposals", "approve", p.ID, "--title", "고친 후보")
@@ -353,7 +353,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.12.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.13.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -363,7 +363,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.12.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.13.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
@@ -394,5 +394,44 @@ func TestLedger_판정에_든_작업_지표를_보여_준다(t *testing.T) {
 	out, _, code := run(t, "", "ledger")
 	if code != 0 || !strings.Contains(out, "Works: before 2 (trouble 3 · first-try verified 1/4) → after 1 (trouble 0 · 2/2)") {
 		t.Fatalf("ledger: %s", out)
+	}
+}
+
+// 설계 · orbit-mem 2판 18.5(Q-8): 쌓인 대기 제안을 닫는다. --dry-run은 사본에서만 돌려 실제 DB를 바꾸지 않는다.
+func TestProposals_drain은_대기를_닫고_미리보기는_바꾸지_않는다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	a, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "가", Source: memory.Source{Kind: "session"}})
+	b, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "나", Source: memory.Source{Kind: "session"}})
+	confirm, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "가 확정", MemoryIDs: []string{a.ID}})
+	link, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalLink, Title: "잇기", MemoryIDs: []string{a.ID, b.ID}, Payload: memory.Payload{Note: "basis: 같은 결정"}})
+
+	out, errOut, code := run(t, "", "proposals", "drain", "--dry-run")
+	if code != 0 || !strings.Contains(out, "preview") || !strings.Contains(out, link.ID) {
+		t.Fatalf("dry-run: %d %s %s", code, out, errOut)
+	}
+	if n := s.PendingCount(); n != 2 {
+		t.Fatalf("미리 보기가 실제 DB를 바꿨습니다: 대기 %d", n)
+	}
+
+	out, errOut, code = run(t, "", "proposals", "drain", "--json")
+	var v struct {
+		DryRun bool               `json:"dryRun"`
+		Result memory.DrainResult `json:"result"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &v) != nil || v.DryRun || v.Result.Applied != 1 || v.Result.Dropped != 1 {
+		t.Fatalf("drain: %d %s %s", code, out, errOut)
+	}
+	if n := s.PendingCount(); n != 0 {
+		t.Fatalf("대기 %d", n)
+	}
+	if p, _ := s.GetProposal(confirm.ID); p.Status != memory.StatusDropped {
+		t.Fatalf("confirm %+v", p)
+	}
+	if p, _ := s.GetProposal(link.ID); p.Status != memory.StatusSettled {
+		t.Fatalf("link %+v", p)
+	}
+	if got, _ := s.Get(a.ID); got.State != memory.StateCandidate || len(got.Links) != 1 {
+		t.Fatalf("a %+v", got)
 	}
 }

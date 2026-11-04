@@ -261,8 +261,9 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 
 func runes(s string) int { return utf8.RuneCountInString(s) }
 
-// retroLine says whether a recent retrospective left results, how many proposals wait
-// and how many harmful automatic changes were undone lately.
+// retroLine says whether a recent retrospective left results and how many
+// harmful automatic changes were undone lately. Nothing waits for the person,
+// so it does not count proposals (설계 · orbit-mem 2판 18.6).
 func retroLine(s *memory.Store) string {
 	var parts []string
 	var period, journal string
@@ -274,9 +275,6 @@ func retroLine(s *memory.Store) string {
 			p += " 일지 " + journal
 		}
 		parts = append(parts, p+")")
-	}
-	if n := s.PendingCount(); n > 0 {
-		parts = append(parts, fmt.Sprintf("제안 %d건 대기 — \"제안 보여줘\"로 확인", n))
 	}
 	// 효과 원장이 해로움으로 판정해 스스로 되돌린 자동 변경을 알린다(A2).
 	if n := s.RecentAutoReverts(since); n > 0 {

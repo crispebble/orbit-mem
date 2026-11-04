@@ -163,9 +163,17 @@ func TestMigrate_상태와_종류를_설계표대로_옮긴다(t *testing.T) {
 	if got["a"].CreatedAt != 1792205709405 {
 		t.Errorf("created time not kept: %d", got["a"].CreatedAt)
 	}
-	pending, _ := s.Proposals(memory.StatusPending)
-	if len(pending) != 1 || pending[0].Kind != memory.ProposalStale || pending[0].MemoryIDs[0] != got["h"].ID {
-		t.Errorf("stale proposals = %+v", pending)
+	// 근거 파일이 바뀐 기억은 대기 제안 없이 출처 해시를 비워 두고, 하루 회고가 다시 판정한다(설계 · orbit-mem 2판 18.3).
+	if pending, _ := s.Proposals(memory.StatusPending); len(pending) != 0 {
+		t.Errorf("pending = %+v", pending)
+	}
+	if rep.ToJudge != 1 {
+		t.Errorf("to judge = %d", rep.ToJudge)
+	}
+	for _, src := range got["h"].Sources {
+		if src.Kind == "file" && src.Hash != "" {
+			t.Errorf("changed file source must have no hash: %+v", src)
+		}
 	}
 	if rep.FilesChanged != 1 || rep.FilesSame != 2 {
 		t.Errorf("file report = %+v", rep)

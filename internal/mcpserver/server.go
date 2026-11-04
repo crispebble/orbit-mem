@@ -60,7 +60,8 @@ const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기�
 사용자의 새 말은 같은 주제의 옛 사용자 말을 userQuote 없이 대체한다. 사용자가 「이번엔」「이번 주만」처럼 임시라고 밝힌 말은 retention volatile로 저장하고 대체하지 않는다. 새 말이 옛 결정을 바꾸는 것인지 그때만 하는 말인지 애매하면 저장하기 전에 사용자에게 묻는다. AI가 배운 것은 사용자 말을 대체하지 못하고 어긋남으로 남는다.
 어떤 도구를 부를 때 꼭 떠올려야 하는 규칙(예: 문서 발행 위치)은 tools에 그 도구 이름(mcp__atlas__write_page)이나 접두(mcp__atlas__*)를 단다. 그 도구를 부르기 직전에 들어간다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자 말을 담은 기억(출처 quote)은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
-proposals는 감사·교정용이다: status=audit이면 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정을 보여 준다. 사용자가 "제안 보여줘"·"감사 목록 보여줘"라고 하면 보여 주고, 사용자의 답대로 proposal_decide(approve·reject·revert·dismiss)를 부른다.
+사람 승인 대기열은 없다. 자동화의 정리·고치기는 바로 적용되고 원장에 남는다. 사용자 말을 담은 기억을 바꿔야 하면 일하는 중에 사용자에게 직접 묻고, 그 말을 userQuote로 준다.
+proposals는 감사·교정용이다: 기본(status=audit)으로 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정을 보여 준다. 사용자가 "감사 목록 보여줘"·"자동으로 바뀐 것 보여줘"라고 할 때만 보여 주고, 사용자의 답대로 proposal_decide(revert·dismiss)를 부른다.
 활동 기록: 이 프로젝트에서 언제·어느 호스트가 무엇을 했는지(이전 세션, 이어 할 일의 실마리)가 필요하면 activity_find로 찾는다. 세션 훅이 남긴 기록과 옛 작업 기록을 함께 최신순으로 준다.`
 
 // New builds the server over the store.
@@ -94,11 +95,11 @@ func New(s *memory.Store, o Options) *mcp.Server {
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "감사·교정용 목록. status=audit이면 감사 목록(최근 자동 확정·자동 정리와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 사용자 규칙과 어긋나는 후보, 기준을 넘은 반복 교정·하네스 개선 후보)을, 기본(pending)은 사람의 결정을 기다리는 제안(고치기, 재분류, 파일 반영 diff, 방향, 사용자 말을 담은 기억에 닿는 정리)을 대상 기억과 함께 보여 준다. 사람은 틀린 것만 고치거나 되돌린다.", Annotations: readHints()},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposals", Description: "감사·교정용 목록. 기본(status=audit)은 감사 목록(최근 자동 확정·자동 정리·고치기와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 사용자 규칙과 어긋나는 후보, 기준을 넘은 반복 교정·하네스 개선 후보)이다. 사람 승인 대기열은 없다: 사람은 틀린 것만 되돌린다. status=pending은 대기열을 없애기 전에 남은 옛 제안을 대상 기억과 함께 보여 준다(orbit-mem proposals drain으로 정리)", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "제안·감사 항목을 결정한다. approve·reject: 대기 제안을 승인·거절(title·body를 주면 고쳐서 승인, 되돌리기·파일 반영·잇기·태그는 고쳐서 승인할 수 없다). revert: 감사 목록의 자동 변경(proposalId나 ledgerId)을 되돌려 전 판으로(자동 확정은 후보로). dismiss: 어긋남 표시(f-…)나 반복 교정(correction:…)을 확인함으로 닫는다. ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영은 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
+	mcp.AddTool(srv, &mcp.Tool{Name: "proposal_decide", Description: "감사 항목을 결정한다. revert: 감사 목록의 자동 변경(proposalId나 ledgerId)을 되돌려 전 판으로(자동 확정은 후보로, 같은 자동 변경은 다시 하지 않는다). dismiss: 어긋남 표시(f-…)나 반복 교정(correction:…)을 확인함으로 닫는다. approve·reject는 남은 옛 대기 제안에만 쓴다(title·body를 주면 고쳐서 승인, 되돌리기·파일 반영·잇기·태그는 고쳐서 승인할 수 없다). ids로 여럿을 같은 답으로 한 번에 결정하며, 실패한 것은 이유와 함께 돌려주고 나머지는 결정한다. 파일 반영·되돌리기는 파일만 바꾸며 커밋하지 않는다. 사용자의 결정을 받은 뒤에만 부른다.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
@@ -582,7 +583,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 
 // ProposalsIn is proposals' input.
 type ProposalsIn struct {
-	Status string `json:"status,omitempty" jsonschema:"pending(기본)·approved·rejected·auto(자동 변경)·all·audit(감사 목록)"`
+	Status string `json:"status,omitempty" jsonschema:"audit(기본, 감사 목록)·auto(자동 변경)·pending(남은 옛 대기)·approved·rejected·settled·dropped·all"`
 	Days   int    `json:"days,omitempty" jsonschema:"audit: 자동 변경을 볼 날 수(기본 14)"`
 }
 
@@ -601,11 +602,9 @@ type ProposalsOut struct {
 func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in ProposalsIn) (*mcp.CallToolResult, ProposalsOut, error) {
 	status := in.Status
 	switch status {
-	case "":
-		status = memory.StatusPending
 	case "all":
 		status = ""
-	case "audit":
+	case "", "audit": // 기본은 감사 목록: 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6)
 		a, err := h.s.Audit(memory.AuditFilter{Days: in.Days})
 		if err != nil {
 			r, _ := toolError(err)

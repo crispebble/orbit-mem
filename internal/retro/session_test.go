@@ -322,20 +322,25 @@ func TestWeekly_정리_재료와_교훈_제출(t *testing.T) {
 	if t.Failed() {
 		t.Fatalf("material:\n%s", text)
 	}
-	pending, _ := e.s.Proposals(memory.StatusPending)
-	kinds := map[string]int{}
-	for _, p := range pending {
-		kinds[p.Kind]++
+	// 대기 제안은 없다(설계 · orbit-mem 2판 18.3): 고치기·잇기는 승인 없이 적용되고 원장에 남는다. 사람이 승인한 변경의
+	// 되돌리기는 자동화가 하지 않고 회고 결과에 까닭이 남는다.
+	if pending, _ := e.s.Proposals(memory.StatusPending); len(pending) != 0 {
+		t.Fatalf("pending = %+v (%s)", pending, report)
 	}
-	if kinds["edit"] != 1 || kinds["revert"] != 1 {
-		t.Fatalf("proposals = %v (%s)", kinds, report)
+	if edits := autoOf(t, e, memory.ProposalEdit); len(edits) != 1 {
+		t.Fatalf("auto edit = %+v (%s)", edits, report)
 	}
-	// 잇기는 승인 없이 적용되고 원장에 남는다(A2).
+	if got, _ := e.s.Get(a.ID); !strings.HasPrefix(got.Scope, "project:") {
+		t.Fatalf("범위 좁히기가 적용되지 않았습니다: %+v", got)
+	}
+	if !strings.Contains(report, "되돌리기: ") || !strings.Contains(report, dr.LedgerID) {
+		t.Fatalf("되돌리기 까닭이 없습니다: %s", report)
+	}
 	links := autoOf(t, e, memory.ProposalLink)
 	if len(links) != 1 {
 		t.Fatalf("auto link = %+v (%s)", links, report)
 	}
-	for _, p := range append(pending, links...) {
+	for _, p := range links {
 		if p.Kind == "link" && (p.Payload.Note != "앞뒤 절차: 같은 배포 절차의 앞뒤" || len(p.MemoryIDs) != 2) {
 			t.Errorf("link 제안: %+v", p)
 		}

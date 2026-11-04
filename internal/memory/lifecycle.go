@@ -1,7 +1,8 @@
 package memory
 
 // 보존 등급·재검토일·주제(기획 · Orbit Code K15). 휘발 기억은 정한 날이 지나면 회상에서 빠지고,
-// 재검토일이 지난 기억은 낡음 후보가 되며, 같은 범위·주제의 여러 판은 최신 하나만 회상한다.
+// 재검토일이 지난 기억은 회상에 「재검토일 지남」으로 표시되며, 같은 범위·주제의 여러 판은 최신 하나만 회상한다.
+// 오래 쓰지 않은 후보는 낡음이 된다(설계 · orbit-mem 2판 18.4).
 
 import (
 	"errors"
@@ -165,14 +166,16 @@ func (s *Store) TopicHeads() (TopicHeads, error) {
 
 // ReviewResult counts what ReviewDue did.
 type ReviewResult struct {
-	Expired  int `json:"expired"`  // 날이 지난 휘발 기억을 낡음으로 바꿈
-	Proposed int `json:"proposed"` // 사람에게 낡음 정리를 물음(재검토일 지남, 사용자 말을 담은 휘발 기억)
+	Expired int `json:"expired"` // 날이 지난 휘발 기억을 낡음으로 바꿈
+	Held    int `json:"held"`    // 날이 지났지만 사용자 말을 담아 그대로 둠(회상에서는 이미 빠진다)
 }
 
 // ReviewDue settles the lifecycle: an expired volatile memory is marked stale
-// as an automatic change (in the ledger; one holding the user's words waits
-// for the person), and a memory past its review date gets one pending stale
-// proposal. Neither is proposed again once pending or rejected.
+// as an automatic change (in the ledger). One holding the user's words stays
+// as it is: recall already leaves it out. A memory past its review date gets
+// no proposal; recall marks it 「재검토일 지남」 and the AI checks it with the
+// user while working (설계 · orbit-mem 2판 18.3). Old candidates go stale by
+// ExpireCandidates.
 func (s *Store) ReviewDue() (ReviewResult, error) {
 	var res ReviewResult
 	live, err := s.List(StateCandidate, StateConfirmed)
@@ -182,32 +185,96 @@ func (s *Store) ReviewDue() (ReviewResult, error) {
 	now := s.Now()
 	var errs []error
 	for _, m := range live {
-		switch m.Freshness(now) {
-		case FreshExpired:
-			out, err := s.SubmitChange(ProposalInput{Kind: ProposalStale, Title: "휘발 기억의 날이 지남: " + m.Title,
-				Body: fmt.Sprintf("휘발 기억(%s)이 %s에 끝났습니다.", m.ID, Day(time.UnixMilli(m.ExpiresAt))), MemoryIDs: []string{m.ID}},
-				Who{Actor: ActorAutomation})
-			switch {
-			case err == nil && out.Applied:
-				res.Expired++
-			case err == nil:
-				res.Proposed++
-			case !errors.Is(err, ErrDuplicateProposal) && !errors.Is(err, ErrAutoSkip):
-				errs = append(errs, err)
-			}
-		case FreshReviewDue:
-			_, err := s.Propose(ProposalInput{Kind: ProposalStale, Title: "재검토일이 지남: " + m.Title,
-				Body: fmt.Sprintf("기억(%s)의 재검토일 %s이 지났습니다. 아직 맞으면 거절(또는 memory_update action=reviewed)하고, 틀리면 승인해 낡음으로 정리합니다.",
-					m.ID, Day(time.UnixMilli(m.ReviewAt))), MemoryIDs: []string{m.ID}})
-			switch {
-			case err == nil:
-				res.Proposed++
-			case !errors.Is(err, ErrDuplicateProposal):
-				errs = append(errs, err)
-			}
+		if m.Freshness(now) != FreshExpired {
+			continue
+		}
+		out, err := s.SubmitChange(ProposalInput{Kind: ProposalStale, Title: "휘발 기억의 날이 지남: " + m.Title,
+			Body: fmt.Sprintf("휘발 기억(%s)이 %s에 끝났습니다.", m.ID, Day(time.UnixMilli(m.ExpiresAt))), MemoryIDs: []string{m.ID}},
+			Who{Actor: ActorAutomation})
+		switch {
+		case err == nil && out.Applied:
+			res.Expired++
+		case err == nil:
+			res.Held++
+		case !errors.Is(err, ErrDuplicateProposal) && !errors.Is(err, ErrAutoSkip):
+			errs = append(errs, err)
 		}
 	}
 	return res, errors.Join(errs...)
+}
+
+// DefaultCandidateExpiryDays is how long a candidate may go unused before it
+// goes stale (설정 candidateExpiryDays).
+const DefaultCandidateExpiryDays = 28
+
+// maxExpirePerRun caps how many candidates one run marks stale, so a wrong
+// guess is a short list in the audit, not a flood.
+const maxExpirePerRun = 50
+
+// activeDays is how many days of a window of days this PC must have been used
+// for "not used" to mean something: a quarter of it, at most 7.
+func activeDays(days int) int { return max(1, min(7, days/4)) }
+
+// ExpireCandidates marks stale, as automatic changes kept in the ledger, the
+// candidates nobody used for days: not changed, not put into a session or a
+// request, not found or read, no usage verdict. A candidate holding the user's
+// words is left alone. Nothing happens while the injection log is shorter than
+// days (a new install has not had the chance to use them) or when this PC was
+// used on fewer than activeDays(days) days of that window (back from a break,
+// nothing had the chance either). At most maxExpirePerRun go stale at once.
+// 0 days turns it off; so does the caller when recall is not injected
+// (inject rules·off never puts candidates in). It returns how many went stale.
+func (s *Store) ExpireCandidates(days int) (int, error) {
+	if days <= 0 {
+		return 0, nil
+	}
+	last, _, err := s.LastUse()
+	if err != nil {
+		return 0, err
+	}
+	cutoff := s.Now().AddDate(0, 0, -days).UnixMilli()
+	var earliest int64
+	var active int
+	if err := s.db.QueryRow(`SELECT COALESCE(MIN(at),0) FROM events WHERE kind IN (?,?)`, EventInjectSessionStart, EventInjectPrompt).Scan(&earliest); err != nil {
+		return 0, err
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT day) FROM events WHERE at>=?`, cutoff).Scan(&active); err != nil {
+		return 0, err
+	}
+	if earliest == 0 || earliest > cutoff || active < activeDays(days) {
+		return 0, nil
+	}
+	cands, err := s.List(StateCandidate)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	var errs []error
+	for _, m := range cands {
+		if m.CreatedAt >= cutoff || m.UpdatedAt >= cutoff || last[m.ID] >= cutoff {
+			continue
+		}
+		if p, err := s.Protected(m.ID); err != nil || p {
+			continue
+		}
+		used := last[m.ID]
+		if used < m.UpdatedAt {
+			used = m.UpdatedAt
+		}
+		_, err := s.AutoApply(AutoInput{Kind: ProposalStale, Title: fmt.Sprintf("%d일 동안 쓰지 않은 후보: %s", days, m.Title),
+			Body:      fmt.Sprintf("후보(%s)를 %s 뒤로 넣지도 찾지도 고치지도 않았습니다. 아직 맞으면 되돌립니다(후보로 돌아오고 다시 낡음으로 하지 않습니다).", m.ID, Day(time.UnixMilli(used))),
+			MemoryIDs: []string{m.ID}, Who: Who{Actor: ActorAutomation}})
+		switch {
+		case err == nil:
+			n++
+			if n >= maxExpirePerRun {
+				return n, errors.Join(errs...)
+			}
+		case !errors.Is(err, ErrAutoSkip) && !errors.Is(err, ErrDuplicateProposal) && !errors.Is(err, ErrProtected):
+			errs = append(errs, fmt.Errorf("%s: %w", m.ID, err))
+		}
+	}
+	return n, errors.Join(errs...)
 }
 
 // Reviewed records that a memory was looked at and still holds: its review

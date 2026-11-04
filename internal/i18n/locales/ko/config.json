@@ -1,4 +1,5 @@
 {
+  "config.err.candidate_expiry": "candidateExpiryDays는 0(끔)~365일입니다: %d",
   "config.err.evidence": "confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions(1-30)를 확인해 주세요",
   "config.err.graph_tidy": "graphTidyMemories·graphTidyUntagged(0-200)·graphTidyProposals(0-20)를 확인해 주세요",
   "config.err.inject": "inject는 full|rules|off입니다: %q",

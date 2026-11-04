@@ -63,6 +63,10 @@ type Config struct {
 	ConfirmFollowedVerified  int `json:"confirmFollowedVerified"`  // ② 회상돼 따랐고 검증 통과·교정 없는 세션 수
 	CorrectionRepeatSessions int `json:"correctionRepeatSessions"` // 같은 대상 교정이 나온 세션 수가 이 이상이면 표시
 
+	// 후보 기한(설계 · orbit-mem 2판 18.4): 이 날 수 동안 넣지도 찾지도 고치지도 않은 후보는 회고 정리 단계가 낡음으로
+	// 돌린다(원장에 남아 되돌릴 수 있다). 사용자 말 출처 기억은 대상이 아니다. 0이면 끈다.
+	CandidateExpiryDays int `json:"candidateExpiryDays"`
+
 	// 겹치는 기억(설계 · orbit-mem 2판 17절): ask(기본, 비어 있어도 같음)면 install·세션 시작 훅이 사용자에게 끌지 묻게 하고,
 	// keep이면 사용자가 유지하기로 정한 것이라 더 묻지 않는다.
 	HostMemory string `json:"hostMemory,omitempty"`
@@ -83,7 +87,7 @@ func Default() Config {
 	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, Hosts: []string{"claude", "codex"},
 		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
 		LegacyMemories: 30, LegacyBatches: 1,
-		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3}
+		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -117,6 +121,9 @@ func (c Config) Validate() error {
 	}
 	if c.HostMemory != "" && c.HostMemory != HostMemoryAsk && c.HostMemory != HostMemoryKeep {
 		return i18n.Errorf("config.err.host_memory", c.HostMemory)
+	}
+	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
+		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)
 	}
 	for _, n := range []int{c.ConfirmSeenDays, c.ConfirmFollowedVerified, c.CorrectionRepeatSessions} {
 		if n < 1 || n > 30 {

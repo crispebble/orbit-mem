@@ -3,7 +3,5 @@
   "migrate.err.read_observations": "옛 관측을 읽을 수 없습니다: %w",
   "migrate.err.read_records": "옛 기록을 읽을 수 없습니다: %w",
   "migrate.err.parse_records": "옛 기록 해석 실패: %w",
-  "migrate.err.move_failed": "%s(%s) 옮기기 실패: %w",
-  "migrate.source_changed_title": "출처 파일이 바뀜: %s",
-  "migrate.source_changed_body": "옮긴 기억의 근거 파일이 기록 뒤에 바뀌었거나 없어졌습니다: %s. 아직 맞는지 보고 정리할지 정해 주세요."
+  "migrate.err.move_failed": "%s(%s) 옮기기 실패: %w"
 }

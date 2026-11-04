@@ -131,8 +131,9 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 		!strings.Contains(l.Basis, x.ID) {
 		t.Fatalf("원장 %+v %v", l, err)
 	}
+	// 실험실이 도움됨으로 판정한 하네스 변경은 대기 없이 자동 변경으로 적용된다(설계 · orbit-mem 2판 18.3).
 	p0, _ := s.GetProposal(waiting[0])
-	if p0.Status != memory.StatusPending || !strings.Contains(p0.Body, "도움됨") {
+	if p0.Status != memory.StatusAuto || !strings.Contains(p0.Body, "도움됨") {
 		t.Fatalf("풀린 제안 %+v", p0)
 	}
 	s.Close()
@@ -142,8 +143,8 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 		t.Fatalf("다시 저장 code=%d %q", code, errOut)
 	}
 	s, _ = openStore()
-	if es, _ := s.Ledger(memory.LedgerFilter{Limit: 10}); len(es) != 1 {
-		t.Fatalf("원장 줄 %d", len(es))
+	if n := labLines(s); n != 1 {
+		t.Fatalf("원장 줄 %d", n)
 	}
 	s.Close()
 
@@ -167,8 +168,8 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 		}
 	}
 	s, _ = openStore()
-	if es, _ := s.Ledger(memory.LedgerFilter{Limit: 10}); len(es) != 1 {
-		t.Fatalf("거절한 기록이 원장에 남았습니다: %d", len(es))
+	if n := labLines(s); n != 1 {
+		t.Fatalf("거절한 기록이 원장에 남았습니다: %d", n)
 	}
 	if xs, _ := s.LabExperiments(0, 0); len(xs) != 1 {
 		t.Fatalf("거절한 기록이 실험으로 남았습니다: %d", len(xs))
@@ -187,7 +188,7 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 	}
 	s.Close()
 
-	// 도움됨 + 변경 폴더: 바뀐 파일마다 파일 반영 제안(대기)
+	// 도움됨 + 변경 폴더: 바뀐 파일마다 자동 변경으로 적용하고 원장에 남긴다(설계 · orbit-mem 2판 18.3)
 	z := memory.LabExperiment{ID: "x-aaaaaaaaaaaa", TaskID: x.TaskID, Status: memory.LabDone, Verdict: memory.VerdictHelped, Runs: 1,
 		Files: x.Files, CreatedAt: 5000, FinishedAt: 6000}
 	body = marshalString(t, map[string]any{"experiment": z, "ledger": map[string]any{"targets": []string{skill}, "change": "d", "basis": "b"},
@@ -199,8 +200,11 @@ func TestRetroStore_실험_저장_API(t *testing.T) {
 	}
 	s, _ = openStore()
 	np, _ := s.GetProposal(pids[0].(string))
-	if np.Status != memory.StatusPending || np.Kind != memory.ProposalApplyFile || np.Payload.Path != skill {
+	if np.Status != memory.StatusAuto || np.Kind != memory.ProposalApplyFile || np.Payload.Path != skill {
 		t.Fatalf("새 제안 %+v", np)
+	}
+	if b, _ := os.ReadFile(skill); string(b) != "원래\n새 줄\n" {
+		t.Fatalf("파일 %q", b)
 	}
 	if rs, _ := s.LabRuns(x.ID); len(rs) != 3 || rs[0].Experiment != x.ID {
 		t.Fatalf("실행 기록 %+v", rs)
@@ -246,4 +250,17 @@ func TestConfig_옛_실험_설정_키는_무시한다(t *testing.T) {
 	if _, _, code := run(t, "", "config", "set", "labRuns", "4"); code == 0 {
 		t.Fatal("labRuns는 더 이상 orbit-mem 설정이 아닙니다")
 	}
+}
+
+// labLines counts the ledger lines the harness lab wrote (the automatic file
+// changes it releases have their own lines).
+func labLines(s *memory.Store) int {
+	es, _ := s.Ledger(memory.LedgerFilter{Limit: 50})
+	n := 0
+	for _, e := range es {
+		if e.ProposalKind == memory.LedgerKindLab {
+			n++
+		}
+	}
+	return n
 }

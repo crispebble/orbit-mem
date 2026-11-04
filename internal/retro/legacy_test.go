@@ -112,7 +112,7 @@ func TestLegacy_옛_기억을_클러스터별로_판정해_제안과_사건을_�
 		t.Fatalf("재료:\n%s", text)
 	}
 
-	// 합치기·낡음은 승인 없이 적용되고 원장에 남는다(A2). 증거 없는 확정은 사용자 결정을 기다린다.
+	// 합치기·낡음은 승인 없이 적용되고 원장에 남는다(A2). 증거 없는 확정은 제안 없이 후보로 남는다(설계 · orbit-mem 2판 18.3).
 	confirms, merges, stales := pendingOf(t, e, memory.ProposalConfirm), autoOf(t, e, memory.ProposalMerge), autoOf(t, e, memory.ProposalStale)
 	if got, _ := e.s.Get(old.ID); got.State != memory.StateStale {
 		t.Errorf("낡음이 적용되지 않았습니다: %s", got.State)
@@ -120,8 +120,8 @@ func TestLegacy_옛_기억을_클러스터별로_판정해_제안과_사건을_�
 	if all, _ := e.s.Ledger(memory.LedgerFilter{}); len(all) != 2 {
 		t.Errorf("원장 %d줄(합치기·낡음 둘이어야 함)", len(all))
 	}
-	if len(confirms) != 1 || confirms[0].MemoryIDs[0] != cand.ID || !strings.HasPrefix(confirms[0].Title, "옛 기억 확정: ") || !strings.Contains(confirms[0].Body, "지금 회고 시각과 같다") {
-		t.Errorf("확정 %+v", confirms)
+	if got, _ := e.s.Get(cand.ID); len(confirms) != 0 || got.State != memory.StateCandidate {
+		t.Errorf("확정 %+v, 후보 %s", confirms, got.State)
 	}
 	if len(merges) != 1 || strings.Join(merges[0].MemoryIDs, ",") != cur.ID+","+dup.ID || merges[0].Payload.MergedBody != "git add -A 금지" || !strings.HasPrefix(merges[0].Title, "옛 기억 합치기: ") {
 		t.Errorf("합치기 %+v", merges)
@@ -172,11 +172,15 @@ func TestLegacy_받지_못한_판정과_겹치는_제안(t *testing.T) {
 		{MemoryID: other.ID, Verdict: "confirm", Reason: "지금도 그렇다"},
 	}})
 	ev := legacyEvents(t, e)
-	if len(ev) != 2 || ev[keep.ID]["verdict"] != "keep" || ev[other.ID]["proposalId"] != pre.ID {
+	// 증거 없는 확정은 제안을 만들지 않는다: 남아 있던 옛 대기 제안(pre)도 그대로 하나다.
+	if len(ev) != 2 || ev[keep.ID]["verdict"] != "keep" || ev[other.ID]["verdict"] != "confirm" || ev[other.ID]["proposalId"] != "" {
 		t.Fatalf("판정 사건 %+v (%s)", ev, report)
 	}
-	if n := len(pendingOf(t, e, memory.ProposalConfirm)); n != 1 {
-		t.Errorf("대기 중인 확정 제안은 하나여야 합니다: %d", n)
+	if p := pendingOf(t, e, memory.ProposalConfirm); len(p) != 1 || p[0].ID != pre.ID {
+		t.Errorf("대기 중인 확정 제안은 옛 것 하나여야 합니다: %+v", p)
+	}
+	if !strings.Contains(report, other.ID+": ") {
+		t.Errorf("보고에 증거 없음 까닭이 없습니다:\n%s", report)
 	}
 	for _, want := range []string{cand.ID + ": 근거(reason)", dup.ID + ": 합치기는 합칠 기억(with)과 합친 제목", old.ID + ": verdict는", "판정이 없는 옛 기억 3건"} {
 		if !strings.Contains(report, want) {
@@ -320,26 +324,23 @@ func ms0(t *testing.T, e *env) string {
 	return all[0].ID
 }
 
-// 끝 기준 2: 옛 기억 확정(증거가 없어 사람이 승인)·낡음(자동 적용)도 원장에 남고 되돌리면 옛 상태로 돌아온다.
+// 끝 기준 2: 옛 기억 낡음(자동 적용)은 원장에 남고 되돌리면 옛 상태로 돌아온다. 증거 없는 확정은 후보로 남는다
+// (설계 · orbit-mem 2판 18.3: 사람 승인 대기열은 없다).
 func TestLegacy_승인한_확정과_낡음도_되돌린다(t *testing.T) {
 	now := time.Date(2026, 10, 31, 4, 0, 0, 0, kst)
 	e, ms := legacyEnv(t, now)
 	cand, old := ms["회고는 새벽 네 시에 돈다"], ms["onidot-orbit-plugin 저장소에서 스킬을 고친다"]
 	runLegacyOnce(t, e, Submission{Legacy: []LegacyVerdictIn{
 		{MemoryID: cand.ID, Verdict: "confirm", Reason: "맞다"}, {MemoryID: old.ID, Verdict: "stale", Reason: "보관한 저장소"}}})
-	var lines []string
-	for _, p := range pendingOf(t, e, memory.ProposalConfirm) {
-		res, err := e.s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
-		if err != nil || res.LedgerID == "" {
-			t.Fatalf("승인 %+v %v", res, err)
-		}
-		lines = append(lines, res.LedgerID)
+	if p := pendingOf(t, e, memory.ProposalConfirm); len(p) != 0 {
+		t.Fatalf("대기 제안 %+v", p)
 	}
+	var lines []string
 	for _, p := range autoOf(t, e, memory.ProposalStale) {
 		lines = append(lines, p.ID)
 	}
-	if len(lines) != 2 {
-		t.Fatalf("확정 승인·자동 낡음 %v", lines)
+	if len(lines) != 1 {
+		t.Fatalf("자동 낡음 %v", lines)
 	}
 	for _, ref := range lines {
 		if _, err := e.s.RevertChange(ref, memory.Who{}, "되돌리기"); err != nil {

@@ -48,7 +48,8 @@ func TestAU6_회고는_저장_계층_규칙을_따른다(t *testing.T) {
 		t.Fatalf("스킬 교정 = %+v", all)
 	}
 
-	// 하루 회고가 사용자 인용 기억을 낡음으로 정리하려 하면 적용되지 않고 사용자 결정을 기다린다.
+	// 하루 회고가 사용자 인용 기억을 낡음으로 정리하려 하면 적용되지 않고, 대기 제안 없이 회고 결과에 까닭이 남는다
+	// (설계 · orbit-mem 2판 18.3).
 	e.r.Now = func() time.Time { return now.AddDate(0, 0, 1) }
 	e.talk(t, "2026-10-27", claudeTurn("2026-10-27", "16:00", "user", "오늘 정리"))
 	e.ai = func(id string) error {
@@ -63,10 +64,10 @@ func TestAU6_회고는_저장_계층_규칙을_따른다(t *testing.T) {
 	if got, _ := e.s.Get(rule.ID); got.State != memory.StateConfirmed || got.Version != rule.Version {
 		t.Fatalf("사용자 인용 기억이 바뀌었습니다: %+v", got)
 	}
-	if p := pendingOf(t, e, memory.ProposalStale); len(p) != 1 || p[0].MemoryIDs[0] != rule.ID {
-		t.Fatalf("사용자 결정 대기 제안 = %+v (%s)", p, report)
+	if p := pendingOf(t, e, memory.ProposalStale); len(p) != 0 {
+		t.Fatalf("대기 제안이 생겼습니다 = %+v (%s)", p, report)
 	}
-	if !strings.Contains(report, "결정을 기다리는 것 1건") {
+	if !strings.Contains(report, "적용하지 않은 것 1건") || !strings.Contains(report, "userQuote") {
 		t.Fatalf("보고: %s", report)
 	}
 	if _, err := e.s.AutoApply(memory.AutoInput{Kind: memory.ProposalStale, Title: "직접", MemoryIDs: []string{rule.ID}}); !errors.Is(err, memory.ErrProtected) {

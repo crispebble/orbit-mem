@@ -88,6 +88,12 @@
   "memory.err.version_conflict": "it was changed elsewhere first; read it again and retry",
   "memory.err.volatile_days": "%w: a volatile memory lasts 1 to %d days",
   "memory.err.work_record": "a work record needs a work id and an end time: %w",
+  "memory.reason.ask_user": "not applied: this memory holds the user's own words. Ask the user while working and send it again with the user's words that ask for it (userQuote) (%s)",
+  "memory.reason.direction": "orbit-mem does not take direction proposals; put them in the retrospective's report (summary, flags, patterns) for the user",
+  "memory.reason.harness_no_lab": "a harness change is applied by itself only after the lab judges it helped; without the lab, show the user the change and ask: %s",
+  "memory.reason.instruction_file": "an automation does not change the user's instruction files; show the user the change while working and let the user make it: %s",
+  "memory.reason.no_evidence": "no evidence to confirm it yet, so it stays a candidate: candidates are recalled, confirm themselves as evidence comes in, and go stale when unused for long",
+  "memory.reason.revert_human": "an automation does not undo a change a person made (%s); ask the user while working, and the user undoes it from the audit list if they want",
   "memory.settled.already_linked": "already linked",
   "memory.settled.already_retagged": "tags already changed",
   "memory.settled.merge_gone": "the memory to merge was already settled another way"

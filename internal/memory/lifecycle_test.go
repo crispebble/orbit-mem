@@ -147,43 +147,6 @@ func TestOpen_옛_판_DB에는_열을_더하고_사본을_남기며_옛_판이_�
 	}
 }
 
-func TestReviewDue_만료된_휘발은_자동으로_낡음_재검토일_지난_것은_낡음_제안(t *testing.T) {
-	s, c := newTestStore(t)
-	v, _ := s.Save(SaveInput{Kind: KindFact, Title: "이번 주 배포 동결", Retention: RetentionVolatile, TTLDays: 1, Source: Source{Kind: SourceSession}})
-	d, _ := s.Save(SaveInput{Kind: KindRule, Title: "릴리스는 지시가 있을 때만", Retention: RetentionDurable, ReviewAfterDays: 5,
-		Source: Source{Kind: SourceQuote, Excerpt: "릴리스는 내가 지시할게"}})
-	vq, _ := s.Save(SaveInput{Kind: KindRule, Title: "오늘만 영어로", Retention: RetentionVolatile, TTLDays: 1,
-		Source: Source{Kind: SourceQuote, Excerpt: "오늘만 영어로 답해"}})
-	c.t = c.t.Add(6 * 24 * time.Hour)
-	got, err := s.ReviewDue()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Expired != 1 || got.Proposed != 2 {
-		t.Fatalf("got %+v", got)
-	}
-	if m, _ := s.Get(v.ID); m.State != StateStale {
-		t.Fatalf("volatile state = %s", m.State)
-	}
-	// 사용자 말을 담은 기억은 자동화가 낡음으로 바꾸지 못하고 사람에게 묻는다.
-	if m, _ := s.Get(vq.ID); m.State != StateConfirmed {
-		t.Fatalf("quoted volatile state = %s", m.State)
-	}
-	pending, _ := s.Proposals(StatusPending)
-	var ids []string
-	for _, p := range pending {
-		ids = append(ids, p.MemoryIDs...)
-	}
-	if len(ids) != 2 || !contains(ids, d.ID) || !contains(ids, vq.ID) {
-		t.Fatalf("pending targets = %v", ids)
-	}
-	// 다시 돌려도 같은 제안을 또 내지 않는다.
-	again, _ := s.ReviewDue()
-	if again.Proposed != 0 || again.Expired != 0 {
-		t.Fatalf("again = %+v", again)
-	}
-}
-
 func TestReviewed는_재검토일을_다시_민다(t *testing.T) {
 	s, c := newTestStore(t)
 	d, _ := s.Save(SaveInput{Kind: KindDecision, Title: "기억 DB는 PC마다", Retention: RetentionDurable, ReviewAfterDays: 5, Source: Source{Kind: SourceSession}})

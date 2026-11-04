@@ -10,7 +10,7 @@ import (
 )
 
 // 명세 · O3-5 「스킬 제안과 승인 흐름」: 실험실 대기 제안은 대기 목록에 없고 결정할 수 없다. 같은 제안은 다시 쌓이지 않는다.
-// 실험실이 도움됨이면 대기로 올라가 승인하면 파일이 바뀌고, 아니면 사유와 함께 닫힌다.
+// 실험실이 도움됨이면 자동 변경으로 파일이 바뀌고 원장에 남으며(설계 · orbit-mem 2판 18.3), 아니면 사유와 함께 닫힌다.
 func TestLab_실험실_대기_제안(t *testing.T) {
 	s, _ := newTestStore(t)
 	dir := t.TempDir()
@@ -35,11 +35,11 @@ func TestLab_실험실_대기_제안(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := s.GetProposal(p.ID)
-	if got.Status != StatusPending || !strings.Contains(got.Body, "실험 x-1: 도움됨") {
-		t.Fatalf("올린 제안 %+v", got)
+	if got.Status != StatusAuto || got.Payload.Actor != ActorAutomation || !strings.Contains(got.Body, "실험 x-1: 도움됨") {
+		t.Fatalf("적용한 제안 %+v", got)
 	}
-	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"}); err != nil {
-		t.Fatal(err)
+	if s.PendingCount() != 0 {
+		t.Fatal("대기 제안이 생겼습니다")
 	}
 	if b, _ := os.ReadFile(path); string(b) != "새 스킬\n" {
 		t.Fatalf("파일 %q", b)

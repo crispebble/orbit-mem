@@ -414,33 +414,14 @@ func TestAutoApply_정리_변경은_원장에_남고_되돌린다(t *testing.T) 
 	if _, err := s.AutoApply(auto(AutoInput{Kind: ProposalConfirm, Title: "확정", MemoryIDs: []string{a.ID}})); !errors.Is(err, ErrNoEvidence) {
 		t.Fatalf("증거 없는 확정: %v", err)
 	}
-	// 고치기는 자동으로 하지 않는다(대기 제안).
-	if _, err := s.AutoApply(auto(AutoInput{Kind: ProposalEdit, Title: "고치기", MemoryIDs: []string{a.ID}, Payload: Payload{Title: "새 제목"}})); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("edit: %v", err)
+	// 파일 반영은 자동 종류가 아니다(실험실이 도움됨으로 판정한 하네스 변경만 따로 적용된다).
+	if _, err := s.AutoApply(auto(AutoInput{Kind: ProposalApplyFile, Title: "반영", Payload: Payload{Path: "/x/AGENTS.md", Content: "x"}})); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("apply_file: %v", err)
 	}
 	// 자동화는 사람이 승인한 변경을 되돌리지 못한다.
 	userLine := approveEdit(t, s, a.ID, "사람이 고친 가")
 	if _, err := s.RevertChange(userLine, Who{Actor: ActorAutomation}, "자동"); !errors.Is(err, ErrProtected) {
 		t.Fatalf("자동화가 사람 변경을 되돌림: %v", err)
-	}
-}
-
-// 자동화의 정리 제출: 자동 종류는 바로 적용하고, 보호된 기억이면 사용자 결정을 기다리는 제안으로 돌린다.
-func TestSubmitChange_보호된_기억이면_대기_제안으로(t *testing.T) {
-	s, _ := newTestStore(t)
-	rule := quoted(t, s, "사용자 규칙")
-	cand := candidate(t, s, "배운 것")
-	out, err := s.SubmitChange(ProposalInput{Kind: ProposalStale, Title: "낡음", MemoryIDs: []string{cand.ID}}, Who{Actor: ActorAutomation})
-	if err != nil || !out.Applied || out.LedgerID == "" {
-		t.Fatalf("auto stale: %+v %v", out, err)
-	}
-	out, err = s.SubmitChange(ProposalInput{Kind: ProposalStale, Title: "낡음", MemoryIDs: []string{rule.ID}}, Who{Actor: ActorAutomation})
-	if err != nil || out.Applied || out.Proposal.Status != StatusPending || out.Reason == "" {
-		t.Fatalf("protected stale: %+v %v", out, err)
-	}
-	out, err = s.SubmitChange(ProposalInput{Kind: ProposalEdit, Title: "고치기", MemoryIDs: []string{rule.ID}, Payload: Payload{Title: "새 제목"}}, Who{Actor: ActorAutomation})
-	if err != nil || out.Applied || out.Proposal.Status != StatusPending {
-		t.Fatalf("edit: %+v %v", out, err)
 	}
 }
 

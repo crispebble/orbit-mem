@@ -324,9 +324,12 @@ func applyLegacy(s *memory.Store, mat Material, retroID string, in []LegacyVerdi
 			out, err := s.SubmitChange(p, memory.Who{Actor: memory.ActorAutomation})
 			got := out.Proposal
 			switch {
-			case err == nil:
+			case err == nil && out.Applied:
 				proposalID = got.ID
 				proposed++
+			case err == nil:
+				// 적용하지 않았다: 증거 없는 확정은 후보로 남고, 사용자 말을 담은 기억은 그대로 둔다. 판정은 남겨 다시 묻지 않는다.
+				notes = append(notes, fmt.Sprintf("%s: %s", id, out.Reason))
 			case errors.Is(err, memory.ErrDuplicateProposal):
 				if same, ok := s.SameProposal(p); ok {
 					proposalID = same.ID
@@ -364,9 +367,9 @@ func renderLegacy(b *strings.Builder, l *Legacy) {
 	}
 	fmt.Fprintf(b, "## 옛 기억 판정 (대상 %d개 중 판정 %d개, 이번 묶음 %d개)\n\n", l.Total, l.Judged, l.size())
 	b.WriteString("옛 Knowledge·Claude 메모리에서 판정 없이 옮겨 온 기억이다. 기억마다 legacy에 판정 하나와 근거(reason) 한 줄을 낸다.\n")
-	b.WriteString("- confirm: 후보인데 지금도 맞고 다시 쓸 것(확정 제안). 이미 확정된 기억이 맞으면 keep이다.\n")
+	b.WriteString("- confirm: 후보인데 지금도 맞고 다시 쓸 것(증거가 있으면 확정되고, 없으면 후보로 남아 증거를 기다린다). 이미 확정된 기억이 맞으면 keep이다.\n")
 	b.WriteString("- merge: 「지금 있는 기억」이나 이 묶음의 다른 기억과 같은 말(with에 그 id, mergedTitle·mergedBody에 합친 내용).\n")
-	b.WriteString("- stale: 보관한 저장소·옛 제품·옛 이름만 다루거나, 지금 기억과 어긋나 더 맞지 않는 것(낡음 제안).\n")
+	b.WriteString("- stale: 보관한 저장소·옛 제품·옛 이름만 다루거나, 지금 기억과 어긋나 더 맞지 않는 것(바로 낡음, 원장에 남음).\n")
 	b.WriteString("- keep: 그대로 둔다(아직 맞는 확정 기억, 아직 판단할 수 없는 후보).\n\n")
 	for _, g := range l.Groups {
 		fmt.Fprintf(b, "### 클러스터 「%s」\n\n", g.Label)

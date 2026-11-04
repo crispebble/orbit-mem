@@ -363,15 +363,19 @@ func TestWork_제출은_작업_출처로_후보를_남기고_증거와_인용으
 		journal.State != memory.StateConfirmed || len(sourcesOf(journal, memory.SourceWork)) != 1 || journal.Sources[0].Ref != "w-sub" {
 		t.Fatalf("journal = %+v %v", journal, err)
 	}
-	// 사용자 인용 기억에 닿는 정리와 고치기는 사용자 결정을 기다린다(AU-6). 받지 않는 종류는 적고 뺀다.
+	// 사용자 인용 기억에 닿는 정리와 고치기는 적용하지 않고, 대기 제안 없이 까닭을 알린다(설계 · orbit-mem 2판 18.3).
+	// 받지 않는 종류는 적고 뺀다.
 	if got, _ := e.s.Get(protected.ID); got.State != memory.StateConfirmed || got.Version != protected.Version {
 		t.Fatalf("protected memory changed: %+v", got)
 	}
-	if p := pendingOf(t, e, memory.ProposalStale); len(p) != 1 || p[0].MemoryIDs[0] != protected.ID {
+	if p := pendingOf(t, e, memory.ProposalStale); len(p) != 0 {
 		t.Fatalf("pending stale = %+v", p)
 	}
-	if p := pendingOf(t, e, memory.ProposalEdit); len(p) != 1 {
+	if p := pendingOf(t, e, memory.ProposalEdit); len(p) != 0 {
 		t.Fatalf("pending edit = %+v", p)
+	}
+	if !strings.Contains(report, "적용하지 않은 것 2건") {
+		t.Fatalf("report must say what was not applied: %s", report)
 	}
 	if p := pendingOf(t, e, memory.ProposalReclassify); len(p) != 0 || !strings.Contains(report, "재분류") {
 		t.Fatalf("reclassify must be skipped with a note: %+v (%s)", p, report)

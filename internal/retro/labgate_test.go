@@ -2,6 +2,7 @@ package retro
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,11 +42,17 @@ func TestSubmit_하네스_파일_반영은_실험실_대기로_간다(t *testing
 	}
 	lab, _ := e.s.Proposals(memory.StatusLab)
 	pending := pendingOf(t, e, memory.ProposalApplyFile)
-	// 검토 지적 4: 실험실은 플러그인 원본 안 파일만 시험한다. 원본 밖 파일은 경로가 스킬처럼 보여도 대기로 간다.
-	if len(lab) != 1 || lab[0].Payload.Path != skill || len(pending) != 2 {
+	// 검토 지적 4: 실험실은 플러그인 원본 안 파일만 시험한다. 원본 밖 파일은 경로가 스킬처럼 보여도 실험실에 가지 않고,
+	// 대기열도 없으니 적용하지 않고 사용자에게 물으라는 까닭만 남긴다(설계 · orbit-mem 2판 18.3).
+	if len(lab) != 1 || lab[0].Payload.Path != skill || len(pending) != 0 {
 		t.Fatalf("실험실 대기 %+v, 대기 %+v", lab, pending)
 	}
-	if !strings.Contains(report, "실험실 대기 1건") {
+	if !strings.Contains(report, "실험실 대기 1건") || !strings.Contains(report, "적용하지 않은 것 2건") {
 		t.Errorf("보고:\n%s", report)
+	}
+	for _, f := range []string{guide, personal} {
+		if b, _ := os.ReadFile(f); strings.HasPrefix(string(b), "새") {
+			t.Errorf("%s가 바뀌었습니다: %q", f, b)
+		}
 	}
 }

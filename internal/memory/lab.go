@@ -200,16 +200,41 @@ func (s *Store) RecordLabLedger(in LabLedgerInput) (string, error) {
 	return id, err
 }
 
-// ReleaseLabProposal moves a proposal waiting for the lab to pending and adds
-// the lab's summary to its body: the user decides it now.
+// ReleaseLabProposal applies a harness change the lab found helpful: the
+// proposal waiting for the lab becomes an automatic change with the lab's
+// summary in its body, the file is written and the ledger keeps what it was,
+// so the person undoes it from the audit list (설계 · orbit-mem 2판 18.3). A
+// file that changed since the proposal is not overwritten: the proposal stays
+// waiting for the lab (it can be tried again) and the error is ErrFileChanged.
 func (s *Store) ReleaseLabProposal(id, summary string) error {
-	res, err := s.db.Exec(`UPDATE proposals SET status=?, body=TRIM(body || char(10) || char(10) || ?) WHERE id=? AND status=?`, StatusPending, summary, id, StatusLab)
+	if p, err := s.GetProposal(id); err == nil && p.Status == StatusLab && FileHash(p.Payload.Path) != p.Payload.BaseHash {
+		return ErrFileChanged
+	}
+	res, err := s.db.Exec(`UPDATE proposals SET status=?, decided_at=?, body=TRIM(body || char(10) || char(10) || ?),
+		payload=json_set(payload, '$.actor', ?) WHERE id=? AND status=?`, StatusAuto, s.nowMs(), summary, ActorAutomation, id, StatusLab)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
 		return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, id)
 	}
+	return s.applyLabFile(id)
+}
+
+// applyLabFile applies a stored apply_file proposal as an automatic change.
+func (s *Store) applyLabFile(id string) error {
+	p, err := s.GetProposal(id)
+	if err != nil {
+		return err
+	}
+	if FileTarget(p.Payload.Path) != TargetHarness {
+		_ = s.finish(&p, StatusSettled, "하네스 파일이 아니라 적용하지 않음")
+		return i18n.Errorf("memory.err.not_lab_pending", ErrInvalid, id)
+	}
+	if _, err := s.applyRecorded(&p, DecideInput{ID: p.ID, Decision: "approve"}); err != nil {
+		return err
+	}
+	_ = s.RecordEvent(Event{Kind: EventProposalDecided}, map[string]any{"proposalId": p.ID, "proposalKind": p.Kind, "decision": "auto", "evidence": "lab"})
 	return nil
 }
 
@@ -410,13 +435,23 @@ func (s *Store) SaveLab(in LabSave, sources []string) (LabExperiment, error) {
 			errs = append(errs, s.CloseLabProposal(in.Close.ProposalID, in.Close.Note))
 			x.ProposalIDs = []string{in.Close.ProposalID}
 		default:
+			// 도움됨으로 판정된 파일은 대기 없이 자동 변경으로 적용하고 원장에 남긴다(설계 · orbit-mem 2판 18.3).
 			for _, f := range in.Propose {
-				p, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: f.Title, Body: f.Body, Payload: Payload{Path: f.Path, Content: f.Content}})
-				if err != nil {
+				pi := ProposalInput{Kind: ProposalApplyFile, Title: f.Title, Body: f.Body, Payload: Payload{Path: f.Path, Content: f.Content}}
+				if err := s.prepare(&pi); err != nil {
 					errs = append(errs, fmt.Errorf("%s: %w", f.Path, err))
 					continue
 				}
-				x.ProposalIDs = append(x.ProposalIDs, p.ID)
+				p, err := s.insertProposal(pi, StatusLab)
+				if err == nil {
+					err = s.ReleaseLabProposal(p.ID, "")
+				}
+				if err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", f.Path, err))
+				}
+				if p.ID != "" {
+					x.ProposalIDs = append(x.ProposalIDs, p.ID)
+				}
 			}
 		}
 	}

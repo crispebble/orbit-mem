@@ -77,7 +77,7 @@ func cmdMigrate(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.migrate.done", rep.Records, rep.Imported, rep.Skipped))
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.by_state_kind", counts(rep.ByState), counts(rep.ByKind)))
-	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.sources", rep.Sources, rep.FilesSame, rep.FilesChanged, rep.FilesUnknown, rep.Proposals, rep.Absorbed))
+	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.sources", rep.Sources, rep.FilesSame, rep.FilesChanged, rep.FilesUnknown, rep.ToJudge, rep.Absorbed))
 	return nil
 }
 
@@ -534,6 +534,9 @@ func cmdDoctor(a *app, args []string) error {
 			rep.Memories[m.State]++
 		}
 		rep.Pending = s.PendingCount()
+		if rep.Pending > 0 { // 사람 승인 대기열은 0.13.0에서 없앴다: 남은 옛 제안은 drain으로 닫는다
+			add("old-proposals", "orbit-mem backup && orbit-mem proposals drain", rep.Pending)
+		}
 		if waiting, err := retro.Pending(s); err == nil {
 			rep.SessionQueue = len(waiting)
 		}
