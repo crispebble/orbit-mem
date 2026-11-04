@@ -16,15 +16,19 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
-// hostPC is a fake HOME with Claude Code's and Codex's settings folders.
-type hostPC struct{ home, claude, codex string }
+// hostPC is a fake HOME with Claude Code's and Codex's settings folders, a project folder
+// the checks run in, and a managed settings folder.
+type hostPC struct{ home, claude, codex, proj, managed string }
 
 func newHostPC(t *testing.T) hostPC {
 	t.Helper()
 	home(t)
 	h := hostPC{home: t.TempDir()}
 	h.claude, h.codex = filepath.Join(h.home, ".claude"), filepath.Join(h.home, ".codex")
-	for _, d := range []string{h.claude, h.codex} {
+	h.proj, h.managed = filepath.Join(h.home, "proj"), filepath.Join(h.home, "managed")
+	claudeManagedDir = func() string { return h.managed }
+	hostCwd = func() (string, error) { return h.proj, nil }
+	for _, d := range []string{h.claude, h.codex, h.proj} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -261,7 +265,7 @@ func TestHostMemory_on은_orbit_mem이_끈_값만_되돌린다(t *testing.T) {
 func TestHostMemory_기억_플러그인은_이름으로_찾고_orbit_mem은_빼고_하나만_끈다(t *testing.T) {
 	h := newHostPC(t)
 	write(t, h.settings(), `{"autoMemoryEnabled": true, "enabledPlugins": {"claude-mem@other-market": true, "orbit-mem@orbit-mem": true, "frontend@x": true}}`)
-	ov := hostMemoryOverlaps()
+	ov, _ := hostMemoryOverlaps("")
 	var ids []string
 	for _, o := range ov {
 		ids = append(ids, o.ID)
@@ -527,5 +531,198 @@ func TestHook_사람이_없는_실행에는_겹침_줄을_넣지_않는다(t *te
 	out, _, _ = run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "studio")
 	if ctx := eventContext(t, out, "SessionStart"); !strings.Contains(ctx, "host-memory off") {
 		t.Fatalf("studio session not noted:\n%s", ctx)
+	}
+}
+
+type overlapOut struct {
+	ID, Kind, Name, Settings, Off, LockedBy string
+	On, Manual                              bool
+	Source                                  *settingValue
+}
+
+func overlapByID(t *testing.T, id string) overlapOut {
+	t.Helper()
+	out, _, _ := run(t, "", "host-memory", "status", "--json")
+	var st struct {
+		Overlaps []overlapOut
+		Warnings []hostWarning
+	}
+	if err := json.Unmarshal([]byte(out), &st); err != nil {
+		t.Fatalf("%q: %v", out, err)
+	}
+	for _, o := range st.Overlaps {
+		if o.ID == id {
+			return o
+		}
+	}
+	t.Fatalf("no %s in %s", id, out)
+	return overlapOut{}
+}
+
+func TestHostMemory_Claude_설정은_우선순위대로_읽고_출처를_보인다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{"autoMemoryEnabled": false}`)
+	project := filepath.Join(h.proj, ".claude", "settings.json")
+	write(t, project, `{"autoMemoryEnabled": true}`)
+	o := overlapByID(t, "claude-auto-memory")
+	if !o.On || o.Source == nil || o.Source.Scope != "project" || o.LockedBy != project {
+		t.Fatalf("project over user: %+v %+v", o, o.Source)
+	}
+	// 더 위 설정이 켰으면 off는 아무것도 바꾸지 않고 그 파일을 알린다.
+	out, _, code := run(t, "", "host-memory", "off", "--json")
+	if code != 0 || !strings.Contains(out, `"locked"`) || !strings.Contains(out, project) || read(t, h.settings()) != `{"autoMemoryEnabled": false}` {
+		t.Fatalf("off with a project lock (%d): %s", code, out)
+	}
+	local := filepath.Join(h.proj, ".claude", "settings.local.json")
+	write(t, local, `{"autoMemoryEnabled": false}`)
+	if o := overlapByID(t, "claude-auto-memory"); o.On || o.Source.Path != local {
+		t.Fatalf("local over project: %+v", o)
+	}
+	managed := filepath.Join(h.managed, "managed-settings.json")
+	write(t, managed, `{"autoMemoryEnabled": true}`)
+	if o := overlapByID(t, "claude-auto-memory"); !o.On || o.Source.Scope != "managed" || o.LockedBy != managed {
+		t.Fatalf("managed over local: %+v", o)
+	}
+	drop := filepath.Join(h.managed, "managed-settings.d", "10-memory.json")
+	write(t, drop, `{"autoMemoryEnabled": false}`)
+	if o := overlapByID(t, "claude-auto-memory"); o.On || o.Source.Path != drop {
+		t.Fatalf("drop-in over managed file: %+v", o)
+	}
+	os.Remove(drop)
+	t.Setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1")
+	if o := overlapByID(t, "claude-auto-memory"); o.On || o.Source.Scope != "env" {
+		t.Fatalf("env: %+v", o)
+	}
+}
+
+func TestHostMemory_로컬_설정은_git_루트에서_읽는다(t *testing.T) {
+	h := newHostPC(t)
+	os.MkdirAll(filepath.Join(h.proj, ".git"), 0o755)
+	sub := filepath.Join(h.proj, "pkg", "a")
+	os.MkdirAll(sub, 0o755)
+	hostCwd = func() (string, error) { return sub, nil }
+	write(t, filepath.Join(h.proj, ".claude", "settings.local.json"), `{"autoMemoryEnabled": false, "enabledPlugins": {"claude-mem@thedotmack": true}}`)
+	if o := overlapByID(t, "claude-auto-memory"); o.On || o.Source.Scope != "local" {
+		t.Fatalf("%+v", o)
+	}
+	if o := overlapByID(t, "claude-plugin:claude-mem@thedotmack"); !o.On || o.LockedBy == "" {
+		t.Fatalf("plugin from local: %+v", o)
+	}
+}
+
+func TestHostMemory_읽지_못한_설정은_경고로_남고_판정은_이어진다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{"autoMemoryEnabled": false,}`)
+	write(t, h.toml(), "[features]\nmemories = true\n")
+	out, _, code := run(t, "", "host-memory", "status", "--json")
+	var st struct {
+		Overlaps []overlapOut
+		Warnings []hostWarning
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &st) != nil || len(st.Warnings) != 1 || st.Warnings[0].Path != h.settings() {
+		t.Fatalf("%d %s", code, out)
+	}
+	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-schedule", "--no-hosts", "--bin-dir", t.TempDir())
+	if !strings.Contains(ins, h.settings()) || !strings.Contains(ins, "codex-memories") {
+		t.Fatalf("install json without the warning: %s", ins)
+	}
+	doc, _, _ := run(t, "", "doctor", "--json")
+	if !strings.Contains(doc, "host-settings-unreadable") {
+		t.Fatalf("doctor: %s", doc)
+	}
+}
+
+func TestInstall_json은_실패해도_JSON_하나를_낸다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{}`)
+	blocker := filepath.Join(h.home, "not-a-dir")
+	write(t, blocker, "x")
+	out, errOut, code := run(t, "", "install", "--json", "--no-schedule", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
+	var res struct {
+		OK      bool
+		Error   string
+		AskUser []askUser
+	}
+	if code != 1 || json.Unmarshal([]byte(out), &res) != nil || res.OK || res.Error == "" || len(res.AskUser) != 1 || errOut == "" {
+		t.Fatalf("%d out=%q err=%q", code, out, errOut)
+	}
+	out, _, code = run(t, "", "install", "--json", "--no-such-flag")
+	if code != 2 || json.Unmarshal([]byte(out), &res) != nil || res.OK || res.Error == "" {
+		t.Fatalf("bad flag: %d %q", code, out)
+	}
+	ok, _, code := run(t, "", "install", "--json", "--dry-run", "--no-schedule", "--bin-dir", t.TempDir())
+	if code != 0 || !strings.Contains(ok, `"ok": true`) {
+		t.Fatalf("dry run: %d %s", code, ok)
+	}
+}
+
+func TestHostMemory_Claude_MCP_기억_서버는_알리고_끄기는_호스트에_맡긴다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{"autoMemoryEnabled": false}`)
+	state := filepath.Join(h.claude, ".claude.json")
+	stateText := `{"mcpServers": {"kg": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]}, "other": {"command": "npx", "args": ["x"]}},
+		"projects": {"` + h.proj + `": {"mcpServers": {"cloud": {"type": "http", "url": "https://mcp.supermemory.ai/mcp"}}}}}`
+	write(t, state, stateText)
+	write(t, filepath.Join(h.proj, ".mcp.json"), `{"mcpServers": {"notes": {"command": "uvx", "args": ["basic-memory", "mcp"]}}}`)
+	kg := overlapByID(t, "claude-mcp:kg")
+	if !kg.On || !kg.Manual || kg.Name != "server-memory" || kg.Off != "claude mcp remove kg --scope user" {
+		t.Fatalf("kg %+v", kg)
+	}
+	if c := overlapByID(t, "claude-mcp:cloud"); c.Name != "supermemory" || c.Off != "claude mcp remove cloud --scope local" {
+		t.Fatalf("cloud %+v", c)
+	}
+	if n := overlapByID(t, "claude-mcp:notes"); n.Name != "basic-memory" || n.Off != "claude mcp remove notes --scope project" {
+		t.Fatalf("notes %+v", n)
+	}
+	out, _, code := run(t, "", "host-memory", "off", "--only", "claude-mcp:kg", "--json")
+	if code != 0 || !strings.Contains(out, `"manual"`) || read(t, state) != stateText {
+		t.Fatalf("off touched ~/.claude.json (%d): %s", code, out)
+	}
+	write(t, state, strings.Replace(stateText, `"mcpServers": {"cloud"`, `"disabledMcpServers": ["cloud"], "mcpServers": {"cloud"`, 1))
+	if c := overlapByID(t, "claude-mcp:cloud"); c.On {
+		t.Fatalf("disabled for this project but on: %+v", c)
+	}
+	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-schedule", "--no-hosts", "--bin-dir", t.TempDir())
+	if !strings.Contains(ins, "claude mcp remove kg --scope user") {
+		t.Fatalf("install askUser: %s", ins)
+	}
+}
+
+func TestHostMemory_Codex_기억_플러그인과_MCP를_찾아_끄고_되돌린다(t *testing.T) {
+	h := newHostPC(t)
+	before := "[mcp_servers.mem]\ncommand = \"uvx\"\nargs = [\"mem0-mcp-server\"]\n\n[mcp_servers.figma]\nurl = \"https://mcp.figma.com/mcp\"\n\n[plugins.\"supermemory@supermemory-plugins\"]\nenabled = true\n\n[plugins.\"orbit-mem@orbit-mem\"]\nenabled = true\n"
+	write(t, h.toml(), before)
+	var ids []string
+	ov, _ := hostMemoryOverlaps("")
+	for _, o := range ov {
+		if o.Host == "codex" && o.On {
+			ids = append(ids, o.ID)
+		}
+	}
+	if !slices.Equal(ids, []string{"codex-mcp:mem", "codex-plugin:supermemory@supermemory-plugins"}) {
+		t.Fatalf("codex overlaps %v", ids)
+	}
+	if _, errOut, code := run(t, "", "host-memory", "off", "--host", "codex"); code != 0 {
+		t.Fatalf("%d %s", code, errOut)
+	}
+	want := "[mcp_servers.mem]\ncommand = \"uvx\"\nargs = [\"mem0-mcp-server\"]\nenabled = false\n\n[mcp_servers.figma]\nurl = \"https://mcp.figma.com/mcp\"\n\n[plugins.\"supermemory@supermemory-plugins\"]\nenabled = false\n\n[plugins.\"orbit-mem@orbit-mem\"]\nenabled = true\n"
+	if got := read(t, h.toml()); got != want {
+		t.Fatalf("config.toml:\n%s", got)
+	}
+	run(t, "", "host-memory", "on", "--host", "codex")
+	if got := read(t, h.toml()); got != before {
+		t.Fatalf("not put back:\n%s", got)
+	}
+}
+
+func TestHostMemory_아는_기억_목록은_orbit_mem을_빼고_이름으로_찾는다(t *testing.T) {
+	for id, want := range map[string]string{"claude-mem@thedotmack": "claude-mem", "mem0@mem0-plugins": "mem0", "claude-supermemory@supermemory-plugins": "supermemory", "orbit-mem@orbit-mem": "", "memory@x": ""} {
+		k, ok := memoryPluginOf(id)
+		if (want == "") == ok || k.Name != want {
+			t.Errorf("%s → %q %v", id, k.Name, ok)
+		}
+	}
+	if _, ok := memoryServerOf(`{"command":"npx","args":["-y","@upstash/context7-mcp"]}`); ok {
+		t.Error("context7 is not a memory server")
 	}
 }

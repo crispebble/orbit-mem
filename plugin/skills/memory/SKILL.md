@@ -36,7 +36,7 @@ orbit-mem 기억은 이 PC에만 있다. 세션 시작에 확정 규칙이 길�
 ## 겹치는 기억
 
 - 세션 시작 문맥 끝에 「orbit-mem과 겹치는 기억(…)이 켜져 있습니다」 줄이 있거나 `orbit-mem install --json`의 `askUser`가 비어 있지 않으면, 항목마다 사용자에게 끌지 묻는다. 끌지는 사용자가 정한다.
-- 동의한 것만 `orbit-mem host-memory off --only <id>`로 끈다. 설정 파일을 손으로 고치지 않는다. 유지하겠다고 하면 `orbit-mem config set hostMemory keep`으로 다시 묻지 않게 한다.
+- 동의한 것만 그 `apply` 명령(대개 `orbit-mem host-memory off --only <id>`)으로 끈다. 설정 파일을 손으로 고치지 않는다. `blockedBy`가 있으면 프로젝트·관리 설정이 켠 것이니 그 사실만 알린다. 유지하겠다고 하면 `orbit-mem config set hostMemory keep`으로 다시 묻지 않게 한다.
 - 상태는 `orbit-mem host-memory status`, 되돌리기는 `orbit-mem host-memory on`. 기억 파일은 지우지 않는다.
 
 ## 고치기

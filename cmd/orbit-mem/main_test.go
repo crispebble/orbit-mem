@@ -30,6 +30,10 @@ func home(t *testing.T) string {
 	// 이 PC의 Claude Code·Codex 설정(호스트 자체 기억 판정)과 무관하게 돈다. HOME은 두어 go build 캐시를 쓴다.
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(h, "no-claude"))
 	t.Setenv("CODEX_HOME", filepath.Join(h, "no-codex"))
+	managed, cwd := claudeManagedDir, hostCwd
+	claudeManagedDir = func() string { return filepath.Join(h, "no-managed") }
+	hostCwd = func() (string, error) { return h, nil }
+	t.Cleanup(func() { claudeManagedDir, hostCwd = managed, cwd })
 	return h
 }
 

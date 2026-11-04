@@ -277,7 +277,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
 		text := withVersionNote(inj.Text, pluginVersion)
 		if who.askable() {
-			text = withHostMemoryNote(text, cfg)
+			text = withHostMemoryNote(text, cfg, in.Cwd)
 		}
 		done <- inject.HookOutput("SessionStart", text)
 	case "pre-tool":

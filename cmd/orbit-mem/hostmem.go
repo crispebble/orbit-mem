@@ -1,12 +1,10 @@
 package main
 
-// 호스트 자체 기억 점검(설계 · orbit-mem 2판 9절·17절): 기억은 orbit-mem 하나만 쓴다. Claude Code auto memory,
-// Codex memories, Claude Code에 켜진 알려진 기억 플러그인이 겹친다. 판정은 hostMemoryOverlaps 하나이고
-// host-memory·doctor·install·세션 시작 훅이 모두 쓴다. 끌지는 사용자가 정한다: install과 훅은 묻게만 하고,
-// 끄는 것은 사용자가 동의한 뒤 host-memory off가 한다. 어떤 명령도 기억 파일을 지우지 않는다.
+// 겹치는 기억(설계 · orbit-mem 2판 9절·17절): 기억은 orbit-mem 하나만 쓴다. 판정은 hostmem_detect.go의
+// hostMemoryOverlaps 하나다. 끌지는 사용자가 정한다: install과 세션 시작 훅은 묻게만 하고, 끄는 것은
+// 사용자가 동의한 뒤 host-memory off가 한다. 어떤 명령도 기억 파일을 지우지 않는다.
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,215 +17,65 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/install"
 )
 
-// claudeConfigDir is Claude Code's settings folder: $CLAUDE_CONFIG_DIR, else ~/.claude.
-func claudeConfigDir() string {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
-		return d
+// overlapsToAsk are the overlaps that are on, to put to the user: none once they chose to
+// keep them (hostMemory keep).
+func overlapsToAsk(cfg config.Config, cwd string) ([]hostOverlap, []hostWarning) {
+	all, warns := hostMemoryOverlaps(cwd)
+	if cfg.HostMemory == config.HostMemoryKeep {
+		return nil, warns
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".claude")
-}
-
-func claudeSettingsPath() string { return filepath.Join(claudeConfigDir(), "settings.json") }
-
-// claudeSettings is what the overlap check reads from Claude Code's user settings.
-type claudeSettings struct {
-	AutoMemoryEnabled *bool           `json:"autoMemoryEnabled"`
-	EnabledPlugins    map[string]bool `json:"enabledPlugins"`
-}
-
-func readClaudeSettings() claudeSettings {
-	var v claudeSettings
-	if b, err := os.ReadFile(claudeSettingsPath()); err == nil {
-		_ = json.Unmarshal(b, &v)
-	}
-	return v
-}
-
-// claudeAutoMemory says whether Claude Code's own auto memory is on and in which
-// settings file: it is on unless the user settings turn it off (autoMemoryEnabled
-// false) or CLAUDE_CODE_DISABLE_AUTO_MEMORY is set. Without a settings folder Claude
-// Code is not set up here, so there is nothing to say.
-func claudeAutoMemory() (string, bool) {
-	if _, err := os.Stat(claudeConfigDir()); err != nil {
-		return "", false
-	}
-	switch strings.ToLower(os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY")) {
-	case "1", "true", "yes":
-		return "", false
-	}
-	v := readClaudeSettings().AutoMemoryEnabled
-	return claudeSettingsPath(), v == nil || *v
-}
-
-// codexMemoryKeys are the config.toml values that turn Codex's memories on ([table, key]).
-var codexMemoryKeys = [][2]string{{"features", "memories"}, {"memories", "generate_memories"}, {"memories", "use_memories"}}
-
-// codexMemories says whether Codex's memories are turned on in its config.toml
-// (features.memories, memories.generate_memories or memories.use_memories true).
-// Codex keeps the feature off unless it is turned on.
-func codexMemories(path string) bool {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	for _, k := range codexMemoryKeys {
-		if v, _ := tomlGet(string(b), k[0], k[1]); v == "true" {
-			return true
-		}
-	}
-	return false
-}
-
-// memoryPlugins are the Claude Code plugins known to keep memories of their own, by
-// plugin name (the part before @, so any marketplace counts), with the folder under
-// HOME where they keep them. orbit-mem itself is never one of them.
-var memoryPlugins = map[string]string{
-	"claude-mem": ".claude-mem", // thedotmack/claude-mem
-}
-
-func isMemoryPlugin(id string) bool {
-	name, _, _ := strings.Cut(id, "@")
-	_, ok := memoryPlugins[name]
-	return ok && name != "orbit-mem"
-}
-
-// Overlap ids (17.2).
-const (
-	overlapClaude       = "claude-auto-memory"
-	overlapCodex        = "codex-memories"
-	overlapPluginPrefix = "claude-plugin:"
-)
-
-// hostOverlap is one memory system besides orbit-mem on this PC.
-type hostOverlap struct {
-	ID       string        `json:"id"`
-	Host     string        `json:"host"` // claude | codex
-	On       bool          `json:"on"`
-	Settings string        `json:"settings"` // the file that turns it on or off
-	Off      string        `json:"off"`      // the command that turns it off
-	Stores   []memoryStore `json:"stores,omitempty"`
-}
-
-// memoryStore is where an overlap keeps its memories (host-memory status only: it walks folders).
-type memoryStore struct {
-	Path  string `json:"path"`
-	Files int    `json:"files"`
-	Bytes int64  `json:"bytes"`
-}
-
-func offCommand(id string) string { return "orbit-mem host-memory off --only " + id }
-
-const keepCommand = "orbit-mem config set hostMemory keep"
-
-// hostMemoryOverlaps lists every memory system it knows of whose host is set up here,
-// on or off, in a fixed order: Claude Code's own, Claude plugins by id, then Codex.
-func hostMemoryOverlaps() []hostOverlap {
-	var out []hostOverlap
-	if _, err := os.Stat(claudeConfigDir()); err == nil {
-		_, on := claudeAutoMemory()
-		out = append(out, hostOverlap{ID: overlapClaude, Host: "claude", On: on, Settings: claudeSettingsPath(), Off: offCommand(overlapClaude)})
-		plugins := readClaudeSettings().EnabledPlugins
-		ids := make([]string, 0, len(plugins))
-		for id := range plugins {
-			if isMemoryPlugin(id) {
-				ids = append(ids, id)
-			}
-		}
-		slices.Sort(ids)
-		for _, id := range ids {
-			oid := overlapPluginPrefix + id
-			out = append(out, hostOverlap{ID: oid, Host: "claude", On: plugins[id], Settings: claudeSettingsPath(), Off: offCommand(oid)})
-		}
-	}
-	path := install.CodexConfigPath()
-	if _, err := os.Stat(filepath.Dir(path)); err == nil {
-		out = append(out, hostOverlap{ID: overlapCodex, Host: "codex", On: codexMemories(path), Settings: path, Off: offCommand(overlapCodex)})
-	}
-	return out
-}
-
-// activeOverlaps are the overlaps that are on.
-func activeOverlaps() []hostOverlap {
 	var on []hostOverlap
-	for _, o := range hostMemoryOverlaps() {
+	for _, o := range all {
 		if o.On {
 			on = append(on, o)
 		}
 	}
-	return on
-}
-
-// overlapsToAsk are the overlaps to put to the user: none once they chose to keep them.
-func overlapsToAsk(cfg config.Config) []hostOverlap {
-	if cfg.HostMemory == config.HostMemoryKeep {
-		return nil
-	}
-	return activeOverlaps()
-}
-
-// storesOf finds where an overlap keeps its memories.
-func storesOf(o hostOverlap) []memoryStore {
-	var globs []string
-	home, _ := os.UserHomeDir()
-	switch {
-	case o.ID == overlapClaude:
-		globs = []string{filepath.Join(claudeConfigDir(), "projects", "*", "memory")}
-	case o.ID == overlapCodex:
-		globs = []string{filepath.Join(filepath.Dir(o.Settings), "memories*")}
-	case strings.HasPrefix(o.ID, overlapPluginPrefix):
-		name, _, _ := strings.Cut(strings.TrimPrefix(o.ID, overlapPluginPrefix), "@")
-		globs = []string{filepath.Join(home, memoryPlugins[name])}
-	}
-	var out []memoryStore
-	for _, g := range globs {
-		st := memoryStore{Path: g}
-		matches, _ := filepath.Glob(g)
-		for _, m := range matches {
-			_ = filepath.WalkDir(m, func(_ string, d fs.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
-					return nil
-				}
-				if info, err := d.Info(); err == nil {
-					st.Files++
-					st.Bytes += info.Size()
-				}
-				return nil
-			})
-		}
-		if len(matches) > 0 {
-			out = append(out, st)
-		}
-	}
-	return out
+	return on, warns
 }
 
 // askUser is one question install puts to the user through their agent (17.4).
 type askUser struct {
-	ID       string `json:"id"`
-	Question string `json:"question"`
-	Reason   string `json:"reason"`
-	Apply    string `json:"apply"`
-	Keep     string `json:"keep"`
+	ID        string `json:"id"`
+	Question  string `json:"question"`
+	Reason    string `json:"reason"`
+	Apply     string `json:"apply"`               // the command to run once the user agrees; empty when blockedBy
+	BlockedBy string `json:"blockedBy,omitempty"` // a project or managed settings file keeps it on: orbit-mem does not change it
+	Keep      string `json:"keep"`
+}
+
+func hostTitle(h string) string {
+	if h == "codex" {
+		return "Codex"
+	}
+	return "Claude Code"
 }
 
 func overlapQuestion(o hostOverlap) string {
-	switch o.ID {
-	case overlapClaude:
+	switch {
+	case o.ID == overlapClaude:
 		return i18n.T("cli.hostmem.ask.claude")
-	case overlapCodex:
+	case o.ID == overlapCodex:
 		return i18n.T("cli.hostmem.ask.codex")
+	case o.Kind == kindMCP:
+		return i18n.T("cli.hostmem.ask.mcp", hostTitle(o.Host), o.ID[strings.Index(o.ID, ":")+1:], o.Name)
 	}
-	return i18n.T("cli.hostmem.ask.plugin", strings.TrimPrefix(o.ID, overlapPluginPrefix))
+	return i18n.T("cli.hostmem.ask.plugin", hostTitle(o.Host), o.ID[strings.Index(o.ID, ":")+1:], o.Name)
 }
 
 func askUsers(ov []hostOverlap) []askUser {
 	out := []askUser{}
 	for _, o := range ov {
-		out = append(out, askUser{ID: o.ID, Question: overlapQuestion(o), Reason: i18n.T("cli.hostmem.ask.reason"), Apply: o.Off, Keep: keepCommand})
+		q := askUser{ID: o.ID, Question: overlapQuestion(o), Reason: i18n.T("cli.hostmem.ask.reason"), Apply: o.Off, Keep: keepCommand}
+		switch {
+		case o.LockedBy != "":
+			q.Apply, q.BlockedBy = "", o.LockedBy
+			q.Reason = i18n.T("cli.hostmem.ask.reason_locked", o.LockedBy)
+		case o.Manual:
+			q.Reason = i18n.T("cli.hostmem.ask.reason_manual")
+		}
+		out = append(out, q)
 	}
 	return out
 }
@@ -240,19 +88,23 @@ func (a *app) printAskUser(asks []askUser) {
 	fmt.Fprintln(a.stdout)
 	fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.head"))
 	for _, q := range asks {
+		if q.BlockedBy != "" {
+			fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.line_locked", q.Question, q.BlockedBy))
+			continue
+		}
 		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.line", q.Question, q.Apply))
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.tail", asks[0].Reason, keepCommand))
+	fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.tail", i18n.T("cli.hostmem.ask.reason"), keepCommand))
 }
 
 // withHostMemoryNote adds one line at the end of the session-start context while a
 // memory system overlaps orbit-mem and the user has not chosen to keep it (17.4). The
 // AI reads it and asks the user.
-func withHostMemoryNote(text string, cfg config.Config) string {
+func withHostMemoryNote(text string, cfg config.Config, cwd string) string {
 	if cfg.Inject == config.InjectOff || os.Getenv("ORBIT_RETRO_ID") != "" {
 		return text
 	}
-	ov := overlapsToAsk(cfg)
+	ov, _ := overlapsToAsk(cfg, cwd)
 	if len(ov) == 0 {
 		return text
 	}
@@ -321,14 +173,15 @@ func offEdits(o hostOverlap) (format string, edits []edit) {
 	switch {
 	case o.ID == overlapClaude:
 		return "json", []edit{{[]string{"autoMemoryEnabled"}, &no}, {[]string{"autoDreamEnabled"}, &no}}
-	case strings.HasPrefix(o.ID, overlapPluginPrefix):
-		return "json", []edit{{[]string{"enabledPlugins", strings.TrimPrefix(o.ID, overlapPluginPrefix)}, &no}}
-	default:
+	case o.ID == overlapCodex:
 		for _, k := range codexMemoryKeys {
 			edits = append(edits, edit{[]string{k[0], k[1]}, &no})
 		}
 		return "toml", edits
+	case o.Host == "codex":
+		return "toml", []edit{{[]string{o.table, "enabled"}, &no}}
 	}
+	return "json", []edit{{[]string{"enabledPlugins", strings.TrimPrefix(o.ID, overlapPluginPrefix)}, &no}}
 }
 
 func getValue(format string, text []byte, key []string) (string, bool) {
@@ -374,9 +227,10 @@ type hostResult struct {
 
 type hostOutcome struct {
 	Changed   []hostResult `json:"changed"`
-	Unchanged []string     `json:"unchanged"`         // already off (off) or nothing recorded (on)
-	Kept      []hostResult `json:"kept,omitempty"`    // on: a person changed the value since; left as it is
-	Setting   string       `json:"setting,omitempty"` // hostMemory
+	Unchanged []string     `json:"unchanged"`        // already off (off) or nothing recorded (on)
+	Kept      []hostResult `json:"kept,omitempty"`   // on: a person changed the value since; left as it is
+	Locked    []hostResult `json:"locked,omitempty"` // off: a project or managed settings file (file) keeps it on; left as it is
+	Manual    []hostResult `json:"manual,omitempty"` // off: the host turns it off itself; file is its command
 }
 
 func hostMemorySetting(cfg config.Config) string {
@@ -405,7 +259,7 @@ func cmdHostMemory(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	all := hostMemoryOverlaps()
+	all, warns := hostMemoryOverlaps("")
 	known := map[string]bool{}
 	for _, o := range all {
 		known[o.ID] = true
@@ -432,7 +286,7 @@ func cmdHostMemory(a *app, args []string) error {
 				sel = append(sel, o)
 			}
 		}
-		return a.printHostStatus(sel, hostMemorySetting(cfg), a.wantJSON(*asJSON))
+		return a.printHostStatus(sel, warns, hostMemorySetting(cfg), a.wantJSON(*asJSON))
 	case "off":
 		out, err := hostOff(all, pick)
 		if err != nil {
@@ -476,8 +330,15 @@ func hostOff(all []hostOverlap, pick func(id, host string) bool) (hostOutcome, e
 		if !pick(o.ID, o.Host) {
 			continue
 		}
-		if !o.On {
+		switch {
+		case !o.On:
 			out.Unchanged = append(out.Unchanged, o.ID)
+			continue
+		case o.LockedBy != "":
+			out.Locked = append(out.Locked, hostResult{ID: o.ID, File: o.LockedBy})
+			continue
+		case o.Manual:
+			out.Manual = append(out.Manual, hostResult{ID: o.ID, File: o.Off})
 			continue
 		}
 		format, edits := offEdits(o)
@@ -612,24 +473,33 @@ func writeSettings(path string, b []byte) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-func (a *app) printHostStatus(ov []hostOverlap, setting string, asJSON bool) error {
+func (a *app) printHostStatus(ov []hostOverlap, warns []hostWarning, setting string, asJSON bool) error {
 	if asJSON {
 		if ov == nil {
 			ov = []hostOverlap{}
 		}
-		return a.json(map[string]any{"setting": setting, "overlaps": ov})
+		return a.json(map[string]any{"setting": setting, "overlaps": ov, "warnings": warns})
 	}
 	if len(ov) == 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.none"))
 	}
 	for _, o := range ov {
 		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.line", o.ID, onOff(o.On), o.Settings))
-		if o.On {
+		if o.Source != nil && o.Source.Scope != "user" { // 사용자 설정 밖(기본값·환경·프로젝트·관리)에서 온 값이면 출처를 보인다
+			fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.source", o.Source.Value, o.Source.Scope, o.Source.Path))
+		}
+		switch {
+		case o.LockedBy != "":
+			fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.locked", o.LockedBy))
+		case o.On:
 			fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.off", o.Off))
 		}
 		for _, s := range o.Stores {
 			fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.store", s.Path, s.Files, strings.TrimSpace(sizeText(s.Bytes))))
 		}
+	}
+	for _, w := range warns {
+		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.warning", w.Path, w.Reason))
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.setting", setting))
 	return nil
@@ -659,292 +529,17 @@ func (a *app) printHostOutcome(out hostOutcome, asJSON bool, say outcomeText) er
 	for _, k := range out.Kept {
 		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.on.kept", k.ID, k.File))
 	}
-	if len(out.Changed) == 0 && len(out.Unchanged) == 0 && len(out.Kept) == 0 {
+	for _, k := range out.Locked {
+		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.off.locked", k.ID, k.File))
+	}
+	for _, k := range out.Manual {
+		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.off.manual", k.ID, k.File))
+	}
+	if len(out.Changed)+len(out.Unchanged)+len(out.Kept)+len(out.Locked)+len(out.Manual) == 0 {
 		fmt.Fprintln(a.stdout, say.nothing)
 	}
 	if len(out.Changed) > 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.after"))
 	}
 	return nil
-}
-
-// TOML (no library: only bare top-level tables and key = value lines are needed). Lines
-// keep their ending: a file written with CRLF stays CRLF.
-
-// tomlKeyValue reads a key = value line: its key as written, the value, and what follows the value.
-func tomlKeyValue(line string) (key, val, rest string, ok bool) {
-	line = strings.TrimSuffix(line, "\r")
-	k, v, ok := strings.Cut(line, "=")
-	if !ok {
-		return "", "", "", false
-	}
-	k = strings.TrimSpace(k)
-	if k == "" || strings.HasPrefix(k, "#") || strings.HasPrefix(k, "[") {
-		return "", "", "", false
-	}
-	v = strings.TrimLeft(v, " \t")
-	val, rest = v, ""
-	if i := strings.Index(v, "#"); i >= 0 && !strings.ContainsAny(v[:i], `"'`) {
-		val, rest = v[:i], v[i:]
-	}
-	trimmed := strings.TrimRight(val, " \t")
-	if rest != "" {
-		rest = val[len(trimmed):] + rest
-	}
-	return k, trimmed, rest, true
-}
-
-func tomlHeader(line string) (string, bool) {
-	t := strings.TrimSpace(line)
-	if i := strings.Index(t, "#"); i >= 0 && strings.Contains(t[:i], "]") {
-		t = strings.TrimSpace(t[:i])
-	}
-	if strings.HasPrefix(t, "[") && !strings.HasPrefix(t, "[[") && strings.HasSuffix(t, "]") {
-		return strings.TrimSpace(t[1 : len(t)-1]), true
-	}
-	return "", false
-}
-
-// tomlRootDotted is the last root line with a table.key key, or -1.
-func tomlRootDotted(lines []string, table string) int {
-	last := -1
-	for i, l := range lines {
-		if _, ok := tomlHeader(l); ok {
-			break
-		}
-		if k, _, _, ok := tomlKeyValue(l); ok && strings.HasPrefix(k, table+".") {
-			last = i
-		}
-	}
-	return last
-}
-
-// tomlFind is the line index of table.key (under [table], or as table.key before any
-// table), and the index of the [table] header (-1 when none).
-func tomlFind(lines []string, table, key string) (at, header int) {
-	at, header = -1, -1
-	section := ""
-	for i, l := range lines {
-		if h, ok := tomlHeader(l); ok {
-			section = h
-			if h == table && header < 0 {
-				header = i
-			}
-			continue
-		}
-		k, _, _, ok := tomlKeyValue(l)
-		if !ok {
-			continue
-		}
-		if (section == table && k == key) || (section == "" && k == table+"."+key) {
-			return i, header
-		}
-	}
-	return -1, header
-}
-
-// tomlInline says whether table is written as an inline table at the root (table = { … }),
-// which these line edits cannot change without breaking the file.
-func tomlInline(text, table string) bool {
-	for _, l := range strings.Split(text, "\n") {
-		if _, ok := tomlHeader(l); ok {
-			return false
-		}
-		if k, v, _, ok := tomlKeyValue(l); ok && k == table && strings.HasPrefix(v, "{") {
-			return true
-		}
-	}
-	return false
-}
-
-func tomlGet(text, table, key string) (string, bool) {
-	lines := strings.Split(text, "\n")
-	at, _ := tomlFind(lines, table, key)
-	if at < 0 {
-		return "", false
-	}
-	_, v, _, _ := tomlKeyValue(lines[at])
-	return v, true
-}
-
-// tomlSet sets table.key to val (a raw TOML value) or removes it (val nil), leaving every
-// other line as it was. A missing key goes after the last line of its table; a missing
-// table goes at the end.
-func tomlSet(text, table, key string, val *string) string {
-	cr := ""
-	if strings.Contains(text, "\r\n") {
-		cr = "\r"
-	}
-	lines := strings.Split(text, "\n")
-	at, header := tomlFind(lines, table, key)
-	switch {
-	case at >= 0 && val == nil:
-		lines = slices.Delete(lines, at, at+1)
-	case at >= 0:
-		l := lines[at]
-		eq := strings.Index(l, "=")
-		_, _, rest, _ := tomlKeyValue(l)
-		end := ""
-		if strings.HasSuffix(l, "\r") {
-			end = "\r"
-		}
-		lines[at] = strings.TrimRight(l[:eq], " \t") + " = " + *val + rest + end
-	case val == nil:
-	case header < 0 && tomlRootDotted(lines, table) >= 0:
-		// 표가 점 키로만 정의돼 있으면 [표]를 새로 열 수 없다(TOML이 금지): 점 키로 더한다.
-		lines = slices.Insert(lines, tomlRootDotted(lines, table)+1, table+"."+key+" = "+*val+cr)
-	case header >= 0:
-		last := header
-		for i := header + 1; i < len(lines); i++ {
-			if _, ok := tomlHeader(lines[i]); ok {
-				break
-			}
-			if strings.TrimSpace(lines[i]) != "" {
-				last = i
-			}
-		}
-		lines = slices.Insert(lines, last+1, key+" = "+*val+cr)
-	default:
-		body := strings.TrimRight(text, "\r\n")
-		block := "[" + table + "]" + cr + "\n" + key + " = " + *val + cr + "\n"
-		if body == "" {
-			return block
-		}
-		return body + cr + "\n" + cr + "\n" + block
-	}
-	return strings.Join(lines, "\n")
-}
-
-// JSON with the members kept in their order (Claude Code's settings.json).
-
-type jsonMember struct {
-	Key string
-	Val json.RawMessage
-}
-
-func parseObject(b []byte) ([]jsonMember, error) {
-	if len(bytes.TrimSpace(b)) == 0 {
-		return nil, nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(b))
-	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return nil, i18n.Err("cli.hostmem.err.not_object")
-	}
-	var ms []jsonMember
-	for dec.More() {
-		t, err := dec.Token()
-		if err != nil {
-			return nil, err
-		}
-		key, _ := t.(string)
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			return nil, err
-		}
-		ms = append(ms, jsonMember{key, raw})
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-	return ms, nil
-}
-
-func compactObject(ms []jsonMember) []byte {
-	var b bytes.Buffer
-	b.WriteByte('{')
-	for i, m := range ms {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		enc := json.NewEncoder(&b)
-		enc.SetEscapeHTML(false)
-		_ = enc.Encode(m.Key)
-		b.Truncate(b.Len() - 1) // Encode adds a newline
-		b.WriteByte(':')
-		_ = json.Compact(&b, m.Val)
-	}
-	b.WriteByte('}')
-	return b.Bytes()
-}
-
-func setMember(ms []jsonMember, path []string, val *string) ([]jsonMember, error) {
-	i := slices.IndexFunc(ms, func(m jsonMember) bool { return m.Key == path[0] })
-	if len(path) == 1 {
-		switch {
-		case val == nil && i >= 0:
-			return slices.Delete(ms, i, i+1), nil
-		case val == nil:
-			return ms, nil
-		case i >= 0:
-			ms[i].Val = json.RawMessage(*val)
-			return ms, nil
-		}
-		return append(ms, jsonMember{path[0], json.RawMessage(*val)}), nil
-	}
-	var inner []jsonMember
-	if i >= 0 {
-		var err error
-		if inner, err = parseObject(ms[i].Val); err != nil {
-			return nil, err
-		}
-	} else if val == nil {
-		return ms, nil
-	}
-	inner, err := setMember(inner, path[1:], val)
-	if err != nil {
-		return nil, err
-	}
-	if i >= 0 {
-		ms[i].Val = compactObject(inner)
-		return ms, nil
-	}
-	return append(ms, jsonMember{path[0], compactObject(inner)}), nil
-}
-
-// jsonIndentOf is the indent of the first indented line, else two spaces.
-func jsonIndentOf(b []byte) string {
-	for _, l := range strings.Split(string(b), "\n")[1:] {
-		if t := strings.TrimLeft(l, " \t"); t != "" && len(t) < len(l) {
-			return l[:len(l)-len(t)]
-		}
-	}
-	return "  "
-}
-
-func jsonGet(b []byte, path []string) (string, bool) {
-	raw := json.RawMessage(b)
-	for _, k := range path {
-		ms, err := parseObject(raw)
-		if err != nil {
-			return "", false
-		}
-		i := slices.IndexFunc(ms, func(m jsonMember) bool { return m.Key == k })
-		if i < 0 {
-			return "", false
-		}
-		raw = ms[i].Val
-	}
-	var c bytes.Buffer
-	if json.Compact(&c, raw) != nil {
-		return "", false
-	}
-	return c.String(), true
-}
-
-// jsonSet sets the value at path to val (raw JSON) or removes it (val nil). The members
-// keep their order and the file its indent unit.
-func jsonSet(b []byte, path []string, val *string) ([]byte, error) {
-	ms, err := parseObject(b)
-	if err != nil {
-		return nil, err
-	}
-	if ms, err = setMember(ms, path, val); err != nil {
-		return nil, err
-	}
-	var out bytes.Buffer
-	if err := json.Indent(&out, compactObject(ms), "", jsonIndentOf(b)); err != nil {
-		return nil, err
-	}
-	out.WriteByte('\n')
-	return out.Bytes(), nil
 }
