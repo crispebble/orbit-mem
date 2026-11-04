@@ -276,6 +276,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		}
 		inj = inject.SessionBundle(s, cfg, scope, host, in.SessionID)
 		text := withVersionNote(inj.Text, pluginVersion)
+		text = withUpdateNote(text, cfg)
 		if who.askable() {
 			text = withHostMemoryNote(text, cfg, in.Cwd)
 		}
@@ -621,6 +622,12 @@ func cmdConfig(a *app, args []string) error {
 				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
 			}
 		}
+	case "updateCheck":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.bool", key, val)
+		}
+		cfg.UpdateCheck = b
 	case "autoBackup":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
@@ -656,7 +663,7 @@ func cmdConfig(a *app, args []string) error {
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

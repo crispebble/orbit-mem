@@ -17,6 +17,7 @@ var execAllowed = map[string]string{
 	"cmd/orbit-mem/ops_cmds.go":       "LookPath only: which orbit-mem is on PATH (install, doctor)",
 	"internal/project/project.go":     "git: resolves a working directory to its project",
 	"cmd/orbit-mem/backup_cmd.go":     "starts itself (orbit-mem backup auto) for the session-start hook's daily copy (ONID-136)",
+	"cmd/orbit-mem/update_cmd.go":     "runs the new orbit-mem's install after update replaced the binary (to match the host plugins); not a model run",
 	"cmd/orbit-mem/detach_unix.go":    "detaches that orbit-mem backup auto process from the hook",
 	"cmd/orbit-mem/detach_windows.go": "detaches that orbit-mem backup auto process from the hook",
 }

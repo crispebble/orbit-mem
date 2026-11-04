@@ -25,6 +25,9 @@ func fakeBackground(t *testing.T, fail error) *[][]string {
 	calls := &[][]string{}
 	old := startBackground
 	startBackground = func(args ...string) error {
+		if len(args) > 0 && args[0] == "update" { // 새 판 확인 갱신은 사본과 상관없다
+			return nil
+		}
 		mu.Lock()
 		defer mu.Unlock()
 		*calls = append(*calls, args)

@@ -335,5 +335,16 @@
   "cli.doctor.problem.claude-memory-mcp": "The Claude Code MCP server %s (%s) keeps memories: memories split between it and orbit-mem",
   "cli.doctor.problem.codex-memory-plugin": "The Codex memory plugin %s is on: memories split between it and orbit-mem",
   "cli.doctor.problem.codex-memory-mcp": "The Codex MCP server %s (%s) keeps memories: memories split between it and orbit-mem",
-  "cli.doctor.problem.host-settings-unreadable": "Could not read %s for the overlapping memory check: %s"
+  "cli.doctor.problem.host-settings-unreadable": "Could not read %s for the overlapping memory check: %s",
+  "usage.update": "orbit-mem update [--check] [--dry-run] [--version X] [--force] [--json]   # replace orbit-mem with the newest GitHub release (sha256 verified), then run its install",
+  "flag.update.check": "only look up the newest version; change nothing",
+  "flag.update.dry_run": "only show what would be done",
+  "flag.update.version": "install this version instead of the newest",
+  "flag.update.json": "print the result as JSON (ok, error, current, latest, updated, binary, steps)",
+  "cli.update.available": "A newer orbit-mem is out: %s -> %s (orbit-mem update)",
+  "cli.update.up_to_date": "orbit-mem %s is up to date",
+  "cli.update.done": "Updated orbit-mem %s -> %s: %s",
+  "cli.doctor.update": "Version: %s (newest known: %s, newer available: %s, update check: %s)",
+  "flag.update.force": "allow --version to go to a version older than the current one",
+  "cli.update.err.no_path": "cannot tell where the running orbit-mem file is (got %q); nothing was written"
 }

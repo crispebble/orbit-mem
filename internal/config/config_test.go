@@ -202,3 +202,27 @@ func TestSave_모르는_키는_보존(t *testing.T) {
 		t.Fatalf("비운 아는 키는 지웁니다: %s", b)
 	}
 }
+
+// 새 판 알림 설정(updateCheck): 기본은 켜짐이고, 옛 설정 파일(키 없음)도 켜짐으로 읽는다. 끈 값은 보존한다.
+func TestUpdateCheck_기본은_켜짐이고_옛_설정도_켜짐이다(t *testing.T) {
+	if !Default().UpdateCheck {
+		t.Fatal("기본이 꺼짐")
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(p, []byte(`{"retroHost":"codex"}`), 0o600)
+	c, err := Load(p)
+	if err != nil || !c.UpdateCheck {
+		t.Fatalf("옛 설정 %+v %v", c, err)
+	}
+	c.UpdateCheck = false
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil || got.UpdateCheck {
+		t.Fatalf("끈 값이 사라짐 %+v %v", got, err)
+	}
+	if !knownKeys()["updateCheck"] {
+		t.Fatal("knownKeys에 updateCheck가 없음")
+	}
+}

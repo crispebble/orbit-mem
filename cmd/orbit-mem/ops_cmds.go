@@ -22,6 +22,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/migrate"
 	"github.com/onidot-labs/orbit-mem/internal/retro"
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
+	"github.com/onidot-labs/orbit-mem/internal/update"
 	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
@@ -462,7 +463,18 @@ type doctorReport struct {
 	Backups      backupStatus        `json:"backups"`
 	Claude       claudeStatus        `json:"claude"`
 	Codex        codexStatus         `json:"codex"`
+	Update       updateStatus        `json:"update"`
 	Problems     []problem           `json:"problems"`
+}
+
+// updateStatus is the version part of doctor: the newest version is the cached answer of the
+// session-start hook's daily check (doctor itself never goes to the network).
+type updateStatus struct {
+	Current   string `json:"current"`
+	Latest    string `json:"latest"` // "" when no check has answered yet
+	CheckedAt string `json:"checkedAt,omitempty"`
+	Available bool   `json:"available"`
+	Enabled   bool   `json:"enabled"` // config updateCheck
 }
 
 type activityStatus struct {
@@ -546,6 +558,11 @@ func cmdDoctor(a *app, args []string) error {
 		add("db-missing", "orbit-mem install")
 	}
 	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
+	rep.Update = updateStatus{Current: version.Version, Enabled: cfg.UpdateCheck}
+	if c, ok := update.ReadCache(p.Home); ok {
+		rep.Update.Latest, rep.Update.CheckedAt = c.Latest, c.CheckedAt.Format(time.RFC3339)
+		rep.Update.Available = c.Latest != "" && update.Compare(c.Latest, version.Version) > 0
+	}
 	rep.Backups = readBackupStatus(p, rep.Config, time.Now())
 	rep.LastBackup = rep.Backups.LastPath
 	h := install.FindHosts()
@@ -632,6 +649,7 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.Inject, rep.SessionQueue, cfg.RecallChars))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.update", rep.Update.Current, orNone(rep.Update.Latest), yes(rep.Update.Available), onOff(rep.Update.Enabled)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions, rep.Activity.LegacySessions))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex", orNone(rep.Codex.Path), memplugin.ID, rep.Codex.Plugin, yes(rep.Codex.Marketplace), yes(rep.Codex.HooksTrusted)))

@@ -1,0 +1,21 @@
+{
+  "update.err.bad_version": "not a version: %s",
+  "update.err.checksum": "checksum of %s does not match SHA256SUMS; nothing was changed",
+  "update.err.http": "%s answered %s",
+  "update.err.latest": "could not look up the newest release: %w",
+  "update.err.link_entry": "the archive has a link entry (%s); refused",
+  "update.err.no_binary": "the archive has no orbit-mem executable",
+  "update.err.no_checksum": "SHA256SUMS has no line for %s; refused",
+  "update.err.platform": "no release for %s/%s",
+  "update.err.reinstall": "orbit-mem was replaced, but running its install failed: %w (run: orbit-mem install)",
+  "update.err.replace": "could not replace orbit-mem (the old file is kept): %w",
+  "update.err.too_big": "%s is bigger than %d bytes; refused",
+  "update.err.unsafe_entry": "the archive has an entry outside its folder (%s); refused",
+  "update.step.download": "Download %s",
+  "update.step.install": "Run install with the new %s to match the host plugins",
+  "update.step.latest": "Look up the newest release",
+  "update.step.replace": "Replace %s (atomically)",
+  "update.step.up_to_date": "orbit-mem %s is up to date",
+  "update.step.verify": "Verify the sha256 against SHA256SUMS",
+  "update.err.downgrade": "%s is older than the current %s; nothing was changed (to downgrade on purpose: --force)"
+}

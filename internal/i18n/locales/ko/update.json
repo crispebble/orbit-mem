@@ -1,0 +1,21 @@
+{
+  "update.err.bad_version": "판이 아닙니다: %s",
+  "update.err.checksum": "%s의 체크섬이 SHA256SUMS와 다릅니다. 아무것도 바꾸지 않았습니다",
+  "update.err.http": "%s 응답: %s",
+  "update.err.latest": "최신 릴리스를 조회하지 못했습니다: %w",
+  "update.err.link_entry": "압축 파일에 링크 항목(%s)이 있어 거절했습니다",
+  "update.err.no_binary": "압축 파일에 orbit-mem 실행 파일이 없습니다",
+  "update.err.no_checksum": "SHA256SUMS에 %s의 줄이 없어 거절했습니다",
+  "update.err.platform": "%s/%s용 릴리스가 없습니다",
+  "update.err.reinstall": "orbit-mem은 교체했지만 새 판의 install 실행이 실패했습니다: %w (orbit-mem install을 직접 실행하세요)",
+  "update.err.replace": "orbit-mem을 교체하지 못했습니다(옛 파일은 그대로 있습니다): %w",
+  "update.err.too_big": "%s가 %d바이트보다 커서 거절했습니다",
+  "update.err.unsafe_entry": "압축 파일에 폴더 밖을 가리키는 항목(%s)이 있어 거절했습니다",
+  "update.step.download": "%s 받기",
+  "update.step.install": "새 %s의 install을 실행해 호스트 플러그인을 맞춤",
+  "update.step.latest": "최신 릴리스 조회",
+  "update.step.replace": "%s 교체(원자적)",
+  "update.step.up_to_date": "orbit-mem %s은(는) 최신입니다",
+  "update.step.verify": "SHA256SUMS로 sha256 검증",
+  "update.err.downgrade": "%s은(는) 현재 판 %s보다 낮아 아무것도 바꾸지 않았습니다(일부러 내리려면 --force)"
+}
