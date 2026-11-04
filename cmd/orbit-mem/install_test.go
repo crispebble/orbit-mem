@@ -321,7 +321,7 @@ func TestUsage_걷어_낸_명령(t *testing.T) {
 			t.Errorf("%v: %d", args, code)
 		}
 	}
-	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.13.0\n" {
+	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.14.0\n" {
 		t.Errorf("version %d %q", code, out)
 	}
 	if _, errOut, code := run(t, ""); code != 2 || !strings.Contains(errOut, "orbit-mem search") || strings.Contains(errOut, "orb run") || strings.Contains(errOut, "fragment") {
