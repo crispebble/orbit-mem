@@ -28,7 +28,7 @@ func tomlKeyValue(line string) (key, val, rest string, ok bool) {
 	}
 	v = strings.TrimLeft(v, " \t")
 	val, rest = v, ""
-	if i := strings.Index(v, "#"); i >= 0 && !strings.ContainsAny(v[:i], `"'`) {
+	if i := tomlCommentAt(v); i >= 0 {
 		val, rest = v[:i], v[i:]
 	}
 	trimmed := strings.TrimRight(val, " \t")
@@ -36,6 +36,46 @@ func tomlKeyValue(line string) (key, val, rest string, ok bool) {
 		rest = val[len(trimmed):] + rest
 	}
 	return k, trimmed, rest, true
+}
+
+// tomlCommentAt is where a # comment starts in a value, outside quoted strings, or -1.
+func tomlCommentAt(v string) int {
+	var quote byte
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		switch {
+		case quote == '"' && c == '\\':
+			i++
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote != 0:
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '#':
+			return i
+		}
+	}
+	return -1
+}
+
+// tomlStrings are the quoted strings in a raw value (an array of strings, or one string).
+func tomlStrings(raw string) []string {
+	var out []string
+	for i := 0; i < len(raw); i++ {
+		q := raw[i]
+		if q != '"' && q != '\'' {
+			continue
+		}
+		var b strings.Builder
+		for i++; i < len(raw) && raw[i] != q; i++ {
+			if q == '"' && raw[i] == '\\' && i+1 < len(raw) {
+				i++
+			}
+			b.WriteByte(raw[i])
+		}
+		out = append(out, b.String())
+	}
+	return out
 }
 
 func tomlHeader(line string) (string, bool) {
@@ -93,17 +133,29 @@ type tomlTable struct {
 	Keys   map[string]string
 }
 
-// tomlTables lists the [header] tables of a file in order.
+// tomlTables lists the [header] tables of a file in order. An array value written over
+// several lines is gathered into one raw value.
 func tomlTables(text string) []tomlTable {
 	var ts []tomlTable
-	for _, l := range strings.Split(text, "\n") {
-		if h, ok := tomlHeader(l); ok {
+	lines := strings.Split(text, "\n")
+	for i := 0; i < len(lines); i++ {
+		if h, ok := tomlHeader(lines[i]); ok {
 			ts = append(ts, tomlTable{Header: h, Keys: map[string]string{}})
 			continue
 		}
-		if k, v, _, ok := tomlKeyValue(l); ok && len(ts) > 0 {
-			ts[len(ts)-1].Keys[k] = v
+		k, v, _, ok := tomlKeyValue(lines[i])
+		if !ok || len(ts) == 0 {
+			continue
 		}
+		for strings.HasPrefix(v, "[") && strings.Count(v, "[") > strings.Count(v, "]") && i+1 < len(lines) {
+			i++
+			next := strings.TrimSpace(strings.TrimSuffix(lines[i], "\r"))
+			if c := tomlCommentAt(next); c >= 0 {
+				next = strings.TrimSpace(next[:c])
+			}
+			v += " " + next
+		}
+		ts[len(ts)-1].Keys[k] = v
 	}
 	return ts
 }

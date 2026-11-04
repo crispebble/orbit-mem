@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +10,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -160,7 +163,7 @@ func cmdInstall(a *app, args []string) (err error) {
 	asJSON := fs.Bool("json", false, i18n.T("flag.install.json"))
 	res := installResult{AskUser: []askUser{}, Warnings: []hostWarning{}, Steps: []string{}}
 	if _, perr := parse(fs, args); perr != nil {
-		if !wantsJSON(args) {
+		if !wantsJSON(args) || errors.Is(perr, flag.ErrHelp) {
 			return perr
 		}
 		res.Error = perr.Error()
@@ -248,6 +251,7 @@ func cmdInstall(a *app, args []string) (err error) {
 			steps = append(steps, i18n.T("cli.install.step_no_hosts"))
 		}
 	}
+	res.Binary, res.Steps = dst, steps // 실패해도 JSON에 어디까지 하려 했는지 남는다
 	if *dry {
 		for _, s := range steps {
 			fmt.Fprintln(a.stdout, "- "+s)
@@ -331,10 +335,16 @@ type installResult struct {
 	Warnings []hostWarning `json:"warnings"`
 }
 
-// wantsJSON says whether the arguments ask for JSON, read before the flags parse.
+// wantsJSON says whether the arguments ask for JSON, read before the flags parse
+// (--json, or --json=<true value>).
 func wantsJSON(args []string) bool {
 	return slices.ContainsFunc(args, func(s string) bool {
-		return s == "--json" || s == "-json" || strings.HasPrefix(s, "--json=") || strings.HasPrefix(s, "-json=")
+		name, val, hasVal := strings.Cut(strings.TrimLeft(s, "-"), "=")
+		if name != "json" || !strings.HasPrefix(s, "-") {
+			return false
+		}
+		b, err := strconv.ParseBool(val)
+		return !hasVal || (err == nil && b)
 	})
 }
 

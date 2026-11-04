@@ -722,7 +722,86 @@ func TestHostMemory_아는_기억_목록은_orbit_mem을_빼고_이름으로_찾
 			t.Errorf("%s → %q %v", id, k.Name, ok)
 		}
 	}
-	if _, ok := memoryServerOf(`{"command":"npx","args":["-y","@upstash/context7-mcp"]}`); ok {
+	if _, ok := memoryServerOf("npx", []string{"-y", "@upstash/context7-mcp"}, ""); ok {
 		t.Error("context7 is not a memory server")
+	}
+}
+
+func TestHostMemory_MCP는_토큰으로_찾고_경로_인자는_보지_않는다(t *testing.T) {
+	cases := []struct {
+		command string
+		args    []string
+		url     string
+		want    string
+	}{
+		{"npx", []string{"-y", "@modelcontextprotocol/server-memory@latest"}, "", "server-memory"},
+		{"uvx", []string{"--prerelease=allow", "basic-memory", "mcp"}, "", "basic-memory"},
+		{"uvx", []string{"basic-memory==0.15"}, "", "basic-memory"},
+		{"", nil, "https://mcp.supermemory.ai/mcp", "supermemory"},
+		{"npx", []string{"-y", "@modelcontextprotocol/server-filesystem", "/Users/me/basic-memory"}, "", ""},
+		{"node", []string{"/opt/mem0-mcp-server/index.js"}, "", ""},
+	}
+	for _, c := range cases {
+		k, ok := memoryServerOf(c.command, c.args, c.url)
+		if (c.want == "") == ok || k.Name != c.want {
+			t.Errorf("%v %v %s → %q %v", c.command, c.args, c.url, k.Name, ok)
+		}
+	}
+}
+
+func TestTOML_여러_줄_배열과_따옴표_뒤_주석을_읽는다(t *testing.T) {
+	ts := tomlTables("[mcp_servers.kg]\ncommand = \"npx\" # basic-memory\nargs = [\n  \"-y\",\n  \"@modelcontextprotocol/server-memory\",\n]\n")
+	if len(ts) != 1 || ts[0].Keys["command"] != `"npx"` || !strings.Contains(ts[0].Keys["args"], "server-memory") {
+		t.Fatalf("%+v", ts)
+	}
+	if got := tomlStrings(ts[0].Keys["args"]); !slices.Equal(got, []string{"-y", "@modelcontextprotocol/server-memory"}) {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestHostMemory_mcp_json_서버는_승인된_것만_켜진_것으로_본다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{"autoMemoryEnabled": false}`)
+	write(t, filepath.Join(h.proj, ".mcp.json"), `{"mcpServers": {"notes": {"command": "uvx", "args": ["basic-memory", "mcp"]}}}`)
+	write(t, filepath.Join(h.claude, ".claude.json"), `{"mcpServers": {"notes2": {"command": "uvx", "args": ["basic-memory", "mcp"]}}, "projects": {"`+h.proj+`": {"disabledMcpServers": ["notes"]}}}`)
+	if o := overlapByID(t, "claude-mcp:notes"); o.On {
+		t.Fatalf("not approved but on: %+v", o)
+	}
+	local := filepath.Join(h.proj, ".claude", "settings.local.json")
+	write(t, local, `{"enabledMcpjsonServers": ["notes"]}`)
+	if o := overlapByID(t, "claude-mcp:notes"); !o.On {
+		t.Fatalf("approved, and disabledMcpServers is for user/local servers only: %+v", o)
+	}
+	write(t, local, `{"enableAllProjectMcpServers": true, "disabledMcpjsonServers": ["notes"]}`)
+	if o := overlapByID(t, "claude-mcp:notes"); o.On {
+		t.Fatalf("refused but on: %+v", o)
+	}
+}
+
+func TestInstall_json_실패에도_진행한_단계를_싣고_help와_json_false는_따로_다룬다(t *testing.T) {
+	h := newHostPC(t)
+	blocker := filepath.Join(h.home, "not-a-dir")
+	write(t, blocker, "x")
+	out, _, _ := run(t, "", "install", "--json", "--no-schedule", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
+	var res struct {
+		Binary string
+		Steps  []string
+	}
+	if json.Unmarshal([]byte(out), &res) != nil || res.Binary == "" || len(res.Steps) == 0 {
+		t.Fatalf("%s", out)
+	}
+	if out, _, code := run(t, "", "install", "--json=false", "--bogus"); code == 0 || strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Fatalf("--json=false gave JSON: %d %q", code, out)
+	}
+	if out, errOut, code := run(t, "", "install", "--json", "--help"); code != 2 || strings.TrimSpace(out) != "" || !strings.Contains(errOut, "-dry-run") {
+		t.Fatalf("--help: %d %q %q", code, out, errOut)
+	}
+}
+
+func TestHostMemory_설정의_env_블록으로_끈_auto_memory도_꺼짐이다(t *testing.T) {
+	h := newHostPC(t)
+	write(t, h.settings(), `{"env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}`)
+	if o := overlapByID(t, "claude-auto-memory"); o.On || o.Source == nil || o.Source.Scope != "user" {
+		t.Fatalf("%+v %+v", o, o.Source)
 	}
 }

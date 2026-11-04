@@ -21,8 +21,9 @@ import (
 // knownMemory is a memory system known to keep memories apart from orbit-mem. Only
 // identifiers checked against the project's own files or documents are listed, each with
 // where it was checked (2026-11-04). Plugins match by plugin name (the part before @, in any
-// marketplace); MCP servers match by a text in their command, args or url, since people
-// name the server entry as they like.
+// marketplace). MCP servers match by what they run, since people name the server entry as
+// they like: a package or command name in command or args (a version after it is fine, a
+// path is not), or the host of url.
 type knownMemory struct {
 	Name    string
 	Plugins []string
@@ -60,16 +61,51 @@ func memoryPluginOf(id string) (knownMemory, bool) {
 	return knownMemory{}, false
 }
 
-// memoryServerOf is the known memory system an MCP server entry (its raw JSON or TOML) runs.
-func memoryServerOf(entry string) (knownMemory, bool) {
+// memoryServerOf is the known memory system an MCP server runs.
+func memoryServerOf(command string, args []string, url string) (knownMemory, bool) {
+	names := []string{packageName(filepath.Base(command))}
+	for _, a := range args {
+		names = append(names, packageName(a))
+	}
+	host := url
+	if _, rest, ok := strings.Cut(url, "://"); ok {
+		host = rest
+	}
+	host, _, _ = strings.Cut(host, "/")
 	for _, k := range knownMemories {
 		for _, m := range k.MCP {
-			if strings.Contains(entry, m) {
+			if (host != "" && host == m) || slices.Contains(names, m) {
 				return k, true
 			}
 		}
 	}
 	return knownMemory{}, false
+}
+
+// packageName is an npm or PyPI package argument without its version
+// (@scope/name@1.2 → @scope/name, name==1.2 → name). A path is no package: it stays as is
+// and matches nothing.
+func packageName(arg string) string {
+	if strings.HasPrefix(arg, "@") {
+		if i := strings.Index(arg[1:], "@"); i >= 0 {
+			return arg[:i+1]
+		}
+		return arg
+	}
+	if strings.ContainsAny(arg, `/\`) {
+		return arg
+	}
+	if i := strings.IndexAny(arg, "@=<>~![ "); i > 0 {
+		return arg[:i]
+	}
+	return arg
+}
+
+// mcpEntry is what an MCP server entry runs.
+type mcpEntry struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+	URL     string   `json:"url"`
 }
 
 // Overlap kinds and ids (17.2).
@@ -286,8 +322,14 @@ func claudeOverlaps(cwd string, warns *[]hostWarning) []hostOverlap {
 		store: []string{filepath.Join(claudeConfigDir(), "projects", "*", "memory")}}
 	v, src, all := effective(ls, "autoMemoryEnabled")
 	auto.Values = all
-	if env := os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY"); slices.Contains([]string{"1", "true", "yes"}, strings.ToLower(env)) {
+	envOff := func(v string) bool { return slices.Contains([]string{"1", "true", "yes"}, strings.ToLower(v)) }
+	var envBlock string
+	ev, esrc, _ := effective(ls, "env", "CLAUDE_CODE_DISABLE_AUTO_MEMORY")
+	_ = json.Unmarshal([]byte(ev), &envBlock)
+	if env := os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY"); envOff(env) {
 		auto.Source = &settingValue{Scope: "env", Path: "CLAUDE_CODE_DISABLE_AUTO_MEMORY", Value: env}
+	} else if esrc != nil && envOff(envBlock) { // 설정 파일의 env 블록
+		auto.Source = esrc
 	} else if src == nil {
 		auto.On, auto.Source = true, &settingValue{Scope: "default", Value: "true"}
 	} else {
@@ -331,10 +373,18 @@ func claudeOverlaps(cwd string, warns *[]hostWarning) []hostOverlap {
 // project in its /mcp panel and keeps that choice in ~/.claude.json, which it rewrites
 // itself, so orbit-mem leaves them to the host: Off is `claude mcp remove`.
 func claudeMCPOverlaps(cwd string, ls []claudeLayer, warns *[]hostWarning) []hostOverlap {
-	type server struct{ name, scope, file, entry string }
+	type server struct {
+		name, scope, file string
+		entry             mcpEntry
+	}
 	var servers []server
 	root := projectRoot(cwd)
-	var disabled []string
+	var disabled []string // /mcp에서 이 프로젝트에 끈 user·local 서버
+	entry := func(raw json.RawMessage) mcpEntry {
+		var e mcpEntry
+		_ = json.Unmarshal(raw, &e)
+		return e
+	}
 	if b, ok := readJSONObject(claudeStatePath(), warns); ok {
 		var st struct {
 			MCPServers map[string]json.RawMessage `json:"mcpServers"`
@@ -345,16 +395,27 @@ func claudeMCPOverlaps(cwd string, ls []claudeLayer, warns *[]hostWarning) []hos
 		}
 		_ = json.Unmarshal(b, &st)
 		for n, e := range st.MCPServers {
-			servers = append(servers, server{n, "user", claudeStatePath(), string(e)})
+			servers = append(servers, server{n, "user", claudeStatePath(), entry(e)})
 		}
 		for _, key := range []string{cwd, root} {
 			if p, ok := st.Projects[key]; ok {
 				for n, e := range p.MCPServers {
-					servers = append(servers, server{n, "local", claudeStatePath(), string(e)})
+					servers = append(servers, server{n, "local", claudeStatePath(), entry(e)})
 				}
 				disabled = append(disabled, p.DisabledMCPServers...)
 			}
 		}
+	}
+	// .mcp.json 서버는 승인(enabledMcpjsonServers, enableAllProjectMcpServers)된 것만 돌고, disabledMcpjsonServers는 막는다.
+	var approved, refused []string
+	all, _, _ := effective(ls, "enableAllProjectMcpServers")
+	for _, l := range ls {
+		var d struct {
+			Enabled  []string `json:"enabledMcpjsonServers"`
+			Disabled []string `json:"disabledMcpjsonServers"`
+		}
+		_ = json.Unmarshal(l.Data, &d)
+		approved, refused = append(approved, d.Enabled...), append(refused, d.Disabled...)
 	}
 	mcpJSON := filepath.Join(root, ".mcp.json")
 	if b, ok := readJSONObject(mcpJSON, warns); ok {
@@ -363,20 +424,13 @@ func claudeMCPOverlaps(cwd string, ls []claudeLayer, warns *[]hostWarning) []hos
 		}
 		_ = json.Unmarshal(b, &p)
 		for n, e := range p.MCPServers {
-			servers = append(servers, server{n, "project", mcpJSON, string(e)})
-		}
-		for _, l := range ls { // .mcp.json 서버 승인 거절 목록(disabledMcpjsonServers)
-			var d struct {
-				Disabled []string `json:"disabledMcpjsonServers"`
-			}
-			_ = json.Unmarshal(l.Data, &d)
-			disabled = append(disabled, d.Disabled...)
+			servers = append(servers, server{n, "project", mcpJSON, entry(e)})
 		}
 	}
 	slices.SortFunc(servers, func(a, b server) int { return strings.Compare(a.scope+"\x00"+a.name, b.scope+"\x00"+b.name) })
 	var out []hostOverlap
 	for _, s := range servers {
-		k, ok := memoryServerOf(s.entry)
+		k, ok := memoryServerOf(s.entry.Command, s.entry.Args, s.entry.URL)
 		if !ok {
 			continue
 		}
@@ -384,7 +438,11 @@ func claudeMCPOverlaps(cwd string, ls []claudeLayer, warns *[]hostWarning) []hos
 		if slices.ContainsFunc(out, func(o hostOverlap) bool { return o.ID == id }) {
 			continue
 		}
-		out = append(out, hostOverlap{ID: id, Host: "claude", Kind: kindMCP, Name: k.Name, On: !slices.Contains(disabled, s.name), Settings: s.file,
+		on := !slices.Contains(disabled, s.name)
+		if s.scope == "project" {
+			on = (all == "true" || slices.Contains(approved, s.name)) && !slices.Contains(refused, s.name)
+		}
+		out = append(out, hostOverlap{ID: id, Host: "claude", Kind: kindMCP, Name: k.Name, On: on, Settings: s.file,
 			Source: &settingValue{Scope: s.scope, Path: s.file, Value: s.name}, Manual: true, Off: "claude mcp remove " + s.name + " --scope " + s.scope, store: storeOf(k)})
 	}
 	return out
@@ -433,7 +491,7 @@ func codexOverlaps(warns *[]hostWarning) []hostOverlap {
 			}
 			k, id = m, codexPluginPrefix+pid
 		case strings.HasPrefix(t.Header, "mcp_servers."):
-			m, ok := memoryServerOf(t.Keys["command"] + " " + t.Keys["args"] + " " + t.Keys["url"])
+			m, ok := memoryServerOf(unquoteTOML(t.Keys["command"]), tomlStrings(t.Keys["args"]), unquoteTOML(t.Keys["url"]))
 			if !ok {
 				continue
 			}

@@ -22,10 +22,10 @@ import (
 // overlapsToAsk are the overlaps that are on, to put to the user: none once they chose to
 // keep them (hostMemory keep).
 func overlapsToAsk(cfg config.Config, cwd string) ([]hostOverlap, []hostWarning) {
-	all, warns := hostMemoryOverlaps(cwd)
 	if cfg.HostMemory == config.HostMemoryKeep {
-		return nil, warns
+		return nil, nil
 	}
+	all, warns := hostMemoryOverlaps(cwd)
 	var on []hostOverlap
 	for _, o := range all {
 		if o.On {

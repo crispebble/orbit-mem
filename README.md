@@ -24,14 +24,14 @@
 
 | id | 무엇 | 켜짐 판정 | `off` |
 | --- | --- | --- | --- |
-| `claude-auto-memory` | Claude Code 자체 기억 | `autoMemoryEnabled`를 Claude Code 설정 우선순위대로 읽는다: 관리(`managed-settings.json` 뒤 `managed-settings.d/*.json` 알파벳 순) > 프로젝트 로컬(git 루트의 `.claude/settings.local.json`) > 공유 프로젝트(지금 폴더의 `.claude/settings.json`) > 사용자(`~/.claude/settings.json`). 아무도 정하지 않으면 켜짐, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`이면 꺼짐 | 사용자 설정에 `autoMemoryEnabled`·`autoDreamEnabled` false |
+| `claude-auto-memory` | Claude Code 자체 기억 | `autoMemoryEnabled`를 Claude Code 설정 우선순위대로 읽는다: 관리(`managed-settings.json` 뒤 `managed-settings.d/*.json` 알파벳 순) > 프로젝트 로컬(git 루트의 `.claude/settings.local.json`) > 공유 프로젝트(지금 폴더의 `.claude/settings.json`) > 사용자(`~/.claude/settings.json`). 아무도 정하지 않으면 켜짐, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`(환경 또는 설정의 `env` 블록)이면 꺼짐 | 사용자 설정에 `autoMemoryEnabled`·`autoDreamEnabled` false |
 | `claude-plugin:<id>` | Claude Code의 기억 플러그인 | `enabledPlugins.<id>`를 같은 우선순위로 | 사용자 설정에 `enabledPlugins.<id>` false |
-| `claude-mcp:<이름>` | Claude Code의 기억 MCP 서버 | `~/.claude.json`의 `mcpServers`(user)·`projects[<폴더>].mcpServers`(local), 프로젝트 `.mcp.json`(project). 이 프로젝트의 `disabledMcpServers`·`disabledMcpjsonServers`에 있으면 꺼짐 | orbit-mem은 끄지 않는다(Claude Code가 그 파일을 스스로 다시 쓴다). `apply`는 `claude mcp remove <이름> --scope <범위>` |
+| `claude-mcp:<이름>` | Claude Code의 기억 MCP 서버 | `~/.claude.json`의 `mcpServers`(user)·`projects[<폴더>].mcpServers`(local), 프로젝트 `.mcp.json`(project). user·local 서버는 이 프로젝트의 `disabledMcpServers`에 있으면 꺼짐, `.mcp.json` 서버는 승인(`enabledMcpjsonServers`·`enableAllProjectMcpServers`)된 것만 켜짐이고 `disabledMcpjsonServers`면 꺼짐 | orbit-mem은 끄지 않는다(Claude Code가 그 파일을 스스로 다시 쓴다). `apply`는 `claude mcp remove <이름> --scope <범위>` |
 | `codex-memories` | Codex 자체 기억 | `config.toml`의 `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true | 세 값 false |
 | `codex-plugin:<id>`, `codex-mcp:<이름>` | Codex의 기억 플러그인·MCP 서버 | `config.toml`의 `[plugins."<id>"]`, `[mcp_servers.<이름>]`. `enabled = false`가 아니면 켜짐 | 그 표에 `enabled = false` |
 
 - 관리·프로젝트 설정이 켜 둔 것은 `lockedBy`에 그 파일이 나오고, `off`는 사용자 설정을 고쳐 봐야 소용없으므로 아무것도 바꾸지 않고 알린다. 명령줄 `--settings`와 MDM·서버 관리 설정(plist·레지스트리·claude.ai 콘솔)은 파일로 볼 수 없어 판정에 넣지 않는다.
-- 아는 기억 시스템은 코드 상수 `knownMemories` 한 곳에 있다(`cmd/orbit-mem/hostmem_detect.go`, 확인한 출처를 주석으로): claude-mem(플러그인 `claude-mem`·`claude-mem-cowork`), supermemory(플러그인 `supermemory`·`claude-supermemory`, MCP `mcp.supermemory.ai`), mem0(플러그인 `mem0`, MCP `mem0-mcp-server`), basic-memory(MCP `basic-memory`), MCP 참조 서버 `@modelcontextprotocol/server-memory`. 플러그인은 이름(@ 앞)으로, MCP 서버는 항목 이름이 아니라 `command`·`args`·`url` 글자로 찾는다. orbit-mem 자신은 빠진다.
+- 아는 기억 시스템은 코드 상수 `knownMemories` 한 곳에 있다(`cmd/orbit-mem/hostmem_detect.go`, 확인한 출처를 주석으로): claude-mem(플러그인 `claude-mem`·`claude-mem-cowork`), supermemory(플러그인 `supermemory`·`claude-supermemory`, MCP `mcp.supermemory.ai`), mem0(플러그인 `mem0`, MCP `mem0-mcp-server`), basic-memory(MCP `basic-memory`), MCP 참조 서버 `@modelcontextprotocol/server-memory`. 플러그인은 이름(@ 앞)으로 찾는다. MCP 서버는 항목 이름이 아니라 실행하는 것으로 찾는다: `command`·`args`의 패키지·명령 이름(뒤에 판이 붙어도 되고, 경로 인자는 보지 않는다)이나 `url`의 호스트다. orbit-mem 자신은 빠진다.
 
 ## 세 플러그인 중 이 저장소의 자리
 
