@@ -36,7 +36,7 @@
         "id": {"$ref": "#/$defs/id"},
         "kind": {"$ref": "#/$defs/memoryKind"},
         "state": {"$ref": "#/$defs/memoryState"},
-        "scope": {"type": "string", "pattern": "^(global|project:.+)$"},
+        "scope": {"type": "string", "pattern": "^(global|project:.+|product:(\\?|[a-z0-9][a-z0-9._-]*))$"},
         "project": {"type": "string", "description": "프로젝트 이름(사람이 읽는 것). 전역이면 없다"},
         "title": {"type": "string"},
         "tags": {"type": "array", "items": {"type": "string"}},

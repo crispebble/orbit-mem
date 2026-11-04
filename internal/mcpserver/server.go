@@ -15,6 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onidot-labs/orbit-mem/internal/activity"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
@@ -28,6 +29,31 @@ type Options struct {
 	// default), user for a person's app (Orbit Studio), automation inside a
 	// retrospective. A tool argument never changes it.
 	Actor string
+	// Dir is the session folder (a real slash path), whose parents' memories the session sees (S3-R2),
+	// Git says it is in a git checkout and Temp under a temporary folder: they pick the default appliesTo
+	// (S3-R1·R4). Empty, the folder of a folder scope is used.
+	Dir       string
+	Git, Temp bool
+	// Products is the product map (config products): which product this session's folder belongs to,
+	// the default of appliesTo and what memory_find sees here (설계 · orbit-mem 2판 S3).
+	Products place.Map
+	// LoadProducts, when set, reads the product map on every call instead of Products: a long-lived server
+	// follows a config.json changed after it started, like the hooks do.
+	LoadProducts func() (place.Map, error)
+}
+
+// products is the product map now, and why it could not be read.
+func (o Options) products() (place.Map, error) {
+	if o.LoadProducts != nil {
+		return o.LoadProducts()
+	}
+	return o.Products, nil
+}
+
+// here is the place of this connection's folder.
+func (o Options) here() place.Place {
+	m, _ := o.products()
+	return place.At(o.Project, o.Dir, m)
 }
 
 // ResolveActor picks the writer of a server or command: inside a
@@ -56,7 +82,9 @@ func (o Options) who(quote, ref string) memory.Who {
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 작업에 기대는 규칙·결정·교훈이 있을 법하면 memory_find로 찾고 memory_get으로 읽는다. memory_get의 links는 함께 읽을 관련 기억이다.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자의 말을 그대로 옮긴 출처(kind=quote)면 바로 확정, 아니면 후보가 된다. 후보는 바로 회상에 쓰이고, 증거(다른 날 다시 나옴, 회상돼 따른 일이 검증을 통과하고 교정이 없음, 작업 검증이 확인한 프로젝트 사실=source kind verification)가 쌓이면 스스로 확정된다.
 저장할 때 함께 읽어야 할 기존 기억(같은 결정의 근거, 앞뒤 절차, 예외)이 있으면 links로 잇는다. 같은 태그·같은 세션이라는 것만으로는 잇지 않는다. 사용자 규칙과 어긋나는 후보면 conflictsWith에 그 규칙 id를 준다.
-규칙·결정은 topic(주제 키)이 있어야 저장된다. 한 기억에 주장 하나만 담고 본문은 1,000자 이하로 쓴다(넘으면 나눠 저장한다). 같은 범위·topic으로 저장하면 옛 현재값은 대체(낡음 + superseded_by)된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다.
+적용 대상(appliesTo): 규칙은 꼭 준다(사람의 일하는 방식은 대개 user). 그 밖에는 비우면 세션 폴더의 제품 → 그 저장소 → 그 폴더(product:?) 순이고, 저장소·폴더에 묶인 기억은 그 아래에서도 보인다. 이 저장소에만 맞으면 repo로 준다. scope(global·project)는 옛 이름이라 0.15.0에서 뺀다.
+사용자가 늘 지키라고 한 확정된 user·제품 기억은 pin(memory_save pin, memory_update action=pin)으로 상시 핵심에 올린다. 한도(user 3,000자, 제품마다 2,000자)를 넘으면 거절되고 지금 핵심 목록이 온다: 합치거나 내린(unpin) 뒤 다시 올린다.
+규칙·결정은 topic(주제 키)이 있어야 저장된다. 한 기억에 주장 하나만 담고 본문은 1,000자 이하로 쓴다(넘으면 나눠 저장한다). 같은 적용 대상·topic으로 저장하면 옛 현재값은 대체(낡음 + superseded_by)된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다.
 사용자의 새 말은 같은 주제의 옛 사용자 말을 userQuote 없이 대체한다. 사용자가 「이번엔」「이번 주만」처럼 임시라고 밝힌 말은 retention volatile로 저장하고 대체하지 않는다. 새 말이 옛 결정을 바꾸는 것인지 그때만 하는 말인지 애매하면 저장하기 전에 사용자에게 묻는다. AI가 배운 것은 사용자 말을 대체하지 못하고 어긋남으로 남는다.
 어떤 도구를 부를 때 꼭 떠올려야 하는 규칙(예: 문서 발행 위치)은 tools에 그 도구 이름(mcp__atlas__write_page)이나 접두(mcp__atlas__*)를 단다. 그 도구를 부르기 직전에 들어간다.
 틀린 기억은 memory_update로 고치거나 낡음으로 표시한다. 사용자 말을 담은 기억(출처 quote)은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
@@ -149,7 +177,7 @@ func track[In, Out any](h handlers, name string, f mcp.ToolHandlerFor[In, Out], 
 type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal 중 고른 것"`
-	Scope  string   `json:"scope,omitempty" jsonschema:"here(전역+이 프로젝트, 기본)·global·all"`
+	Scope  string   `json:"scope,omitempty" jsonschema:"here(이 폴더에서 보이는 것: user·이 저장소·이 폴더의 제품, 기본)·global(user만)·all"`
 	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale. 기본은 candidate와 confirmed"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"이 태그 중 하나라도 가진 기억만. 대소문자·앞뒤 공백·-와 _ 차이는 무시한다"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"최대 개수(기본 20, 최대 50)"`
@@ -161,6 +189,8 @@ type Summary struct {
 	Kind      string   `json:"kind"`
 	State     string   `json:"state"`
 	Scope     string   `json:"scope"`
+	AppliesTo string   `json:"appliesTo"`
+	Pinned    bool     `json:"pinned,omitempty"`
 	Title     string   `json:"title"`
 	Summary   string   `json:"summary,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
@@ -178,7 +208,7 @@ func summarize(m memory.Memory) Summary {
 	if len(r) > 200 {
 		r = append(r[:200], '…')
 	}
-	return Summary{ID: m.ID, Kind: m.Kind, State: m.State, Scope: m.Scope, Title: m.Title, Summary: string(r), Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt}
+	return Summary{ID: m.ID, Kind: m.Kind, State: m.State, Scope: m.Scope, AppliesTo: m.AppliesTo, Pinned: m.Pinned, Title: m.Title, Summary: string(r), Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt}
 }
 
 func toolError(err error) (*mcp.CallToolResult, error) {
@@ -193,6 +223,8 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: limit}
 	switch in.Scope {
 	case "", "here":
+		here := h.o.here()
+		f.Place = &here
 	case "global":
 		f.GlobalOnly = true
 	case "all":
@@ -257,12 +289,16 @@ type SourceIn struct {
 
 // SaveIn is memory_save's input.
 type SaveIn struct {
-	Kind    string   `json:"kind" jsonschema:"rule(사용자가 원하는 방식)·fact·decision·lesson·journal"`
-	Title   string   `json:"title" jsonschema:"한 줄 제목(200자 이하)"`
-	Body    string   `json:"body,omitempty" jsonschema:"짧은 본문"`
-	Tags    []string `json:"tags,omitempty"`
-	Scope   string   `json:"scope,omitempty" jsonschema:"global(기본) 또는 project(이 프로젝트에만)"`
-	Project string   `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
+	Kind  string   `json:"kind" jsonschema:"rule(사용자가 원하는 방식)·fact·decision·lesson·journal"`
+	Title string   `json:"title" jsonschema:"한 줄 제목(200자 이하)"`
+	Body  string   `json:"body,omitempty" jsonschema:"짧은 본문"`
+	Tags  []string `json:"tags,omitempty"`
+	// AppliesTo is 설계 · orbit-mem 2판 4.1 (S3 명세 2.4).
+	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"어디에 적용되나. 규칙(kind=rule)은 꼭 준다(사람의 일하는 방식은 대개 user). 비우면 세션 폴더의 제품 → (여러 제품 폴더면 제목·본문에 이름이 하나 나온 제품) → 그 저장소 → 그 폴더(product:?, 그 아래까지 회상). user(모든 일에 적용: 사용자 말투·보고 방식처럼 정말 어디서나 맞을 때만)·product(이 폴더의 제품)·product:<이름>·product:?·repo(이 저장소에만)·repo:<키>"`
+	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
+	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(0.15.0에서 뺀다): global=appliesTo user, project=이 저장소(repo). appliesTo를 쓴다"`
+	Project string   `json:"project,omitempty" jsonschema:"옛 scope project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
+	Pin     bool     `json:"pin,omitempty" jsonschema:"true면 상시 핵심으로 승격한다(세션 시작마다 늘 들어감). 사용자가 늘 지키라고 한 확정된 user·제품 기억만. 한도(user 3,000자·제품마다 2,000자)를 넘으면 아무것도 저장하지 않고 거절한다"`
 	Source  SourceIn `json:"source"`
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"관련 있는 기존 기억과 잇는다(같은 내용이면 잇지 말고 그 기억을 고친다)"`
 	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
@@ -336,23 +372,150 @@ type MemoryOut struct {
 	// Superseded and Conflicts are what memory_save replaced and the user's words it left alone.
 	Superseded []string `json:"superseded,omitempty"`
 	Conflicts  []string `json:"conflicts,omitempty"`
+	// Warnings are what the caller should check: the applies-to it got, an old input name (S3 명세 2.4·2.5).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
-func (h handlers) scope(scope, dir string) (string, string, error) {
-	switch scope {
-	case "", "global":
-		return memory.ScopeGlobal, "", nil
-	case "project":
-		if dir != "" {
-			p := project.Resolve(dir)
+// appliesTo turns appliesTo (or the old scope and project, accepted for one version) into the stored
+// scope and the folder label, with what the caller should check (설계 · orbit-mem 2판 4.1, S3 명세 2.4·2.5).
+// With neither given and def false it gives "" (no change, memory_update).
+// text is the title and body of a memory being saved: in a folder of several products, the one product it
+// names is the default (S3-R2b).
+func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string) (string, string, []string, error) {
+	var warns []string
+	products, perr := h.o.products()
+	if perr != nil {
+		warns = append(warns, fmt.Sprintf("제품 지도(config.json products)를 읽지 못해 제품이 없는 것으로 봤습니다: %v. 설정을 고친 뒤 적용 대상을 확인하세요", perr))
+	}
+	here := place.At(h.o.Project, h.o.Dir, products)
+	label := h.o.ProjectLabel
+	if label == "" {
+		label = here.Label()
+	}
+	repo := func(d string) (string, string, error) {
+		if d != "" {
+			p := project.Resolve(d)
 			return p.Scope, p.Label, nil
 		}
 		if h.o.Project == "" {
-			return "", "", fmt.Errorf("이 세션의 프로젝트를 모릅니다. project에 디렉터리 절대경로를 주세요")
+			return "", "", fmt.Errorf("이 세션의 프로젝트를 모릅니다. repo:<키>로 주거나 project에 디렉터리 절대경로를 주세요")
 		}
-		return h.o.Project, h.o.ProjectLabel, nil
+		return h.o.Project, label, nil
 	}
-	return "", "", fmt.Errorf("scope는 global 또는 project입니다")
+	var aliasScope, aliasLabel string
+	switch oldScope {
+	case "":
+	case "global":
+		aliasScope = memory.ScopeGlobal
+	case "project":
+		sc, lb, err := repo(dir)
+		if err != nil {
+			return "", "", nil, err
+		}
+		aliasScope, aliasLabel = sc, lb
+	default:
+		return "", "", nil, fmt.Errorf("scope(옛 이름)는 global 또는 project입니다. appliesTo를 쓰세요")
+	}
+	if oldScope != "" {
+		warns = append(warns, "scope는 옛 이름입니다 — appliesTo를 쓰세요(global=user, project=repo). 0.15.0에서 뺍니다")
+		if applies == "" {
+			applies = place.AppliesTo(aliasScope)
+		}
+	}
+	// 폴더 키: 세션 폴더(git 밖이면 범위 키와 같다).
+	folder := here.Dir
+	if folder == "" {
+		folder = label
+	}
+	unknown := func() (string, string) {
+		switch {
+		case h.o.Temp:
+			warns = append(warns, fmt.Sprintf("임시 폴더(%s)라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 다른 곳에서도 쓸 것이면 appliesTo user·product:<이름>·repo:<키>로 고치세요(memory_update appliesTo)", folder))
+		case h.o.Git:
+			warns = append(warns, fmt.Sprintf("폴더에 묶음: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않아 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 이 저장소의 것이면 repo, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", folder))
+		default:
+			warns = append(warns, fmt.Sprintf("폴더에 묶음: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않고 git 저장소도 아니라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", folder))
+		}
+		return place.ScopeUnknown, folder
+	}
+	// 기본값(S3-R1): 그 폴더의 제품 → 여러 제품 폴더면 글에 이름이 하나 나온 제품(S3-R2b) → git 안이면 그 저장소 → 그 폴더.
+	// 임시 폴더는 늘 그 폴더다(S3-R4).
+	byDefault := func() (string, string) {
+		switch sc := here.Default(h.o.Git, h.o.Temp, text); {
+		case sc == place.ScopeUnknown:
+			return unknown()
+		case strings.HasPrefix(sc, "project:"):
+			return sc, label
+		default:
+			return sc, ""
+		}
+	}
+	var scope, lb string
+	switch applies {
+	case "":
+		if !def {
+			return "", "", warns, nil
+		}
+		scope, lb = byDefault()
+	case "product":
+		switch p := here.Product(); {
+		case p != "":
+			scope = "product:" + p
+		case here.Multi() && here.Narrow(text) != "":
+			scope = "product:" + here.Narrow(text)
+		default:
+			scope, lb = unknown()
+		}
+	case "repo":
+		sc, l, err := repo(dir)
+		if err != nil {
+			return "", "", nil, err
+		}
+		scope, lb = sc, l
+	case place.ScopeUnknown:
+		scope, lb = place.ScopeUnknown, folder
+	default:
+		sc, ok := place.ScopeOf(applies)
+		if !ok {
+			return "", "", nil, fmt.Errorf("%w: appliesTo는 user·product·product:<이름>(소문자·숫자·.-_)·product:?·repo·repo:<키>입니다", memory.ErrInvalid)
+		}
+		scope = sc
+		if strings.HasPrefix(sc, "project:") {
+			lb = strings.TrimPrefix(sc, "project:")
+			if sc == aliasScope && aliasLabel != "" {
+				lb = aliasLabel
+			}
+		}
+	}
+	if aliasScope != "" && aliasScope != scope {
+		return "", "", nil, fmt.Errorf("%w: scope(옛 이름 %s)와 appliesTo(%s)가 다릅니다. appliesTo 하나만 주세요", memory.ErrInvalid, oldScope, applies)
+	}
+	switch name := place.ProductOf(scope); {
+	case scope == memory.ScopeGlobal:
+		core, _ := h.s.Core(memory.ScopeGlobal)
+		warns = append(warns, fmt.Sprintf("user: 모든 일(모든 저장소·제품)에 적용됩니다. 맞는지 확인하세요 — 한 제품의 일이면 appliesTo product. 지금 user 상시 핵심 %d/3,000자", memory.CoreUsed(core)))
+	case name != "":
+		if _, ok := products[name]; !ok && perr == nil {
+			warns = append(warns, fmt.Sprintf("product:%s는 제품 지도(config products)에 없어 어느 폴더에서도 회상되지 않습니다. 제품 지도에 줄을 더하거나 이름을 고치세요", name))
+		}
+	}
+	return scope, lb, warns, nil
+}
+
+// checkRuleApplies refuses a rule saved without saying whom it applies to (S3-R3): a person's way of
+// working is usually user, and a rule bound to this folder by default would be missing everywhere else.
+// The refusal names the choices and this folder's products.
+func (h handlers) checkRuleApplies(in SaveIn) error {
+	if in.Kind != memory.KindRule || strings.TrimSpace(in.AppliesTo) != "" || in.Scope != "" {
+		return nil
+	}
+	here := h.o.here()
+	products := "없음(제품 지도에 이 폴더가 없다)"
+	if len(here.Products) > 0 {
+		products = "product:" + strings.Join(here.Products, ", product:")
+	}
+	return fmt.Errorf("%w: 규칙(kind=rule)은 appliesTo가 있어야 저장합니다. 고를 것: user(모든 일 — 사람의 일하는 방식은 대개 이것), product:<이름>(한 제품), repo(이 저장소), product:?(이 폴더와 그 아래). 이 폴더(%s)의 제품: %s",
+		memory.ErrInvalid, folderOf(here), products)
 }
 
 func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
@@ -360,7 +523,11 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(fmt.Errorf("legacy 출처는 orbit-mem migrate만 씁니다"))
 		return r, MemoryOut{}, nil
 	}
-	scope, label, err := h.scope(in.Scope, in.Project)
+	if err := h.checkRuleApplies(in); err != nil {
+		r, _ := toolError(err)
+		return r, MemoryOut{}, nil
+	}
+	scope, label, warns, err := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, true, in.Title+"\n"+in.Body)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -387,7 +554,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
-		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools}
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {
@@ -411,7 +578,10 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 			return r, MemoryOut{}, nil
 		}
 	}
-	return nil, MemoryOut{Memory: m, Rewrites: rewrites, Superseded: rep.Superseded, Conflicts: rep.Conflicts}, nil
+	if rep.Unpinned != "" {
+		warns = append(warns, fmt.Sprintf("상시 핵심에서 빠짐: 대체한 %s는 핵심이었으나 새 판이 한도를 넘어 핵심에 들지 못했습니다. 핵심을 줄이고 memory_update action=pin으로 승격하세요", rep.Unpinned))
+	}
+	return nil, MemoryOut{Memory: m, Rewrites: rewrites, Superseded: rep.Superseded, Conflicts: rep.Conflicts, Warnings: warns}, nil
 }
 
 // maxClaimRunes bounds the body of a rule or decision: one memory holds one claim, so a
@@ -443,8 +613,9 @@ func (h handlers) checkTopic(in SaveIn, scope string) error {
 		score float64
 	}
 	var similar []near
+	here := h.o.here()
 	for _, m := range live {
-		if m.Scope != scope && m.Scope != memory.ScopeGlobal {
+		if m.Scope != scope && !here.Sees(m.Scope, m.Project) {
 			continue
 		}
 		if m.Topic != "" && m.Scope == scope && !slices.Contains(topics, m.Topic) && len(topics) < 30 {
@@ -483,13 +654,14 @@ func (h handlers) checkTopic(in SaveIn, scope string) error {
 type UpdateIn struct {
 	ID              string     `json:"id"`
 	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 판본. 주면 그사이 바뀌었을 때 거절한다"`
-	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore·reviewed(다시 봤고 아직 맞음: 재검토일을 민다)"`
+	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore·reviewed(다시 봤고 아직 맞음: 재검토일을 민다)·pin(상시 핵심으로 승격: 확정된 user·제품 기억, 한도를 넘으면 거절)·unpin(핵심에서 내림)"`
 	Kind            *string    `json:"kind,omitempty"`
 	Title           *string    `json:"title,omitempty"`
 	Body            *string    `json:"body,omitempty"`
 	Tags            *[]string  `json:"tags,omitempty"`
-	Scope           string     `json:"scope,omitempty" jsonschema:"global 또는 project로 범위를 옮긴다"`
-	Project         string     `json:"project,omitempty" jsonschema:"범위가 project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
+	AppliesTo       string     `json:"appliesTo,omitempty" jsonschema:"적용 대상을 옮긴다: user·product·product:<이름>·product:?·repo·repo:<키>"`
+	Scope           string     `json:"scope,omitempty" jsonschema:"옛 이름(0.15.0에서 뺀다): global=appliesTo user, project=repo"`
+	Project         string     `json:"project,omitempty" jsonschema:"옛 scope project일 때 프로젝트 디렉터리 절대경로. 비우면 이 세션의 프로젝트"`
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede일 때 대신하는 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
 	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억을 바꾸거나 후보를 확정할 때, 그렇게 하라는 사용자 말 그대로. 새 출처로 남는다"`
@@ -500,12 +672,13 @@ type UpdateIn struct {
 
 // edits says whether the update changes the memory itself (not only its links).
 func (in UpdateIn) edits() bool {
-	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Scope != "" || in.SupersededBy != ""
+	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Scope != "" || in.AppliesTo != "" || in.SupersededBy != ""
 }
 
 func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn) (*mcp.CallToolResult, MemoryOut, error) {
 	var m memory.Memory
 	var err error
+	var warns []string
 	if err := h.checkLinks(in.ID, linkIDs(in.Link)...); err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
@@ -521,12 +694,10 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		}
 		return nil, MemoryOut{Memory: m}, nil
 	}
-	if in.ExpectedVersion != 0 {
-		cur, gerr := h.s.Get(in.ID)
-		if gerr == nil && cur.Version != in.ExpectedVersion {
-			r, _ := toolError(memory.ErrVersionConflict)
-			return r, MemoryOut{}, nil
-		}
+	before, _ := h.s.Get(in.ID)
+	if in.ExpectedVersion != 0 && before.ID != "" && before.Version != in.ExpectedVersion {
+		r, _ := toolError(memory.ErrVersionConflict)
+		return r, MemoryOut{}, nil
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
@@ -547,13 +718,21 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 				}
 			}
 		}
-		if in.Scope != "" {
-			sc, label, serr := h.scope(in.Scope, in.Project)
+		if in.Scope != "" || in.AppliesTo != "" {
+			text := before.Title + "\n" + before.Body // 여러 제품 폴더에서 product는 이 기억의 글로 좁힌다(S3-R2b)
+			if in.Title != nil {
+				text = *in.Title + "\n" + before.Body
+			}
+			if in.Body != nil {
+				text = strings.SplitN(text, "\n", 2)[0] + "\n" + *in.Body
+			}
+			sc, label, w, serr := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, false, text)
 			if serr != nil {
 				r, _ := toolError(serr)
 				return r, MemoryOut{}, nil
 			}
 			u.Scope, u.Project = &sc, &label
+			warns = w
 		}
 		state := map[string]string{"confirm": memory.StateConfirmed, "restore": memory.StateCandidate, "stale": memory.StateStale}[in.Action]
 		if state != "" {
@@ -562,6 +741,10 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		m, err = h.s.Update(u)
 	case "reviewed":
 		m, err = h.s.Reviewed(in.ID, h.o.who(in.UserQuote, ""))
+	case "pin":
+		m, err = h.s.Pin(in.ID, h.o.who(in.UserQuote, ""))
+	case "unpin":
+		m, err = h.s.Unpin(in.ID, h.o.who(in.UserQuote, ""))
 	case "supersede":
 		if in.SupersededBy == "" {
 			err = fmt.Errorf("supersede에는 supersededBy가 필요합니다")
@@ -569,7 +752,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		}
 		m, err = h.s.SupersedeAs(in.ID, in.SupersededBy, in.Reason, h.o.who(in.UserQuote, ""))
 	default:
-		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore·reviewed입니다")
+		err = fmt.Errorf("action은 edit·confirm·stale·supersede·restore·reviewed·pin·unpin입니다")
 	}
 	if err == nil && (len(in.Link) > 0 || len(in.Unlink) > 0) {
 		m, err = h.applyLinks(in.ID, in.Link, in.Unlink)
@@ -578,7 +761,10 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
-	return nil, MemoryOut{Memory: m}, nil
+	if before.Pinned && !m.Pinned && in.Action != "unpin" {
+		warns = append(warns, "상시 핵심에서 빠짐: 이 변경으로 확정된 user·제품 기억이 아니게 됐거나 핵심 한도(user 3,000자·제품마다 2,000자)를 넘었습니다. 다시 올리려면 줄인 뒤 memory_update action=pin")
+	}
+	return nil, MemoryOut{Memory: m, Warnings: warns}, nil
 }
 
 // ProposalsIn is proposals' input.
@@ -762,4 +948,12 @@ func (h handlers) needsWords(id, quote string) error {
 		}
 	}
 	return nil
+}
+
+// folderOf is the session folder a person reads in a message: the folder, else the scope key.
+func folderOf(p place.Place) string {
+	if p.Dir != "" {
+		return p.Dir
+	}
+	return p.Label()
 }

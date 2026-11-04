@@ -11,6 +11,7 @@ const (
 	EventInjectPrompt       = "inject.prompt"
 	EventInjectDelivered    = "inject.delivered" // 호스트가 회상을 모델 요청에 실었다고 알려 옴(Orbit Code)
 	EventInjectTool         = "inject.tool"      // 도구 호출 직전에 넣음(PreToolUse)
+	EventInjectSubagent     = "inject.subagent"  // 서브에이전트 시작에 넣음(SubagentStart, 세션 키는 「세션/agent_id」)
 	EventToolPrefix         = "tool."
 	EventProposalDecided    = "proposal.decided"
 	EventCorrection         = "correction"

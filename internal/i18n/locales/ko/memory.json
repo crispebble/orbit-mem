@@ -76,7 +76,7 @@
   "memory.err.review_days": "%w: 재검토 주기는 1~%d일입니다",
   "memory.err.review_live_only": "%w: 살아 있는 기억(후보·확정)만 재검토합니다: %s %s",
   "memory.err.schema_backup": "기억 DB의 스키마를 바꿔야 하는데 그 전 사본을 만들지 못해 아무것도 바꾸지 않았습니다: %w",
-  "memory.err.scope_form": "%w: 범위는 global 또는 project:<키>",
+  "memory.err.scope_form": "%w: 범위는 global, project:<키>, product:<이름>, product:? 중 하나",
   "memory.err.scope_is": "%w: 범위는 global 또는 project:<키>입니다",
   "memory.err.source_kind": "%w: 출처 종류는 %s 중 하나입니다",
   "memory.err.topic_size": "%w: 주제는 200자 이하입니다",
@@ -96,5 +96,7 @@
   "memory.reason.revert_human": "사람이 한 변경(%s)은 자동화가 되돌리지 않습니다. 일하는 중에 사용자에게 묻고, 사용자가 원하면 감사 목록에서 되돌리세요",
   "memory.settled.already_linked": "이미 이어짐",
   "memory.settled.already_retagged": "이미 태그가 바뀜",
-  "memory.settled.merge_gone": "합칠 기억이 이미 정리됨"
+  "memory.settled.merge_gone": "합칠 기억이 이미 정리됨",
+  "memory.err.pin_layer": "%w: 상시 핵심은 user·product:<이름> 기억만 됩니다(이 기억은 %s). 적용 대상을 옮긴 뒤 승격하세요",
+  "memory.err.pin_state": "%w: 상시 핵심은 확정된 기억만 됩니다(이 기억은 %s). 확정된 뒤 승격하세요"
 }

@@ -50,9 +50,9 @@ func TestHook_세션_시작_문맥은_판_안내까지_6000자_이하다(t *test
 func TestHook_compact와_clear는_묶음을_다시_만들고_resume은_그대로다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
-	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
 	if again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"resume"}`, "hook", "session-start", "--host", "claude"); again != first {
 		t.Fatalf("resume changed the bundle:\n%s", again)
 	}
@@ -71,8 +71,8 @@ func TestAC8_다른_세션의_저장이_요청과_PreToolUse_훅에_들어간다
 	s := seed(t)
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"A","source":"startup"}`, "hook", "session-start", "--host", "claude")
-	out, errOut, code := run(t, `{"kind":"rule","title":"Orbit 문서는 Orbit Space에 쓴다","body":"onidot Space에 쓰지 않는다","topic":"atlas 문서 위치",`+
-		`"tools":["mcp__atlas__write_page"],"source":{"kind":"quote","excerpt":"Orbit 문서는 Orbit Space에"}}`, "tool", "memory_save", "--session", "B")
+	out, errOut, code := run(t, `{"kind":"rule","appliesTo":"user","title":"Orbit 문서는 Orbit Space에 쓴다","body":"onidot Space에 쓰지 않는다","topic":"atlas 문서 위치",`+
+		`"tools":["mcp__atlas__write_page"],"source":{"kind":"quote","excerpt":"Orbit 문서는 Orbit Space에"}}`, "tool", "memory_save", "--session", "B", "--cwd", "/tmp")
 	if code != 0 {
 		t.Fatalf("save: %s %s", out, errOut)
 	}

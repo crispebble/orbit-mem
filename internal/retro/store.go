@@ -398,6 +398,10 @@ func (r *Keeper) Settle() []string {
 			errs = append(errs, err.Error())
 		}
 	}
+	// 제품 지도가 생기거나 바뀌었으면 맞는 product:? 기억을 제품으로 옮긴다(S3-R5). 자동 변경으로 원장에 남는다.
+	if _, err := r.Store.MoveUnknown(r.Cfg.Products); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if err := r.Store.PruneSessionState(SessionStateDays); err != nil {
 		errs = append(errs, err.Error())
 	}

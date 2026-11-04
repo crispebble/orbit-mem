@@ -76,7 +76,7 @@
   "memory.err.review_days": "%w: the review cadence is 1 to %d days",
   "memory.err.review_live_only": "%w: only a live memory (candidate or confirmed) is reviewed: %s %s",
   "memory.err.schema_backup": "the memory DB needs a schema change but the copy before it failed, nothing was changed: %w",
-  "memory.err.scope_form": "%w: the scope is global or project:<key>",
+  "memory.err.scope_form": "%w: the scope is global, project:<key>, product:<name> or product:?",
   "memory.err.scope_is": "%w: the scope is global or project:<key>",
   "memory.err.source_kind": "%w: the source kind is one of %s",
   "memory.err.topic_size": "%w: keep the topic within 200 characters",
@@ -96,5 +96,7 @@
   "memory.reason.revert_human": "an automation does not undo a change a person made (%s); ask the user while working, and the user undoes it from the audit list if they want",
   "memory.settled.already_linked": "already linked",
   "memory.settled.already_retagged": "tags already changed",
-  "memory.settled.merge_gone": "the memory to merge was already settled another way"
+  "memory.settled.merge_gone": "the memory to merge was already settled another way",
+  "memory.err.pin_layer": "%w: only user and product:<name> memories go into the core (this one applies to %s). Move it first, then pin it",
+  "memory.err.pin_state": "%w: only confirmed memories go into the core (this one is %s). Pin it once it is confirmed"
 }

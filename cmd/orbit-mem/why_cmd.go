@@ -52,7 +52,7 @@ func cmdWhy(a *app, args []string) error {
 	if *cwd != "" {
 		p = project.Resolve(*cwd)
 	}
-	d := inject.Diagnose(s, cfg, inject.DiagnoseInput{ID: pos[0], Scope: p.Scope, Prompt: strings.Join(pos[1:], " "), Host: *host, Session: *session, Options: opts})
+	d := inject.Diagnose(s, cfg, inject.DiagnoseInput{ID: pos[0], Scope: whereOf(p), Prompt: strings.Join(pos[1:], " "), Host: *host, Session: *session, Options: opts})
 	if *asJSON || !isTerminal(a.stdout) {
 		return a.json(d)
 	}

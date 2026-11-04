@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -54,10 +55,12 @@ type MCPServer struct {
 // Missing is the context a session-start hook gives when orbit-mem is not on PATH; other
 // hooks stay silent then.
 type Hook struct {
-	Hook    string `json:"hook"`
-	Matcher string `json:"matcher,omitempty"`
-	Timeout int    `json:"timeout,omitempty"`
-	Missing string `json:"missing,omitempty"`
+	Hook string `json:"hook"`
+	// Hosts limits the hook to these hosts (claude, codex); empty is both.
+	Hosts   []string `json:"hosts,omitempty"`
+	Matcher string   `json:"matcher,omitempty"`
+	Timeout int      `json:"timeout,omitempty"`
+	Missing string   `json:"missing,omitempty"`
 }
 
 // Manifest is source/plugin.json. The version is orbit-mem's own (internal/version).
@@ -95,7 +98,7 @@ var (
 	versionRE = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	controlRE = regexp.MustCompile("[\x00-\x08\x0b-\x1f\x7f]")
 	// hookEvents are the events both hosts know (Claude Code and Codex hooks.json).
-	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse"}
+	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse", "SubagentStart"}
 )
 
 // codexSessionEndMax: Codex cuts a SessionEnd hook's timeout to 3 seconds and warns when it
@@ -136,6 +139,11 @@ func (m Manifest) validate(version string) error {
 		for _, h := range hs {
 			if !nameRE.MatchString(h.Hook) || h.Timeout < 0 || h.Timeout > 600 || strings.ContainsAny(h.Matcher, "'\n") {
 				return fail("hooks.%s", ev)
+			}
+			for _, host := range h.Hosts {
+				if host != "claude" && host != "codex" {
+					return fail("hooks.%s: host %q", ev, host)
+				}
 			}
 			if ev == "SessionEnd" && h.Timeout > codexSessionEndMax {
 				return fail("hooks.%s: Codex cuts a SessionEnd hook to %d seconds, not %d", ev, codexSessionEndMax, h.Timeout)
@@ -197,6 +205,9 @@ func (m Manifest) hookFile(host, version string) []byte {
 	for ev, hs := range m.Hooks {
 		var groups []any
 		for _, h := range hs {
+			if len(h.Hosts) > 0 && !slices.Contains(h.Hosts, host) {
+				continue
+			}
 			hook := map[string]any{"type": "command", "command": hookCommand(ev, h, host, version)}
 			if h.Timeout > 0 {
 				hook["timeout"] = h.Timeout

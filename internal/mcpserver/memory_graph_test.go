@@ -181,3 +181,27 @@ func TestReaderServerName(t *testing.T) {
 		t.Errorf("서버 이름: %s", got)
 	}
 }
+
+// 설계 · orbit-mem 2판 S3(검토 지적): 제품 범위 기억도 orbit.memory 1.4 Schema를 통과하고 scopes로 거를 수 있다.
+func TestMemoryGraph_제품_범위도_계약에_맞는다(t *testing.T) {
+	e := newGraphEnv(t)
+	s, err := memory.Open(e.memDB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sc := range []struct{ scope, project string }{{"product:orbit-code-desktop", ""}, {"product:?", "/w/onidot"}, {memory.ScopeGlobal, ""}} {
+		if _, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "범위 " + sc.scope, Scope: sc.scope, Project: sc.project, Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "x"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Close()
+	cs := readerHost(t, e)
+	all := validateMemory(t, "memory_graph", callRaw(t, cs, "memory_graph", nil))
+	if len(all["nodes"].([]any)) != 3 || all["contract"].(map[string]any)["minor"] != float64(4) {
+		t.Fatalf("all: %v", all)
+	}
+	only := validateMemory(t, "memory_graph", callRaw(t, cs, "memory_graph", map[string]any{"scopes": []string{"product:orbit-code-desktop", "product:?"}}))
+	if len(only["nodes"].([]any)) != 2 {
+		t.Fatalf("product scopes: %v", only)
+	}
+}

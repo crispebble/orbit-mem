@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).
@@ -73,6 +74,9 @@ type Config struct {
 
 	// 새 판 알림: 세션 시작 훅이 하루 한 번 이하로 최신 판을 확인해 새 판이 있으면 문맥 끝에 안내 한 줄을 붙인다. false면 요청하지 않는다.
 	UpdateCheck bool `json:"updateCheck"`
+	// 제품 지도(설계 · orbit-mem 2판 4.1, S3 명세 2.2): 제품 이름 → 그 제품의 저장소 원격 키·폴더(글롭 가능)와 요청 글에서
+	// 그 제품을 가리키는 말. 제품 범위 기억(product:<이름>)이 어느 폴더에서 보이는지를 정한다. 비어 있으면 제품이 없다.
+	Products place.Map `json:"products,omitempty"`
 }
 
 // HostMemory values.
@@ -127,6 +131,9 @@ func (c Config) Validate() error {
 	}
 	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
 		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)
+	}
+	if err := c.Products.Validate(); err != nil {
+		return err
 	}
 	for _, n := range []int{c.ConfirmSeenDays, c.ConfirmFollowedVerified, c.CorrectionRepeatSessions} {
 		if n < 1 || n > 30 {

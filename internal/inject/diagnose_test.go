@@ -86,6 +86,9 @@ func TestDiagnose_Orbit_Code_세션의_여섯_단계(t *testing.T) {
 func TestDiagnose_훅_호스트는_돌려준_문맥이_전달이고_확정_규칙은_세션_묶음으로_본다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말 금지", memory.ScopeGlobal, true)
+	if _, err := s.Pin(r.ID, memory.Who{}); err != nil { // 세션 시작에는 상시 핵심만 든다(S3-R6)
+		t.Fatal(err)
+	}
 	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "claude", Session: "s-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +102,9 @@ func TestDiagnose_훅_호스트는_돌려준_문맥이_전달이고_확정_규�
 func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말 금지", memory.ScopeGlobal, true)
+	if _, err := s.Pin(r.ID, memory.Who{}); err != nil { // 세션 시작에는 상시 핵심만 든다(S3-R6)
+		t.Fatal(err)
+	}
 	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
 	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "orbit-code", Session: "c-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
 		t.Fatal(err)

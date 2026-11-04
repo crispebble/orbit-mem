@@ -1,6 +1,9 @@
 package memory
 
-import "github.com/onidot-labs/orbit-mem/internal/i18n"
+import (
+	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/place"
+)
 
 // Kinds of memory (설계 「기억 모델」).
 const (
@@ -36,7 +39,7 @@ const (
 )
 
 // ScopeGlobal is the scope of a memory that applies everywhere.
-const ScopeGlobal = "global"
+const ScopeGlobal = place.ScopeGlobal
 
 var (
 	Kinds       = []string{KindRule, KindFact, KindDecision, KindLesson, KindJournal}
@@ -85,6 +88,10 @@ type Memory struct {
 	ExpiresAt    int64        `json:"expiresAt,omitempty"`  // 휘발 기억이 회상에서 빠지는 때(Unix ms)
 	Topic        string       `json:"topic,omitempty"`      // 주제 키: 같은 범위·주제는 최신 판만 회상
 	Tools        []string     `json:"tools,omitempty"`      // 도구 트리거: 이 도구(이름 또는 접두*)를 부르기 직전에 회상
+	// AppliesTo is the scope as the tools show it (user, repo:<키>, product:<이름>, product:?), read from Scope.
+	AppliesTo string `json:"appliesTo"`
+	// Pinned is the always-on core (상시 핵심): put into every session start of its layer (설계 · orbit-mem 2판 4.4).
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // Doc returns the searchable view.

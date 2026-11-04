@@ -87,7 +87,8 @@ func TestSave_찾기_읽기_고치기(t *testing.T) {
 	var cand MemoryOut
 	call(t, cs, "memory_save", map[string]any{"kind": "lesson", "title": "시험은 단독으로 돌린다",
 		"source": map[string]any{"kind": "session", "ref": "claude:abc"}}, &cand)
-	if cand.Memory.State != "candidate" || cand.Memory.Scope != "global" {
+	// 적용 대상을 비우면 이 폴더의 제품이고, 제품 지도가 없으면 product:?(이 폴더에서만)다(설계 · orbit-mem 2판 D3).
+	if cand.Memory.State != "candidate" || cand.Memory.Scope != "product:?" || cand.Memory.Project != "github.com/me/app" {
 		t.Fatalf("cand = %+v", cand.Memory)
 	}
 
@@ -216,7 +217,7 @@ func toolEvents(t *testing.T, s *memory.Store) map[string][]map[string]any {
 func TestTools_호출을_사건으로_남긴다(t *testing.T) {
 	cs, s := connect(t)
 	call(t, cs, "memory_find", map[string]any{"query": "없는 말 token=sk-abcdefghijklmnopqrstuvwx"}, nil)
-	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "답은 존댓말", "topic": "답 말투", "source": map[string]any{"kind": "quote", "excerpt": "존댓말로 답해"}}, nil)
+	call(t, cs, "memory_save", map[string]any{"kind": "rule", "appliesTo": "user", "title": "답은 존댓말", "topic": "답 말투", "source": map[string]any{"kind": "quote", "excerpt": "존댓말로 답해"}}, nil)
 	call(t, cs, "memory_find", map[string]any{"query": "존댓말"}, nil)
 	call(t, cs, "memory_get", map[string]any{"ids": []string{"m-없음"}}, nil)
 

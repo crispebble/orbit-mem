@@ -31,7 +31,7 @@ func TestTool_Orbit_Code가_기억_도구를_CLI로_부른다(t *testing.T) {
 		t.Fatalf("get: %d %s", code, out)
 	}
 	// 사용자 말 인용이면 바로 확정이고, 쓰는 쪽은 AI라 사용자 말 기억은 사용자 말 없이 고치지 못한다.
-	out, _, _ = run(t, `{"kind":"rule","title":"보고는 한국어로","topic":"보고 언어","source":{"kind":"quote","excerpt":"보고는 한국어로 해"}}`, append([]string{"tool", "memory_save"}, args...)...)
+	out, _, _ = run(t, `{"kind":"rule","appliesTo":"user","title":"보고는 한국어로","topic":"보고 언어","source":{"kind":"quote","excerpt":"보고는 한국어로 해"}}`, append([]string{"tool", "memory_save"}, args...)...)
 	var q struct {
 		Memory memory.Memory `json:"memory"`
 	}
