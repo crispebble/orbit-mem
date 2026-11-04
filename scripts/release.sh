@@ -1,9 +1,30 @@
 #!/usr/bin/env bash
 # 릴리스 자산을 dist/에 만든다: 버전은 internal/version 기준이다.
 #   scripts/release.sh            빌드 + 체크섬만(발행하지 않음)
+#   scripts/release.sh --check-versions [루트]  세 버전 일치만 검사
 #   scripts/release.sh --publish  빌드 뒤 태그 vX.Y.Z로 GitHub Release를 올린다(깨끗한 origin/main 끝에서만)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# 세 버전(version.go, plugin.json, marketplace.json)이 같은지 검사한다. 인자: 저장소 루트
+check_versions() {
+	local root=$1 v_go v_plugin v_market
+	v_go="$(sed -n 's/.*Version *= *"\([^"]*\)".*/\1/p' "$root/internal/version/version.go" | head -n1)"
+	v_plugin="$(sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p' "$root/plugin/.claude-plugin/plugin.json" | head -n1)"
+	v_market="$(sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p' "$root/.claude-plugin/marketplace.json" | head -n1)"
+	if [[ -z "$v_go" || "$v_go" != "$v_plugin" || "$v_go" != "$v_market" ]]; then
+		echo "버전이 서로 다릅니다:" >&2
+		echo "  internal/version/version.go: '$v_go'" >&2
+		echo "  plugin/.claude-plugin/plugin.json: '$v_plugin'" >&2
+		echo "  .claude-plugin/marketplace.json: '$v_market'" >&2
+		return 1
+	fi
+}
+if [[ "${1:-}" == "--check-versions" ]]; then
+	check_versions "${2:-.}" || exit 1
+	echo "버전 일치"; exit 0
+fi
+check_versions . || exit 1
 
 VERSION="$(sed -n 's/.*Version *= *"\([^"]*\)".*/\1/p' internal/version/version.go | head -n1)"
 [[ "$VERSION" =~ ^0\.[0-9]+\.[0-9]+$ ]] || { echo "버전을 읽지 못했거나 0.x가 아닙니다: '$VERSION'" >&2; exit 1; }
@@ -22,6 +43,8 @@ build() { # os arch ext
 }
 build darwin arm64
 build darwin amd64
+build linux arm64
+build linux amd64
 build windows amd64 # Windows는 빌드만 한다(설치 확인은 사용자가 지시할 때)
 (cd "$DIST" && shasum -a 256 orbit-mem-* > SHA256SUMS)
 echo "빌드 완료: $DIST (commit $COMMIT)"; cat "$DIST/SHA256SUMS"
