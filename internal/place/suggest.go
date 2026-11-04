@@ -63,6 +63,10 @@ func Suggest(roots []string, remote func(dir string) string, home string) Map {
 	repo := func(dir string) string {
 		if key := remote(dir); key != "" {
 			name := productName(path.Base(key))
+			// 같은 이름에 다른 원격이 이미 있으면 소유자를 붙여 가른다(사람이 보고 합칠 수 있게).
+			if p, ok := out[name]; ok && !slices.Contains(p.Match, key) && slices.ContainsFunc(p.Match, func(l string) bool { return !isFolder(l) }) {
+				name = productName(path.Base(path.Dir(key)) + "-" + path.Base(key))
+			}
 			add(name, key)
 			return name
 		}

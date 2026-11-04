@@ -95,16 +95,23 @@ func Resolve(cwd string) Project {
 		p.Scope, p.Label, p.Git = "project:"+key, key, true
 		return p
 	}
-	// 원격이 없는 저장소는 주 저장소 경로를 키로 써서 worktree가 같은 키를 쓴다(S3-R4).
+	// 원격이 없는 저장소는 그 checkout의 최상위가 키다. 연결된 worktree(git 디렉터리와 공용 디렉터리가 다름)만
+	// 주 저장소 경로를 써서 같은 키를 쓴다(S3-R4). 서브모듈·--separate-git-dir은 최상위 그대로다. git 한 번에 묻는다.
 	root := ""
-	if common := git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"); common != "" {
-		p.Git = true
-		root = common
-		if filepath.Base(common) == ".git" {
-			root = filepath.Dir(common)
+	if out := git(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel"); out != "" {
+		if l := strings.Split(out, "\n"); len(l) == 3 {
+			gitDir, common, top := l[0], l[1], l[2]
+			p.Git, root = true, top
+			if gitDir != common && filepath.Base(common) == ".git" {
+				root = filepath.Dir(common)
+			}
 		}
-	} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" {
+	} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" { // git 2.31 전
 		p.Git, root = true, top
+	}
+	// 홈 자체가 저장소(dotfiles)면 홈 아래 폴더는 git 밖 폴더로 본다(S3-R1).
+	if home, err := os.UserHomeDir(); err == nil && root != "" && realSlash(root) == realSlash(home) {
+		p.Git, root = false, ""
 	}
 	if root == "" {
 		root = cwd

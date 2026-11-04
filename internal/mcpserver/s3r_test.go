@@ -118,3 +118,14 @@ func TestFind_here는_상위_폴더_기억을_아래_저장소에서도_찾는�
 		}
 	}
 }
+
+func TestUpdate_appliesTo_product는_기억의_글로_좁힌다(t *testing.T) {
+	s := s3Store(t)
+	var out MemoryOut
+	cs := connectIn(t, s, parent, "/w/onidot", false, false)
+	call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "atlas 배포는 main 머지", "appliesTo": "user", "source": quote("x")}, &out)
+	var up MemoryOut
+	if res := call(t, cs, "memory_update", map[string]any{"id": out.Memory.ID, "appliesTo": "product", "userQuote": "제품으로"}, &up); res.IsError || up.Memory.AppliesTo != "product:atlas" {
+		t.Fatalf("%v %s %+v", res.IsError, text(res), up.Memory)
+	}
+}

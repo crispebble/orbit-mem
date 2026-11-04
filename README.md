@@ -91,6 +91,8 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem tool memory_find\|memory_get\|memory_save\|memory_update [--cwd D] [--host orbit-code] [--session S] [--actor ai]` | MCP 클라이언트가 없는 호스트(Orbit Code)의 기억 도구. 입력은 MCP 도구와 같은 JSON(stdin), 결과도 같은 JSON(stdout), 도구 오류는 `{"error": …}`와 종료 1. 쓰는 쪽은 기본 AI이고, 호출은 그 호스트·세션의 `tool.<이름>` 사건으로 남는다 |
 | `orbit-mem why <기억 id> [요청 글…] [--cwd D] [--host H] [--session S] [--rules brief\|full] [--json]` | 「왜 안 나왔나」 진단. 저장됨·적격·선택됨·주입됨·전달됨·사용됨을 각자의 증거(그 세션의 `inject.*`·`inject.delivered`·`tool.memory_get`·`memory.used` 사건, 세션이 없으면 지금 요청으로 묶음을 다시 만들어 봄)로 따로 판정하고 멈춘 단계를 보인다. 읽기만 한다 |
 | `orbit-mem place [--cwd D] [--json]` | 제품 지도(`config.json`의 `products`, 아래 「적용 대상·제품 지도·상시 핵심」)가 폴더를 어느 제품으로 보는지: 범위 키, 제품(여럿이면 여러 제품 폴더), 여기서 `appliesTo` 없이 저장한 기억의 적용 대상. 읽기만 한다 |
+| `orbit-mem place --suggest [--root D] [--json]` | 이 PC의 저장소 원격과 작업 폴더(기본 `~/_workspace`)로 제품 지도 첫 표를 제안한다. 설정은 쓰지 않는다: `products`에 넣고 틀린 줄만 고친다 |
+| `orbit-mem place --move [--json]` | 제품 지도에 맞는 `product:?` 기억을 그 제품으로 옮긴다(범위만, 자동 변경으로 원장에 남고 `orbit-mem audit revert`로 되돌린다). 회고 마무리도 같은 일을 한다 |
 | `orbit-mem plugin build [--out D \| --repo R]` | 내장 원본으로 플러그인을 만든다. `--out`(기본 `$ORBIT_HOME/plugins/orbit-mem`)에는 Claude·Codex 꼴과 두 로컬 마켓을, `--repo`에는 GitHub 마켓(`.claude-plugin/marketplace.json`과 `plugin/`, Claude 꼴만)을 쓴다. `plugin/` 안의 남은 파일은 지운다 |
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `orbit-mem stats [--days N \| --week 월요일]` | 지표: 반복 교정, 요청 적중, 사용 판정, 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정, 효과 원장, 회고 비용, 기억 그래프, 옛 기억 정리 |
@@ -138,8 +140,9 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 
 설계 · orbit-mem 2판 4.1·4.4, S3 명세(Atlas 명세 · orbit-mem 2판 S3).
 
-- 적용 대상(`appliesTo`): `user`(모든 일), `product:<이름>`(한 제품), `product:?`(제품 미정: 저장한 폴더에서만 회상), `repo:<키>`(한 저장소). DB의 `scope` 열은 그대로 `global`(= user)·`project:<키>`(= repo)이고 `product:<이름>`·`product:?`가 더해졌다(`product:?`의 폴더는 `project` 열). 도구의 기억 JSON에는 `appliesTo`가 붙는다.
-- `memory_save`의 `appliesTo`를 비우면 이 폴더의 제품이다. 제품이 없거나 여럿이면 `product:?`로 저장하고 `warnings`에 「제품 미정」을 싣는다. `user`면 「모든 일에 적용」 경고와 지금 user 핵심 길이를, 제품 지도에 없는 제품이면 그 경고를 싣는다. 옛 입력 `scope`(`global`·`project`)는 0.14.x 동안 별칭으로 받고 경고한다(`appliesTo`와 다르면 거절).
+- 적용 대상(`appliesTo`): `user`(모든 일), `product:<이름>`(한 제품), `product:?`(폴더에 묶음: 그 폴더와 그 아래에서 회상), `repo:<키>`(한 저장소). DB의 `scope` 열은 그대로 `global`(= user)·`project:<키>`(= repo)이고 `product:<이름>`·`product:?`가 더해졌다(`product:?`의 폴더는 `project` 열). 도구의 기억 JSON에는 `appliesTo`가 붙는다.
+- 기준 폴더는 세션을 시작한 폴더다(훅 입력 `cwd`, MCP 서버 폴더). 범위 키는 원격이 있으면 원격 키, 원격이 없는 저장소는 주 저장소 경로(worktree가 함께 쓴다), git 밖이면 그 폴더다.
+- 규칙(`kind=rule`)은 `appliesTo`가 있어야 저장한다(사람의 일하는 방식은 대개 `user`). 그 밖에는 `appliesTo`를 비우면 그 폴더의 제품 → 여러 제품 폴더면 제목·본문에 이름이 하나 나온 제품 → 그 저장소 → git 밖이면 그 폴더(`product:?`, `warnings`에 「폴더에 묶음」) 순이다. 임시 폴더(`/tmp`·`$TMPDIR` 아래)는 `product:?`와 「임시 폴더」 경고다. `user`면 「모든 일에 적용」 경고와 지금 user 핵심 길이를, 제품 지도에 없는 제품이면 그 경고를 싣는다. 옛 입력 `scope`(`global`·`project`)는 0.14.x 동안 별칭으로 받고 경고한다(`appliesTo`와 다르면 거절).
 - 제품 지도: `config.json`의 `products`(손으로 고친다).
 
   ```json
@@ -152,7 +155,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
   ```
 
   `match` 한 줄은 git 원격 키(정규화한 `host/owner/repo`)이거나 `/`·`~`로 시작하는 폴더(글롭 `*`·`?`·`[…]` 가능, 그 폴더와 그 아래)다. git 원격이 있는 저장소는 원격 키로 찾는다. 맞은 줄 중 가장 구체적인 것(원격 키, 그다음 경로 마디가 많은 폴더)이 이기고, 같은 구체성에 제품이 둘 이상이면 그 폴더는 여러 제품 폴더다(상위 폴더 `~/_workspace/onidot`을 여러 제품에 적는 식). `names`는 요청 글에서 그 제품을 가리키는 말이다. `orbit-mem place`로 확인한다.
-- 보이는 곳: `user`는 어디서나, `repo:`는 그 저장소, `product:<이름>`은 그 제품의 폴더와 그 제품을 포함한 여러 제품 폴더, `product:?`는 저장한 폴더. 세션 시작·요청 회상·도구 직전·`memory_find`(`here`)가 같은 판정을 쓴다. 요청 회상은 이 폴더의 제품(여러 제품 폴더면 요청 글에 이름이 나온 제품)의 기억을 사용자 공통보다 앞에 둔다.
+- 보이는 곳: `user`는 어디서나, `product:<이름>`은 그 제품의 폴더와 그 제품을 포함한 여러 제품 폴더, `repo:<키>`와 `product:?`는 그 저장소·폴더와 그 아래 모든 폴더·저장소(폴더 계층 상속: 세션 폴더에서 홈 바로 아래까지 올라가며 상위 폴더의 기억을 모두 가져온다). 세션 시작·요청 회상·도구 직전·`memory_find`(`here`)가 같은 판정을 쓴다. 요청 회상은 이 폴더의 제품(여러 제품 폴더면 요청 글에 이름이 나온 제품)의 기억을 사용자 공통보다 앞에 둔다.
 - 상시 핵심(`pinned` 열): 확정된 `user`·`product:<이름>` 기억만 승격된다(`memory_save` `pin`, `memory_update` action `pin`·`unpin`, 판 이력 `pin`·`unpin`). 한도는 세션 시작에 들어가는 꼴(`- 제목 (id)` 줄과 본문)로 user 3,000자, 제품마다 2,000자다. 넘으면 자르지 않고 거절하며 그 층의 지금 핵심(id·제목·글자 수)과 합계를 돌려준다. `memory_save pin`이 넘치면 아무것도 저장하지 않는다. 승격된 기억을 대체한 새 판은 한도 안이면 승격을 이어받고, 넘치면 `warnings`에 「상시 핵심에서 빠짐」을 싣는다.
 - 세션 시작 순서: user 핵심 → 이 폴더가 한 제품이면 그 제품 핵심(여러 제품 폴더는 넣지 않는다) → 남는 자리에 확정 규칙(승격된 것 빼고) → 최근 결정 제목(승격된 것 빼고)·회고 줄. 합계 6,000자 이하.
 

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
@@ -203,10 +204,31 @@ func (p Place) Label() string { return strings.TrimPrefix(p.Scope, projectPrefix
 func Resolve(where string, m Map) Place {
 	home, _ := os.UserHomeDir()
 	if where != "" && !strings.HasPrefix(where, projectPrefix) {
-		p := project.Resolve(where)
+		p := resolved(where)
 		return AtIn(p.Scope, p.Dir, m, home)
 	}
 	return ResolveIn(where, m, home)
+}
+
+// projects keeps the folders this process resolved: a hook resolves its folder several times (session
+// bundle, recall), each a git call or two. It never forgets, so it is for short command runs (hooks,
+// inject, retro-store); the long-lived MCP server resolves through At with its own folder instead.
+var projects sync.Map
+
+func resolved(dir string) project.Project {
+	if p, ok := projects.Load(dir); ok {
+		return p.(project.Project)
+	}
+	p := project.Resolve(dir)
+	projects.Store(dir, p)
+	return p
+}
+
+// Known keeps a project a caller already resolved, so Resolve of its folder does not ask git again.
+func Known(p project.Project) {
+	if p.Dir != "" {
+		projects.Store(p.Dir, p)
+	}
 }
 
 // At is the place of a session whose project scope is scope and whose folder is dir.
@@ -229,6 +251,9 @@ func AtIn(scope, dir string, m Map, home string) Place {
 // is found by its remote key only, S3 명세 2.2). The most specific lines win: a remote key, then the folder
 // with the most path segments, a plain folder before a glob of as many; their products are the place's.
 func ResolveIn(scope string, m Map, home string) Place {
+	if real, err := filepath.EvalSymlinks(home); err == nil && home != "" {
+		home = real // 세션 폴더는 실제 경로다: 홈도 실제 경로로 견준다
+	}
 	p := Place{Scope: scope, home: path.Clean(filepath.ToSlash(home))}
 	key := strings.TrimPrefix(scope, projectPrefix)
 	if scope == "" || key == scope {
@@ -340,11 +365,11 @@ func (p Place) within(key string) bool {
 // repository; else product:? (this folder). A temporary folder is always product:? (S3-R4).
 func (p Place) Default(git, temp bool, text string) string {
 	switch {
+	case temp:
 	case p.Product() != "":
 		return productPrefix + p.Product()
 	case p.Multi() && p.Narrow(text) != "":
 		return productPrefix + p.Narrow(text)
-	case temp:
 	case git && p.Scope != "":
 		return p.Scope
 	}

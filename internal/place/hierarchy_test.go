@@ -3,6 +3,8 @@ package place
 // S3 범위 규칙 고침(명세 2.3·2.4, 조사 0s4gere91nvht 8.2): 폴더 계층 상속(R2), 여러 제품 폴더 좁히기(R2b).
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -87,5 +89,33 @@ func TestNarrow_여러_제품_폴더에서_이름이_하나면_그_제품(t *tes
 	}
 	if got := p.Named("format forma"); !reflect.DeepEqual(got, []string{"forma"}) {
 		t.Fatalf("named %v", got)
+	}
+}
+
+// 검토 지적(2026-11-04): 홈이 심볼릭 링크여도 홈 자신은 상위로 치지 않는다(세션 폴더는 실제 경로다).
+func TestSees_링크_홈에서도_홈_자신은_상속하지_않는다(t *testing.T) {
+	real, _ := filepath.EvalSymlinks(t.TempDir())
+	link := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	r := filepath.ToSlash(real)
+	p := AtIn("project:"+r+"/w/app", r+"/w/app", nil, filepath.ToSlash(link))
+	if p.Sees("project:"+r, r) {
+		t.Fatal("home inherited through a symlinked home")
+	}
+	if !p.Sees("project:"+r+"/w", r+"/w") {
+		t.Fatal("folder under home not inherited")
+	}
+}
+
+// 임시 폴더는 제품 지도보다 앞서 그 폴더다(명세 2.4).
+func TestDefault_임시_폴더는_제품보다_앞선다(t *testing.T) {
+	p := ResolveIn("project:/tmp/w/desk", Map{"desk": {Match: []string{"/tmp/w/desk"}}}, home)
+	if got := p.Default(true, true, ""); got != ScopeUnknown {
+		t.Fatalf("temp %s", got)
+	}
+	if got := p.Default(true, false, ""); got != "product:desk" {
+		t.Fatalf("not temp %s", got)
 	}
 }

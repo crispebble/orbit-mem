@@ -47,12 +47,20 @@ func (s *Store) MoveUnknownIn(m place.Map, home string) ([]Moved, error) {
 		pl := place.ResolveIn("project:"+mem.Project, m, home)
 		to := pl.Product()
 		if to == "" && pl.Multi() {
+			// 낱말 일치는 추측이다: 사용자 말 기억은 지도가 한 제품으로 정한 폴더일 때만 옮긴다(검토 지적).
+			if p, err := s.Protected(mem.ID); err != nil || p {
+				continue
+			}
 			to = pl.Narrow(mem.Title + "\n" + mem.Body)
 		}
 		if to == "" {
 			continue
 		}
 		scope := "product:" + to
+		// 옮기면 같은 제품·주제의 현재값이 둘이 된다: 그대로 두고 사람·회고가 대체로 정리한다.
+		if mem.Topic != "" && s.liveTopicIn(scope, mem.Topic, mem.ID) {
+			continue
+		}
 		res, err := s.AutoApply(AutoInput{Kind: ProposalEdit, Title: "제품 지도로 옮김: " + mem.Title,
 			Body:      fmt.Sprintf("product:?(%s) → %s. 제품 지도(config products)가 이 폴더를 이 제품으로 정한다.", mem.Project, scope),
 			MemoryIDs: []string{mem.ID}, Payload: Payload{Scope: scope}, MapMove: true})
@@ -66,4 +74,11 @@ func (s *Store) MoveUnknownIn(m place.Map, home string) ([]Moved, error) {
 		out = append(out, Moved{ID: mem.ID, Title: mem.Title, Folder: mem.Project, From: place.ScopeUnknown, To: scope, LedgerID: res.LedgerID})
 	}
 	return out, errors.Join(errs...)
+}
+
+// liveTopicIn says whether another live memory holds the topic in the scope.
+func (s *Store) liveTopicIn(scope, topic, except string) bool {
+	var n int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE scope=? AND topic=? AND id<>? AND state IN ('candidate','confirmed')`, scope, topic, except).Scan(&n)
+	return n > 0
 }

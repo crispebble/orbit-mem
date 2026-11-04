@@ -102,3 +102,45 @@ func TestIsTemp_임시_폴더(t *testing.T) {
 		t.Error("TMPDIR")
 	}
 }
+
+// 검토 지적(2026-11-04): 주 저장소 경로는 연결된 worktree일 때만 쓴다. 서브모듈은 그 checkout 최상위가 키다.
+func TestResolve_서브모듈은_checkout_최상위가_키다(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	lib, sup := filepath.Join(dir, "lib"), filepath.Join(dir, "sup")
+	run("init", "-q", lib)
+	run("-C", lib, "commit", "-q", "--allow-empty", "-m", "x")
+	run("init", "-q", sup)
+	run("-C", sup, "-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "sub")
+	run("-C", filepath.Join(sup, "sub"), "remote", "remove", "origin") // 원격 없는 서브모듈
+	p := Resolve(filepath.Join(sup, "sub"))
+	if want := "project:" + filepath.ToSlash(filepath.Join(sup, "sub")); p.Scope != want || !p.Git {
+		t.Fatalf("submodule %s, want %s", p.Scope, want)
+	}
+}
+
+// 홈 자체가 저장소(dotfiles)면 홈 아래 폴더는 git 밖 폴더로 본다(S3-R1 ④).
+func TestResolve_홈_저장소_아래는_폴더다(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
+	h, _ := filepath.EvalSymlinks(t.TempDir())
+	exec.Command("git", "init", "-q", h).Run()
+	sub := filepath.Join(h, "notes")
+	os.MkdirAll(sub, 0o755)
+	t.Setenv("HOME", h)
+	p := Resolve(sub)
+	if p.Git || p.Scope != "project:"+filepath.ToSlash(sub) {
+		t.Fatalf("%+v", p)
+	}
+}

@@ -58,10 +58,21 @@ func cmdVersion(a *app, args []string) error {
 // whereOf is what the recall reads a session's place from: its folder (the parents it inherits, S3-R2),
 // or its scope key when the folder is not known.
 func whereOf(p project.Project) string {
+	place.Known(p)
 	if p.Dir != "" {
 		return p.Dir
 	}
 	return p.Scope
+}
+
+// sessionDir is the folder a hook reads the session's place from: the folder the session started in
+// (CLAUDE_PROJECT_DIR, which Claude Code gives hooks and the MCP server alike), else the hook input's cwd
+// (Codex). So recall and memory_find look from the same folder even after the session moves (S3-R1).
+func sessionDir(cwd string) string {
+	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	return cwd
 }
 
 func sessionProject() project.Project {
@@ -202,8 +213,8 @@ func cmdHook(a *app, args []string) error {
 		}
 		defer s.Close()
 		var p project.Project
-		if in.Cwd != "" {
-			p = project.Resolve(in.Cwd)
+		if dir := sessionDir(in.Cwd); dir != "" {
+			p = project.Resolve(dir)
 		}
 		if *recordOnly {
 			done <- ""

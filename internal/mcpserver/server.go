@@ -431,6 +431,8 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string
 		switch {
 		case h.o.Temp:
 			warns = append(warns, fmt.Sprintf("임시 폴더(%s)라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 다른 곳에서도 쓸 것이면 appliesTo user·product:<이름>·repo:<키>로 고치세요(memory_update appliesTo)", folder))
+		case h.o.Git:
+			warns = append(warns, fmt.Sprintf("폴더에 묶음: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않아 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 이 저장소의 것이면 repo, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", folder))
 		default:
 			warns = append(warns, fmt.Sprintf("폴더에 묶음: 이 폴더(%s)는 제품 지도에서 제품 하나로 정해지지 않고 git 저장소도 아니라 product:?(이 폴더와 그 아래에서만 회상)로 저장했습니다. 제품의 것이면 appliesTo product:<이름>, 모든 일에 맞으면 user로 고치세요(memory_update appliesTo)", folder))
 		}
@@ -513,7 +515,7 @@ func (h handlers) checkRuleApplies(in SaveIn) error {
 		products = "product:" + strings.Join(here.Products, ", product:")
 	}
 	return fmt.Errorf("%w: 규칙(kind=rule)은 appliesTo가 있어야 저장합니다. 고를 것: user(모든 일 — 사람의 일하는 방식은 대개 이것), product:<이름>(한 제품), repo(이 저장소), product:?(이 폴더와 그 아래). 이 폴더(%s)의 제품: %s",
-		memory.ErrInvalid, here.Label(), products)
+		memory.ErrInvalid, folderOf(here), products)
 }
 
 func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
@@ -717,7 +719,14 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 			}
 		}
 		if in.Scope != "" || in.AppliesTo != "" {
-			sc, label, w, serr := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, false, "")
+			text := before.Title + "\n" + before.Body // 여러 제품 폴더에서 product는 이 기억의 글로 좁힌다(S3-R2b)
+			if in.Title != nil {
+				text = *in.Title + "\n" + before.Body
+			}
+			if in.Body != nil {
+				text = strings.SplitN(text, "\n", 2)[0] + "\n" + *in.Body
+			}
+			sc, label, w, serr := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, false, text)
 			if serr != nil {
 				r, _ := toolError(serr)
 				return r, MemoryOut{}, nil
@@ -939,4 +948,12 @@ func (h handlers) needsWords(id, quote string) error {
 		}
 	}
 	return nil
+}
+
+// folderOf is the session folder a person reads in a message: the folder, else the scope key.
+func folderOf(p place.Place) string {
+	if p.Dir != "" {
+		return p.Dir
+	}
+	return p.Label()
 }

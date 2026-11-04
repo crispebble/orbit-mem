@@ -457,8 +457,11 @@ func errText(err error) string {
 // mapMoveOnly checks that a map move only takes one product:? memory to a product.
 func (s *Store) mapMoveOnly(in AutoInput) error {
 	pl := in.Payload
-	if in.Kind != ProposalEdit || len(in.MemoryIDs) != 1 || pl.Title != "" || pl.Body != "" || pl.Tags != nil || place.ProductOf(pl.Scope) == "" {
+	if in.Kind != ProposalEdit || len(in.MemoryIDs) != 1 || pl.Title != "" || pl.Body != "" || pl.Tags != nil || pl.Project != "" || place.ProductOf(pl.Scope) == "" {
 		return fmt.Errorf("%w: map move is an edit of one product:? memory's scope to product:<name>", ErrInvalid)
+	}
+	if in.Who.actor() != ActorAutomation {
+		return fmt.Errorf("%w: map move is the automation's", ErrInvalid)
 	}
 	m, err := getTx(s.db, in.MemoryIDs[0])
 	if err != nil {

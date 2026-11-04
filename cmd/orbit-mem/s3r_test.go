@@ -112,3 +112,33 @@ func TestPlace_기본값은_세션_폴더의_제품_저장소_폴더_순이다(t
 		}
 	}
 }
+
+// 검토 지적(2026-11-04): 훅도 MCP 서버처럼 세션을 시작한 폴더(CLAUDE_PROJECT_DIR)를 기준으로 본다.
+// 세션 안에서 다른 폴더로 옮겨도(cwd) 회상 기준은 그대로다. 없으면 입력 cwd다(Codex).
+func TestHook_기준_폴더는_세션을_시작한_폴더다(t *testing.T) {
+	h := home(t)
+	start := filepath.Join(h, "w", "start")
+	elsewhere := filepath.Join(h, "x", "elsewhere")
+	for _, d := range []string{start, elsewhere} {
+		os.MkdirAll(d, 0o755)
+	}
+	real, _ := filepath.EvalSymlinks(start)
+	s := seed(t)
+	m, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "시작 폴더 빌드는 make", Scope: place.ScopeUnknown, Project: filepath.ToSlash(real),
+		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "make"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := func(session string) string {
+		in, _ := json.Marshal(map[string]string{"session_id": session, "cwd": elsewhere, "prompt": "시작 폴더 빌드 명령"})
+		out, _, _ := run(t, string(in), "hook", "prompt", "--host", "claude")
+		return out
+	}
+	if strings.Contains(prompt("s1"), m.ID) {
+		t.Fatal("cwd elsewhere sees the start folder's memory without CLAUDE_PROJECT_DIR")
+	}
+	t.Setenv("CLAUDE_PROJECT_DIR", start)
+	if !strings.Contains(prompt("s2"), m.ID) {
+		t.Fatal("start folder memory missing")
+	}
+}

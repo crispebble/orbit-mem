@@ -18,7 +18,7 @@ func TestMoveUnknown_지도에_맞는_product_물음표_기억을_제품으로_�
 		return m
 	}
 	draft := unknown(userSays(KindDecision, "상단바는 레일", "상단바"), "/Users/u/w/onidot/prototypes/desk-v4")
-	parentOne := unknown(userSays(KindDecision, "Atlas 문서 위치는 onidot Space", "문서 위치"), "/Users/u/w/onidot")
+	parentOne := unknown(aiLearns(KindDecision, "Atlas 문서 위치는 onidot Space", "문서 위치"), "/Users/u/w/onidot")
 	parentBoth := unknown(aiLearns(KindLesson, "atlas와 desk 둘 다 다크 모드", ""), "/Users/u/w/onidot")
 	stray := unknown(aiLearns(KindFact, "다른 폴더 사실", ""), "/Users/u/elsewhere")
 	m := place.Map{
@@ -98,5 +98,51 @@ func TestAutoApply_지도_옮기기_예외는_범위만이다(t *testing.T) {
 	}
 	if _, err := s.AutoApply(AutoInput{Kind: ProposalEdit, Title: "x", MemoryIDs: []string{m.ID}, Payload: Payload{Scope: "product:a"}, MapMove: true}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 검토 지적(2026-11-04): 낱말 일치(추측)로는 사용자 말 기억을 옮기지 않고, 같은 제품·주제에 현재값이 있으면 옮기지 않는다.
+func TestMoveUnknown_추측과_현재값_충돌은_옮기지_않는다(t *testing.T) {
+	s := supStore(t)
+	const home = "/Users/u"
+	m := place.Map{
+		"desk":  {Match: []string{"~/w/onidot/prototypes/desk-*", "~/w/onidot"}},
+		"atlas": {Match: []string{"~/w/onidot"}},
+	}
+	unknown := func(in SaveInput, folder string) Memory {
+		in.Scope, in.Project = place.ScopeUnknown, folder
+		mm, _ := mustSave(t, s, in)
+		return mm
+	}
+	quoteGuess := unknown(userSays(KindDecision, "배포는 main 머지 (atlas 운영 기준)", "배포"), "/Users/u/w/onidot")
+	aiGuess := unknown(aiLearns(KindFact, "atlas 빌드는 make", ""), "/Users/u/w/onidot")
+	cur := userSays(KindDecision, "상단바는 탭줄", "상단바")
+	cur.Scope = "product:desk"
+	mustSave(t, s, cur)
+	clash := unknown(userSays(KindDecision, "상단바는 레일", "상단바"), "/Users/u/w/onidot/prototypes/desk-v4")
+	moved, err := s.MoveUnknownIn(m, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved) != 1 || moved[0].ID != aiGuess.ID || moved[0].To != "product:atlas" {
+		t.Fatalf("moved %+v", moved)
+	}
+	for _, id := range []string{quoteGuess.ID, clash.ID} {
+		if got := mustGet(t, s, id); got.Scope != place.ScopeUnknown {
+			t.Fatalf("%s moved to %s", got.Title, got.Scope)
+		}
+	}
+}
+
+func TestAutoApply_지도_옮기기는_자동화가_범위만_바꾼다(t *testing.T) {
+	s := supStore(t)
+	in := aiLearns(KindFact, "빌드는 make", "")
+	in.Scope, in.Project = place.ScopeUnknown, "/x"
+	m, _ := mustSave(t, s, in)
+	if _, err := s.AutoApply(AutoInput{Kind: ProposalEdit, Title: "x", MemoryIDs: []string{m.ID}, Payload: Payload{Scope: "product:a", Project: "/y"}, MapMove: true}); err == nil {
+		t.Fatal("map move changed the project")
+	}
+	if _, err := s.AutoApply(AutoInput{Kind: ProposalEdit, Title: "x", MemoryIDs: []string{m.ID}, Payload: Payload{Scope: "product:a"}, MapMove: true, Who: Who{Actor: ActorAI}}); err == nil {
+		t.Fatal("map move by the AI")
 	}
 }
