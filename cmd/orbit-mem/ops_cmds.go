@@ -1,12 +1,16 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,7 +148,7 @@ func contains(list []string, v string) bool {
 // orbit-mem's plugin in the hosts: Claude Code
 // from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
 // the local folder it builds.
-func cmdInstall(a *app, args []string) error {
+func cmdInstall(a *app, args []string) (err error) {
 	fs := a.flags("install")
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), i18n.T("flag.install.bin_dir"))
 	retroHost := fs.String("retro-host", "", i18n.T("flag.install.retro_host"))
@@ -156,8 +160,63 @@ func cmdInstall(a *app, args []string) error {
 	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
 	noSchedule := fs.Bool("no-schedule", false, i18n.T("flag.install.no_schedule"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
-	if _, err := parse(fs, args); err != nil {
-		return err
+	asJSON := fs.Bool("json", false, i18n.T("flag.install.json"))
+	res := installResult{AskUser: []askUser{}, Warnings: []hostWarning{}, Steps: []string{}}
+	if _, perr := parse(fs, args); perr != nil {
+		if !wantsJSON(args) || errors.Is(perr, flag.ErrHelp) {
+			return perr
+		}
+		res.Error = perr.Error()
+		_ = a.json(res)
+		return exitCode(2)
+	}
+	res.DryRun, res.Home = *dry, paths().Home
+	asked := false
+	// ask fills the questions for the user (설계 · orbit-mem 2판 17.4) and the files it could not
+	// read. It never turns anything off: the user decides.
+	ask := func() {
+		if asked {
+			return
+		}
+		asked = true
+		cfg, cerr := loadConfig()
+		if cerr != nil {
+			res.Warnings = append(res.Warnings, hostWarning{Path: paths().Config(), Reason: cerr.Error()})
+			cfg = config.Default()
+		}
+		ov, warns := overlapsToAsk(cfg, "")
+		res.Warnings = append(res.Warnings, warns...)
+		res.AskUser = askUsers(ov)
+	}
+	if *asJSON {
+		// 사람이 읽는 진행 줄은 stderr로 보내고, stdout에는 성공이든 실패든 결과 JSON 하나만 낸다.
+		out := a.stdout
+		a.stdout = a.stderr
+		defer func() {
+			a.stdout = out
+			ask()
+			res.OK = err == nil
+			if err != nil {
+				res.Error = err.Error()
+				fmt.Fprintln(a.stderr, "orbit-mem install: "+err.Error())
+				err = exitCode(1)
+			}
+			if jerr := a.json(res); jerr != nil && err == nil {
+				err = jerr
+			}
+		}()
+	}
+	var steps []string
+	finish := func(dst string) error {
+		res.Binary, res.Steps = dst, steps
+		ask()
+		if !*asJSON {
+			a.printAskUser(res.AskUser)
+			for _, w := range res.Warnings {
+				fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.status.warning", w.Path, w.Reason))
+			}
+		}
+		return nil
 	}
 	p := paths()
 	h := install.FindHosts()
@@ -168,7 +227,7 @@ func cmdInstall(a *app, args []string) error {
 		claudeSource = dir
 	}
 	needLocal := !*noHosts && (h.Codex != "" || (*localPlugin && h.Claude != ""))
-	steps := []string{
+	steps = []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
 		i18n.T("cli.install.step_home", p.Home),
 	}
@@ -192,11 +251,12 @@ func cmdInstall(a *app, args []string) error {
 			steps = append(steps, i18n.T("cli.install.step_no_hosts"))
 		}
 	}
+	res.Binary, res.Steps = dst, steps // 실패해도 JSON에 어디까지 하려 했는지 남는다
 	if *dry {
 		for _, s := range steps {
 			fmt.Fprintln(a.stdout, "- "+s)
 		}
-		return nil
+		return finish(dst)
 	}
 	copied, err := install.CopyBinary(selfPath(), dst)
 	if err != nil {
@@ -253,13 +313,39 @@ func cmdInstall(a *app, args []string) error {
 	if *noHosts {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
-		return nil
+		return finish(dst)
 	}
 	if err := a.registerHosts(h, needLocal, dir, claudeSource); err != nil {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
-	return nil
+	return finish(dst)
+}
+
+// installResult is what install --json prints (설계 · orbit-mem 2판 17.4), success or not: the
+// steps, the questions the agent puts to the user as they are, and the files it could not read.
+type installResult struct {
+	OK       bool          `json:"ok"`
+	Error    string        `json:"error,omitempty"`
+	DryRun   bool          `json:"dryRun"`
+	Binary   string        `json:"binary"`
+	Home     string        `json:"home"`
+	Steps    []string      `json:"steps"`
+	AskUser  []askUser     `json:"askUser"`
+	Warnings []hostWarning `json:"warnings"`
+}
+
+// wantsJSON says whether the arguments ask for JSON, read before the flags parse
+// (--json, or --json=<true value>).
+func wantsJSON(args []string) bool {
+	return slices.ContainsFunc(args, func(s string) bool {
+		name, val, hasVal := strings.Cut(strings.TrimLeft(s, "-"), "=")
+		if name != "json" || !strings.HasPrefix(s, "-") {
+			return false
+		}
+		b, err := strconv.ParseBool(val)
+		return !hasVal || (err == nil && b)
+	})
 }
 
 // registerHosts builds the local plugin folder when a host needs it and registers the plugin
@@ -495,12 +581,33 @@ func cmdDoctor(a *app, args []string) error {
 			add("codex-hooks-untrusted", i18n.T("cli.doctor.fix.codex_hooks"))
 		}
 	}
-	// 기억은 orbit-mem 하나만 쓴다(설계 · orbit-mem 2판 9절).
-	if path, on := claudeAutoMemory(); on {
-		add("claude-auto-memory", i18n.T("cli.doctor.fix.claude_auto_memory", path), path)
+	// 기억은 orbit-mem 하나만 쓴다(설계 · orbit-mem 2판 9절·17절). 사용자가 유지하기로 했으면(hostMemory keep) 문제로 세지 않는다.
+	ov, warns := overlapsToAsk(cfg, "")
+	for _, o := range ov {
+		fix := o.Off
+		if o.LockedBy != "" {
+			fix = i18n.T("cli.doctor.fix.locked", o.LockedBy)
+		}
+		name := o.ID[strings.Index(o.ID, ":")+1:]
+		switch {
+		case o.ID == overlapClaude && o.LockedBy == "":
+			add("claude-auto-memory", i18n.T("cli.doctor.fix.claude_auto_memory", o.Off, o.Settings), o.Settings)
+		case o.ID == overlapClaude:
+			add("claude-auto-memory", fix, o.LockedBy)
+		case o.ID == overlapCodex:
+			add("codex-memories", i18n.T("cli.doctor.fix.codex_memories", o.Off, o.Settings), o.Settings)
+		case o.Host == "claude" && o.Kind == kindPlugin:
+			add("claude-memory-plugin", fix, name)
+		case o.Host == "claude":
+			add("claude-memory-mcp", fix, name, o.Name)
+		case o.Kind == kindPlugin:
+			add("codex-memory-plugin", fix, name)
+		default:
+			add("codex-memory-mcp", fix, name, o.Name)
+		}
 	}
-	if codexMemories(install.CodexConfigPath()) {
-		add("codex-memories", i18n.T("cli.doctor.fix.codex_memories", install.CodexConfigPath()), install.CodexConfigPath())
+	for _, w := range warns {
+		add("host-settings-unreadable", i18n.T("cli.doctor.fix.host_settings", w.Path), w.Path, w.Reason)
 	}
 	if a.wantJSON(*asJSON) {
 		return a.json(rep)

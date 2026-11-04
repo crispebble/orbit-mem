@@ -46,6 +46,7 @@ func commands() []command {
 		{"install", "usage.install", cmdInstall},
 		{"uninstall", "usage.uninstall", cmdUninstall},
 		{"doctor", "usage.doctor", cmdDoctor},
+		{"host-memory", "usage.host-memory", cmdHostMemory},
 		{"search", "usage.search", cmdSearch},
 		{"show", "usage.show", cmdShow},
 		{"list", "usage.list", cmdList},

@@ -9,5 +9,6 @@
   "config.err.recall_chars": "recallChars is 100-%d: %d",
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
   "config.err.retro_host": "retroHost is claude or codex: %q",
-  "config.err.retro_hour": "retroHour is 0-23: %d"
+  "config.err.retro_hour": "retroHour is 0-23: %d",
+  "config.err.host_memory": "hostMemory is ask or keep: %q"
 }

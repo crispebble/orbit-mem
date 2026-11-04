@@ -6,6 +6,33 @@
 
 `orbit-mem`은 자기 Claude Code·Codex 플러그인 `orbit-mem`(기억 MCP 서버, 훅 넷, 스킬 `memory`·`proposals`)을 Go로 직접 빌드하고 호스트에 등록한다. OpenOrbit 없이 혼자 설치된다. 이 저장소 자체가 Claude Code 플러그인 마켓이다(아래 「설치」). 구조: Atlas 설계 · OpenOrbit 4차 「플러그인과 설치 — 역할과 의존」.
 
+## AI 에이전트가 설치할 때
+
+사용자가 AI 에이전트(Claude Code·Codex 등)에게 「orbit-mem 깔아 줘」라고 하면 에이전트는 이 순서를 따른다. **무엇을 끌지는 사용자가 정한다.** 에이전트는 묻기만 하고, 동의한 것만 명령으로 적용한다. 설정 파일을 손으로 고치지 않는다.
+
+1. 실행 파일을 받는다(아래 「릴리스」).
+2. `./orbit-mem install --json`을 실행한다. stdout은 성공이든 실패든 JSON 하나다(진행 줄은 stderr): `{ok, error?, dryRun, binary, home, steps, askUser, warnings}`. 종료 코드는 0(설치함·`--dry-run`이면 보이기만 함, `askUser`가 있어도 0), 1(설치 실패, `error`에 이유), 2(인자가 틀림)다. `warnings`는 겹침 판정에서 읽지 못한 파일과 그 이유이고, 판정은 나머지 파일로 이어 간다.
+3. `askUser`의 항목마다 `question`(필요하면 `reason`)을 사용자에게 그대로 묻는다. 항목은 orbit-mem과 겹치는 기억 시스템이다(아래 「겹치는 기억」). 둘이 함께 돌면 같은 것을 따로 저장·회상해 규칙이 두 번 들어가거나 바꾼 결정의 옛 판이 다시 나온다.
+4. 사용자가 동의한 항목만 그 `apply` 명령을 실행한다(대개 `orbit-mem host-memory off --only <id>`, Claude Code MCP 서버는 `claude mcp remove …`). `blockedBy`가 있는 항목은 프로젝트·관리 설정이 켠 것이라 `apply`가 비어 있다: 그 파일의 주인이 정한다고 사용자에게 알린다. 모두 유지하겠다고 하면 `keep` 명령(`orbit-mem config set hostMemory keep`)을 실행해 다시 묻지 않게 한다. orbit-mem이 끈 것은 `orbit-mem host-memory on`이 되돌리고, 기억 파일은 어느 쪽에서도 지우지 않는다.
+5. `orbit-mem doctor`로 확인한다.
+
+`install --json`에 `askUser`가 비어 있으면 물을 것이 없다. 설치 뒤에도 겹치는 기억이 켜져 있으면(사용자가 아직 정하지 않음) 사람이 있는 세션의 시작 문맥 끝에 같은 질문을 하라는 한 줄이 붙는다. 명세: Atlas 설계 · orbit-mem 2판 17절.
+
+### 겹치는 기억
+
+`orbit-mem host-memory status`·`doctor`·`install`·세션 시작 훅은 같은 판정을 쓴다.
+
+| id | 무엇 | 켜짐 판정 | `off` |
+| --- | --- | --- | --- |
+| `claude-auto-memory` | Claude Code 자체 기억 | `autoMemoryEnabled`를 Claude Code 설정 우선순위대로 읽는다: 관리(`managed-settings.json` 뒤 `managed-settings.d/*.json` 알파벳 순) > 프로젝트 로컬(git 루트의 `.claude/settings.local.json`) > 공유 프로젝트(지금 폴더의 `.claude/settings.json`) > 사용자(`~/.claude/settings.json`). 아무도 정하지 않으면 켜짐, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`(환경 또는 설정의 `env` 블록)이면 꺼짐 | 사용자 설정에 `autoMemoryEnabled`·`autoDreamEnabled` false |
+| `claude-plugin:<id>` | Claude Code의 기억 플러그인 | `enabledPlugins.<id>`를 같은 우선순위로 | 사용자 설정에 `enabledPlugins.<id>` false |
+| `claude-mcp:<이름>` | Claude Code의 기억 MCP 서버 | `~/.claude.json`의 `mcpServers`(user)·`projects[<폴더>].mcpServers`(local), 프로젝트 `.mcp.json`(project). user·local 서버는 이 프로젝트의 `disabledMcpServers`에 있으면 꺼짐, `.mcp.json` 서버는 승인(`enabledMcpjsonServers`·`enableAllProjectMcpServers`)된 것만 켜짐이고 `disabledMcpjsonServers`면 꺼짐 | orbit-mem은 끄지 않는다(Claude Code가 그 파일을 스스로 다시 쓴다). `apply`는 `claude mcp remove <이름> --scope <범위>` |
+| `codex-memories` | Codex 자체 기억 | `config.toml`의 `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true | 세 값 false |
+| `codex-plugin:<id>`, `codex-mcp:<이름>` | Codex의 기억 플러그인·MCP 서버 | `config.toml`의 `[plugins."<id>"]`, `[mcp_servers.<이름>]`. `enabled = false`가 아니면 켜짐 | 그 표에 `enabled = false` |
+
+- 관리·프로젝트 설정이 켜 둔 것은 `lockedBy`에 그 파일이 나오고, `off`는 사용자 설정을 고쳐 봐야 소용없으므로 아무것도 바꾸지 않고 알린다. 명령줄 `--settings`와 MDM·서버 관리 설정(plist·레지스트리·claude.ai 콘솔)은 파일로 볼 수 없어 판정에 넣지 않는다.
+- 아는 기억 시스템은 코드 상수 `knownMemories` 한 곳에 있다(`cmd/orbit-mem/hostmem_detect.go`, 확인한 출처를 주석으로): claude-mem(플러그인 `claude-mem`·`claude-mem-cowork`), supermemory(플러그인 `supermemory`·`claude-supermemory`, MCP `mcp.supermemory.ai`), mem0(플러그인 `mem0`, MCP `mem0-mcp-server`), basic-memory(MCP `basic-memory`), MCP 참조 서버 `@modelcontextprotocol/server-memory`. 플러그인은 이름(@ 앞)으로 찾는다. MCP 서버는 항목 이름이 아니라 실행하는 것으로 찾는다: `command`·`args`의 패키지·명령 이름(뒤에 판이 붙어도 되고, 경로 인자는 보지 않는다)이나 `url`의 호스트다. orbit-mem 자신은 빠진다.
+
 ## 세 플러그인 중 이 저장소의 자리
 
 | 플러그인 | 저장소 | 담는 것 | 필요한 것 |
@@ -43,7 +70,8 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 
 | 명령 | 하는 일 |
 | --- | --- |
-| `orbit-mem install [--bin-dir D] [--local-plugin] [--no-hosts] [--no-schedule] [--dry-run]` | `orbit-mem`을 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고, 설정(`claudePath`·`codexPath`, `--plugin-source <원본>`, `--apply-target <경로>`)과 기억 DB를 만들고, 예전 `orbit-mem`이 등록한 회고 예약이 있으면 지운 뒤(`--no-schedule`이면 건드리지 않음) 플러그인을 호스트에 등록한다(위 「설치」). 예약은 하지 않는다 |
+| `orbit-mem install [--bin-dir D] [--local-plugin] [--no-hosts] [--no-schedule] [--dry-run] [--json]` | `orbit-mem`을 `~/.local/bin`(Windows는 `%LOCALAPPDATA%\Programs\orbit`)에 두고, 설정(`claudePath`·`codexPath`, `--plugin-source <원본>`, `--apply-target <경로>`)과 기억 DB를 만들고, 예전 `orbit-mem`이 등록한 회고 예약이 있으면 지운 뒤(`--no-schedule`이면 건드리지 않음) 플러그인을 호스트에 등록한다(위 「설치」). 예약은 하지 않는다. 끝에 「사용자에게 확인할 것」(겹치는 기억마다 질문과 끄는 명령)을 보이고, 끄지는 않는다. `--json`은 성공이든 실패든 `{ok, error?, dryRun, binary, home, steps, askUser:[{id, question, reason, apply, blockedBy?, keep}], warnings:[{path, reason}]}` 하나를 stdout에 낸다. 종료 코드는 0 성공, 1 실패, 2 인자 오류(위 「AI 에이전트가 설치할 때」) |
+| `orbit-mem host-memory [status\|off\|on] [--host claude\|codex\|all] [--only ID,…] [--json]` | orbit-mem과 겹치는 기억 시스템(위 「겹치는 기억」). `status`(기본, 읽기만)는 켜짐, 적용되는 값과 그 출처 파일, `lockedBy`, 끄는 명령, 기억 저장소의 위치·파일 수·크기, 읽지 못한 파일(`warnings`)과 `hostMemory` 설정을 보인다. `off`는 켜진 것 중 orbit-mem이 끌 수 있는 것만 끈다. 바꾸기 전에 `<파일>.bak-orbit-mem-<날짜>`로 백업하고, 다른 키·줄과 키 순서·들여쓰기는 그대로 두며(JSON 값은 다시 들여 쓴다), 임시 파일에 쓴 뒤 바꿔 넣고, 바꾼 값과 그 전 값을 `$ORBIT_HOME/host-memory.json`에 남긴다. 안전하게 바꿀 수 없는 TOML(인라인 표 `features = { … }`)은 거절하고 건드리지 않는다. `on`은 그 기록에 있는 값, 곧 orbit-mem이 끈 값만 되돌린다(그 뒤 사람이 바꾼 값은 둔다). 기억 파일은 지우지 않는다. 사용자가 동의한 뒤에만 쓴다 |
 | `orbit-mem uninstall` | 예전 `orbit-mem`이 등록한 회고 예약과 호스트의 플러그인·마켓을 뺀다. 기억 DB·활동 기록·백업·로컬 플러그인 폴더는 남긴다 |
 | `orbit-mem doctor [--json]` | 실행 파일 경로·판, PATH의 `orbit-mem`, 데이터 경로·기억 수·대기 제안·세션 끝 회고 대기열·활동 기록 수, Claude Code의 `orbit-mem@orbit-mem` 설치·판·마켓, Codex 등록·훅 신뢰, 문제마다 고칠 명령 한 줄. `--json` 키는 아래 「doctor --json」 |
 | `orbit-mem search <질의> [--kind K]… [--all] [--stale] [-n N]` | 기억 찾기(`memory_find`와 같은 함수) |
@@ -216,7 +244,7 @@ OpenOrbit `orb doctor`가 읽는다. 키를 바꾸지 않는다.
 | `backups` | `dir`, `auto`, `keep`, `count`(기억 하루 사본 수), `last`·`lastPath`·`lastAt`, `due`, `nextAfter`, `workCopies`, `snapshots` |
 | `claude` | `path`, `plugin`(`installed`·`missing`·`unknown`·`no-host`), `version`, `enabled`, `marketplace`(`github:<owner/repo>`·`directory:<경로>`) |
 | `codex` | `path`, `config`(읽은 `config.toml`), `marketplace`, `plugin`(`installed`·`missing`), `enabled`, `hooksTrusted` |
-| `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted`, `claude-auto-memory`(Claude Code 자체 기억이 켜짐: `autoMemoryEnabled`가 false가 아니고 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`도 없음), `codex-memories`(Codex `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true) |
+| `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted`, `claude-auto-memory`(Claude Code 자체 기억이 켜짐: `autoMemoryEnabled`가 false가 아니고 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`도 없음), `codex-memories`(Codex `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true), `claude-memory-plugin`·`claude-memory-mcp`·`codex-memory-plugin`·`codex-memory-mcp`(알려진 기억 플러그인·MCP 서버가 켜짐), `host-settings-unreadable`(겹침 판정에서 읽지 못한 설정 파일). 겹치는 기억의 `fix`는 `orbit-mem host-memory off --only <id>`(Claude MCP는 `claude mcp remove …`, 관리·프로젝트 설정이 켠 것은 그 파일)이고, 사용자가 유지하기로 했으면(`hostMemory` `keep`) 문제로 세지 않는다 |
 
 ## 릴리스
 

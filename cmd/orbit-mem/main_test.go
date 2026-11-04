@@ -27,6 +27,13 @@ func home(t *testing.T) string {
 	h := t.TempDir()
 	t.Setenv("ORBIT_HOME", h)
 	t.Setenv("ORBIT_LANG", "") // 이 PC의 언어 설정과 무관하게 기본(영어)으로 돈다
+	// 이 PC의 Claude Code·Codex 설정(호스트 자체 기억 판정)과 무관하게 돈다. HOME은 두어 go build 캐시를 쓴다.
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(h, "no-claude"))
+	t.Setenv("CODEX_HOME", filepath.Join(h, "no-codex"))
+	managed, cwd := claudeManagedDir, hostCwd
+	claudeManagedDir = func() string { return filepath.Join(h, "no-managed") }
+	hostCwd = func() (string, error) { return h, nil }
+	t.Cleanup(func() { claudeManagedDir, hostCwd = managed, cwd })
 	return h
 }
 
@@ -346,7 +353,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.11.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.12.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -356,7 +363,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.11.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.12.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
