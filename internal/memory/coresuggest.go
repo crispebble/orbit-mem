@@ -40,8 +40,8 @@ type CoreSuggestion struct {
 // product, decisions) the user corrected or the AI broke most, then those it kept, a memory holding the
 // user's words before others, shorter and newer first on a tie, as many as fit next to the core already
 // there. Domain memories (a signal when a request matches), memories with tool triggers (they come right
-// before the tool), expired, superseded or review-due ones and any longer than a third of the limit are
-// left out. It changes nothing.
+// before the tool), temporary (volatile), expired, superseded or review-due ones and any longer than a
+// third of the limit are left out. It changes nothing.
 func (s *Store) SuggestCore(scope string) (CoreSuggestion, error) {
 	limit := CoreLimit(scope)
 	out := CoreSuggestion{Scope: scope, AppliesTo: place.AppliesTo(scope), Limit: limit, Pinned: []CoreCandidate{}, Picks: []CoreCandidate{}}
@@ -77,7 +77,7 @@ func (s *Store) SuggestCore(scope string) (CoreSuggestion, error) {
 		switch {
 		case m.Kind != KindRule && !(m.Kind == KindDecision && scope != ScopeGlobal):
 		case DomainOf(m) != "", len(m.Tools) > 0:
-		case m.Freshness(now) != FreshOK, heads.Superseding(m) != "":
+		case m.Freshness(now) != FreshOK, heads.Superseding(m) != "", m.ExpiresAt > 0: // 임시(만료일 있음)는 늘 지킬 것이 아니다
 		case c.Runes > limit/3:
 		default:
 			cands = append(cands, c)

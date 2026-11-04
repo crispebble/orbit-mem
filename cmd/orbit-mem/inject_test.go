@@ -64,12 +64,12 @@ func containsID(ids []string, id string) bool {
 }
 
 // Orbit Code는 짧은 꼴을 받는다. 세션 시작은 두 꼴 모두 상시 핵심과 「먼저 찾는 곳」 줄만이고(S3-R6), 짧은 꼴의 그 줄이 더 짧다.
-func TestInject_orbit_code는_규칙을_짧은_꼴로_받는다(t *testing.T) {
+func TestInject_세션_시작은_두_꼴_모두_핵심과_찾는_곳만이고_짧은_꼴이_더_짧다(t *testing.T) {
 	home(t)
 	s := seed(t)
 	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말을 쓰지 않는다", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	code := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-1", "--host", "orbit-code")
-	if containsID(code.MemoryIDs, r.ID) || !strings.Contains(code.Text, "먼저 찾는 곳") || !strings.Contains(code.Text, "memory_find") {
+	if containsID(code.MemoryIDs, r.ID) || !strings.Contains(code.Text, "일이 닿으면 먼저 memory_find") || strings.Contains(code.Text, "무엇보다 먼저") {
 		t.Errorf("orbit-code 묶음 = %+v", code)
 	}
 	full := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-2", "--host", "orbit-code", "--rules", "full")

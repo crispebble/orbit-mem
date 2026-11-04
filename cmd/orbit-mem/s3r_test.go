@@ -192,3 +192,25 @@ func TestCore_suggest는_제안만_내고_pin이_적용한다(t *testing.T) {
 		t.Fatal("big rule pinned")
 	}
 }
+
+// 검토 지적(2026-11-04): AI가 core --pin을 부르면 사용자 말 기억은 --quote가 있어야 승격되고 그 말이 출처로 남는다.
+func TestCore_pin을_AI가_부르면_사용자_말이_필요하다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	m, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	t.Setenv("ORBIT_ACTOR", memory.ActorAI)
+	if _, _, code := run(t, "", "core", "--pin", m.ID); code == 0 {
+		t.Fatal("AI pinned the user's words without a quote")
+	}
+	if out, errOut, code := run(t, "", "core", "--pin", m.ID, "--quote", "존댓말은 늘 지켜"); code != 0 {
+		t.Fatalf("%d %s %s", code, out, errOut)
+	}
+	got, _ := s.Get(m.ID)
+	quoted := false
+	for _, src := range got.Sources {
+		quoted = quoted || src.Excerpt == "존댓말은 늘 지켜"
+	}
+	if !got.Pinned || !quoted {
+		t.Fatalf("pinned %v quoted %v", got.Pinned, quoted)
+	}
+}

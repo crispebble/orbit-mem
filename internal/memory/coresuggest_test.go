@@ -5,6 +5,7 @@ package memory
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSuggestCore_교정과_어김이_많은_규칙부터_한도_안에서_고른다(t *testing.T) {
@@ -92,5 +93,43 @@ func TestSuggestCore_제품_층은_규칙과_결정을_고른다(t *testing.T) {
 	}
 	if _, err := s.SuggestCore("project:x"); err == nil {
 		t.Fatal("repository layer has no core")
+	}
+}
+
+// 검토 지적(2026-11-04): 동점은 짧은 것, 그다음 최근 것. 재검토일 지남·임시(만료일 있음)·옛 판은 고르지 않는다.
+func TestSuggestCore_동점_순서와_빼는_것(t *testing.T) {
+	s := supStore(t)
+	save := func(in SaveInput) Memory { m, _ := mustSave(t, s, in); return m }
+	longer := userSays(KindRule, "긴 동점 규칙", "동점 긴")
+	longer.Body = strings.Repeat("가", 200)
+	lm := save(longer)
+	olderShort := save(userSays(KindRule, "짧은 동점 옛", "동점 옛"))
+	newerShort := save(userSays(KindRule, "짧은 동점 새", "동점 새"))
+	due := userSays(KindRule, "재검토 지난 규칙", "재검토")
+	due.ReviewAfterDays = 1
+	dm := save(due)
+	temp := userSays(KindRule, "이번 주만 규칙", "이번 주")
+	temp.Retention, temp.TTLDays = RetentionVolatile, 7
+	tm := save(temp)
+	old := save(userSays(KindRule, "보고는 영어로", "보고 언어"))
+	save(userSays(KindRule, "보고는 한국어로", "보고 언어")) // 같은 주제의 새 판이 옛 판을 대체한다
+	// 재검토일이 지나도록 시계를 옮긴다(supStore는 부를 때마다 1분씩 간다).
+	base := s.Now()
+	s.Now = func() time.Time { return base.Add(48 * time.Hour) }
+	got, err := s.SuggestCore(ScopeGlobal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := map[string]int{}
+	for i, p := range got.Picks {
+		pos[p.ID] = i + 1
+	}
+	if pos[newerShort.ID] == 0 || pos[olderShort.ID] == 0 || pos[lm.ID] == 0 || !(pos[newerShort.ID] < pos[olderShort.ID] && pos[olderShort.ID] < pos[lm.ID]) {
+		t.Fatalf("tie order %v", pos)
+	}
+	for _, bad := range []string{dm.ID, tm.ID, old.ID} {
+		if pos[bad] != 0 {
+			t.Fatalf("picked %s: %v", bad, pos)
+		}
 	}
 }

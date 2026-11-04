@@ -207,22 +207,30 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 		layer("product:"+p, fmt.Sprintf("[OpenOrbit 기억 · %s 핵심] 이 제품에서 늘 지키는 결정이다.\n", p))
 	}
 	b.WriteString(core.String())
+	inCore := map[string]bool{}
+	for _, id := range inj.MemoryIDs {
+		inCore[id] = true
+	}
 	var rules, decisions []memory.Memory
+	// 묶음 핵심 층에 들지 않은 승격 기억(여러 제품 폴더의 제품 핵심): 찾는 곳 수에만 든다(검토 지적).
+	pinnedRules, pinnedDecisions := 0, 0
 	for _, m := range confirmed {
-		// 분야 지식은 요청에 맞을 때 신호로만 넣는다. 승격된 기억은 핵심 층으로만 들어간다(여러 제품 폴더의 제품 핵심은 요청 회상으로).
-		if !inScope(m, pl) || memory.DomainOf(m) != "" || m.Pinned {
+		// 분야 지식은 요청에 맞을 때 신호로만 넣는다. 이 묶음의 핵심 층에 든 것은 세지 않는다.
+		if !inScope(m, pl) || memory.DomainOf(m) != "" || inCore[m.ID] {
 			continue
 		}
 		if excluded(m, now, heads) != "" {
 			continue
 		}
-		switch m.Kind {
-		case memory.KindRule:
+		switch {
+		case m.Pinned && m.Kind == memory.KindRule: // 규칙 채우기·결정 제목 줄에는 넣지 않는다(요청 회상으로 온다)
+			pinnedRules++
+		case m.Pinned && m.Kind == memory.KindDecision:
+			pinnedDecisions++
+		case m.Kind == memory.KindRule:
 			rules = append(rules, m)
-		case memory.KindDecision:
-			if !m.Pinned { // 승격된 결정은 핵심 층에서만 다룬다(여러 제품 폴더에서는 넣지 않는다)
-				decisions = append(decisions, m)
-			}
+		case m.Kind == memory.KindDecision:
+			decisions = append(decisions, m)
 		}
 	}
 	footer := "기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
@@ -266,12 +274,17 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 이 폴더에서 보이는 수와 먼저 찾을 곳만 알리고, 나머지는
 	// 요청 회상·도구 직전·memory_find로 들어온다(S3-R7).
 	find := ""
-	if len(rules)+len(decisions) > 0 {
-		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개는 여기 없다. 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
-			len(rules), len(decisions))
+	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; nr+nd > 0 {
+		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개의 본문은 여기 없다(최근 결정 몇 개는 아래에 제목으로 있다). 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
+			nr, nd)
 		if opts.Brief {
-			find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개는 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", len(rules), len(decisions))
+			find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
 		}
+	}
+	// 핵심이 한도까지 차면 찾는 곳 줄은 짧은 꼴로 줄인다(합계 한도).
+	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; find != "" && !opts.Brief &&
+		runes(core.String())+runes(find)+runes(footer) > MaxSessionStartRunes-sessionNoteRunes {
+		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
 	}
 	// 꼬리(결정 제목·회고 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
 	var tail strings.Builder
