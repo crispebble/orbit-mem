@@ -55,9 +55,10 @@ func cmdInject(a *app, args []string) error {
 		return err
 	}
 	defer s.Close()
-	scope := ""
+	scope, where := "", ""
 	if *cwd != "" {
-		scope = project.Resolve(*cwd).Scope
+		p := project.Resolve(*cwd)
+		scope, where = p.Scope, whereOf(p)
 	}
 	var inj inject.Injection
 	kind, prompt := memory.EventInjectSessionStart, ""
@@ -65,11 +66,11 @@ func cmdInject(a *app, args []string) error {
 		if renewsBundle(*source) {
 			inject.ResetSession(s, *host, *session)
 		}
-		inj = inject.SessionBundleWith(s, cfg, scope, *host, *session, opts)
+		inj = inject.SessionBundleWith(s, cfg, where, *host, *session, opts)
 	} else {
 		b, _ := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
 		kind, prompt = memory.EventInjectPrompt, string(b)
-		inj = inject.PromptInjectionFor(s, cfg, scope, prompt, *host, *session, opts)
+		inj = inject.PromptInjectionFor(s, cfg, where, prompt, *host, *session, opts)
 	}
 	inject.RecordShown(s, *host, *session, inj)
 	recordInjection(s, cfg, kind, *host, *session, scope, prompt, inj)

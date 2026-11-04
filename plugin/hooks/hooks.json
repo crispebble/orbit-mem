@@ -34,6 +34,17 @@
         "matcher": "startup|resume|clear|compact|fork"
       }
     ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "command": "if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook subagent-start --host claude --plugin-version 0.14.0; fi",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

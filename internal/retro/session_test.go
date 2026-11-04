@@ -147,10 +147,13 @@ func TestSession_세션_발화만_읽어_요약_판정_교정_사용판정을_�
 	if len(rej) != 2 || rej[0].Title != "오늘 쓴 임시 브랜치 이름" {
 		t.Fatalf("rejections = %+v", rej)
 	}
-	// 다음 세션: 인용으로 확정된 규칙은 고정 묶음에, 후보는 작업 회상에.
+	// 다음 세션: 인용으로 확정된 규칙은 세션 시작에는 수로만 잡히고(S3-R6) 요청에 맞으면 회상으로, 후보도 작업 회상으로.
 	bundle := inject.SessionBundle(e.s, config.Default(), "", "claude", "sess-next")
-	if !strings.Contains(bundle.Text, "배포 스크립트는 dry-run부터") {
+	if strings.Contains(bundle.Text, "배포 스크립트는 dry-run부터") || !strings.Contains(bundle.Text, "확정 규칙 2개") {
 		t.Fatalf("next session bundle:\n%s", bundle.Text)
+	}
+	if r := inject.Prompt(e.s, config.Default(), "", "배포 스크립트 dry-run부터 돌려"); !strings.Contains(r, "배포 스크립트는 dry-run부터") {
+		t.Fatalf("confirmed rule not recalled: %q", r)
 	}
 	recall := inject.Prompt(e.s, config.Default(), "", "배포 전에 dry-run 결과 보여 줘")
 	if !strings.Contains(recall, keep.ID) {

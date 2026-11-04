@@ -3,13 +3,13 @@ package mcpserver
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 	memcontract "github.com/onidot-labs/orbit-mem/internal/memory/contract"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 var memoryContract = contractInfo{Name: memcontract.Name, Major: memcontract.Major, Minor: memcontract.Minor, Supported: memcontract.SupportedMajors}
@@ -70,8 +70,8 @@ func (g *memoryGraphTool) graph(_ context.Context, a args) (any, error) {
 	in := memory.GraphInput{Focus: a.str("focus"), Depth: a.int("depth"), Via: a.strs("via"), Kinds: a.strs("kinds"),
 		States: a.strs("states"), Scopes: a.strs("scopes"), Tags: a.strs("tags"), Relations: a.strs("relations"), Limit: a.int("limit")}
 	for _, sc := range in.Scopes {
-		if sc != memory.ScopeGlobal && !(strings.HasPrefix(sc, "project:") && len(sc) > len("project:")) {
-			return nil, invalid("scopes", "scopes는 global 또는 project:<키>여야 합니다.")
+		if !place.ValidScope(sc) {
+			return nil, invalid("scopes", "scopes는 global·project:<키>·product:<이름>·product:? 중 하나여야 합니다.")
 		}
 	}
 	for _, f := range []struct {

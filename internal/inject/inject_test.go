@@ -48,13 +48,14 @@ func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안
 	s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "확정?", MemoryIDs: []string{c.ID}})
 
 	got := SessionStart(s, config.Default(), here)
-	for _, want := range []string{"답은 한글 존댓말", "반말을 쓰지 않는다", "이 앱은 pnpm", "npm을 쓰지 않는다", "Orbit 먼저 만든다"} {
+	// 상시 핵심 밖 확정 규칙은 넣지 않고 수만 알린다(S3-R6): 전역과 이 앱 규칙 둘, 다른 앱·후보는 세지 않는다.
+	for _, want := range []string{"먼저 찾는 곳", "확정 규칙 2개", "결정 1개", "memory_find", "Orbit 먼저 만든다"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
 	// 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6): 옛 대기 제안이 남아 있어도 줄을 붙이지 않는다.
-	for _, bad := range []string{"다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "제안 1건", "대기"} {
+	for _, bad := range []string{"답은 한글 존댓말", "이 앱은 pnpm", "다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "제안 1건", "대기"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("must not contain %q", bad)
 		}
@@ -124,8 +125,8 @@ func TestSessionStartInjection_넣은_기억_id와_넣지_못한_규칙_수(t *t
 	d := save(t, s, memory.KindDecision, "결정 하나", "", memory.ScopeGlobal, true)
 	other := save(t, s, memory.KindRule, "다른 앱 규칙", "", "project:github.com/me/other", true)
 
-	inj := SessionStartInjection(s, config.Default(), here)
-	if inj.Text != SessionStart(s, config.Default(), here) || inj.Chars == 0 || inj.Chars > MaxSessionStartRunes {
+	inj := SessionStartInjection(s, rulesCfg(), here) // 규칙을 채우는 판(inject=rules)
+	if inj.Text != SessionStart(s, rulesCfg(), here) || inj.Chars == 0 || inj.Chars > MaxSessionStartRunes {
 		t.Fatalf("text mismatch or too long: %d", inj.Chars)
 	}
 	ids := strings.Join(inj.MemoryIDs, ",")
@@ -135,7 +136,8 @@ func TestSessionStartInjection_넣은_기억_id와_넣지_못한_규칙_수(t *t
 			in++
 		}
 	}
-	if !strings.Contains(ids, d.ID) || strings.Contains(ids, other.ID) {
+	_ = d // inject=rules는 결정 제목 줄을 넣지 않는다
+	if strings.Contains(ids, other.ID) {
 		t.Errorf("ids %s", ids)
 	}
 	// 넣은 규칙은 전문, 못 넣은 규칙은 id도 넣지 않고 수만 센다.
@@ -158,9 +160,9 @@ func TestPromptInjection_넣은_기억_id(t *testing.T) {
 
 func TestSessionBundle_같은_세션은_처음_묶음을_그대로_쓴다(t *testing.T) {
 	s := store(t)
-	save(t, s, memory.KindRule, "첫 규칙", "본문", memory.ScopeGlobal, true)
+	save(t, s, memory.KindDecision, "첫 결정", "본문", memory.ScopeGlobal, true)
 	first := SessionBundle(s, config.Default(), here, "claude", "s1")
-	save(t, s, memory.KindRule, "세션 중에 확정된 규칙", "본문", memory.ScopeGlobal, true)
+	save(t, s, memory.KindDecision, "세션 중에 확정된 규칙", "본문", memory.ScopeGlobal, true)
 	again := SessionBundle(s, config.Default(), here, "claude", "s1")
 	if again.Text != first.Text || strings.Contains(again.Text, "세션 중에") || strings.Join(again.MemoryIDs, ",") != strings.Join(first.MemoryIDs, ",") {
 		t.Fatalf("bundle changed within the session:\n%s\n---\n%s", first.Text, again.Text)

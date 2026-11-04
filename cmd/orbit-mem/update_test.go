@@ -343,7 +343,7 @@ func TestHook_서버가_막혀도_기본_문맥을_바로_낸다(t *testing.T) {
 		if d := time.Since(start); d > 500*time.Millisecond {
 			t.Errorf("%s: 훅이 늦음 %v", name, d)
 		}
-		if !strings.Contains(got, "답은 존댓말") || strings.Contains(got, "orbit-mem update") {
+		if !strings.Contains(got, "먼저 찾는 곳") || strings.Contains(got, "orbit-mem update") {
 			t.Errorf("%s: 문맥 %q", name, got)
 		}
 	}

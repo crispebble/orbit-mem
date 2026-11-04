@@ -13,7 +13,8 @@
 
 ## 판
 
-- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 3, supportedMajors: [1]}`가 있다.
+- 모든 응답(오류 포함)의 맨 위에 `contract: {name: "orbit.memory", major: 1, minor: 4, supportedMajors: [1]}`가 있다.
+- 1.4는 범위(`scope`, 입력 `scopes`)에 제품 범위 `product:<이름>`·`product:?`(제품 미정, 저장한 폴더에서만 회상)를 더했다(설계 · orbit-mem 2판 S3). 읽는 쪽은 모르는 범위를 그대로 보인다.
 - 1.3은 노드에 `importance`(0~1)와 `sourceKinds`(원본 종류, 이름 순)를 더했다(설계 · Studio 4차 화면 3 「기억 클러스터」). 아래 「중요도」.
 - 1.1은 오류 코드 `UNAVAILABLE`을 더했다. 1.0과 나머지는 같다.
 - 1.2는 태그를 표기 차이 없이 맞춘다(설계 · Orbit 3차 O3-2 「읽을 때 맞추기」). 대소문자·앞뒤 공백·`-`와 `_`만 다른 태그는 한 묶음이고, 묶음 `key`는 그 맞춘 열쇠(작은 글자, `_`는 `-`), `label`은 가장 많은 기억이 쓴 표기다. 입력 `tags` 거르기도 표기 차이를 무시한다. 노드의 `tags`는 저장한 표기 그대로다.
@@ -43,7 +44,7 @@ AI 호스트용 `orbit-mem mcp`에는 열지 않는다. AI는 `memory_get` 응�
 | `via` | `link`·`supersede`·`session`·`file`·`tag` 목록 | `link`·`supersede`·`session`·`file` | 주변을 따라갈 때 건너는 관계. 묶음은 같은 묶음의 다른 기억으로 한 단계 건넌다 |
 | `kinds` | `rule`·`fact`·`decision`·`lesson`·`journal` 목록 | 모두 | 기억 종류 |
 | `states` | `candidate`·`confirmed`·`stale`·`hidden` 목록 | `candidate`·`confirmed`·`stale` | 기억 상태 |
-| `scopes` | `global`·`project:<키>` 목록 | 모두 | 범위 |
+| `scopes` | `global`·`project:<키>`·`product:<이름>`·`product:?` 목록 | 모두 | 범위 |
 | `tags` | 문자열 목록 | 없음 | 이 태그 중 하나라도 가진 기억만. 대소문자·앞뒤 공백·`-`와 `_` 차이는 무시한다(1.2) |
 | `updatedFrom`, `updatedTo` | RFC 3339 시각 | 없음 | 마지막으로 고친 때가 이 사이인 기억만(양 끝 포함) |
 | `relations` | `link`·`supersede`·`session`·`file`·`tag` 목록 | 모두 | 응답에 담을 선·묶음 종류 |

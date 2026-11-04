@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
 )
 
@@ -109,6 +110,8 @@ func addColumns(db *sql.Tx) error {
 		{"memories", "topic", "TEXT NOT NULL DEFAULT ''"},
 		// 도구 트리거(설계 · orbit-mem 2판 6절). 옛 판은 이 열을 모르고 쓰므로 그 줄은 트리거가 없다.
 		{"memories", "tools", "TEXT NOT NULL DEFAULT '[]'"},
+		// 상시 핵심 승격(설계 · orbit-mem 2판 4.4, S3). 옛 판은 이 열을 모르고 쓰므로 승격을 건드리지 않는다.
+		{"memories", "pinned", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -227,15 +230,16 @@ type SaveInput struct {
 	Supersedes []string
 	// Tools are the tool names or prefixes (ending in *) right before whose call the memory is recalled.
 	Tools []string
+	// Pin puts the memory into the core of its layer (설계 · orbit-mem 2판 4.4). A save that cannot get it
+	// (not confirmed, not a user or product memory, past the limit) is refused before anything is written.
+	Pin bool
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
 
 func validKind(k string) bool { return contains(Kinds, k) }
 
-func validScope(s string) bool {
-	return s == ScopeGlobal || strings.HasPrefix(s, "project:") && len(s) > len("project:")
-}
+func validScope(s string) bool { return place.ValidScope(s) }
 
 // maxTags is how many tags a memory keeps.
 const maxTags = 10
@@ -302,6 +306,8 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 type SaveReport struct {
 	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
 	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말
+	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
+	Unpinned string `json:"unpinned,omitempty"`
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of
@@ -317,6 +323,10 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	}
 	for _, id := range rep.Superseded {
 		s.closeFlagsOf(id, StateStale)
+	}
+	// 상시 핵심: 요청한 승격은 저장과 같은 트랜잭션에서 했다. 아니면 대체한 핵심 기억의 자리를 새 판이 이어받는다(S3 명세 2.6).
+	if !in.Pin {
+		m, rep.Unpinned = s.inheritPin(m, rep.Superseded, in.Who)
 	}
 	if m.State != StateCandidate {
 		return m, rep, nil
@@ -382,6 +392,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 				return Memory{}, rep, err
 			}
 		}
+		if err := savePinTx(tx, in, existingID, now); err != nil {
+			return Memory{}, rep, err
+		}
 		if err := tx.Commit(); err != nil {
 			return Memory{}, rep, err
 		}
@@ -431,11 +444,28 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
 		return Memory{}, rep, err
 	}
+	if err := savePinTx(tx, in, m.ID, now); err != nil {
+		return Memory{}, rep, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Memory{}, rep, err
 	}
 	m, err = s.Get(m.ID)
 	return m, rep, err
+}
+
+// savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot
+// get the core (not confirmed, not a user or product memory, past the limit) is refused whole (S3 명세 2.6).
+// The save is the user's words or an explicit ask, so the memory's own protection is not checked again.
+func savePinTx(tx *sql.Tx, in SaveInput, id string, now int64) error {
+	if !in.Pin {
+		return nil
+	}
+	m, err := getTx(tx, id)
+	if err != nil || m.Pinned {
+		return err
+	}
+	return pinTx(tx, &m, true, in.Who, now)
 }
 
 // sightTx records that memory id came up again on day with src. A quote of
@@ -534,11 +564,16 @@ func truncateBytes(s string, n int) string {
 }
 
 func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
+	// 상시 핵심은 확정된 user·제품 기억이 한도 안에 있을 때만이다: 옮기거나 늘리거나 후보로 내리면 핵심에서 빠진다(S3).
+	// 낡음(대체·낡음 표시)은 핵심 층이 확정만 읽어 빠지고, 표시는 남겨 대체한 새 판이 그 자리를 잇게 한다.
+	if m.Pinned && action != "pin" && m.State != StateStale && m.State != StateHidden && !stillPinned(tx, m) {
+		m.Pinned = false
+	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=?,
-		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=? WHERE id=?`,
+		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,pinned=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.ID); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.Pinned, m.ID); err != nil {
 		return err
 	}
 	return versionTx(tx, m, action, reason, now)
@@ -557,15 +592,16 @@ type querier interface {
 }
 
 const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,''),
-	retention,review_days,review_at,expires_at,topic,tools`
+	retention,review_days,review_at,expires_at,topic,tools,pinned`
 
 func scanMemory(row interface{ Scan(...any) error }) (Memory, error) {
 	var m Memory
 	var tags, tools string
 	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID,
-		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools); err != nil {
+		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools, &m.Pinned); err != nil {
 		return m, err
 	}
+	m.AppliesTo = place.AppliesTo(m.Scope)
 	_ = json.Unmarshal([]byte(tools), &m.Tools)
 	if len(m.Tools) == 0 {
 		m.Tools = nil
@@ -806,10 +842,12 @@ func (s *Store) History(id string) ([]Version, error) {
 
 // FindInput selects memories.
 type FindInput struct {
-	Query       string
-	Kinds       []string
-	States      []string // 비우면 후보와 확정
-	Project     string   // "project:<키>": 전역과 이 프로젝트. 비우면 전역만(AllProjects가 아니면)
+	Query   string
+	Kinds   []string
+	States  []string // 비우면 후보와 확정
+	Project string   // "project:<키>": 전역과 이 프로젝트. 비우면 전역만(AllProjects가 아니면)
+	// Place, when given, decides what "here" sees by the product map (S3 명세 2.3) instead of Project alone.
+	Place       *place.Place
 	AllProjects bool
 	GlobalOnly  bool
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
@@ -846,12 +884,16 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 		}
 		switch {
 		case in.AllProjects:
-		case in.GlobalOnly || in.Project == "":
+		case in.GlobalOnly || (in.Project == "" && in.Place == nil):
 			if m.Scope != ScopeGlobal {
 				continue
 			}
+		case in.Place != nil:
+			if !in.Place.Sees(m.Scope, m.Project) {
+				continue
+			}
 		default:
-			if m.Scope != ScopeGlobal && m.Scope != in.Project {
+			if !(place.Place{Scope: in.Project}).Sees(m.Scope, m.Project) {
 				continue
 			}
 		}

@@ -46,7 +46,7 @@ func cmdTool(a *app, args []string) error {
 	if *cwd != "" {
 		p = project.Resolve(*cwd)
 	}
-	t := mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, WorkDB: paths().WorkDB(), Actor: actorOf(*actor, memory.ActorAI)})
+	t := mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, WorkDB: paths().WorkDB(), Actor: actorOf(*actor, memory.ActorAI), Products: productsOf()})
 	out, err := t.Call(pos[0], in, *host, *session)
 	if err != nil {
 		return a.toolError(err)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 // Lengths (설계 · orbit-mem 2판 AC-1). Claude Code saves a hook context over 10,000
@@ -42,9 +43,10 @@ const (
 	moreLineRunes = 60
 )
 
-func inScope(m memory.Memory, scope string) bool {
-	return m.Scope == memory.ScopeGlobal || (scope != "" && m.Scope == scope)
-}
+// at is the place of a session working in scope, by the product map of cfg (S3 명세 2.2·2.3).
+func at(cfg config.Config, scope string) place.Place { return place.Resolve(scope, cfg.Products) }
+
+func inScope(m memory.Memory, pl place.Place) bool { return pl.Sees(m.Scope, m.Project) }
 
 // Options picks the form of what is injected. The hooks of Claude Code and
 // Codex use the zero value (the full form); Orbit Code asks for the brief one.
@@ -156,10 +158,11 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	return SessionStartInjectionWith(s, cfg, scope, Options{})
 }
 
-// SessionStartInjectionWith is SessionStartInjection in the given form. The whole
-// text keeps within MaxSessionStartRunes: the decision titles, the retrospective
-// line and the closing line first, then the rules, most recently changed first, as
-// many as fit; the rest are counted in one line.
+// SessionStartInjectionWith is SessionStartInjection in the given form (S3-R6): the core layers, one
+// line on where to look first (how many confirmed rules and decisions this folder sees, memory_find
+// first), the titles of recent decisions and the retrospective line, within MaxSessionStartRunes. The
+// other memories come through the request recall, the tool recall and memory_find (S3-R7). Only
+// inject=rules, which has no request recall, fills the rest with confirmed rules as before.
 func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -170,45 +173,64 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	if err != nil {
 		return inj.done(&b)
 	}
+	pl := at(cfg, scope)
 	heads, _ := s.TopicHeads()
 	now := s.Now()
+	// 상시 핵심(S3 명세 2.7): user 핵심, 그리고 한 제품 폴더면 그 제품의 핵심. 여러 제품 폴더는 제품 핵심을 넣지 않는다.
+	var core strings.Builder
+	layer := func(scope, heading string) {
+		ms, err := s.Core(scope)
+		if err != nil || len(ms) == 0 {
+			return
+		}
+		var body strings.Builder
+		used, limit := 0, memory.CoreLimit(scope)
+		for _, m := range ms {
+			if excluded(m, now, heads) != "" {
+				continue
+			}
+			entry := memory.CoreEntry(m)
+			if used+runes(entry) > limit { // 한도는 승격할 때 지킨다. 설정이 바뀐 옛 묶음만 여기서 멈춘다
+				continue
+			}
+			body.WriteString(entry)
+			used += runes(entry)
+			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+		}
+		if used > 0 {
+			core.WriteString(heading)
+			core.WriteString(body.String())
+		}
+	}
+	layer(memory.ScopeGlobal, "[OpenOrbit 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다.\n")
+	if p := pl.Product(); p != "" {
+		layer("product:"+p, fmt.Sprintf("[OpenOrbit 기억 · %s 핵심] 이 제품에서 늘 지키는 결정이다.\n", p))
+	}
+	b.WriteString(core.String())
+	inCore := map[string]bool{}
+	for _, id := range inj.MemoryIDs {
+		inCore[id] = true
+	}
 	var rules, decisions []memory.Memory
+	// 묶음 핵심 층에 들지 않은 승격 기억(여러 제품 폴더의 제품 핵심): 찾는 곳 수에만 든다(검토 지적).
+	pinnedRules, pinnedDecisions := 0, 0
 	for _, m := range confirmed {
-		if !inScope(m, scope) || memory.DomainOf(m) != "" { // 분야 지식은 요청에 맞을 때 신호로만 넣는다
+		// 분야 지식은 요청에 맞을 때 신호로만 넣는다. 이 묶음의 핵심 층에 든 것은 세지 않는다.
+		if !inScope(m, pl) || memory.DomainOf(m) != "" || inCore[m.ID] {
 			continue
 		}
 		if excluded(m, now, heads) != "" {
 			continue
 		}
-		switch m.Kind {
-		case memory.KindRule:
+		switch {
+		case m.Pinned && m.Kind == memory.KindRule: // 규칙 채우기·결정 제목 줄에는 넣지 않는다(요청 회상으로 온다)
+			pinnedRules++
+		case m.Pinned && m.Kind == memory.KindDecision:
+			pinnedDecisions++
+		case m.Kind == memory.KindRule:
 			rules = append(rules, m)
-		case memory.KindDecision:
+		case m.Kind == memory.KindDecision:
 			decisions = append(decisions, m)
-		}
-	}
-	var tail strings.Builder // 결정 제목·회고 줄: 규칙 뒤에 붙는다
-	var tailIDs []string
-	if cfg.Inject != config.InjectRules {
-		if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
-			line := "[최근 결정] "
-			for i := 0; i < len(decisions) && i < n; i++ {
-				entry := fmt.Sprintf("%s(%s)", decisions[i].Title, decisions[i].ID)
-				if i > 0 {
-					entry = " · " + entry
-				}
-				if runes(line)+runes(entry) > maxDecisionsRunes {
-					break
-				}
-				line += entry
-				tailIDs = append(tailIDs, decisions[i].ID)
-			}
-			if len(tailIDs) > 0 {
-				tail.WriteString(line + "\n")
-			}
-		}
-		if line := retroLine(s); line != "" {
-			tail.WriteString(line + "\n")
 		}
 	}
 	footer := "기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
@@ -220,39 +242,83 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	omittedLine := func(n int) string {
 		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
 	}
-	// 규칙 몫: 전체 한도에서 꼬리·맺음 줄·생략 줄 자리를 먼저 뺀다.
-	budget := MaxSessionStartRunes - sessionNoteRunes - runes(tail.String()) - runes(footer) - runes(head) - runes(omittedLine(len(rules)))
-	if len(rules) > 0 {
-		var body strings.Builder
-		used := 0
-		for _, m := range rules { // 최근에 고친 규칙부터
-			entry := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
-			if opts.Brief {
-				entry = fmt.Sprintf("- %s (%s)\n", briefTitle(m.Title), m.ID)
-			} else if text := strings.TrimSpace(m.Body); text != "" {
-				entry += "  " + strings.ReplaceAll(text, "\n", "\n  ") + "\n"
-			}
-			if n := runes(entry); used+n <= budget {
-				body.WriteString(entry)
-				used += n
-				inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-				continue
-			}
-			inj.Omitted++
-		}
-		if used > 0 || inj.Omitted > 0 {
-			b.WriteString(head)
-			b.WriteString(body.String())
-		}
-		if inj.Omitted > 0 {
-			b.WriteString(omittedLine(inj.Omitted))
-		}
-	}
 	if cfg.Inject == config.InjectRules {
+		// 요청 회상이 없는 판: 규칙이 들어올 다른 길이 없어 예전처럼 남는 칸을 확정 규칙으로 채운다(명세 2.7 예외).
+		budget := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(head) - runes(omittedLine(len(rules)))
+		if len(rules) > 0 {
+			var body strings.Builder
+			used := 0
+			for _, m := range rules { // 최근에 고친 규칙부터
+				entry := memory.CoreEntry(m)
+				if opts.Brief {
+					entry = fmt.Sprintf("- %s (%s)\n", briefTitle(m.Title), m.ID)
+				}
+				if n := runes(entry); used+n <= budget {
+					body.WriteString(entry)
+					used += n
+					inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+					continue
+				}
+				inj.Omitted++
+			}
+			if used > 0 || inj.Omitted > 0 {
+				b.WriteString(head)
+				b.WriteString(body.String())
+			}
+			if inj.Omitted > 0 {
+				b.WriteString(omittedLine(inj.Omitted))
+			}
+		}
 		return inj.done(&b)
 	}
+	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 이 폴더에서 보이는 수와 먼저 찾을 곳만 알리고, 나머지는
+	// 요청 회상·도구 직전·memory_find로 들어온다(S3-R7).
+	find := ""
+	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; nr+nd > 0 {
+		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개의 본문은 여기 없다(최근 결정 몇 개는 아래에 제목으로 있다). 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
+			nr, nd)
+		if opts.Brief {
+			find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
+		}
+	}
+	// 핵심이 한도까지 차면 찾는 곳 줄은 짧은 꼴로 줄인다(합계 한도).
+	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; find != "" && !opts.Brief &&
+		runes(core.String())+runes(find)+runes(footer) > MaxSessionStartRunes-sessionNoteRunes {
+		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
+	}
+	// 꼬리(결정 제목·회고 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
+	var tail strings.Builder
+	room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(find) - runes(footer)
+	retro := retroLine(s)
+	if retro != "" && runes(retro)+1 <= room {
+		room -= runes(retro) + 1
+	} else {
+		retro = ""
+	}
+	if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
+		line := "[최근 결정] "
+		var ids []string
+		for i := 0; i < len(decisions) && i < n; i++ {
+			entry := fmt.Sprintf("%s(%s)", decisions[i].Title, decisions[i].ID)
+			if i > 0 {
+				entry = " · " + entry
+			}
+			if runes(line)+runes(entry) > min(maxDecisionsRunes, room-1) {
+				break
+			}
+			line += entry
+			ids = append(ids, decisions[i].ID)
+		}
+		if len(ids) > 0 {
+			tail.WriteString(line + "\n")
+			inj.MemoryIDs = append(inj.MemoryIDs, ids...)
+		}
+	}
+	if retro != "" {
+		tail.WriteString(retro + "\n")
+	}
+	b.WriteString(find)
 	b.WriteString(tail.String())
-	inj.MemoryIDs = append(inj.MemoryIDs, tailIDs...)
 	if b.Len() > 0 {
 		b.WriteString(footer)
 	}
@@ -312,12 +378,18 @@ func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) I
 // confirmed rules the session start would carry now are left out
 // ("session_rule"); the ones it leaves out for length stay candidates.
 func Candidates(s *memory.Store, cfg config.Config, scope string, opts Options) (map[string]memory.Memory, map[string]string, error) {
-	return CandidatesFor(s, scope, opts, SessionStartInjectionWith(s, cfg, scope, opts).MemoryIDs)
+	return CandidatesAt(s, at(cfg, scope), opts, SessionStartInjectionWith(s, cfg, scope, opts).MemoryIDs)
 }
 
 // CandidatesFor is Candidates for a session whose bundle named bundle: a confirmed
 // rule is left out of the work recall only when the bundle carries its full text.
 func CandidatesFor(s *memory.Store, scope string, opts Options, bundle []string) (map[string]memory.Memory, map[string]string, error) {
+	return CandidatesAt(s, place.Place{Scope: scope}, opts, bundle)
+}
+
+// CandidatesAt is CandidatesFor at a place resolved by the product map. A memory of the session's core
+// layers is in the bundle and left out like a session rule.
+func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string) (map[string]memory.Memory, map[string]string, error) {
 	active, err := s.List(memory.StateCandidate, memory.StateConfirmed)
 	if err != nil {
 		return nil, nil, err
@@ -334,13 +406,14 @@ func CandidatesFor(s *memory.Store, scope string, opts Options, bundle []string)
 		// 세션 묶음에 전문으로 든 확정 규칙은 다시 넣지 않는다(분야 규칙과 짧은 꼴은 빼고). 일지는 대화 맥락이 아니다.
 		domain := memory.DomainOf(m) != ""
 		switch why := excluded(m, now, heads); {
-		case !inScope(m, scope):
+		case !inScope(m, pl):
 			out[m.ID] = "scope"
 		case m.Kind == memory.KindJournal:
 			out[m.ID] = "journal"
 		case why != "":
 			out[m.ID] = why
-		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && !opts.Brief && inBundle[m.ID]:
+		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && !opts.Brief && inBundle[m.ID],
+			m.Pinned && inBundle[m.ID]:
 			out[m.ID] = "session_rule"
 		default:
 			byID[m.ID] = m
@@ -370,7 +443,8 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 	if !ok { // 묶음을 모르면 지금 세션 시작이 넣을 것으로 본다
 		bundleIDs = SessionStartInjectionWith(s, cfg, scope, opts).MemoryIDs
 	}
-	byID, _, err := CandidatesFor(s, scope, opts, bundleIDs)
+	pl := at(cfg, scope)
+	byID, _, err := CandidatesAt(s, pl, opts, bundleIDs)
 	if err != nil {
 		return inj.done(&b)
 	}
@@ -379,7 +453,7 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 		news = sessionNews(s, &inj, host, session, bundleIDs, byID)
 	}
 	b.WriteString(news)
-	recall := recallEntries(s, cfg, scope, prompt, byID, &inj, MaxHookRunes-runes(news))
+	recall := recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news))
 	b.WriteString(recall)
 	return inj.done(&b)
 }
@@ -490,7 +564,7 @@ func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
 
 // recallEntries is the work recall list of the request within limit characters (and
 // cfg.RecallChars). Memories already named in this injection are not listed again.
-func recallEntries(s *memory.Store, cfg config.Config, scope, prompt string, byID map[string]memory.Memory, inj *Injection, limit int) string {
+func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, limit int) string {
 	named := map[string]bool{}
 	for _, id := range inj.MemoryIDs {
 		named[id] = true
@@ -509,7 +583,9 @@ func recallEntries(s *memory.Store, cfg config.Config, scope, prompt string, byI
 	now := s.Now()
 	usage, _ := s.UsageCounts(memory.Day(now.AddDate(0, 0, -max(cfg.LedgerWindowDays, 1))), memory.Day(now))
 	net := func(id string) int { u := usage[id]; return u.Followed - u.Irrelevant }
-	local := func(id string) bool { return scope != "" && byID[id].Scope == scope }
+	// 이 폴더의 것(저장소·제품·요청 글에 이름이 나온 제품)이 사용자 공통보다 앞이다(S3 명세 2.8).
+	products := pl.Named(prompt)
+	local := func(id string) bool { m := byID[id]; return pl.Local(m.Scope, m.Project, products) }
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, c := hits[i], hits[j]
 		// 후보(AI가 배운 것)는 회상에 쓰되 확정보다 뒤에 둔다(A2 확정 규칙).
@@ -642,13 +718,14 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	heads, _ := s.TopicHeads()
 	now := s.Now()
 	given := s.SessionMarks(host, session, memory.MarkTool)
+	pl := at(cfg, scope)
 	type hit struct {
 		m     memory.Memory
 		exact bool
 	}
 	var hits []hit
 	for _, m := range active {
-		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, scope) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
+		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
 			continue
 		}
 		if exact, ok := m.TriggeredBy(tool); ok {
@@ -666,7 +743,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		if ca, cc := a.m.State == memory.StateConfirmed, c.m.State == memory.StateConfirmed; ca != cc {
 			return ca
 		}
-		if la, lc := a.m.Scope == scope, c.m.Scope == scope; la != lc {
+		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
 			return la
 		}
 		return a.m.UpdatedAt > c.m.UpdatedAt
@@ -721,4 +798,42 @@ func HookOutput(event, context string) string {
 	}
 	b, _ := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": context}})
 	return string(b)
+}
+
+// SubagentStart is what a subagent gets when it starts (설계 · orbit-mem 2판 6절, S3 명세 2.9): the user
+// core only, within memory.UserCoreRunes. A subagent's hook input carries no request, so nothing else is
+// matched; the tools it calls bring their own memories (ToolInjection, keyed by the subagent).
+func SubagentStart(s *memory.Store, cfg config.Config) Injection {
+	var inj Injection
+	var b strings.Builder
+	if cfg.Inject == config.InjectOff {
+		return inj.done(&b)
+	}
+	core, err := s.Core(memory.ScopeGlobal)
+	if err != nil || len(core) == 0 {
+		return inj.done(&b)
+	}
+	heads, _ := s.TopicHeads()
+	now := s.Now()
+	var body strings.Builder
+	used := 0
+	for _, m := range core {
+		if excluded(m, now, heads) != "" {
+			continue
+		}
+		entry := memory.CoreEntry(m)
+		if used+runes(entry) > memory.UserCoreRunes {
+			continue
+		}
+		body.WriteString(entry)
+		used += runes(entry)
+		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
+		inj.mark(memory.MarkShown, m.ID)
+	}
+	if used == 0 {
+		return inj.done(&b)
+	}
+	b.WriteString("[OpenOrbit 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다. 다른 기억은 memory_find로 찾는다.\n")
+	b.WriteString(body.String())
+	return inj.done(&b)
 }

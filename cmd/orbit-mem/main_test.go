@@ -26,7 +26,8 @@ func home(t *testing.T) string {
 	t.Helper()
 	h := t.TempDir()
 	t.Setenv("ORBIT_HOME", h)
-	t.Setenv("ORBIT_LANG", "") // 이 PC의 언어 설정과 무관하게 기본(영어)으로 돈다
+	t.Setenv("ORBIT_LANG", "")         // 이 PC의 언어 설정과 무관하게 기본(영어)으로 돈다
+	t.Setenv("CLAUDE_PROJECT_DIR", "") // 이 시험을 돌리는 세션의 폴더와 무관하게 돈다
 	// 이 PC의 Claude Code·Codex 설정(호스트 자체 기억 판정)과 무관하게 돈다. HOME은 두어 go build 캐시를 쓴다.
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(h, "no-claude"))
 	t.Setenv("CODEX_HOME", filepath.Join(h, "no-codex"))
@@ -50,7 +51,7 @@ func seed(t *testing.T) *memory.Store {
 func TestHook_세션_시작은_호스트_JSON을_낸다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	out, _, code := run(t, `{"cwd":"/tmp","hook_event_name":"SessionStart","source":"startup"}`, "hook", "session-start", "--host", "codex")
 	if code != 0 {
 		t.Fatalf("code %d", code)
@@ -180,7 +181,7 @@ func TestHook_인자가_틀려도_호스트를_막지_않는다(t *testing.T) {
 func TestHook_주입을_사건으로_남긴다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	r := pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"sess-1","hook_event_name":"SessionStart"}`, "hook", "session-start", "--host", "codex")
 	run(t, `{"cwd":"/tmp","session_id":"sess-1","prompt":"점심 뭐 먹지"}`, "hook", "prompt", "--host", "codex")
 	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
@@ -281,9 +282,9 @@ func TestRetro_명령은_없다(t *testing.T) {
 func TestHook_같은_세션의_시작_묶음은_바뀌지_않는다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	first, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude")
-	s.Save(memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "새로 확정된 규칙", Source: memory.Source{Kind: "quote", Excerpt: "새로"}})
 	again, _, _ := run(t, `{"cwd":"/tmp","session_id":"s1","source":"resume"}`, "hook", "session-start", "--host", "claude") // compact·clear는 v2_test
 	if first != again || strings.Contains(again, "새로 확정된 규칙") {
 		t.Fatalf("bundle changed:\n%s\n%s", first, again)
@@ -358,7 +359,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
 	}
-	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.3.9")
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
