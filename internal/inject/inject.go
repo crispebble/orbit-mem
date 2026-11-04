@@ -224,9 +224,29 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 			}
 		}
 	}
+	footer := "기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
+	head := "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
+	if opts.Brief {
+		footer = "기억은 memory_find·memory_get·memory_save로 찾고 남긴다."
+		head = "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n"
+	}
+	omittedLine := func(n int) string {
+		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
+	}
+	// 꼬리(결정 제목·회고 줄)는 핵심과 규칙 머리·생략 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도, 검토 지적 2026-11-04).
 	var tail strings.Builder // 결정 제목·회고 줄: 규칙 뒤에 붙는다
 	var tailIDs []string
 	if cfg.Inject != config.InjectRules {
+		room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(footer)
+		if len(rules) > 0 {
+			room -= runes(head) + runes(omittedLine(len(rules)))
+		}
+		retro := retroLine(s)
+		if retro != "" && runes(retro)+1 <= room {
+			room -= runes(retro) + 1
+		} else {
+			retro = ""
+		}
 		if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
 			line := "[최근 결정] "
 			for i := 0; i < len(decisions) && i < n; i++ {
@@ -234,7 +254,7 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 				if i > 0 {
 					entry = " · " + entry
 				}
-				if runes(line)+runes(entry) > maxDecisionsRunes {
+				if runes(line)+runes(entry) > min(maxDecisionsRunes, room-1) {
 					break
 				}
 				line += entry
@@ -244,18 +264,9 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 				tail.WriteString(line + "\n")
 			}
 		}
-		if line := retroLine(s); line != "" {
-			tail.WriteString(line + "\n")
+		if retro != "" {
+			tail.WriteString(retro + "\n")
 		}
-	}
-	footer := "기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
-	head := "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
-	if opts.Brief {
-		footer = "기억은 memory_find·memory_get·memory_save로 찾고 남긴다."
-		head = "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n"
-	}
-	omittedLine := func(n int) string {
-		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
 	}
 	// 규칙 몫: 전체 한도에서 꼬리·맺음 줄·생략 줄 자리를 먼저 뺀다.
 	budget := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(tail.String()) - runes(footer) - runes(head) - runes(omittedLine(len(rules)))

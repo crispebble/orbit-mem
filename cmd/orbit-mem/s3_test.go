@@ -25,7 +25,7 @@ func TestHook_subagent_start는_user_핵심만_넣는다(t *testing.T) {
 		t.Fatalf("no core: %d %q", code, out)
 	}
 	core, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Topic: "말투", Source: memory.Source{Kind: "quote", Excerpt: "존댓말"}})
-	if _, err := s.Pin(core.ID, memory.Who{Actor: memory.ActorAI}); err != nil {
+	if _, err := s.Pin(core.ID, memory.Who{}); err != nil {
 		t.Fatal(err)
 	}
 	out, _, _ := run(t, in, "hook", "subagent-start", "--host", "claude")

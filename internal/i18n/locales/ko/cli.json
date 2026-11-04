@@ -342,5 +342,6 @@
   "cli.place.one": "제품: %s",
   "cli.place.multi": "여러 제품: %s (세션 시작에 제품 핵심을 넣지 않고, 요청 글에 이름이 나온 제품의 기억을 앞에 둔다)",
   "cli.place.none": "제품 없음: 제품 지도(config products)에 이 폴더의 줄이 없다",
-  "cli.place.default": "appliesTo 없이 여기서 저장한 기억의 적용 대상: %s"
+  "cli.place.default": "appliesTo 없이 여기서 저장한 기억의 적용 대상: %s",
+  "cli.place.remote_hint": "원격이 있는 git 저장소다: 제품 지도는 폴더 줄이 아니라 원격 키로 찾는다. 그 제품의 match에 \"%s\"를 더한다"
 }

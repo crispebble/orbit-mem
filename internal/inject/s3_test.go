@@ -5,6 +5,7 @@ package inject
 // 여러 제품 폴더는 요청 글에 이름이 나온 제품을 앞에 둔다(S3-9).
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -93,7 +94,7 @@ func TestS3_세션_시작은_user_핵심_제품_핵심_나머지_규칙_순이�
 	deskCore := saveIn(t, s, memory.KindDecision, "핵심: 왼쪽 얇은 레일 유지", "product:orbit-code-desktop", "", "레일")
 	atlasCore := saveIn(t, s, memory.KindDecision, "핵심: Atlas 문서는 onidot Space", "product:atlas", "", "문서 위치")
 	for _, m := range []memory.Memory{userCore, deskCore, atlasCore} {
-		if _, err := s.Pin(m.ID, memory.Who{Actor: memory.ActorAI}); err != nil {
+		if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -163,7 +164,7 @@ func TestSubagentStart_user_핵심만_3000자_안에서_넣는다(t *testing.T) 
 	userCore := saveIn(t, s, memory.KindRule, "핵심: 답은 존댓말", memory.ScopeGlobal, "", "말투")
 	deskCore := saveIn(t, s, memory.KindDecision, "핵심: 레일", "product:orbit-code-desktop", "", "레일")
 	for _, m := range []memory.Memory{userCore, deskCore} {
-		if _, err := s.Pin(m.ID, memory.Who{Actor: memory.ActorAI}); err != nil {
+		if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -173,4 +174,55 @@ func TestSubagentStart_user_핵심만_3000자_안에서_넣는다(t *testing.T) 
 		inj.Chars > memory.UserCoreRunes+200 || len(inj.MemoryIDs) != 1 {
 		t.Fatalf("subagent:\n%s", inj.Text)
 	}
+}
+
+// 검토 지적(2026-11-04): 핵심을 한도까지 채우고 결정 제목이 많아도 세션 시작 묶음은 판 안내 몫을 남기고 6,000자 안이다.
+func TestS3_핵심을_한도까지_채워도_세션_시작은_한도_안이다(t *testing.T) {
+	s := store(t)
+	cfg := s3Config()
+	f := s3Folders(t)
+	fill := func(scope string, limit int, word string) {
+		for i := 0; ; i++ {
+			m, err := s.Save(memory.SaveInput{Kind: memory.KindRule, Title: fmt.Sprintf("%s 핵심 %d", word, i), Topic: fmt.Sprintf("%s %d", word, i), Scope: scope,
+				Body: strings.Repeat(word, 470), Source: memory.Source{Kind: memory.SourceQuote, Excerpt: word}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
+				break
+			}
+			if i > 20 {
+				t.Fatal("never full")
+			}
+		}
+		if used := memory.CoreUsed(mustCore(t, s, scope)); used < limit-600 {
+			t.Fatalf("%s core only %d", scope, used)
+		}
+	}
+	fill(memory.ScopeGlobal, memory.UserCoreRunes, "가")
+	fill("product:orbit-code-desktop", memory.ProductCoreRunes, "나")
+	for i := 0; i < 15; i++ {
+		saveIn(t, s, memory.KindDecision, fmt.Sprintf("긴 결정 제목 %d %s", i, strings.Repeat("다", 60)), memory.ScopeGlobal, "", fmt.Sprintf("결정 %d", i))
+		saveIn(t, s, memory.KindRule, fmt.Sprintf("규칙 %d", i), memory.ScopeGlobal, "", fmt.Sprintf("규칙 %d", i))
+	}
+	in := SessionStartInjection(s, cfg, f["시안 폴더"])
+	if in.Chars > MaxSessionStartRunes-sessionNoteRunes {
+		t.Fatalf("session start %d > %d", in.Chars, MaxSessionStartRunes-sessionNoteRunes)
+	}
+	for _, scope := range []string{memory.ScopeGlobal, "product:orbit-code-desktop"} {
+		for _, m := range mustCore(t, s, scope) {
+			if !strings.Contains(in.Text, m.ID) {
+				t.Fatalf("core %s left out:\n%s", m.ID, in.Text)
+			}
+		}
+	}
+}
+
+func mustCore(t *testing.T, s *memory.Store, scope string) []memory.Memory {
+	t.Helper()
+	c, err := s.Core(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }

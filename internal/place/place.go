@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -131,10 +132,42 @@ func isFolder(line string) bool {
 // expand turns ~ into home and the line into a clean slash path.
 func expand(line, home string) string {
 	line = strings.TrimSpace(line)
-	if line == "~" || strings.HasPrefix(line, "~/") {
+	if line == "~" || strings.HasPrefix(line, "~/") || strings.HasPrefix(line, `~\`) {
 		line = home + line[1:]
 	}
 	return path.Clean(filepath.ToSlash(line))
+}
+
+// realLine resolves the symbolic links of the part of a folder line before its first glob, as the scope
+// of a folder is (project.Resolve), so /tmp/x matches /private/tmp/x on macOS.
+func realLine(pat string) string {
+	parts := strings.Split(pat, "/")
+	i := len(parts)
+	for j, seg := range parts {
+		if strings.ContainsAny(seg, "*?[") {
+			i = j
+			break
+		}
+	}
+	head := strings.Join(parts[:i], "/")
+	if head == "" {
+		return pat
+	}
+	real, err := filepath.EvalSymlinks(filepath.FromSlash(head))
+	if err != nil {
+		return pat
+	}
+	return path.Join(append([]string{filepath.ToSlash(real)}, parts[i:]...)...)
+}
+
+// foldCase says whether folders compare without case: the default file systems of macOS and Windows.
+var foldCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+
+func fold(s string) string {
+	if foldCase {
+		return strings.ToLower(s)
+	}
+	return s
 }
 
 // Place is where a session works: its scope key ("project:<key>") and the products the map gives it.
@@ -165,8 +198,9 @@ func Resolve(scope string, m Map) Place {
 }
 
 // ResolveIn is Resolve with home given. A remote key line matches the scope of a repository with that
-// remote; a folder line matches a folder scope that is the folder or under it. The most specific lines
-// win (a remote key, then the folder with the most path segments); their products are the place's.
+// remote; a folder line matches a folder scope that is the folder or under it (a repository with a remote
+// is found by its remote key only, S3 명세 2.2). The most specific lines win: a remote key, then the folder
+// with the most path segments, a plain folder before a glob of as many; their products are the place's.
 func ResolveIn(scope string, m Map, home string) Place {
 	p := Place{Scope: scope}
 	key := strings.TrimPrefix(scope, projectPrefix)
@@ -177,7 +211,7 @@ func ResolveIn(scope string, m Map, home string) Place {
 	var dirs []string
 	if folder {
 		for d := path.Clean(filepath.ToSlash(key)); ; d = path.Dir(d) {
-			dirs = append(dirs, d)
+			dirs = append(dirs, fold(d))
 			if next := path.Dir(d); next == d {
 				break
 			}
@@ -194,10 +228,14 @@ func ResolveIn(scope string, m Map, home string) Place {
 					spec = remoteSpecifity
 				}
 			case folder:
-				pat := expand(line, filepath.ToSlash(home))
+				pat := fold(realLine(expand(line, filepath.ToSlash(home))))
+				plain := 0
+				if !strings.ContainsAny(pat, "*?[") {
+					plain = 1
+				}
 				for _, d := range dirs {
 					if ok, _ := path.Match(pat, d); ok {
-						spec = max(spec, segments(pat))
+						spec = max(spec, 2*segments(pat)+plain)
 						break
 					}
 				}

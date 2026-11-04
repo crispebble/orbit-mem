@@ -4,6 +4,7 @@ package memory
 // 층(user·제품)마다 글자 수 한도가 있다. 한도를 넘는 승격은 자르지 않고 거절한다.
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -53,9 +54,11 @@ func CoreUsed(core []Memory) int {
 	return n
 }
 
-// Core is the core layer of a stored scope: its live pinned memories, most recently changed first.
-func (s *Store) Core(scope string) ([]Memory, error) {
-	rows, err := s.db.Query(`SELECT `+memoryCols+` FROM memories WHERE scope=? AND pinned=1 AND state IN ('candidate','confirmed') ORDER BY updated_at DESC, id`, scope)
+// Core is the core layer of a stored scope: its confirmed pinned memories, most recently changed first.
+func (s *Store) Core(scope string) ([]Memory, error) { return coreTx(s.db, scope) }
+
+func coreTx(q querier, scope string) ([]Memory, error) {
+	rows, err := q.Query(`SELECT `+memoryCols+` FROM memories WHERE scope=? AND pinned=1 AND state='confirmed' ORDER BY updated_at DESC, id`, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -115,15 +118,15 @@ func pinnable(m Memory) error {
 	return nil
 }
 
-// coreRoom checks that m fits its core layer, not counting the memories in freed (they leave it).
-func (s *Store) coreRoom(m Memory, freed ...string) error {
-	core, err := s.Core(m.Scope)
+// coreRoomTx checks, in the transaction that writes, that m fits its core layer next to the others.
+func coreRoomTx(q querier, m Memory) error {
+	core, err := coreTx(q, m.Scope)
 	if err != nil {
 		return err
 	}
 	var keep []Memory
 	for _, c := range core {
-		if c.ID != m.ID && !contains(freed, c.ID) {
+		if c.ID != m.ID {
 			keep = append(keep, c)
 		}
 	}
@@ -135,48 +138,40 @@ func (s *Store) coreRoom(m Memory, freed ...string) error {
 	return nil
 }
 
-// Pin puts a confirmed user or product memory into the core of its layer, if it fits (D2).
-func (s *Store) Pin(id string, who Who) (Memory, error) { return s.setPinned(id, true, who) }
+// stillPinned says whether a pinned memory keeps its core place after a change: it must stay a confirmed
+// user or product memory and fit its layer (moved, grown, demoted or replaced, it leaves the core).
+func stillPinned(q querier, m Memory) bool {
+	return pinnable(m) == nil && coreRoomTx(q, m) == nil
+}
 
-// Unpin takes a memory out of the core. It stays confirmed and comes through the work recall.
-func (s *Store) Unpin(id string, who Who) (Memory, error) { return s.setPinned(id, false, who) }
+// Pin puts a confirmed user or product memory into the core of its layer, if it fits (D2). Pinning a memory
+// that holds the user's words needs the user's words (who.UserQuote), like any change to it (A2).
+func (s *Store) Pin(id string, who Who) (Memory, error) { return s.setPinned(id, true, who, true) }
 
-func (s *Store) setPinned(id string, on bool, who Who) (Memory, error) {
-	m, err := s.Get(id)
+// Unpin takes a memory out of the core. It stays confirmed and comes through the work recall. Unpinning a
+// memory that holds the user's words needs the user's words too.
+func (s *Store) Unpin(id string, who Who) (Memory, error) { return s.setPinned(id, false, who, true) }
+
+func (s *Store) setPinned(id string, on bool, who Who, guard bool) (Memory, error) {
+	tx, err := s.db.Begin() // _txlock=immediate: 검사와 쓰기 사이에 다른 프로세스가 끼지 못한다
+	if err != nil {
+		return Memory{}, err
+	}
+	defer tx.Rollback()
+	m, err := getTx(tx, id)
 	if err != nil {
 		return m, err
 	}
 	if m.Pinned == on {
-		return m, nil
+		return s.Get(id)
 	}
-	if on {
-		if err := pinnable(m); err != nil {
-			return m, err
-		}
-		if err := s.coreRoom(m); err != nil {
-			return m, err
-		}
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return m, err
-	}
-	defer tx.Rollback()
 	now := s.nowMs()
-	m.Pinned = on
-	m.Version++
-	m.UpdatedAt = now
-	if _, err := tx.Exec(`UPDATE memories SET pinned=? WHERE id=?`, on, m.ID); err != nil {
-		return m, err
+	if guard {
+		if err := guardTx(tx, who, now, id); err != nil {
+			return m, err
+		}
 	}
-	action, reason := "pin", "상시 핵심으로 승격"
-	if !on {
-		action, reason = "unpin", "상시 핵심에서 내림"
-	}
-	if who.actor() != ActorUser {
-		reason += " (" + who.actor() + ")"
-	}
-	if err := writeTx(tx, m, action, reason, now); err != nil {
+	if err := pinTx(tx, &m, on, who, now); err != nil {
 		return m, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -185,53 +180,27 @@ func (s *Store) setPinned(id string, on bool, who Who) (Memory, error) {
 	return s.Get(id)
 }
 
-// precheckPin checks, before anything is written, that a save asking for the core can get it: the new
-// memory would be confirmed, of a pinnable layer, and fit next to the core minus what it supersedes.
-func (s *Store) precheckPin(in SaveInput) error {
-	state := in.State
-	if state == "" {
-		state = StateCandidate
-		if in.Source.Kind == SourceQuote {
-			state = StateConfirmed
-		}
-	}
-	var existing string
-	_ = s.db.QueryRow(`SELECT id FROM memories WHERE kind=? AND scope=? AND title_key=? AND state IN ('candidate','confirmed') ORDER BY created_at LIMIT 1`,
-		in.Kind, in.Scope, TitleKey(in.Title)).Scan(&existing)
-	probe := Memory{ID: "m-000000000000", Scope: in.Scope, State: state, Title: in.Title, Body: in.Body}
-	if existing != "" { // 같은 제목이면 그 기억이 승격된다
-		cur, err := s.Get(existing)
-		if err != nil {
+// pinTx pins or unpins m in tx, checking the layer and its limit when pinning.
+func pinTx(tx *sql.Tx, m *Memory, on bool, who Who, now int64) error {
+	if on {
+		if err := pinnable(*m); err != nil {
 			return err
 		}
-		probe = cur
-		if in.Source.Kind == SourceQuote {
-			probe.State = StateConfirmed
+		if err := coreRoomTx(tx, *m); err != nil {
+			return err
 		}
 	}
-	if err := pinnable(probe); err != nil {
-		return err
+	m.Pinned = on
+	m.Version++
+	m.UpdatedAt = now
+	action, reason := "pin", "상시 핵심으로 승격"
+	if !on {
+		action, reason = "unpin", "상시 핵심에서 내림"
 	}
-	return s.coreRoom(probe, s.topicHeadsOf(in)...)
-}
-
-// topicHeadsOf are the live memories a save of in would supersede by its topic, and the ones it names.
-func (s *Store) topicHeadsOf(in SaveInput) []string {
-	out := append([]string{}, in.Supersedes...)
-	if key := TopicKey(in.Topic); key != "" && in.Retention != RetentionVolatile {
-		rows, err := s.db.Query(`SELECT id, topic FROM memories WHERE scope=? AND topic<>'' AND state IN ('candidate','confirmed')`, in.Scope)
-		if err != nil {
-			return out
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id, topic string
-			if rows.Scan(&id, &topic) == nil && TopicKey(topic) == key {
-				out = append(out, id)
-			}
-		}
+	if who.actor() != ActorUser {
+		reason += " (" + who.actor() + ")"
 	}
-	return out
+	return writeTx(tx, *m, action, reason, now)
 }
 
 // inheritPin passes the core place of the pinned memories a save superseded to the new value when it fits,
@@ -250,10 +219,8 @@ func (s *Store) inheritPin(m Memory, superseded []string, who Who) (Memory, stri
 	if gone == "" {
 		return m, ""
 	}
-	if pinnable(m) != nil || s.coreRoom(m) != nil {
-		return m, gone
-	}
-	if pm, err := s.setPinned(m.ID, true, who); err == nil {
+	// 사용자의 새 말이 옛 핵심을 대체했으면 새 판이 그 자리를 잇는다: 저장 자체가 근거라 사용자 말을 다시 묻지 않는다.
+	if pm, err := s.setPinned(m.ID, true, who, false); err == nil {
 		return pm, ""
 	}
 	return m, gone

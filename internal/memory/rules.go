@@ -190,7 +190,7 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 	if days >= pol.SeenDays {
 		return EvidenceSeenDays, nil
 	}
-	if m.Kind == KindFact && m.Scope != ScopeGlobal {
+	if m.Kind == KindFact && m.Scope != ScopeGlobal { // 저장소·제품·제품 미정 사실(user 사실은 아님)
 		var n int
 		// 검증 출처는 무엇을 돌렸는지(ref)와 그 결과(excerpt)가 있어야 증거다.
 		if err := s.db.QueryRow(`SELECT COUNT(*) FROM sources WHERE memory_id=? AND kind=? AND ref<>'' AND excerpt<>''`, id, SourceVerification).Scan(&n); err != nil {

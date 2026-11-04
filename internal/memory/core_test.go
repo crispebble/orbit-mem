@@ -34,7 +34,7 @@ func TestPin_확정된_user_제품_기억만_승격한다(t *testing.T) {
 	um, _ := mustSave(t, s, unknown)
 
 	for _, id := range []string{user.ID, pm.ID} {
-		m, err := s.Pin(id, Who{Actor: ActorAI})
+		m, err := s.Pin(id, Who{})
 		if err != nil || !m.Pinned {
 			t.Fatalf("pin %s: %v %v", id, m.Pinned, err)
 		}
@@ -44,11 +44,11 @@ func TestPin_확정된_user_제품_기억만_승격한다(t *testing.T) {
 		}
 	}
 	for _, id := range []string{cand.ID, rm.ID, um.ID} {
-		if _, err := s.Pin(id, Who{Actor: ActorAI}); err == nil || pinned(t, s, id) {
+		if _, err := s.Pin(id, Who{}); err == nil || pinned(t, s, id) {
 			t.Fatalf("pinned %s: %v", id, err)
 		}
 	}
-	if m, err := s.Unpin(user.ID, Who{Actor: ActorAI}); err != nil || m.Pinned {
+	if m, err := s.Unpin(user.ID, Who{}); err != nil || m.Pinned {
 		t.Fatalf("unpin: %v", err)
 	}
 	if h, _ := s.History(user.ID); h[len(h)-1].Action != "unpin" {
@@ -65,7 +65,7 @@ func TestPin_한도를_넘으면_거절하고_핵심_목록과_길이를_싣는�
 		in.Body = body
 		m, _ := mustSave(t, s, in)
 		ids = append(ids, m.ID)
-		_, err := s.Pin(m.ID, Who{Actor: ActorAI})
+		_, err := s.Pin(m.ID, Who{})
 		if i < 3 && err != nil {
 			t.Fatalf("pin %d: %v", i, err)
 		}
@@ -93,7 +93,7 @@ func TestPin_한도를_넘으면_거절하고_핵심_목록과_길이를_싣는�
 		in := userSays(KindDecision, "결정 "+string(rune('가'+i)), "결정 주제 "+string(rune('가'+i)))
 		in.Scope, in.Body = product, body
 		m, _ := mustSave(t, s, in)
-		if _, err := s.Pin(m.ID, Who{Actor: ActorAI}); err != nil {
+		if _, err := s.Pin(m.ID, Who{}); err != nil {
 			t.Fatalf("product pin %d: %v", i, err)
 		}
 	}
@@ -101,7 +101,7 @@ func TestPin_한도를_넘으면_거절하고_핵심_목록과_길이를_싣는�
 	in.Scope, in.Body = "product:a", body
 	m, _ := mustSave(t, s, in)
 	var full *CoreFullError
-	if _, err := s.Pin(m.ID, Who{Actor: ActorAI}); !errors.As(err, &full) || full.Limit != ProductCoreRunes || full.Layer != "product:a" {
+	if _, err := s.Pin(m.ID, Who{}); !errors.As(err, &full) || full.Limit != ProductCoreRunes || full.Layer != "product:a" {
 		t.Fatalf("product over: %v", err)
 	}
 	core, err := s.Core("product:a")
@@ -127,7 +127,7 @@ func TestSave_pin이_넘치면_아무것도_저장하지_않는다(t *testing.T)
 	big := userSays(KindRule, "큰 핵심", "큰")
 	big.Body = strings.Repeat("나", 2900)
 	m, _ := mustSave(t, s, big)
-	if _, err := s.Pin(m.ID, Who{Actor: ActorAI}); err != nil {
+	if _, err := s.Pin(m.ID, Who{}); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := s.List()
@@ -158,7 +158,7 @@ func TestSave_pin이_넘치면_아무것도_저장하지_않는다(t *testing.T)
 func TestSave_대체한_새_판이_승격을_이어받는다(t *testing.T) {
 	s := supStore(t)
 	old, _ := mustSave(t, s, userSays(KindDecision, "상단바는 레일에", "상단바"))
-	if _, err := s.Pin(old.ID, Who{Actor: ActorAI}); err != nil {
+	if _, err := s.Pin(old.ID, Who{}); err != nil {
 		t.Fatal(err)
 	}
 	next, rep := mustSave(t, s, userSays(KindDecision, "상단바는 제목 막대에", "상단바"))
@@ -169,7 +169,7 @@ func TestSave_대체한_새_판이_승격을_이어받는다(t *testing.T) {
 	filler := userSays(KindRule, "채우는 규칙", "채움")
 	filler.Body = strings.Repeat("라", 2800)
 	fm, _ := mustSave(t, s, filler)
-	if _, err := s.Pin(fm.ID, Who{Actor: ActorAI}); err != nil {
+	if _, err := s.Pin(fm.ID, Who{}); err != nil {
 		t.Fatal(err)
 	}
 	long := userSays(KindDecision, "상단바는 둘 다", "상단바")
@@ -184,5 +184,77 @@ func TestCoreRunes_세션_시작_꼴의_글자_수다(t *testing.T) {
 	m := Memory{ID: "m-000000000000", Title: "제목", Body: "본문\n둘째 줄"}
 	if got, want := CoreRunes(m), utf8.RuneCountInString(CoreEntry(m)); got != want || !strings.Contains(CoreEntry(m), "  둘째 줄") {
 		t.Fatalf("%d %d %q", got, want, CoreEntry(m))
+	}
+}
+
+// 검토 지적(2026-11-04): 핵심은 승격 경로 밖에서도 지켜진다. 옮기거나 늘리거나 내리면 핵심에서 빠진다.
+func TestPin_옮기거나_늘리거나_내리면_핵심에서_빠진다(t *testing.T) {
+	s := supStore(t)
+	pinnedOne := func(title, scope, body string) Memory {
+		in := userSays(KindDecision, title, "주제 "+title)
+		in.Scope, in.Body, in.Pin = scope, body, true
+		m, _ := mustSave(t, s, in)
+		if !m.Pinned {
+			t.Fatalf("%s not pinned", title)
+		}
+		return m
+	}
+	half := strings.Repeat("가", 930)
+	pinnedOne("알파 하나", "product:alpha", half)
+	pinnedOne("알파 둘", "product:alpha", half)
+	beta := pinnedOne("베타 하나", "product:beta", half)
+	// 다른 제품 층으로 옮기면 그 층의 한도를 넘으므로 핵심에서 빠진다.
+	to := "product:alpha"
+	m, err := s.Update(UpdateInput{ID: beta.ID, Scope: &to, Who: Who{}})
+	if err != nil || m.Pinned || CoreUsed(mustCore(t, s, "product:alpha")) > ProductCoreRunes {
+		t.Fatalf("moved: pinned %v %v", m.Pinned, err)
+	}
+	// 본문을 한도 넘게 늘려도 빠진다.
+	user := pinnedOne("사용자 핵심", ScopeGlobal, "짧다")
+	long := strings.Repeat("나", 3100)
+	if m, err := s.Update(UpdateInput{ID: user.ID, Body: &long, Who: Who{}}); err != nil || m.Pinned {
+		t.Fatalf("grown: %v %v", m.Pinned, err)
+	}
+	// 후보로 되돌리거나 낡음으로 돌리면 빠지고, 다시 확정해도 저절로 돌아오지 않는다.
+	other := pinnedOne("사용자 핵심 둘", ScopeGlobal, "짧다")
+	cand := StateCandidate
+	if m, err := s.Update(UpdateInput{ID: other.ID, State: &cand, Who: Who{}}); err != nil || m.Pinned {
+		t.Fatalf("restored to candidate: %v %v", m.Pinned, err)
+	}
+	for _, c := range mustCore(t, s, ScopeGlobal) {
+		if c.ID == other.ID {
+			t.Fatal("candidate still in the core")
+		}
+	}
+}
+
+func mustCore(t *testing.T, s *Store, scope string) []Memory {
+	t.Helper()
+	c, err := s.Core(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// 사용자 말을 담은 기억은 AI가 사용자 말 없이 올리거나 내리지 못한다(A2).
+func TestPin_사용자_말_기억은_AI가_사용자_말_없이_올리고_내리지_못한다(t *testing.T) {
+	s := supStore(t)
+	m, _ := mustSave(t, s, userSays(KindRule, "답은 존댓말", "말투"))
+	if _, err := s.Pin(m.ID, Who{Actor: ActorAI}); !errors.Is(err, ErrProtected) {
+		t.Fatalf("AI pin without quote: %v", err)
+	}
+	if got, err := s.Pin(m.ID, Who{Actor: ActorAI, UserQuote: "늘 지켜"}); err != nil || !got.Pinned {
+		t.Fatalf("AI pin with quote: %v", err)
+	}
+	if _, err := s.Unpin(m.ID, Who{Actor: ActorAI}); !errors.Is(err, ErrProtected) || !pinned(t, s, m.ID) {
+		t.Fatalf("AI unpin without quote: %v", err)
+	}
+	// AI가 배운 확정 기억(사용자 말이 아님)은 AI가 올리고 내린다.
+	ai := aiLearns(KindFact, "빌드는 make", "")
+	ai.State = StateConfirmed
+	am, _ := mustSave(t, s, ai)
+	if got, err := s.Pin(am.ID, Who{Actor: ActorAI}); err != nil || !got.Pinned {
+		t.Fatalf("AI pin of AI memory: %v", err)
 	}
 }

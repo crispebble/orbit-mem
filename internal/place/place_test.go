@@ -3,6 +3,8 @@ package place
 // 설계 · orbit-mem 2판 S3 명세 2.2·2.3(S3-2): 제품 지도가 폴더를 제품에 묶고, 적용 대상마다 어느 폴더에서 보이는지.
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -155,6 +157,38 @@ func TestValidate_잘못된_제품_지도는_거절한다(t *testing.T) {
 	} {
 		if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "products") {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// 검토 지적(2026-11-04): 경로 비교의 가장자리.
+func TestResolve_경로_가장자리(t *testing.T) {
+	// 같은 마디 수면 글롭보다 그냥 폴더가 구체적이다.
+	m := Map{"glob": {Match: []string{"/w/proto/*"}}, "plain": {Match: []string{"/w/proto/desk"}}}
+	if got := ResolveIn("project:/w/proto/desk", m, home).Products; !reflect.DeepEqual(got, []string{"plain"}) {
+		t.Fatalf("plain vs glob %v", got)
+	}
+	// 원격이 있는 저장소는 원격 키로만 찾는다: 그 저장소를 품은 폴더 줄은 맞지 않는다(명세 2.2).
+	if got := ResolveIn("project:github.com/acme/repo1", Map{"alpha": {Match: []string{"/w/a"}}}, home).Products; got != nil {
+		t.Fatalf("folder line matched a remote repo %v", got)
+	}
+	// ~\ (Windows 꼴)도 홈으로 편다.
+	if got := expand(`~\x`, "/Users/u"); got != "/Users/u/x" && got != `/Users/u\x` {
+		t.Fatalf("expand %q", got)
+	}
+	// 설정 줄의 심볼릭 링크를 풀어 실제 경로 범위와 견준다.
+	dir := t.TempDir()
+	real, _ := filepath.EvalSymlinks(dir)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	if got := ResolveIn("project:"+filepath.ToSlash(real)+"/app", Map{"p": {Match: []string{filepath.ToSlash(link)}}}, home).Products; !reflect.DeepEqual(got, []string{"p"}) {
+		t.Fatalf("symlinked line %v", got)
+	}
+	if foldCase {
+		if got := ResolveIn("project:/W/Proto/Desk", m, home).Products; !reflect.DeepEqual(got, []string{"plain"}) {
+			t.Fatalf("case %v", got)
 		}
 	}
 }

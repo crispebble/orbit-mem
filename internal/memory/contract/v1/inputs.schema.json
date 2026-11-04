@@ -18,7 +18,7 @@
         "via": {"type": "array", "items": {"$ref": "#/$defs/relation"}, "description": "주변을 따라갈 때 건너는 관계. 기본 link·supersede·session·file(tag는 빼 둔다)"},
         "kinds": {"type": "array", "items": {"$ref": "#/$defs/memoryKind"}, "description": "기억 종류로 거른다. 기본 모두"},
         "states": {"type": "array", "items": {"$ref": "#/$defs/memoryState"}, "description": "기억 상태로 거른다. 기본 candidate·confirmed·stale"},
-        "scopes": {"type": "array", "items": {"type": "string", "pattern": "^(global|project:.+)$"}, "description": "범위로 거른다(global·project:<키>). 기본 모두"},
+        "scopes": {"type": "array", "items": {"type": "string", "pattern": "^(global|project:.+|product:(\\?|[a-z0-9][a-z0-9._-]*))$"}, "description": "범위로 거른다(global·project:<키>·product:<이름>·product:?). 기본 모두"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "이 태그 중 하나라도 가진 기억만"},
         "updatedFrom": {"$ref": "#/$defs/time", "description": "이 시각 이후에 고친 기억만"},
         "updatedTo": {"$ref": "#/$defs/time", "description": "이 시각까지 고친 기억만"},

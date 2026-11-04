@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
@@ -567,3 +568,18 @@ func TestWork_다시_제출해도_일지는_하나다(t *testing.T) {
 }
 
 func workIn2(in WorkIn, ref string) WorkIn { in.Ref = ref; return in }
+
+// 설계 · orbit-mem 2판 S3(검토 지적): 작업 회고의 「지금 있는 기억」은 그 작업 폴더에서 보이는 제품 기억도 싣는다.
+func TestWork_재료는_작업_폴더의_제품_기억도_싣는다(t *testing.T) {
+	e := setup(t, workEnd.Add(time.Hour))
+	in := workIn(t, "w-prod", workEnd, "상단바를 고쳤다")
+	pr := project.Resolve(in.Cwd)
+	e.r.Cfg.Products = place.Map{"desk": {Match: []string{pr.Label}}, "atlas": {Match: []string{"github.com/onidot-labs/atlas"}}}
+	desk, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "데스크 제품 사실", Scope: "product:desk", Source: memory.Source{Kind: memory.SourceSession}})
+	unsure, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "이 폴더 미정 사실", Scope: "product:?", Project: pr.Label, Source: memory.Source{Kind: memory.SourceSession}})
+	atlas, _ := e.s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "아틀라스 사실", Scope: "product:atlas", Source: memory.Source{Kind: memory.SourceSession}})
+	text := readAll(t, e, e.prepWork(t, in).ID)
+	if !strings.Contains(text, desk.ID) || !strings.Contains(text, unsure.ID) || strings.Contains(text, atlas.ID) {
+		t.Fatalf("material:\n%s", text)
+	}
+}

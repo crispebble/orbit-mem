@@ -18,6 +18,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/inject"
 	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 	"github.com/onidot-labs/orbit-mem/internal/project"
 	"github.com/onidot-labs/orbit-mem/internal/version"
 )
@@ -93,7 +94,10 @@ func cmdMCP(a *app, args []string) error {
 		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
 	} else {
 		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Version: version.Version, WorkDB: paths().WorkDB(),
-			Actor: actorOf(*actor, memory.ActorAI), Products: productsOf()})
+			Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
+				cfg, err := loadConfig()
+				return cfg.Products, err
+			}})
 	}
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }

@@ -57,6 +57,10 @@ func cmdPlace(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.one", pl.Products[0]))
 	default:
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.none"))
+		if !strings.HasPrefix(p.Label, "/") && !strings.Contains(p.Label, ":") && p.Label != "" {
+			// 원격이 있는 저장소는 폴더 줄로 찾지 않는다(S3 명세 2.2): 그 원격 키를 적으라고 알린다.
+			fmt.Fprintln(a.stdout, i18n.T("cli.place.remote_hint", p.Label))
+		}
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.place.default", def))
 	return nil

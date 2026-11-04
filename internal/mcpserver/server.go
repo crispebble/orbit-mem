@@ -32,10 +32,24 @@ type Options struct {
 	// Products is the product map (config products): which product this session's folder belongs to,
 	// the default of appliesTo and what memory_find sees here (설계 · orbit-mem 2판 S3).
 	Products place.Map
+	// LoadProducts, when set, reads the product map on every call instead of Products: a long-lived server
+	// follows a config.json changed after it started, like the hooks do.
+	LoadProducts func() (place.Map, error)
+}
+
+// products is the product map now, and why it could not be read.
+func (o Options) products() (place.Map, error) {
+	if o.LoadProducts != nil {
+		return o.LoadProducts()
+	}
+	return o.Products, nil
 }
 
 // here is the place of this connection's folder.
-func (o Options) here() place.Place { return place.Resolve(o.Project, o.Products) }
+func (o Options) here() place.Place {
+	m, _ := o.products()
+	return place.Resolve(o.Project, m)
+}
 
 // ResolveActor picks the writer of a server or command: inside a
 // retrospective run (ORBIT_RETRO_ID) always automation, else the flag, else
@@ -361,12 +375,16 @@ type MemoryOut struct {
 // scope and the folder label, with what the caller should check (설계 · orbit-mem 2판 4.1, S3 명세 2.4·2.5).
 // With neither given and def false it gives "" (no change, memory_update).
 func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, string, []string, error) {
-	here := h.o.here()
+	var warns []string
+	products, perr := h.o.products()
+	if perr != nil {
+		warns = append(warns, fmt.Sprintf("제품 지도(config.json products)를 읽지 못해 제품이 없는 것으로 봤습니다: %v. 설정을 고친 뒤 적용 대상을 확인하세요", perr))
+	}
+	here := place.Resolve(h.o.Project, products)
 	label := h.o.ProjectLabel
 	if label == "" {
 		label = here.Label()
 	}
-	var warns []string
 	repo := func(d string) (string, string, error) {
 		if d != "" {
 			p := project.Resolve(d)
@@ -443,7 +461,7 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool) (string, st
 		core, _ := h.s.Core(memory.ScopeGlobal)
 		warns = append(warns, fmt.Sprintf("user: 모든 일(모든 저장소·제품)에 적용됩니다. 맞는지 확인하세요 — 한 제품의 일이면 appliesTo product. 지금 user 상시 핵심 %d/3,000자", memory.CoreUsed(core)))
 	case name != "":
-		if _, ok := h.o.Products[name]; !ok {
+		if _, ok := products[name]; !ok && perr == nil {
 			warns = append(warns, fmt.Sprintf("product:%s는 제품 지도(config products)에 없어 어느 폴더에서도 회상되지 않습니다. 제품 지도에 줄을 더하거나 이름을 고치세요", name))
 		}
 	}
@@ -622,12 +640,10 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		}
 		return nil, MemoryOut{Memory: m}, nil
 	}
-	if in.ExpectedVersion != 0 {
-		cur, gerr := h.s.Get(in.ID)
-		if gerr == nil && cur.Version != in.ExpectedVersion {
-			r, _ := toolError(memory.ErrVersionConflict)
-			return r, MemoryOut{}, nil
-		}
+	before, _ := h.s.Get(in.ID)
+	if in.ExpectedVersion != 0 && before.ID != "" && before.Version != in.ExpectedVersion {
+		r, _ := toolError(memory.ErrVersionConflict)
+		return r, MemoryOut{}, nil
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
@@ -683,6 +699,9 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
+	}
+	if before.Pinned && !m.Pinned && in.Action != "unpin" {
+		warns = append(warns, "상시 핵심에서 빠짐: 이 변경으로 확정된 user·제품 기억이 아니게 됐거나 핵심 한도(user 3,000자·제품마다 2,000자)를 넘었습니다. 다시 올리려면 줄인 뒤 memory_update action=pin")
 	}
 	return nil, MemoryOut{Memory: m, Warnings: warns}, nil
 }

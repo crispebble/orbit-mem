@@ -5,6 +5,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -157,12 +158,16 @@ func TestPin_승격은_한도를_넘으면_거절하고_핵심_목록을_보인�
 	}
 	var second MemoryOut
 	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "둘째 핵심", "topic": "둘째", "appliesTo": "user", "body": strings.Repeat("나", 990), "source": quote("x")}, &second)
-	if res := call(t, cs, "memory_update", map[string]any{"id": second.Memory.ID, "action": "pin"}, nil); res.IsError {
+	// 사용자 말을 담은 기억이라 AI는 사용자 말(userQuote)과 함께 올린다(A2).
+	if res := call(t, cs, "memory_update", map[string]any{"id": second.Memory.ID, "action": "pin"}, nil); !res.IsError {
+		t.Fatal("AI pinned the user's words without userQuote")
+	}
+	if res := call(t, cs, "memory_update", map[string]any{"id": second.Memory.ID, "action": "pin", "userQuote": "늘 지켜"}, nil); res.IsError {
 		t.Fatalf("pin: %s", text(res))
 	}
 	var third MemoryOut
 	call(t, cs, "memory_save", map[string]any{"kind": "rule", "title": "셋째 핵심", "topic": "셋째", "appliesTo": "user", "body": strings.Repeat("다", 990), "source": quote("x")}, &third)
-	res := call(t, cs, "memory_update", map[string]any{"id": third.Memory.ID, "action": "pin"}, nil)
+	res := call(t, cs, "memory_update", map[string]any{"id": third.Memory.ID, "action": "pin", "userQuote": "늘 지켜"}, nil)
 	if !res.IsError || !strings.Contains(text(res), big.Memory.ID) || !strings.Contains(text(res), second.Memory.ID) {
 		t.Fatalf("over limit: %v %s", res.IsError, text(res))
 	}
@@ -171,11 +176,17 @@ func TestPin_승격은_한도를_넘으면_거절하고_핵심_목록을_보인�
 	if !res.IsError || len(mustList(t, s)) != n {
 		t.Fatalf("save pin over limit: %v %s", res.IsError, text(res))
 	}
-	if res := call(t, cs, "memory_update", map[string]any{"id": big.Memory.ID, "action": "unpin"}, nil); res.IsError {
+	if res := call(t, cs, "memory_update", map[string]any{"id": big.Memory.ID, "action": "unpin", "userQuote": "그건 내려"}, nil); res.IsError {
 		t.Fatal(text(res))
 	}
-	if res := call(t, cs, "memory_update", map[string]any{"id": third.Memory.ID, "action": "pin"}, nil); res.IsError {
+	if res := call(t, cs, "memory_update", map[string]any{"id": third.Memory.ID, "action": "pin", "userQuote": "늘 지켜"}, nil); res.IsError {
 		t.Fatalf("pin after unpin: %s", text(res))
+	}
+	// 핵심 기억을 승격할 수 없는 자리(이 저장소)로 옮기면 핵심에서 빠졌다고 알린다.
+	var moved MemoryOut
+	call(t, cs, "memory_update", map[string]any{"id": third.Memory.ID, "appliesTo": "repo", "userQuote": "이 저장소 것"}, &moved)
+	if moved.Memory.Pinned || !strings.Contains(strings.Join(moved.Warnings, " "), "상시 핵심에서 빠짐") {
+		t.Fatalf("moved out of the core: %v %v", moved.Memory.Pinned, moved.Warnings)
 	}
 	// 제품 미정·저장소 기억은 승격할 수 없다.
 	var unsure MemoryOut
@@ -195,3 +206,26 @@ func mustList(t *testing.T, s *memory.Store) []memory.Memory {
 }
 
 var _ = context.Background
+
+// 검토 지적(2026-11-04): 오래 사는 서버도 호출마다 제품 지도를 다시 읽고, 읽지 못하면 경고한다.
+func TestSave_서버는_호출마다_제품_지도를_다시_읽는다(t *testing.T) {
+	s := s3Store(t)
+	var m place.Map
+	var loadErr error
+	cs := connectServer(t, New(s, Options{Project: draft, ProjectLabel: strings.TrimPrefix(draft, "project:"), Version: "test",
+		LoadProducts: func() (place.Map, error) { return m, loadErr }}))
+	var before MemoryOut
+	call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "지도 전", "source": quote("x")}, &before)
+	m = s3Map()
+	var after MemoryOut
+	call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "지도 뒤", "source": quote("x")}, &after)
+	if before.Memory.AppliesTo != "product:?" || after.Memory.AppliesTo != "product:orbit-code-desktop" {
+		t.Fatalf("before %s after %s", before.Memory.AppliesTo, after.Memory.AppliesTo)
+	}
+	m, loadErr = nil, errors.New("config.json: bad")
+	var broken MemoryOut
+	call(t, cs, "memory_save", map[string]any{"kind": "fact", "title": "지도 깨짐", "source": quote("x")}, &broken)
+	if !strings.Contains(strings.Join(broken.Warnings, " "), "제품 지도") {
+		t.Fatalf("no warning for a broken map: %v", broken.Warnings)
+	}
+}
