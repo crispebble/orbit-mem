@@ -587,14 +587,14 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 }
 
 // findQuote finds the user's words in the material: in the named session if
-// one is given (with or without the host), else in any session.
+// one is given (with or without the host; the legacy work host is the work host), else in any session.
 func findQuote(mat Material, ref, quote string) (transcript.Session, time.Time, bool) {
 	host, id, ok := strings.Cut(ref, ":")
 	if !ok {
 		host, id = "", ref
 	}
 	for _, s := range mat.Sessions {
-		if id != "" && (s.ID != id || (host != "" && s.Host != host)) {
+		if id != "" && (s.ID != id || (host != "" && memory.WorkHostKey(s.Host) != memory.WorkHostKey(host))) {
 			continue
 		}
 		for _, t := range s.Turns {

@@ -1,6 +1,7 @@
 package retro
 
 import (
+	"github.com/onidot-labs/orbit-mem/internal/transcript"
 	"strconv"
 	"testing"
 	"time"
@@ -51,5 +52,25 @@ func TestWork_옛_이름의_오래된_실행_줄은_실패로_닫고_다시_돈�
 	}
 	if p.Session != WorkHost+":"+in.Ref {
 		t.Fatalf("new session = %q", p.Session)
+	}
+}
+
+// 업그레이드 전에 준비한 작업 회고 재료(호스트 LegacyWorkHost)와 새 이름 참조 「orbit-code:w-…」, 또는 그 반대도
+// 같은 작업 세션으로 찾는다.
+func TestWork_옛_이름과_새_이름의_작업_세션_참조는_같은_세션이다(t *testing.T) {
+	turn := []transcript.Turn{{Role: "user", Text: "그 방식 말고 표로 써", At: workEnd}}
+	for _, c := range []struct{ host, ref string }{
+		{LegacyWorkHost, WorkHost + ":w-1"},
+		{WorkHost, LegacyWorkHost + ":w-1"},
+		{WorkHost, WorkHost + ":w-1"},
+	} {
+		mat := Material{Sessions: []transcript.Session{{Host: c.host, ID: "w-1", Turns: turn}}}
+		if _, _, ok := findQuote(mat, c.ref, squash("표로 써")); !ok {
+			t.Errorf("session host %q, ref %q: not found", c.host, c.ref)
+		}
+	}
+	other := Material{Sessions: []transcript.Session{{Host: "claude", ID: "w-1", Turns: turn}}}
+	if _, _, ok := findQuote(other, WorkHost+":w-1", squash("표로 써")); ok {
+		t.Error("another host's session with the same id matched")
 	}
 }
