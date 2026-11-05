@@ -35,19 +35,30 @@ type PlanItem struct {
 	Topic        string `json:"topic,omitempty"`        // 새 주제, 비우면 그대로
 	SupersededBy string `json:"supersededBy,omitempty"` // 이 기억을 대체할 기억
 	Basis        string `json:"basis"`                  // 근거(rule1:<낱말>·map·ai:<이유>)
+	// Split cuts a long memory into one memory per claim (S4-9, split.go). The parts go to AppliesTo
+	// (or stay where the memory is) and the original is superseded.
+	Split []PlanPart `json:"split,omitempty"`
+}
+
+// PlanPart is one claim of a split: a title, its own topic and its body (≤ MaxClaimRunes).
+type PlanPart struct {
+	Title string `json:"title"`
+	Topic string `json:"topic,omitempty"`
+	Body  string `json:"body"`
 }
 
 // PlanResult is what happened to one item.
 type PlanResult struct {
-	ID       string `json:"id"`
-	Action   string `json:"action"` // place(자리·주제) 또는 supersede
-	From     string `json:"from,omitempty"`
-	To       string `json:"to,omitempty"`
-	Topic    string `json:"topic,omitempty"`
-	By       string `json:"by,omitempty"`
-	LedgerID string `json:"ledgerId,omitempty"`
-	Skip     string `json:"skip,omitempty"`
-	Basis    string `json:"basis,omitempty"`
+	ID       string   `json:"id"`
+	Action   string   `json:"action"` // place(자리·주제) 또는 supersede
+	From     string   `json:"from,omitempty"`
+	To       string   `json:"to,omitempty"`
+	Topic    string   `json:"topic,omitempty"`
+	By       string   `json:"by,omitempty"`
+	LedgerID string   `json:"ledgerId,omitempty"`
+	Parts    []string `json:"parts,omitempty"` // split: 새로 만든 기억
+	Skip     string   `json:"skip,omitempty"`
+	Basis    string   `json:"basis,omitempty"`
 }
 
 // PlanReport is the result of a plan: applied (or, in a dry run, what would be), skipped and conflicts
@@ -82,6 +93,15 @@ func (s *Store) ApplyPlan(plan Plan, m place.Map, dry bool) (PlanReport, error) 
 	for _, it := range plan.Items {
 		if it.SupersededBy != "" {
 			supersedes = append(supersedes, it)
+		}
+		if len(it.Split) > 0 { // 나누기는 자리·주제도 함께 정한다: 원래 기억은 옮기지 않고 대체된다
+			r, err := s.planSplit(it, m, dry)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", it.ID, err))
+				continue
+			}
+			rep.add(r)
+			continue
 		}
 		if it.AppliesTo == "" && it.Topic == "" {
 			continue
