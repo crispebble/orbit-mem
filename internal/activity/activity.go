@@ -40,7 +40,8 @@ type Record struct {
 	Prompts      int      `json:"prompts,omitempty"`
 	FirstPrompt  string   `json:"firstPrompt,omitempty"`
 	LastPrompt   string   `json:"lastPrompt,omitempty"`
-	Works        []string `json:"works,omitempty"` // 옛 작업 기록: 그 세션이 연 작업의 제목
+	Works        []string `json:"works,omitempty"`   // 옛 작업 기록: 그 세션이 연 작업의 제목
+	Summary      string   `json:"summary,omitempty"` // 하루 요약(옮겨 온 일지, S4-8)
 }
 
 // Query narrows the search. An empty field does not narrow.
@@ -80,7 +81,7 @@ func Find(s *memory.Store, workDB string, q Query) (Result, error) {
 		index[a.Host+"\x00"+a.Session] = len(res.Items)
 		res.Items = append(res.Items, Record{Source: SourceActivity, Host: a.Host, Session: a.Session, Project: a.ProjectLabel, ProjectScope: a.ProjectScope,
 			Cwd: a.Cwd, Launcher: a.Launcher, Parent: a.Parent, StartedAt: a.StartedAt, LastAt: a.LastAt, EndedAt: a.EndedAt,
-			Prompts: a.Prompts, FirstPrompt: a.FirstPrompt, LastPrompt: a.LastPrompt})
+			Prompts: a.Prompts, FirstPrompt: a.FirstPrompt, LastPrompt: a.LastPrompt, Summary: a.Summary})
 	}
 	old, err := Legacy(workDB, Query{Query: q.Query, Host: q.Host, ProjectScope: q.ProjectScope, Since: q.Since, Limit: limit})
 	if err != nil {

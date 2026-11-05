@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
@@ -49,5 +50,32 @@ func TestPlacePlan_미리_보고_적용한다(t *testing.T) {
 	var got struct{ Items []memory.Memory }
 	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || len(got.Items) != 1 || got.Items[0].Scope != "product:atlas" || got.Items[0].Topic != "atlas 댓글 표시" {
 		t.Fatalf("show: %d %s", code, out)
+	}
+}
+
+// S4-8: place --journals는 살아 있는 일지를 활동 기록으로 옮긴다(미리 보기는 바꾸지 않는다).
+func TestPlaceJournals_일지를_활동_기록으로_옮긴다(t *testing.T) {
+	home(t)
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindJournal, Title: "2026-11-04 하루 회고", Body: "정리만 했다", Source: memory.Source{Kind: memory.SourceSession, Ref: "r"}, Who: memory.Who{Actor: memory.ActorAI}})
+	s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep memory.PlanReport
+	out, errOut, code := run(t, "", "place", "--journals", "--dry-run", "--json")
+	if code != 0 || json.Unmarshal([]byte(out), &rep) != nil || len(rep.Applied) != 1 || rep.Applied[0].LedgerID != "" {
+		t.Fatalf("dry run: %d %s %s", code, out, errOut)
+	}
+	out, errOut, code = run(t, "", "place", "--journals")
+	if code != 0 || !strings.Contains(out, "1") {
+		t.Fatalf("apply: %d %s %s", code, out, errOut)
+	}
+	out, _, code = run(t, "", "activity", "--project", "all", "--json")
+	if code != 0 || !strings.Contains(out, "journal:"+j.ID) || !strings.Contains(out, "정리만 했다") {
+		t.Fatalf("activity: %d %s", code, out)
 	}
 }

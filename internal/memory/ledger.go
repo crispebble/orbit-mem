@@ -42,8 +42,9 @@ type LedgerBefore struct {
 	Memories []Memory       `json:"memories,omitempty"` // 바뀐 기억의 바꾸기 전 판본
 	Created  []string       `json:"created,omitempty"`  // 새로 만든 기억
 	File     *FileBefore    `json:"file,omitempty"`
-	After    map[string]int `json:"after,omitempty"` // 바꾼 직후 기억 판본. 되돌릴 때 그 뒤 바뀌었는지 본다
-	Link     string         `json:"link,omitempty"`  // 승인으로 생긴 연결. 되돌릴 때 이 연결만 뗀다
+	After    map[string]int `json:"after,omitempty"`    // 바꾼 직후 기억 판본. 되돌릴 때 그 뒤 바뀌었는지 본다
+	Link     string         `json:"link,omitempty"`     // 승인으로 생긴 연결. 되돌릴 때 이 연결만 뗀다
+	Activity string         `json:"activity,omitempty"` // 이 변경이 넣은 활동 기록 줄(host\x00session). 되돌릴 때 뺀다
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
@@ -290,6 +291,11 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 	if res.Created != "" {
 		before.Created = append(before.Created, res.Created)
 	}
+	if p.Kind != ProposalRevert && p.Payload.Activity != "" {
+		before.Activity = p.Payload.Activity
+		host, session, _ := strings.Cut(p.Payload.Activity, "\x00")
+		fmt.Fprintf(&change, "활동 기록 %s %s에 옮김\n", host, session)
+	}
 	var memIDs []string
 	for _, m := range before.Memories {
 		memIDs = append(memIDs, m.ID)
@@ -461,6 +467,13 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 			}
 		}
 		res.File = f.Path
+	}
+	// 일지를 옮긴 활동 줄은 기억과 함께 빠진다(S4-8): 되돌린 뒤 같은 일지가 두 곳에 남지 않는다.
+	if e.Before.Activity != "" {
+		host, session, _ := strings.Cut(e.Before.Activity, "\x00")
+		if _, err := tx.Exec(`DELETE FROM activity WHERE host=? AND session=?`, host, session); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err

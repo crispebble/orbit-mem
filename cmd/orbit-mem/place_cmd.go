@@ -35,6 +35,7 @@ func cmdPlace(a *app, args []string) error {
 	move := fs.Bool("move", false, i18n.T("flag.place.move"))
 	plan := fs.String("plan", "", i18n.T("flag.place.plan"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.place.dry_run"))
+	journals := fs.Bool("journals", false, i18n.T("flag.place.journals"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -49,6 +50,8 @@ func cmdPlace(a *app, args []string) error {
 		return placeMove(a, cfg, *asJSON)
 	case *plan != "":
 		return placePlan(a, cfg, *plan, *dry, *asJSON)
+	case *journals:
+		return placeJournals(a, *dry, *asJSON)
 	}
 	p := sessionProject()
 	if *cwd != "" {
@@ -162,6 +165,27 @@ func placePlan(a *app, cfg config.Config, file string, dry, asJSON bool) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_head", len(plan.Items), len(rep.Applied), len(rep.Skipped), len(rep.Conflicts), dry))
 	for _, r := range rep.Conflicts {
+		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_conflict", r.ID, r.Skip))
+	}
+	return err
+}
+
+// placeJournals moves every live journal memory to the activity log (S4-8), one ledger line each.
+func placeJournals(a *app, dry, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	rep, err := s.JournalsToActivity(dry)
+	if asJSON {
+		if jerr := a.json(rep); jerr != nil {
+			return jerr
+		}
+		return err
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.place.journals_head", len(rep.Applied), len(rep.Skipped), dry))
+	for _, r := range rep.Skipped {
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_conflict", r.ID, r.Skip))
 	}
 	return err

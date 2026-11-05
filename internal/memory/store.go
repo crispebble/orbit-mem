@@ -112,6 +112,8 @@ func addColumns(db *sql.Tx) error {
 		{"memories", "tools", "TEXT NOT NULL DEFAULT '[]'"},
 		// 상시 핵심 승격(설계 · orbit-mem 2판 4.4, S3). 옛 판은 이 열을 모르고 쓰므로 승격을 건드리지 않는다.
 		{"memories", "pinned", "INTEGER NOT NULL DEFAULT 0"},
+		// 활동 기록의 하루 요약(S4-8: 일지 기억을 옮겨 온 것). 옛 판 훅은 이 열을 모르고 넣으므로 그 줄은 빈 요약이다.
+		{"activity", "summary", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {

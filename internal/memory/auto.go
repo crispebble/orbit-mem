@@ -43,6 +43,10 @@ type AutoInput struct {
 	// topic, or a supersession by the newer memory that source precedence allows. Its content does not
 	// change, so it moves a memory holding the user's words too.
 	PlanMove bool
+	// JournalMove marks one journal stale after its title and body were copied to the activity log
+	// (S4-8, journals.go). The words stay in the log as they were, so it moves a journal holding the
+	// user's words too.
+	JournalMove bool
 }
 
 // AutoApply applies one automatic change: it checks the rules (what the user
@@ -96,6 +100,12 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 			return DecideResult{}, err
 		}
 		targets = nil // 자리·주제만 옮기거나 출처 우선순위가 허락한 대체다: 사용자 말을 바꾸지 않는다
+	}
+	if in.JournalMove {
+		if err := s.journalMoveOnly(in); err != nil {
+			return DecideResult{}, err
+		}
+		targets = nil // 제목·본문은 활동 기록에 그대로 있다: 사용자 말을 바꾸지 않는다
 	}
 	tx, err := s.db.Begin()
 	if err != nil {

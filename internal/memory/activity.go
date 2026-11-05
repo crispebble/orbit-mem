@@ -44,6 +44,9 @@ type Activity struct {
 	Prompts      int    `json:"prompts"`
 	FirstPrompt  string `json:"firstPrompt,omitempty"`
 	LastPrompt   string `json:"lastPrompt,omitempty"`
+	// Summary is what the day or session was about, in full: a journal moved from the memories (S4-8),
+	// later a retro's day summary. Hook rows leave it empty.
+	Summary string `json:"summary,omitempty"`
 }
 
 // ActivityEvent is what one hook call adds to the log.
@@ -127,7 +130,7 @@ func LikeEscape(s string) string {
 
 // Activities reads the log, newest activity first.
 func (s *Store) Activities(f ActivityFilter) ([]Activity, error) {
-	q := `SELECT host,session,project_scope,project_label,cwd,launcher,parent,started_at,last_at,ended_at,prompts,first_prompt,last_prompt FROM activity WHERE 1=1`
+	q := `SELECT host,session,project_scope,project_label,cwd,launcher,parent,started_at,last_at,ended_at,prompts,first_prompt,last_prompt,summary FROM activity WHERE 1=1`
 	var args []any
 	if f.Host != "" {
 		q += ` AND host=?`
@@ -143,8 +146,8 @@ func (s *Store) Activities(f ActivityFilter) ([]Activity, error) {
 	}
 	for _, w := range strings.Fields(f.Query) {
 		like := "%" + LikeEscape(w) + "%"
-		q += ` AND (project_label LIKE ? ESCAPE '\' OR cwd LIKE ? ESCAPE '\' OR session LIKE ? ESCAPE '\' OR first_prompt LIKE ? ESCAPE '\' OR last_prompt LIKE ? ESCAPE '\')`
-		args = append(args, like, like, like, like, like)
+		q += ` AND (project_label LIKE ? ESCAPE '\' OR cwd LIKE ? ESCAPE '\' OR session LIKE ? ESCAPE '\' OR first_prompt LIKE ? ESCAPE '\' OR last_prompt LIKE ? ESCAPE '\' OR summary LIKE ? ESCAPE '\')`
+		args = append(args, like, like, like, like, like, like)
 	}
 	limit := f.Limit
 	if limit <= 0 {
@@ -160,7 +163,7 @@ func (s *Store) Activities(f ActivityFilter) ([]Activity, error) {
 	out := []Activity{}
 	for rows.Next() {
 		var a Activity
-		if err := rows.Scan(&a.Host, &a.Session, &a.ProjectScope, &a.ProjectLabel, &a.Cwd, &a.Launcher, &a.Parent, &a.StartedAt, &a.LastAt, &a.EndedAt, &a.Prompts, &a.FirstPrompt, &a.LastPrompt); err != nil {
+		if err := rows.Scan(&a.Host, &a.Session, &a.ProjectScope, &a.ProjectLabel, &a.Cwd, &a.Launcher, &a.Parent, &a.StartedAt, &a.LastAt, &a.EndedAt, &a.Prompts, &a.FirstPrompt, &a.LastPrompt, &a.Summary); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

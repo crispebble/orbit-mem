@@ -78,6 +78,7 @@ type Payload struct {
 	ToTags      []string `json:"toTags,omitempty"`      // retag: 넣을 태그
 	Evidence    string   `json:"evidence,omitempty"`    // 자동 확정의 증거(seen_days·followed_verified·verified_fact)
 	Actor       string   `json:"actor,omitempty"`       // 자동 변경·되돌리기를 한 쪽(user·ai·automation)
+	Activity    string   `json:"activity,omitempty"`    // stale: 일지를 옮긴 활동 기록 줄(host\x00session, S4-8)
 }
 
 // Proposal is a suggestion waiting for the user.
