@@ -79,8 +79,8 @@ describe('작업 탭', () => {
   });
 
   it('판이 맞지 않으면 작업 화면만 멈추고 안내를 보인다', () => {
-    h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: 'OpenOrbit이 이 OpenOrbit 앱보다 새 판입니다. OpenOrbit 앱을 올려 주세요.'}}));
-    assert.match(text(h.renderWorkTab(task.id)), /Please update the OpenOrbit app/);
+    h.useState(state({status: 'paused', pause: {kind: 'orb-newer', message: 'orbit-code가 이 orbit-mem 앱보다 새 판입니다. orbit-mem 앱을 올려 주세요.'}}));
+    assert.match(text(h.renderWorkTab(task.id)), /orbit-code is newer than this orbit-mem app\. Please update the orbit-mem app\./);
   });
 });
 

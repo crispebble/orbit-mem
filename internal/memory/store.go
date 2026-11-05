@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS session_marks (
 PRAGMA user_version=3;
 `
 
-// addColumns adds the columns later versions put on tables an older OpenOrbit made.
+// addColumns adds the columns later versions put on tables an older version made.
 func addColumns(db *sql.Tx) error {
 	for _, c := range []struct{ table, column, def string }{
 		{"retros", "session", "TEXT NOT NULL DEFAULT ''"},

@@ -239,7 +239,7 @@ func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
 }
 
 // K3: 세션 끝 훅은 활동 기록만 남긴다. 세션 끝 회고 대기열에 넣지 않고 뒤 프로세스도 띄우지 않는다
-// (회고는 OpenOrbit이 돌린다). 프로세스를 띄우지 않는 것은 TestNoHostCalls가 코드로도 막는다.
+// (회고는 orbit-code가 돌린다). 프로세스를 띄우지 않는 것은 TestNoHostCalls가 코드로도 막는다.
 func TestHook_세션_끝은_활동_기록만_남긴다(t *testing.T) {
 	h := home(t)
 	s := seed(t)
@@ -261,7 +261,7 @@ func TestHook_세션_끝은_활동_기록만_남긴다(t *testing.T) {
 	}
 }
 
-// K1: retro 명령은 없다(회고는 OpenOrbit의 orb retro).
+// K1: retro 명령은 없다(회고는 orbit-code의 orb retro).
 func TestRetro_명령은_없다(t *testing.T) {
 	home(t)
 	_, errOut, code := run(t, "", "retro", "run")

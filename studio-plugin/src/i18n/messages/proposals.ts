@@ -59,7 +59,7 @@ export const proposalText = defineMessages({
       failed: 'Could not decide',
     },
     view: {
-      connectFailed: 'Could not connect to OpenOrbit',
+      connectFailed: 'Could not connect to orbit-mem',
       loading: 'Loading proposals…',
       filterLabel: 'Show proposals',
       pending: (n: number) => `Pending ${n}`,
@@ -72,7 +72,7 @@ export const proposalText = defineMessages({
     },
     pane: {
       notFound: 'Proposal not found',
-      notFoundHint: 'It was already handled, or OpenOrbit has no such proposal.',
+      notFoundHint: 'It was already handled, or orbit-mem has no such proposal.',
       reason: 'Reason:',
     },
     detail: {
@@ -177,7 +177,7 @@ export const proposalText = defineMessages({
       failed: '결정하지 못했습니다',
     },
     view: {
-      connectFailed: 'OpenOrbit에 연결하지 못했습니다',
+      connectFailed: 'orbit-mem에 연결하지 못했습니다',
       loading: '제안을 불러오는 중입니다',
       filterLabel: '제안 보기',
       pending: (n: number) => `대기 ${n}`,
@@ -190,7 +190,7 @@ export const proposalText = defineMessages({
     },
     pane: {
       notFound: '제안을 찾지 못했습니다',
-      notFoundHint: '이미 정리됐거나 OpenOrbit에 없는 제안입니다.',
+      notFoundHint: '이미 정리됐거나 orbit-mem에 없는 제안입니다.',
       reason: '사유:',
     },
     detail: {

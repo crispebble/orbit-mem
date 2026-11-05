@@ -145,7 +145,7 @@ func contains(list []string, v string) bool {
 
 // cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB,
 // takes out the retrospective schedule an earlier orbit-mem registered (unless --no-schedule:
-// the retrospectives and their schedule are OpenOrbit's orb install) and registers
+// the retrospectives and their schedule are orbit-code's orb install) and registers
 // orbit-mem's plugin in the hosts: Claude Code
 // from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
 // the local folder it builds.
@@ -418,7 +418,7 @@ func samePath(a, b string) bool {
 
 // cmdUninstall takes the retrospective schedule an earlier orbit-mem registered and
 // orbit-mem's plugin and marketplace out of the hosts. The data and the local plugin folder
-// stay; OpenOrbit's own schedule is orb uninstall's.
+// stay; orbit-code's own schedule is orb uninstall's.
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
@@ -446,7 +446,7 @@ func cmdUninstall(a *app, args []string) error {
 	return nil
 }
 
-// doctorReport is orbit-mem doctor --json. OpenOrbit's orb doctor reads it: keep the keys.
+// doctorReport is orbit-mem doctor --json. orbit-code's orb doctor reads it: keep the keys.
 type doctorReport struct {
 	Version      string              `json:"version"`
 	Binary       string              `json:"binary"`     // this orbit-mem

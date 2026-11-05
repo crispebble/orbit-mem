@@ -9,7 +9,7 @@
 | `response.schema.json` | 도구별 응답 JSON Schema(`$defs`의 도구 이름과 부품) |
 | `examples/*.json` | 예시 응답(orb 시험이 실제 응답으로 만든 것). 파일마다 `tool`·`args`·`result`. 오류 예시는 `isError: true` |
 
-기준 설계: Atlas 「설계 · Studio 4차」(`0s33y629n5qxy`) 「결정 카드 계약 `orbit.decision`」, 「Claude 엔진 중복 규칙」, 「설계 · OpenOrbit 4차」(`0s36w3z1cgznq`). 저장은 `work.db`의 원장 사건(`decision.open`·`decision.answer`·`decision.withdraw`)이라 다시 만들어도 같은 카드가 나오고, 변경 커서는 `orbit.work`의 `seq`와 같다.
+기준 설계: Atlas 「설계 · Studio 4차」(`0s33y629n5qxy`) 「결정 카드 계약 `orbit.decision`」, 「Claude 엔진 중복 규칙」, 「설계 · orbit-code 4차」(`0s36w3z1cgznq`). 저장은 `work.db`의 원장 사건(`decision.open`·`decision.answer`·`decision.withdraw`)이라 다시 만들어도 같은 카드가 나오고, 변경 커서는 `orbit.work`의 `seq`와 같다.
 
 ## 판
 
@@ -20,7 +20,7 @@
 
 ## 도구
 
-결정 카드 도구는 OpenOrbit의 `orb work mcp`(Orbit Studio·orbit-pi 같은 앱이 읽는 쪽)에 있다. 이 저장소의 `orbit-mem mcp`(AI 호스트용)와 `orbit-mem mcp --reader`에는 없다. 플러그인 훅은 작업이나 카드를 기록하지 않는다(orbit-mem 훅은 활동 기록만 한다). 카드는 orbit-pi가 `decision_open`으로 연다.
+결정 카드 도구는 orbit-code의 `orb work mcp`(Orbit Studio·orbit-pi 같은 앱이 읽는 쪽)에 있다. 이 저장소의 `orbit-mem mcp`(AI 호스트용)와 `orbit-mem mcp --reader`에는 없다. 플러그인 훅은 작업이나 카드를 기록하지 않는다(orbit-mem 훅은 활동 기록만 한다). 카드는 orbit-pi가 `decision_open`으로 연다.
 
 | 도구 | 하는 일 |
 | --- | --- |
@@ -71,13 +71,13 @@
 
 ## 가정 카드 (1.1)
 
-`source: "assumption"`은 「가정으로 진행 중」 카드다. OpenOrbit이 되돌리기 쉬운 모호함을 만났을 때 사람의 답을 기다리지 않고 추천 선택지로 일을 이어 가면서, 사람이 나중에 뒤집을 수 있게 열어 두는 카드다.
+`source: "assumption"`은 「가정으로 진행 중」 카드다. orbit-code가 되돌리기 쉬운 모호함을 만났을 때 사람의 답을 기다리지 않고 추천 선택지로 일을 이어 가면서, 사람이 나중에 뒤집을 수 있게 열어 두는 카드다.
 
 - 질문 하나에서 `questions[0].recommended`가 지금 쓰는 선택지 id(`chosen`), `questions[0].reason`이 그렇게 정한 근거다.
 - **일을 막지 않는다.** 카드가 열려 있어도 실행은 계속 간다. 「답 기다림」 같은 막힘 표시·개수에 세지 않고, 사람이 답할 수 있게 목록에는 계속 보인다.
 - 답하기는 다른 질문 카드와 같다(`decision_answer`). 추천과 다른 답이면 그 가정에 기댄 단계만 다시 열린다(`orbit.work`의 `assumptions[].state`가 `overturned`). 같은 답이면 `confirmed`/`answered`로 닫힌다.
 - 가정 카드는 그 카드를 연 세션의 턴·세션이 끝나도 거두지 않는다(`turn_ended`·`session_ended` 거둠에서 빠진다). 일이 끝난 뒤에 온 답도 그 가정에 기댄 단계를 다시 연다.
-- 1.1은 `work.host`에 `orbit-pi`를 적었다. OpenOrbit 진행자와 orbit-pi가 1.0 때부터 이 값으로 카드를 열어 왔고, 문서 열거만 빠져 있었다.
+- 1.1은 `work.host`에 `orbit-pi`를 적었다. orbit-code 진행자와 orbit-pi가 1.0 때부터 이 값으로 카드를 열어 왔고, 문서 열거만 빠져 있었다.
 - 1.0만 아는 읽는 쪽은 판 규칙대로 `assumption`을 모르는 출처(「알 수 없음」)로 보인다. 질문·선택지·`recommended`·`reason` 칸은 다른 카드와 같아서 그 카드도 보이고 `decision_answer`로 답할 수 있다.
 - Orbit Studio 플러그인은 호스트의 Needs you가 출처를 `question`·`permission`·`ops`·`plugin`만 알기 때문에 `assumption` 카드를 `question`으로 옮겨 넘기고, 보조 글 맨 앞에 「가정으로 진행 중」을 붙인다. 호스트는 `recommended` 선택지에 「추천」 배지를, `reason`을 선택지 아래에 보인다. 카드의 `questions[0].header`(「가정으로 진행 중」)가 제목 앞에 붙는다.
 - 카드는 `owner: "orbit-pi"`로 열리고 `work.sessionId`는 Claude Code 세션 id다. Studio는 데몬이 아는 실행과 세션이 겹쳐도 이 카드를 가리지 않는다.
@@ -87,7 +87,7 @@
 
 | 단계 | 규칙 |
 | --- | --- |
-| 열기 | 사람이 직접 연 세션: OpenOrbit 플러그인 훅이 질문 도구(Claude Code `AskUserQuestion`, Codex `request_user_input`)의 사전 훅 입력에서 연다(`owner=human`, 추천 없음). orbit-pi가 띄운 세션: orbit-pi가 `decision_open`으로 연다(`owner=orbit-pi`). 운영 감시·플러그인도 `decision_open` |
+| 열기 | 사람이 직접 연 세션: orbit-code 플러그인 훅이 질문 도구(Claude Code `AskUserQuestion`, Codex `request_user_input`)의 사전 훅 입력에서 연다(`owner=human`, 추천 없음). orbit-pi가 띄운 세션: orbit-pi가 `decision_open`으로 연다(`owner=orbit-pi`). 운영 감시·플러그인도 `decision_open` |
 | 답하기 | `decision_answer`는 비교 후 교체다. 먼저 답한 쪽이 이기고 늦은 쪽은 `CONFLICT`와 지금의 카드(`answer.by`·`at`)를 받는다. `owner=human` 카드는 `CANNOT_RELAY`: 카드에 「그 앱에서 답하기」를 보이고, 그 앱에서 답하면 사후 훅이 카드를 `answered`(`by`는 터미널이면 `terminal`, 아니면 `host`)로 닫는다. 질문 도구가 실패하면(거절·중단) `withdrawn`(`declined`) |
 | 답 전달 | `owner`가 `decision_changes`로 `answered`를 보고 살아 있는 세션에 넘긴다 |
 | 정리 | 턴이 끝나면 그 턴(훅의 요청 id)에 연 열린 카드, 세션이 끝나면 그 세션의 열린 카드는 `withdrawn`(`turn_ended`·`session_ended`). 앞 턴의 늦은 끝은 다음 턴의 카드를 거두지 않는다. 끝난 턴·세션의 늦은 열기는 거둔 채로 남는다. orbit-pi는 멈출 때 자기 카드를 `decision_withdraw`로 거둔다 |

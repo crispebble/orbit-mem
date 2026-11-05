@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// The retrospective runner is OpenOrbit's (orb retro). These tests drive the
+// The retrospective runner is orbit-code's (orb retro). These tests drive the
 // storage the way it does: prepare, a fake host that reads the material and
 // submits through the same functions the retro MCP tools call, then finish.
 
@@ -76,7 +76,7 @@ func (r *runner) RunLegacy(context.Context) (Result, error) {
 }
 
 // DrainSessions runs the session-end queue once, oldest first, and closes
-// each entry with its run (OpenOrbit leaves a signed-out run queued; these
+// each entry with its run (orbit-code leaves a signed-out run queued; these
 // tests never sign out).
 func (r *runner) DrainSessions(context.Context) ([]Result, error) {
 	pending, err := Pending(r.Store)

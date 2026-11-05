@@ -319,7 +319,7 @@ export function groupProposalRows(rows: readonly ProposalRow[]): ProposalGroup[]
 const PROPOSAL_KINDS: readonly ProposalKind[] = ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link'];
 
 /**
- * Forma 0.9.0에 없는 OpenOrbit 종류: 기억 고치기·변경 되돌리기·태그 정리는 가장 가까운 「기억 정리」로 그리고
+ * Forma 0.9.0에 없는 orbit-mem 종류: 기억 고치기·변경 되돌리기·태그 정리는 가장 가까운 「기억 정리」로 그리고
  * 바뀔 내용(diff, 바뀔 태그)은 설명으로 보인다. 그 밖에 모르는 종류는 확정으로 본다.
  */
 const asProposalKind = (kind: string): ProposalKind => {

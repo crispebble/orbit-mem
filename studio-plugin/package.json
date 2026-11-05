@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Orbit Studio 플러그인: OpenOrbit 앱(제안·기억)",
+  "description": "Orbit Studio 플러그인: orbit-mem 앱(제안·기억)",
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --experimental-strip-types --test test/*.test.ts",

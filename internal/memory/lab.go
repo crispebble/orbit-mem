@@ -251,7 +251,7 @@ func (s *Store) CloseLabProposal(id, note string) error {
 }
 
 // LabCorrection is a correction event's id and the user's words: the harness lab
-// (OpenOrbit's dev tool, ONID-124) adds them to a task's criteria.
+// (orbit-code's dev tool, ONID-124) adds them to a task's criteria.
 type LabCorrection struct {
 	ID    int64  `json:"id"`
 	Quote string `json:"quote"`
@@ -401,7 +401,7 @@ func (s *Store) checkLab(in LabSave, sources []string) error {
 	return nil
 }
 
-// SaveLab records what the lab sends (ONID-124: the lab is OpenOrbit's dev tool and
+// SaveLab records what the lab sends (ONID-124: the lab is orbit-code's dev tool and
 // reaches the records only through this). Everything is checked first (checkLab); an
 // experiment already done or failed is not written again, so a repeated save makes no
 // second ledger line. Then the runs are kept, a done experiment's ledger line is written,

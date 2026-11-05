@@ -138,7 +138,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	return srv
 }
 
-// readHints and writeHints are the MCP annotations of a tool. Every OpenOrbit tool
+// readHints and writeHints are the MCP annotations of a tool. Every orbit-mem tool
 // stays on this PC. Without annotations a host such as Codex treats a tool as
 // destructive and open-world and asks for approval, which fails under approval
 // policy never.
@@ -282,7 +282,7 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 
 // SourceIn is where a memory came from.
 type SourceIn struct {
-	Kind    string `json:"kind" jsonschema:"quote(사용자 말 그대로)·file·command·session·host_memory·verification(작업 검증이 직접 확인: ref에 명령·작업 id, excerpt에 결과)·work(OpenOrbit 작업 회고가 읽은 끝난 작업: ref에 작업 id)"`
+	Kind    string `json:"kind" jsonschema:"quote(사용자 말 그대로)·file·command·session·host_memory·verification(작업 검증이 직접 확인: ref에 명령·작업 id, excerpt에 결과)·work(orbit-code 작업 회고가 읽은 끝난 작업: ref에 작업 id)"`
 	Ref     string `json:"ref,omitempty" jsonschema:"파일 절대경로, 명령, 세션 id 같은 위치"`
 	Excerpt string `json:"excerpt,omitempty" jsonschema:"인용이나 발췌. quote면 사용자 말 그대로"`
 }

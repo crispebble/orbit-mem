@@ -16,7 +16,7 @@ import (
 // What an approved change touched (설계 「변경 효과 원장」).
 const (
 	TargetMemory      = "memory"      // 기억
-	TargetHarness     = "harness"     // OpenOrbit 플러그인 원본(스킬·역할)
+	TargetHarness     = "harness"     // orbit-code 하네스 플러그인 원본(스킬·역할)
 	TargetInstruction = "instruction" // 지침 파일
 )
 
@@ -58,7 +58,7 @@ type Window struct {
 	Bad        int `json:"bad"`        // 그 기억을 가리킨 교정 + 어김 판정
 	Irrelevant int `json:"irrelevant"` // 상관없음 판정
 	Sessions   int `json:"sessions"`   // 그 기억을 넣은 세션
-	// AU-7: 그 기억이 붙은 OpenOrbit 작업(끝난 시각으로 나눔)과 그 지표
+	// AU-7: 그 기억이 붙은 orbit-code 작업(끝난 시각으로 나눔)과 그 지표
 	Works       int `json:"works,omitempty"`
 	Trouble     int `json:"trouble,omitempty"`     // 작업 문제 수 합(질문·뒤집힌 가정·교정·같은 실패 반복·재계획)
 	FirstPassed int `json:"firstPassed,omitempty"` // 첫 시도에 검증을 통과한 단계
@@ -638,13 +638,13 @@ func compareRate(before, after, sb, sa int) int {
 	return 0
 }
 
-// MinWorksPerSide is how many OpenOrbit works with the memory must have ended on each side of a
+// MinWorksPerSide is how many orbit-code works with the memory must have ended on each side of a
 // change before their metrics count as evidence. One work against one says more about the two
 // tasks than about the change, and an automatic change judged harmful is reverted by itself (A2);
 // two is the same bar as evidence ② (confirmFollowedVerified, E2).
 const MinWorksPerSide = 2
 
-// worksBothSides says whether enough OpenOrbit works with the memory ended before and after the change.
+// worksBothSides says whether enough orbit-code works with the memory ended before and after the change.
 func worksBothSides(obs Observation) bool {
 	return obs.Before.Works >= MinWorksPerSide && obs.After.Works >= MinWorksPerSide
 }

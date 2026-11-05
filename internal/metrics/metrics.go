@@ -1,5 +1,5 @@
 // Package metrics turns the recorded events, retrospectives and proposals
-// into the numbers that say whether OpenOrbit makes the AI's work better
+// into the numbers that say whether orbit-mem makes the AI's work better
 // (설계 「측정」). A new metric reads a new event kind; nothing else changes.
 package metrics
 

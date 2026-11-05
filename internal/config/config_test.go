@@ -51,7 +51,7 @@ func TestValidate_잘못된_값은_거절(t *testing.T) {
 	}
 }
 
-// 작업 기록 설정(work·workStaleAfter·workTestCommands)은 OpenOrbit이 읽는다. 값과 무관하게
+// 작업 기록 설정(work·workStaleAfter·workTestCommands)은 orbit-code가 읽는다. 값과 무관하게
 // 실패 없이 읽고, 다시 저장해도 그 키는 그대로 남는다.
 func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존한다(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")

@@ -49,7 +49,7 @@ export function createGraphStore(ctx: WorkCtx & {log: {error(m: string): void}})
     } catch (e) {
       if (mine !== seq) return;
       if (e instanceof WorkPaused) {
-        set({status: 'paused', graph: undefined, reloading: false, pause: {kind: e.kind, message: pauseMessage(e.kind)}});
+        set({status: 'paused', graph: undefined, reloading: false, pause: {kind: e.kind, message: pauseMessage(e.kind, 'orbit-mem')}});
         return;
       }
       const message = errorMessage(e);

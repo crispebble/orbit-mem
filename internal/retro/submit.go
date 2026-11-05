@@ -521,7 +521,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		report = append(report, fmt.Sprintf("그중 사용자 말을 담은 기억이나 지침 파일에 닿아 적용하지 않은 것 %d건(일하는 중에 사용자에게 묻고 userQuote로 다시)", waiting))
 	}
 	if labbed > 0 {
-		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(openorbit 개발 도구 npm run lab -- candidates)", labbed))
+		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(orbit-code 개발 도구 npm run lab -- candidates)", labbed))
 	}
 	if mat.Kind == KindLegacy {
 		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))
@@ -587,14 +587,14 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 }
 
 // findQuote finds the user's words in the material: in the named session if
-// one is given (with or without the host), else in any session.
+// one is given (with or without the host; the legacy work host is the work host), else in any session.
 func findQuote(mat Material, ref, quote string) (transcript.Session, time.Time, bool) {
 	host, id, ok := strings.Cut(ref, ":")
 	if !ok {
 		host, id = "", ref
 	}
 	for _, s := range mat.Sessions {
-		if id != "" && (s.ID != id || (host != "" && s.Host != host)) {
+		if id != "" && (s.ID != id || (host != "" && memory.WorkHostKey(s.Host) != memory.WorkHostKey(host))) {
 			continue
 		}
 		for _, t := range s.Turns {

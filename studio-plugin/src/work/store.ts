@@ -275,7 +275,7 @@ export function createWorkStore(ctx: WorkCtx, options: WorkStoreOptions = {}) {
     offScope = undefined;
   }
 
-  /** 판 때문에 멈춘 뒤 사용자가 OpenOrbit을 올렸으면 다시 읽는다 */
+  /** 판 때문에 멈춘 뒤 사용자가 orbit-code를 올렸으면 다시 읽는다 */
   function recheck() {
     if (state.status !== 'paused' || !abort) return;
     const controller = new AbortController();

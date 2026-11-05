@@ -15,7 +15,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
-// The storage half of a retrospective run (OpenOrbit runs the host in between):
+// The storage half of a retrospective run (orbit-code runs the host in between):
 //
 //	prepare  checks and builds the material, keeps it in retro/<id>/material.json
 //	         and records the run as running (or empty without material);
@@ -43,7 +43,7 @@ type Prepared struct {
 }
 
 // MarshalJSON writes {"status","id","kind","period"} and, for a running one,
-// "session" and "sourceChecks" too (OpenOrbit's orb retro reads these keys).
+// "session" and "sourceChecks" too (orbit-code's orb retro reads these keys).
 func (p Prepared) MarshalJSON() ([]byte, error) {
 	type base struct {
 		Status string `json:"status"`
@@ -140,7 +140,7 @@ func (r *Keeper) keepMaterial(mat Material) (string, error) {
 	return dir, nil
 }
 
-// HostResult is what OpenOrbit tells finish about the host run.
+// HostResult is what orbit-code tells finish about the host run.
 type HostResult struct {
 	Model        string  `json:"model"`
 	CostKnown    bool    `json:"costKnown"`
@@ -269,7 +269,7 @@ type LegacyState struct {
 	Left   int `json:"left"`
 }
 
-// State is what OpenOrbit's catch-up needs to decide what to run.
+// State is what orbit-code's catch-up needs to decide what to run.
 type State struct {
 	Today            string      `json:"today"`
 	FinishedDaily    []string    `json:"finishedDaily"`   // 끝난(done·empty) 하루 회고의 날, 오름차순

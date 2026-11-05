@@ -29,7 +29,15 @@ describe('plugin.json', () => {
     for (const c of manifest.commands) assert.ok(index.includes(`'${c.id}':`), c.id);
   });
 
-  it('MCP 연결 id와 명령: memory·mem은 `orbit-mem`, work는 OpenOrbit 앱 `orb work mcp`', () => {
+  it('앱 이름은 orbit-mem이다', () => {
+    const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {name: string; apps: {id: string; title: string}[]; description: string; locales: {ko: {description: string}}};
+    assert.equal(full.name, 'orbit-mem');
+    assert.deepEqual(full.apps.map(a => a.title), ['orbit-mem']);
+    assert.match(full.description, /^View orbit-mem memories/);
+    assert.match(full.locales.ko.description, /^orbit-mem 기억/);
+  });
+
+  it('MCP 연결 id와 명령: memory·mem은 `orbit-mem`, work는 orbit-code `orb work mcp`', () => {
     const full = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')) as {connections: {mcp: {id: string; command: string; args: string[]}[]}};
     assert.deepEqual(full.connections.mcp.map(c => [c.id, c.command, c.args.join(' ')]), [
       ['memory', 'orbit-mem', 'mcp --actor user'],

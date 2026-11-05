@@ -101,7 +101,7 @@ func (h Hosts) RegisterClaude(source, name, market string) error {
 }
 
 // RegisterCodex adds the local marketplace folder dir and installs plugin name from it in
-// Codex (the same as OpenOrbit's harness registerPlugin; both accept a repeat, and plugin
+// Codex (the same as orbit-code's harness registerPlugin; both accept a repeat, and plugin
 // add copies the current folder into Codex's cache again).
 func (h Hosts) RegisterCodex(dir, name, market string) error {
 	if _, err := h.Run(h.Codex, "plugin", "marketplace", "add", dir); err != nil {

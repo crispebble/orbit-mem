@@ -17,7 +17,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
-// AU-5(ONID-130) 작업 회고: OpenOrbit이 끝난 작업의 기록을 넘기면 그 기록 하나를 회고한다.
+// AU-5(ONID-130) 작업 회고: orbit-code가 끝난 작업의 기록을 넘기면 그 기록 하나를 회고한다.
 
 var workEnd = time.Date(2026, 10, 27, 15, 0, 0, 0, kst)
 
@@ -103,7 +103,7 @@ func TestWork_준비는_실행_빈_건너뜀을_돌려주고_같은_작업_끝�
 	e := setup(t, workEnd.Add(time.Hour))
 	in := workIn(t, "w-1", workEnd, "로그인 오류를 고치고 시험을 돌렸다")
 	p := e.prepWork(t, in)
-	want := `{"status":"running","id":"` + p.ID + `","kind":"work","period":"2026-10-27","session":"openorbit:w-1","sourceChecks":0}`
+	want := `{"status":"running","id":"` + p.ID + `","kind":"work","period":"2026-10-27","session":"orbit-code:w-1","sourceChecks":0}`
 	if got := marshal(t, p); got != want {
 		t.Fatalf("running\n got %s\nwant %s", got, want)
 	}
@@ -453,7 +453,7 @@ func TestWork_붙인_기억의_사용_판정과_교정을_남긴다(t *testing.T
 		Corrections: []CorrectionIn{{Quote: "시험부터 쓰라고 했잖아", Skill: "orbit:tdd"}},
 	})
 	evs, _ := e.s.Events(memory.EventFilter{FromDay: "2026-10-27", ToDay: "2026-10-27", KindPrefix: memory.EventMemoryUsed})
-	if len(evs) != 1 || evs[0].Host != "openorbit" || evs[0].Session != "w-use" {
+	if len(evs) != 1 || evs[0].Host != WorkHost || evs[0].Session != "w-use" {
 		t.Fatalf("usage events = %+v (%s)", evs, report)
 	}
 	var d struct {

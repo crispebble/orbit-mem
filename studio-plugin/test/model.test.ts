@@ -193,7 +193,7 @@ describe('제안 변환', () => {
     assert.equal(p.diff, undefined);
   });
 
-  it('OpenOrbit 종류를 바꾸지 않고 그대로 넘긴다', () => {
+  it('orbit-mem 종류를 바꾸지 않고 그대로 넘긴다', () => {
     for (const kind of ['confirm', 'stale', 'merge', 'reclassify', 'apply_file', 'direction', 'link']) {
       assert.equal(toProposal(pending({kind}), [], now).kind, kind);
     }

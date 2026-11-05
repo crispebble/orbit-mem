@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import {describe, it} from 'node:test';
 import {parseGet, parseSessions} from '../src/work/contract.ts';
-import {homeItems, isOpenOrbitWork, providerDetail, registerWorkProvider} from '../src/work/provider.ts';
+import {homeItems, isOrbitCodeWork, providerDetail, registerWorkProvider} from '../src/work/provider.ts';
 import {summaryOf, type WorkState} from '../src/work/store.ts';
 import type {Session, Work} from '../src/work/types.ts';
 import {example} from './work-fake.ts';
 
 const claudeTask = parseGet(example('work_get.claude-task').result).work;
-// 지도에 오르는 것은 OpenOrbit이 만든 작업뿐이다: 예시 작업의 출처를 orbit-pi로 바꿔 쓴다
+// 지도에 오르는 것은 orbit-code가 만든 작업뿐이다: 예시 작업의 출처를 orbit-pi로 바꿔 쓴다
 const task: Work = {...claudeTask, origin: {...claudeTask.origin!, host: 'orbit-pi', surface: 'orbit-pi'}};
 const sessions = parseSessions(example('work_sessions.list.page1').result).sessions;
 const NOW = Date.parse('2026-10-28T07:00:00.000Z');
@@ -19,15 +19,15 @@ function state(works: Work[] = [task], ss: Session[] = sessions, over: Partial<W
 
 const orbitTask = task;
 
-describe('홈 작업 판단(OpenOrbit 작업만)', () => {
-  it('origin.host가 orbit-pi이거나 목록 종류가 orbit-pi-plan이면 OpenOrbit 작업이다', () => {
-    assert.equal(isOpenOrbitWork(orbitTask), true);
-    assert.equal(isOpenOrbitWork({...task, origin: {...task.origin!, host: 'claude', list: {kind: 'orbit-pi-plan'}}}), true);
-    assert.equal(isOpenOrbitWork(claudeTask), false);
-    assert.equal(isOpenOrbitWork({...claudeTask, origin: undefined}), false);
+describe('홈 작업 판단(orbit-code 작업만)', () => {
+  it('origin.host가 orbit-pi이거나 목록 종류가 orbit-pi-plan이면 orbit-code 작업이다', () => {
+    assert.equal(isOrbitCodeWork(orbitTask), true);
+    assert.equal(isOrbitCodeWork({...task, origin: {...task.origin!, host: 'claude', list: {kind: 'orbit-pi-plan'}}}), true);
+    assert.equal(isOrbitCodeWork(claudeTask), false);
+    assert.equal(isOrbitCodeWork({...claudeTask, origin: undefined}), false);
   });
 
-  it('순수 Claude·Codex 세션이 만든 작업은 지도에 없고, OpenOrbit 작업만 남는다', () => {
+  it('순수 Claude·Codex 세션이 만든 작업은 지도에 없고, orbit-code 작업만 남는다', () => {
     const other: Work = {...claudeTask, id: 'w-claude'};
     const ids = homeItems(state([orbitTask, other]), NOW).map(i => i.id);
     assert.deepEqual(ids, [orbitTask.id]);

@@ -1,4 +1,4 @@
-/* OpenOrbit 전용 부품의 스타일. forma-ai 0.9.x의 orbit.css(부품 규칙)와 styles.css(공통 규칙 중 이 부품이 쓰는 것)에서 옮겨 왔다.
+/* orbit-mem 전용 부품의 스타일. forma-ai 0.9.x의 orbit.css(부품 규칙)와 styles.css(공통 규칙 중 이 부품이 쓰는 것)에서 옮겨 왔다.
    클래스 이름은 fai-* 대신 orbit-*, 부품 뿌리는 `.forma-ai` 대신 `.orbit-part`다.
    규칙 순서가 곧 우선순위다: 부품 규칙을 먼저, 공통 규칙을 뒤에 둔다(forma-ai에서 orbit.css가 styles.css보다 먼저 불렸던 순서 그대로).
    forma-ai의 `.fai-block>.forma-ai` 윗선 규칙은 옮기지 않았다. 원본에서도 뒤의 `.fai-surface[data-surface=plain]{border:0}`에 덮여

@@ -12,7 +12,7 @@ import (
 // cmdAudit is the audit list (A2): recent automatic confirmations and
 // clean-ups, conflict marks, repeated corrections over the threshold. The
 // person reverts or dismisses only what is wrong. `audit harness --json` is
-// what the openorbit lab (a developer tool) reads; it only reads.
+// what the orbit-code lab (a developer tool) reads; it only reads.
 func cmdAudit(a *app, args []string) error {
 	sub := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {

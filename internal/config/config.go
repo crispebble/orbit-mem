@@ -34,9 +34,9 @@ type Config struct {
 	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
 	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
 	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
-	PluginSource    string   `json:"pluginSource,omitempty"` // OpenOrbit 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
-	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 OpenOrbit으로 옮겨 갔고
-	// OpenOrbit이 같은 config.json에서 아직 읽는다. 모르는 키는 읽을 때 무시하고, 저장할 때는 파일에 있던 그대로 보존한다.
+	PluginSource    string   `json:"pluginSource,omitempty"` // orbit-code 하네스 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
+	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 orbit-code로 옮겨 갔고
+	// orbit-code가 같은 config.json에서 아직 읽는다. 모르는 키는 읽을 때 무시하고, 저장할 때는 파일에 있던 그대로 보존한다.
 
 	SessionRetro         bool   `json:"sessionRetro"`                // 세션이 끝나면 그 세션만 짧게 회고한다
 	SessionRetroModel    string `json:"sessionRetroModel,omitempty"` // 비우면 claude는 haiku, codex는 호스트 기본
@@ -50,7 +50,7 @@ type Config struct {
 	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
 	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
 
-	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. OpenOrbit 예약 회고(orb retro)가 하루에
+	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. orbit-code 예약 회고(orb retro)가 하루에
 	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orb retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
 	// 첫 실행 실측(30개 묶음 2회, 약 50초·$0.27~0.40)을 보고 사용자가 정했다(2026-10-30, 남은 것은 한 번에 판정하고 예약은 하루 1묶음).
 	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
@@ -155,7 +155,7 @@ func Language(path string) string {
 	return c.Language
 }
 
-// Home is OpenOrbit's data directory: ORBIT_HOME, else the OS config directory + /orbit.
+// Home is orbit-mem's data directory: ORBIT_HOME, else the OS config directory + /orbit.
 func Home() string {
 	if h := os.Getenv("ORBIT_HOME"); h != "" {
 		return h
@@ -203,7 +203,7 @@ func Load(path string) (Config, error) {
 	return c, c.Validate()
 }
 
-// Save writes the configuration. Keys in the file that Config does not know (OpenOrbit's
+// Save writes the configuration. Keys in the file that Config does not know (orbit-code's
 // work settings, a newer version's) are kept as they were; the known keys are overwritten.
 func Save(path string, c Config) error {
 	if err := c.Validate(); err != nil {

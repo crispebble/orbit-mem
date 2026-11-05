@@ -76,7 +76,7 @@ export function registerDecisionProvider(ctx: {decisions?: {provide(provider: De
     id: 'orbit',
     async list({since}) {
       const state = store.getState();
-      if ((state.status === 'paused' || state.status === 'error') && !state.open.length && !state.closed.length) throw new Error(state.error ?? 'OpenOrbit decision cards could not be read');
+      if ((state.status === 'paused' || state.status === 'error') && !state.open.length && !state.closed.length) throw new Error(state.error ?? 'orbit-code decision cards could not be read');
       const closed = state.closed.filter(d => (ms(d.answer?.at) ?? ms(d.closedAt) ?? ms(d.updatedAt) ?? 0) >= since);
       return [...state.open, ...closed].map(toStudioCard);
     },

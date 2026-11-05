@@ -11,7 +11,7 @@ import {WorkToolError} from '../work/contract.ts';
 import {progressOf, workStateView} from '../work/display.ts';
 import {agoText, toFlowGraph} from '../work/graph.ts';
 import {ownerWorkers} from '../work/owners.ts';
-import {isOpenOrbitWork} from '../work/provider.ts';
+import {isOrbitCodeWork} from '../work/provider.ts';
 import {summaryOf} from '../work/store.ts';
 import type {Work} from '../work/types.ts';
 import {WorkBrief} from './brief.tsx';
@@ -123,7 +123,7 @@ export function WorkTab({ctx, tab}: TabProps) {
         </div>
       </header>
       <WorkBrief work={work} onSelectStep={id => { setMode('flow'); select(id); }} />
-      {isOpenOrbitWork(work) && <WorkLearning workId={work.id} state={work.state} />}
+      {isOrbitCodeWork(work) && <WorkLearning workId={work.id} state={work.state} />}
       {mode === 'flow' ? (
         <div className="orbit-work-graph">
           <FlowGraph

@@ -1,6 +1,6 @@
 // Vendored from orbit-pi packages/orbit-host (contract commit e0f711989, branch feat/s4-5-studio-daemon or later).
 // Do not edit: run scripts/sync-host-contract.mjs to copy it again.
-// orbit-pi daemon contract (설계 · OpenOrbit 4차 「층별 기능」 ⑤ 호스트, D2; R4-4).
+// orbit-pi daemon contract (설계 · orbit-code 4차 「층별 기능」 ⑤ 호스트, D2; R4-4).
 //
 // Clients: Orbit Studio (work conversation S4-5, profile screen S4-8), `orb daemon`, later the phone app.
 // Transport: Connect RPC over HTTP/1.1 or HTTP/2. The daemon listens on loopback only in R4-4; Tailscale

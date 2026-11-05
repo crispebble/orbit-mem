@@ -2,7 +2,7 @@ package mcpserver
 
 // The contract machinery of the read tools for apps (memory_graph, orbit.memory): argument
 // checks against the contract input schema, the contract head on every result and contract
-// errors. It was shared with the work tools, which moved to OpenOrbit.
+// errors. It was shared with the work tools, which moved to orbit-code.
 
 import (
 	"context"

@@ -11,7 +11,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
-// ONID-124: 하네스 실험실은 openorbit의 개발 도구다. orbit-mem에는 lab 명령이 없다.
+// ONID-124: 하네스 실험실은 orbit-code의 개발 도구다. orbit-mem에는 lab 명령이 없다.
 func TestLab_명령은_없다(t *testing.T) {
 	home(t)
 	_, errOut, code := run(t, "", "lab", "list")

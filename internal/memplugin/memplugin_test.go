@@ -66,7 +66,7 @@ func TestClaude_꼴(t *testing.T) {
 	if s := string(files["skills/proposals/SKILL.md"]); !strings.Contains(s, "name: proposals") || !strings.Contains(s, "orbit-mem proposals") || strings.Contains(s, "orb proposals") {
 		t.Fatalf("proposals 스킬:\n%s", s)
 	}
-	if s := string(files["skills/memory/SKILL.md"]); !strings.Contains(s, "name: memory") || strings.Contains(s, "OpenOrbit") {
+	if s := string(files["skills/memory/SKILL.md"]); !strings.Contains(s, "name: memory") || strings.Contains(s, "orbit-code") {
 		t.Fatalf("memory 스킬:\n%s", s)
 	}
 	for p, b := range files {

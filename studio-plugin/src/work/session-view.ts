@@ -49,7 +49,7 @@ export function sessionRowProps(s: Session, stepTitles: ReadonlyMap<string, stri
   const ids = s.activeStepIds;
   const first = ids.map(id => stepTitles.get(id)).find((t): t is string => !!t);
   const step = ids.length === 0 ? undefined : first ? (ids.length > 1 ? m.moreSteps(first, ids.length - 1) : first) : m.stepCount(ids.length);
-  // 관측 오래됨 판정은 OpenOrbit이 한다(세션 state `stale`). 플러그인이 따로 기준 시간을 두지 않는다.
+  // 관측 오래됨 판정은 orbit-code가 한다(세션 state `stale`). 플러그인이 따로 기준 시간을 두지 않는다.
   const seen = s.state === 'stale' ? agoText(s.lastSeenAt, now) : undefined;
   return {
     host: surface ? `${hostLabel(s.host)} · ${surface}` : hostLabel(s.host),

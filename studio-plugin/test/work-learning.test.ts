@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {after, before, describe, it} from 'node:test';
 import {build} from 'esbuild';
 import {parseMetrics} from '../src/work/contract.ts';
-import {isOpenOrbitWork} from '../src/work/provider.ts';
+import {isOrbitCodeWork} from '../src/work/provider.ts';
 
 type Harness = typeof import('./work-render-harness.tsx');
 let h: Harness;
@@ -98,11 +98,11 @@ describe('작업 탭 「Learning」 구역', () => {
 });
 
 describe('구역을 그리는 작업', () => {
-  it('작업 탭은 OpenOrbit 작업(홈 지도와 같은 판단)에만 구역을 그린다', () => {
+  it('작업 탭은 orbit-code 작업(홈 지도와 같은 판단)에만 구역을 그린다', () => {
     h.setLocale('en');
     const base = {id: 'w-x', title: 't', state: 'done', steps: [], runs: [], evidence: [], counts: {pending: 0, ready: 0, in_progress: 0, blocked: 0, done: 0, cancelled: 0},
       openedAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', titleSource: 'host'};
-    assert.equal(isOpenOrbitWork({...base, origin: {host: 'orbit-pi', surface: 'cli', sessionId: 's'}} as never), true);
-    assert.equal(isOpenOrbitWork({...base, origin: {host: 'claude', surface: 'cli', sessionId: 's', list: {kind: 'claude-task'}}} as never), false);
+    assert.equal(isOrbitCodeWork({...base, origin: {host: 'orbit-pi', surface: 'cli', sessionId: 's'}} as never), true);
+    assert.equal(isOrbitCodeWork({...base, origin: {host: 'claude', surface: 'cli', sessionId: 's', list: {kind: 'claude-task'}}} as never), false);
   });
 });

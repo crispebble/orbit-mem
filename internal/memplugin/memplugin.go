@@ -9,7 +9,7 @@
 //     Codex format and Codex's local marketplace (.agents/plugins/marketplace.json) too.
 //
 // Hooks and the MCP server call orbit-mem on PATH, never an absolute path, so the same
-// plugin works on every PC. The OpenOrbit harness plugin is built by OpenOrbit (orb); the
+// plugin works on every PC. The orbit-code harness plugin is built by orbit-code (orb); the
 // two plugins do not know each other.
 package memplugin
 
@@ -102,7 +102,7 @@ var (
 )
 
 // codexSessionEndMax: Codex cuts a SessionEnd hook's timeout to 3 seconds and warns when it
-// loads the hook (the same check as the OpenOrbit harness build).
+// loads the hook (the same check as the orbit-code harness build).
 const codexSessionEndMax = 3
 
 func (m Manifest) validate(version string) error {
@@ -300,7 +300,7 @@ func Claude(version string) (Files, error) {
 	return out, nil
 }
 
-// Codex is the Codex plugin, the same format the OpenOrbit harness build writes:
+// Codex is the Codex plugin, the same format the orbit-code harness build writes:
 // .codex-plugin/plugin.json points at skills/, hooks/codex.json and codex/mcp.json.
 func Codex(version string) (Files, error) {
 	m, out, err := load(version)

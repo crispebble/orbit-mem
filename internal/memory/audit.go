@@ -345,7 +345,7 @@ func (s *Store) RepeatedCorrections(all bool) ([]RepeatedCorrection, error) {
 
 // HarnessCandidates are the skills and roles corrected over the threshold and
 // the procedures that came out of that many works: the harness improvement
-// candidates the openorbit lab reads (it only reads).
+// candidates the orbit-code lab reads (it only reads).
 func (s *Store) HarnessCandidates() ([]RepeatedCorrection, error) {
 	over, err := s.RepeatedCorrections(false)
 	if err != nil {

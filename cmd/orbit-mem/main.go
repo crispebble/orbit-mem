@@ -2,10 +2,10 @@
 // their sources, the storage of the retrospectives (retro-store and the retro MCP
 // tools), the activity log of host sessions, and its own Claude Code and Codex
 // plugin (the memory MCP server, hooks and skills) that it builds and registers
-// itself. It never runs a model or a headless host, and it never calls OpenOrbit's
-// orb: the retrospectives run in OpenOrbit (orb retro) and the harness lab is an
-// OpenOrbit dev tool (ONID-124); both reach orbit-mem through retro-store. It does
-// not need OpenOrbit to keep and recall memories.
+// itself. It never runs a model or a headless host, and it never calls orbit-code's
+// orb: the retrospectives run in orbit-code (orb retro) and the harness lab is an
+// orbit-code dev tool (ONID-124); both reach orbit-mem through retro-store. It does
+// not need orbit-code to keep and recall memories.
 package main
 
 import (
@@ -65,6 +65,7 @@ func commands() []command {
 		{"why", "usage.why", cmdWhy},
 		{"place", "usage.place", cmdPlace},
 		{"core", "usage.core", cmdCore},
+		{"product", "usage.product", cmdProduct},
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},
