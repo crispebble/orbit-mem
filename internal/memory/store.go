@@ -673,6 +673,7 @@ type UpdateInput struct {
 	Tools           *[]string // 도구 트리거를 바꾼다(빈 목록이면 없앤다)
 	Scope           *string
 	Project         *string
+	Topic           *string // 주제를 바꾼다(이전 계획, S4)
 	State           *string
 	Reason          string
 	Action          string
@@ -741,6 +742,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	}
 	if in.Project != nil {
 		m.Project = *in.Project
+	}
+	if in.Topic != nil {
+		m.Topic = TopicKey(*in.Topic)
 	}
 	if in.State != nil {
 		if !contains(States, *in.State) {

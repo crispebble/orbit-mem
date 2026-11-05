@@ -211,7 +211,11 @@ func (s *Store) SummarizeLedger(fromMs, toMs int64) (LedgerSummary, error) {
 }
 
 func memoryText(m Memory) string {
-	return fmt.Sprintf("제목: %s\n종류: %s\n범위: %s\n상태: %s\n태그: %s\n\n%s\n", m.Title, m.Kind, m.Scope, m.State, strings.Join(m.Tags, ", "), m.Body)
+	topic := ""
+	if m.Topic != "" { // 주제가 없는 기억의 글은 예전 그대로다(원장의 옛 diff와 맞는다)
+		topic = "주제: " + m.Topic + "\n"
+	}
+	return fmt.Sprintf("제목: %s\n종류: %s\n범위: %s\n%s상태: %s\n태그: %s\n\n%s\n", m.Title, m.Kind, m.Scope, topic, m.State, strings.Join(m.Tags, ", "), m.Body)
 }
 
 func uniq(ids []string) []string {
@@ -414,6 +418,8 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		m.Kind, m.Scope, m.Project, m.State = snap.Kind, snap.Scope, snap.Project, snap.State
 		m.Title, m.Body, m.Tags = snap.Title, snap.Body, snap.Tags
 		m.SupersededBy, m.StaleReason = snap.SupersededBy, snap.StaleReason
+		// 주제와 상시 핵심도 되돌린다: 옮기면 핵심에서 빠지므로(writeTx) 되돌리면 다시 핵심이다(한도 안일 때).
+		m.Topic, m.Pinned = snap.Topic, snap.Pinned
 		m.Version++
 		m.UpdatedAt = now
 		if err := writeTx(tx, m, "revert", "되돌림 "+p.ID, now); err != nil {

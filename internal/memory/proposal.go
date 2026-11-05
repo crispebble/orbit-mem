@@ -71,6 +71,7 @@ type Payload struct {
 	Body        string   `json:"body,omitempty"`        // edit: 새 본문(비우면 그대로)
 	Tags        []string `json:"tags,omitempty"`        // edit: 새 태그
 	Project     string   `json:"project,omitempty"`     // edit: 새 범위가 프로젝트면 그 이름
+	Topic       string   `json:"topic,omitempty"`       // edit: 새 주제(이전 계획, S4)
 	LedgerID    string   `json:"ledgerId,omitempty"`    // revert: 되돌릴 원장 줄
 	Note        string   `json:"note,omitempty"`        // link: 잇는 근거(연결에 남는다)
 	FromTags    []string `json:"fromTags,omitempty"`    // retag: 뺄 태그(표기 차이 무시)
@@ -136,6 +137,9 @@ func fingerprint(in ProposalInput) string {
 		parts = append(parts, in.Payload.Kind)
 	case ProposalEdit:
 		parts = append(parts, in.Payload.Title, in.Payload.Body, strings.Join(in.Payload.Tags, ","), in.Payload.Scope)
+		if in.Payload.Topic != "" { // 주제를 준 고치기만 지문이 바뀐다: 옛 제안의 지문은 그대로다
+			parts = append(parts, "topic:"+in.Payload.Topic)
+		}
 	case ProposalRevert:
 		parts = append(parts, in.Payload.LedgerID)
 	case ProposalStale:
@@ -584,7 +588,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		}
 		next := editedMemory(m, p.Payload, in.Title, in.Body)
 		if _, err := s.Update(UpdateInput{ID: m.ID, Title: &next.Title, Body: &next.Body, Tags: &next.Tags, Scope: &next.Scope, Project: &next.Project,
-			Reason: "제안 승인 " + p.ID, Action: "edit"}); err != nil {
+			Topic: &next.Topic, Reason: "제안 승인 " + p.ID, Action: "edit"}); err != nil {
 			return err
 		}
 		res.Changed = append(res.Changed, m.ID)
@@ -780,6 +784,9 @@ func editedMemory(m Memory, pl Payload, title, body *string) Memory {
 		if pl.Scope != ScopeGlobal {
 			m.Project = pl.Project
 		}
+	}
+	if pl.Topic != "" {
+		m.Topic = TopicKey(pl.Topic)
 	}
 	if given(title) {
 		m.Title = strings.TrimSpace(*title)

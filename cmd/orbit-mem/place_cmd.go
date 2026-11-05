@@ -33,6 +33,8 @@ func cmdPlace(a *app, args []string) error {
 	suggest := fs.Bool("suggest", false, i18n.T("flag.place.suggest"))
 	root := fs.String("root", "", i18n.T("flag.place.root"))
 	move := fs.Bool("move", false, i18n.T("flag.place.move"))
+	plan := fs.String("plan", "", i18n.T("flag.place.plan"))
+	dry := fs.Bool("dry-run", false, i18n.T("flag.place.dry_run"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
@@ -45,6 +47,8 @@ func cmdPlace(a *app, args []string) error {
 		return placeSuggest(a, *root, *asJSON)
 	case *move:
 		return placeMove(a, cfg, *asJSON)
+	case *plan != "":
+		return placePlan(a, cfg, *plan, *dry, *asJSON)
 	}
 	p := sessionProject()
 	if *cwd != "" {
@@ -129,6 +133,36 @@ func placeMove(a *app, cfg config.Config, asJSON bool) error {
 	}
 	for _, mv := range moved {
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.moved", mv.ID, mv.Title, mv.Folder, mv.To, mv.LedgerID))
+	}
+	return err
+}
+
+// placePlan applies (or, with --dry-run, previews) a migration plan an AI wrote (S4, 설계 · orbit-mem 2판 11절):
+// each change is an automatic change the audit list shows and undoes.
+func placePlan(a *app, cfg config.Config, file string, dry, asJSON bool) error {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	var plan memory.Plan
+	if err := json.Unmarshal(b, &plan); err != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	rep, err := s.ApplyPlan(plan, cfg.Products, dry)
+	if asJSON {
+		if jerr := a.json(rep); jerr != nil {
+			return jerr
+		}
+		return err
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_head", len(plan.Items), len(rep.Applied), len(rep.Skipped), len(rep.Conflicts), dry))
+	for _, r := range rep.Conflicts {
+		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_conflict", r.ID, r.Skip))
 	}
 	return err
 }

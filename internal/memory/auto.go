@@ -39,6 +39,10 @@ type AutoInput struct {
 	// product:<name>. The map the person wrote is its ground, so it moves a memory holding the user's
 	// words too; its content does not change.
 	MapMove bool
+	// PlanMove is a change of a migration plan (S4, planapply.go): an edit of one memory's applies-to and
+	// topic, or a supersession by the newer memory that source precedence allows. Its content does not
+	// change, so it moves a memory holding the user's words too.
+	PlanMove bool
 }
 
 // AutoApply applies one automatic change: it checks the rules (what the user
@@ -86,6 +90,12 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 			return DecideResult{}, err
 		}
 		targets = nil // 범위만 옮긴다: 사용자 말을 바꾸지 않는다
+	}
+	if in.PlanMove {
+		if err := s.planMoveOnly(in); err != nil {
+			return DecideResult{}, err
+		}
+		targets = nil // 자리·주제만 옮기거나 출처 우선순위가 허락한 대체다: 사용자 말을 바꾸지 않는다
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
