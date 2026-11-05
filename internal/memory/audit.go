@@ -480,6 +480,8 @@ func (s *Store) Acknowledge(key string, w Who) error {
 type AuditFilter struct {
 	Days  int // 자동 변경을 볼 날 수. 비우면 14
 	Limit int // 자동 변경 최대 수. 비우면 100
+	// Products are the names of the product map, for the two-topic title check (S4-12).
+	Products []string
 }
 
 // AuditChange is one automatic change (or the automatic undo of a harmful one).
@@ -516,6 +518,8 @@ type Audit struct {
 	Policy      Policy               `json:"policy"`
 	// PolicyPending names the counts still waiting for the user's decision (E2).
 	PolicyPending []string `json:"policyPending,omitempty"`
+	// TwoTopics are rules and decisions whose 「A — B」 title glues two topics (S4-12): split them.
+	TwoTopics []TwoTopicTitle `json:"twoTopics"`
 }
 
 // PolicyPendingKeys are the configuration keys still waiting for the user (E2).
@@ -589,6 +593,9 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 		a.Corrections = []RepeatedCorrection{}
 	}
 	a.Pending = s.PendingCount()
+	if a.TwoTopics, err = s.TwoTopicTitles(f.Products); err != nil {
+		return a, err
+	}
 	return a, nil
 }
 

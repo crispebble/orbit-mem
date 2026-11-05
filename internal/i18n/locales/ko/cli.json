@@ -9,6 +9,7 @@
   "cli.audit.evidence": "증거 %s",
   "cli.audit.harness": "하네스 개선 후보",
   "cli.audit.none": "없음",
+  "cli.audit.two_topics": "제목에 두 주제를 붙인 규칙·결정 %d개(「A — B」, 나누기 후보):",
   "cli.audit.pending": "대기 제안: %d건",
   "cli.audit.policy": "기준: confirmSeenDays %d · confirmFollowedVerified %d · correctionRepeatSessions %d(뒤 둘은 사용자 결정 대기, E2)",
   "cli.audit.reverted": "%s를 되돌렸습니다(원장 %s).",

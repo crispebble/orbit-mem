@@ -79,3 +79,26 @@ func TestPlaceJournals_일지를_활동_기록으로_옮긴다(t *testing.T) {
 		t.Fatalf("activity: %d %s", code, out)
 	}
 }
+
+// S4-12: audit은 「A — B」 제목에 두 주제를 붙인 규칙·결정을 보인다(제품 이름은 설정의 제품 지도).
+func TestAudit_두_주제를_붙인_제목을_보인다(t *testing.T) {
+	home(t)
+	cfg := config.Default()
+	cfg.Products = place.Map{"atlas": {Match: []string{"github.com/onidot-labs/atlas"}}, "forma": {Match: []string{"github.com/onidot-labs/forma"}}}
+	if err := config.Save(paths().Config(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindRule, Title: "Atlas 문서는 Space에 쓴다 — Forma 부품은 생성기에서", Topic: "x", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "x"}})
+	s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "audit")
+	if code != 0 || !strings.Contains(out, m.ID) || !strings.Contains(out, "products") {
+		t.Fatalf("audit: %d %s %s", code, out, errOut)
+	}
+}

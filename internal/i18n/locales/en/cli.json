@@ -9,6 +9,7 @@
   "cli.audit.evidence": "evidence %s",
   "cli.audit.harness": "harness improvement candidate",
   "cli.audit.none": "none",
+  "cli.audit.two_topics": "rules and decisions whose 「A — B」 title glues two topics: %d (split candidates):",
   "cli.audit.pending": "Pending proposals: %d",
   "cli.audit.policy": "Thresholds: confirmSeenDays %d · confirmFollowedVerified %d · correctionRepeatSessions %d (the last two wait for your decision, E2)",
   "cli.audit.reverted": "Reverted %s (ledger line %s).",

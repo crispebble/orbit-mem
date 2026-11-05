@@ -37,7 +37,13 @@ func cmdAudit(a *app, args []string) error {
 		if len(pos) != 0 {
 			return errUsage
 		}
-		au, err := s.Audit(memory.AuditFilter{Days: *days})
+		var products []string
+		if cfg, cerr := loadConfig(); cerr == nil {
+			for name := range cfg.Products {
+				products = append(products, name)
+			}
+		}
+		au, err := s.Audit(memory.AuditFilter{Days: *days, Products: products})
 		if err != nil {
 			return err
 		}
@@ -131,6 +137,12 @@ func (a *app) printAudit(au memory.Audit, days int) {
 	}
 	for _, r := range au.Corrections {
 		a.printCorrection(r)
+	}
+	if len(au.TwoTopics) > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.audit.two_topics", len(au.TwoTopics)))
+		for _, t := range au.TwoTopics {
+			fmt.Fprintf(a.stdout, "  %s %-8s %s · %s\n", t.ID, t.Kind, oneLine(t.Title, 80), t.Why)
+		}
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.pending", au.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.policy", au.Policy.SeenDays, au.Policy.FollowedVerified, au.Policy.CorrectionSessions))
