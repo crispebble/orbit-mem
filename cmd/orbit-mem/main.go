@@ -65,6 +65,7 @@ func commands() []command {
 		{"why", "usage.why", cmdWhy},
 		{"place", "usage.place", cmdPlace},
 		{"core", "usage.core", cmdCore},
+		{"product", "usage.product", cmdProduct},
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},

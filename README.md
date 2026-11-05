@@ -113,6 +113,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 | `orbit-mem place [--cwd D] [--json]` | 제품 지도(`config.json`의 `products`, 아래 「적용 대상·제품 지도·상시 핵심」)가 폴더를 어느 제품으로 보는지: 범위 키, 제품(여럿이면 여러 제품 폴더), 여기서 `appliesTo` 없이 저장한 기억의 적용 대상. 읽기만 한다 |
 | `orbit-mem place --suggest [--root D] [--json]` | 이 PC의 저장소 원격과 작업 폴더(기본 `~/_workspace`)로 제품 지도 첫 표를 제안한다. 설정은 쓰지 않는다: `products`에 넣고 틀린 줄만 고친다 |
 | `orbit-mem core --suggest [--scope S] [--json]` · `core --pin <id,…> [--quote Q]` | 상시 핵심 처음 뽑기 제안(읽기만)과 고른 기억 승격(아래 「적용 대상·제품 지도·상시 핵심」) |
+| `orbit-mem product rename <옛> <새> [--dry-run] [--json]` | 제품 지도(`config.json`의 `products`)의 제품 이름을 바꾸고 그 제품에 묶인 기억(`product:<옛>`, 상태·상시 핵심과 관계없이 모두)을 `product:<새>`로 함께 옮긴다. 옛 이름이 지도에 없거나, 새 이름이 이미 있거나, `product:<새>`에 기억이 있으면 거절한다. 시작 전에 `backups/`에 기억 DB 사본(`memory-before-product-rename-…sqlite`)과 설정 사본(`config-before-product-rename-….json`)을 남기고, 기억 옮기기와 설정 쓰기를 한 트랜잭션 안에서 한다: 설정은 처음 읽은 내용 그대로일 때만 쓰고, 쓴 뒤 실패하면 원래 내용으로 되돌린다. 내용·주제·승격은 바꾸지 않고 기억마다 판을 올려 이력(`rename`)에 남긴다(자동 변경 원장에는 남기지 않는다). `--dry-run`은 무엇을 옮길지만 보이고 사본도 만들지 않는다 |
 | `orbit-mem place --move [--json]` | 제품 지도에 맞는 `product:?` 기억을 그 제품으로 옮긴다(범위만, 자동 변경으로 원장에 남고 `orbit-mem audit revert`로 되돌린다). 회고 마무리도 같은 일을 한다 |
 | `orbit-mem plugin build [--out D \| --repo R]` | 내장 원본으로 플러그인을 만든다. `--out`(기본 `$ORBIT_HOME/plugins/orbit-mem`)에는 Claude·Codex 꼴과 두 로컬 마켓을, `--repo`에는 GitHub 마켓(`.claude-plugin/marketplace.json`과 `plugin/`, Claude 꼴만)을 쓴다. `plugin/` 안의 남은 파일은 지운다 |
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
