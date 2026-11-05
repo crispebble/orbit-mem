@@ -26,6 +26,9 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
+// errSplitChanged means the original changed between the plan's checks and the split's transaction.
+var errSplitChanged = errors.New("changed")
+
 // MaxClaimRunes bounds the body of one claim (a rule or decision), 설계 · orbit-mem 2판 4.3.1.
 const MaxClaimRunes = 1000
 
@@ -54,6 +57,9 @@ func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // quoteInBody says whether one of the user's words kept as a quote source of id is in body
 // (whitespace collapsed): then the body is the user's words and a split only cuts it.
+// Boundary: a quote source with an empty excerpt (a Ref only) or an excerpt MaskSecrets changed does not
+// match, so such a memory may be rewritten; the rewrite keeps all sources, and the migration's split is
+// sampled by a person.
 func quoteInBody(q querier, id, body string) (bool, error) {
 	rows, err := q.Query(`SELECT excerpt FROM sources WHERE memory_id=? AND kind=?`, id, SourceQuote)
 	if err != nil {
@@ -181,6 +187,10 @@ func (s *Store) planSplit(it PlanItem, m place.Map, run *planRun, dry bool) (Pla
 	pi.Body = fmt.Sprintf("%s를 주장 하나씩 %d개로 나눔(%s → %s). 근거: %s", mem.ID, len(it.Split), r.From, r.To, it.Basis)
 	pi.Payload = Payload{Actor: ActorAI}
 	r.Parts, r.LedgerID, err = s.splitTx(mem, it.Split, scope, project, pi)
+	if errors.Is(err, errSplitChanged) {
+		r.Skip = err.Error()
+		return r, nil
+	}
 	return r, err
 }
 
@@ -217,16 +227,23 @@ func checkParts(mem Memory, parts []PlanPart) string {
 // splitTx makes the parts, supersedes mem, and writes the proposal and the ledger line in one transaction;
 // it returns the new ids and the ledger line.
 func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi ProposalInput) ([]string, string, error) {
+	if splitTxHook != nil {
+		splitTxHook()
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, "", err
 	}
 	defer tx.Rollback()
 	now := s.nowMs()
-	s0, err := getTx(tx, mem.ID) // 바꾸기 전 판(원장의 before)
+	s0, err := getTx(tx, mem.ID) // 바꾸기 전 판(원장의 before). 계획이 본 판과 다르면 나누지 않는다(재검토 N5)
 	if err != nil {
 		return nil, "", err
 	}
+	if s0.Version != mem.Version || (s0.State != StateCandidate && s0.State != StateConfirmed) {
+		return nil, "", fmt.Errorf("%w: checked v%d, now v%d %s", errSplitChanged, mem.Version, s0.Version, s0.State)
+	}
+	mem = s0
 	type src struct {
 		kind, ref, excerpt, hash string
 		at                       int64
@@ -285,5 +302,13 @@ func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi 
 	if err != nil {
 		return nil, "", err
 	}
-	return ids, lid, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, "", err
+	}
+	s.closeFlagsOf(mem.ID, StateStale) // 나눈 원래 기억에 열린 감사 표시를 남기지 않는다(재검토 N4)
+	return ids, lid, nil
 }
+
+// splitTxHook runs just before splitTx opens its transaction. Tests use it to change the original memory
+// between the plan's checks and the write (재검토 N5); it is nil otherwise.
+var splitTxHook func()

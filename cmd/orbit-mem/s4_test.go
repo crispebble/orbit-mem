@@ -144,3 +144,16 @@ func TestPlacePlan_모르는_칸은_거절하고_건너뛴_이유를_한_줄로_
 		t.Fatalf("summary clip: %s", out[:min(len(out), 300)])
 	}
 }
+
+// 재검토 N2: 계획 파일 뒤에 다른 JSON이나 쓰레기가 붙어 있으면 거절한다(첫 값만 읽고 0건으로 지나가지 않게).
+func TestPlacePlan_뒤에_붙은_데이터는_거절한다(t *testing.T) {
+	home(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{"쓰레기": `{"items":[]} garbage`, "두 계획": `{"items":[]}{"items":[]}`} {
+		file := filepath.Join(dir, "plan.json")
+		os.WriteFile(file, []byte(body), 0o600)
+		if _, errOut, code := run(t, "", "place", "--plan", file, "--dry-run"); code == 0 {
+			t.Fatalf("%s accepted: %s", name, errOut)
+		}
+	}
+}

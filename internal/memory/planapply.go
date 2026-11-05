@@ -76,6 +76,9 @@ type planRun struct {
 	slots   map[string]string // 이번 실행에서 받은 자리(scope\x00topic) → 받은 기억
 	moved   map[string]string // 이번 실행에서 옮긴 기억 → 새 자리
 	leaving map[string]bool   // 대체가 실제로 일어날 기억(같은 자리를 함께 써도 된다)
+	// superseded is what this run superseded (old → new), so a dry run sees a second supersession of the
+	// same memory as the real run does (재검토 N3).
+	superseded map[string]string
 }
 
 func slotKey(scope, topic string) string { return scope + "\x00" + topic }
@@ -83,7 +86,7 @@ func slotKey(scope, topic string) string { return scope + "\x00" + topic }
 // ApplyPlan applies plan with the product map m. A dry run changes nothing and reports what the real run would.
 func (s *Store) ApplyPlan(plan Plan, m place.Map, dry bool) (PlanReport, error) {
 	rep := PlanReport{Applied: []PlanResult{}, Skipped: []PlanResult{}, Conflicts: []PlanResult{}}
-	run := &planRun{start: map[string]int{}, slots: map[string]string{}, moved: map[string]string{}, leaving: map[string]bool{}}
+	run := &planRun{start: map[string]int{}, slots: map[string]string{}, moved: map[string]string{}, leaving: map[string]bool{}, superseded: map[string]string{}}
 	for _, it := range plan.Items {
 		for _, id := range []string{it.ID, it.SupersededBy} {
 			if mm, err := getTx(s.db, id); id != "" && err == nil {
@@ -231,13 +234,6 @@ func (s *Store) planPlace(it PlanItem, m place.Map, run *planRun, dry bool) (Pla
 			return r, nil
 		}
 	}
-	if topic != "" {
-		run.slots[slotKey(scope, topic)] = mem.ID
-	}
-	run.moved[mem.ID] = slotKey(scope, topic)
-	if dry {
-		return r, nil
-	}
 	pl := Payload{Scope: scope, Project: project}
 	if scope == mem.Scope && project == mem.Project {
 		pl.Scope, pl.Project = "", ""
@@ -245,18 +241,46 @@ func (s *Store) planPlace(it PlanItem, m place.Map, run *planRun, dry bool) (Pla
 	if topic != mem.Topic {
 		pl.Topic = topic
 	}
-	res, err := s.AutoApply(AutoInput{Kind: ProposalEdit, Title: "이전 계획: " + mem.Title,
+	in := AutoInput{Kind: ProposalEdit, Title: "이전 계획: " + mem.Title,
 		Body:      fmt.Sprintf("%s → %s, 주제 %q. 근거: %s", r.From, r.To, topic, it.Basis),
-		MemoryIDs: []string{mem.ID}, Payload: pl, Who: Who{Actor: ActorAI}, PlanMove: true})
-	switch {
-	case errors.Is(err, ErrAutoSkip), errors.Is(err, ErrDuplicateProposal):
+		MemoryIDs: []string{mem.ID}, Payload: pl, Who: Who{Actor: ActorAI}, PlanMove: true}
+	// 사람이 되돌린 옮기기는 미리 보기에서도 건너뛴다: 자리를 받았다고 적기 전에 본다(재검토 N1).
+	if blocked, err := s.autoBlocked(in); err != nil {
+		return r, err
+	} else if blocked {
 		r.Skip = "reverted before or already proposed"
 		return r, nil
-	case err != nil:
-		return r, err
 	}
-	r.LedgerID = res.LedgerID
+	if !dry {
+		res, err := s.AutoApply(in)
+		switch {
+		case errors.Is(err, ErrAutoSkip), errors.Is(err, ErrDuplicateProposal):
+			r.Skip = "reverted before or already proposed"
+			return r, nil
+		case err != nil:
+			return r, err
+		}
+		r.LedgerID = res.LedgerID
+	}
+	// 실제로 옮긴 뒤에만(미리 보기는 옮길 수 있을 때만) 자리를 받았다고 적는다.
+	if topic != "" {
+		run.slots[slotKey(scope, topic)] = mem.ID
+	}
+	run.moved[mem.ID] = slotKey(scope, topic)
 	return r, nil
+}
+
+// autoBlocked says whether AutoApply would skip in as reverted before or already proposed, without applying it.
+func (s *Store) autoBlocked(in AutoInput) (bool, error) {
+	pi := ProposalInput{Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload, RetroID: in.RetroID}
+	if err := s.prepare(&pi); err != nil {
+		return false, err
+	}
+	err := s.notAgain(pi)
+	if errors.Is(err, ErrAutoSkip) || errors.Is(err, ErrDuplicateProposal) {
+		return true, nil
+	}
+	return false, err
 }
 
 // supersedeVerdict says why it.SupersededBy may not supersede it.ID now ("" when it may). ApplyPlan uses
@@ -273,6 +297,12 @@ func (s *Store) supersedeVerdict(it PlanItem, run *planRun) (string, Memory, Mem
 	start, ok := run.start[old.ID]
 	if !ok {
 		start = old.Version
+	}
+	if by, ok := run.superseded[old.ID]; ok {
+		if by == nw.ID {
+			return "already there", old, nw, nil
+		}
+		return "not live: " + StateStale, old, nw, nil
 	}
 	switch {
 	case old.State == StateStale && old.SupersededBy == nw.ID:
@@ -310,6 +340,7 @@ func (s *Store) planSupersede(it PlanItem, run *planRun, dry bool) (PlanResult, 
 		return r, nil
 	}
 	if dry {
+		run.superseded[old.ID] = nw.ID
 		return r, nil
 	}
 	res, err := s.AutoApply(AutoInput{Kind: ProposalSupersede, Title: "이전 계획 대체: " + old.Title,
@@ -323,6 +354,7 @@ func (s *Store) planSupersede(it PlanItem, run *planRun, dry bool) (PlanResult, 
 		return r, err
 	}
 	r.LedgerID = res.LedgerID
+	run.superseded[old.ID] = nw.ID
 	return r, nil
 }
 

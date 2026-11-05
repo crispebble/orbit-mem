@@ -109,7 +109,11 @@ func (s *Store) journalToActivity(id string, dry bool) (PlanResult, error) {
 	if r.LedgerID, err = s.recordLedgerTx(tx, p, LedgerBefore{Memories: []Memory{cur}}, DecideResult{}); err != nil {
 		return r, err
 	}
-	return r, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return r, err
+	}
+	s.closeFlagsOf(id, StateStale) // 낡은 기억에 열린 감사 표시를 남기지 않는다(재검토 N4)
+	return r, nil
 }
 
 // insertJournalActivity puts journal m into the activity log (title and body as they are); an existing row stays.

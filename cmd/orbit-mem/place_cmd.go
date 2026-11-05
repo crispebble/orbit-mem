@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -154,6 +155,9 @@ func placePlan(a *app, cfg config.Config, file string, dry, asJSON bool) error {
 	dec.DisallowUnknownFields() // 칸 이름 오타(topik 등)가 조용히 무시되지 않게
 	if err := dec.Decode(&plan); err != nil {
 		return fmt.Errorf("%s: %w", file, err)
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF { // 계획 하나 뒤에 다른 값이 붙어 있으면 거절한다
+		return fmt.Errorf("%s: trailing data after the plan", file)
 	}
 	s, err := openStore()
 	if err != nil {
