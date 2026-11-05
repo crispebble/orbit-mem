@@ -482,3 +482,23 @@ func (s *Store) mapMoveOnly(in AutoInput) error {
 	}
 	return nil
 }
+
+// RecordEdit leaves a ledger line for a direct edit that already happened (memory_update moving a
+// memory's applies-to, S4 명세 1.1·3.1): before is the memory as it was. An edit by someone other
+// than the person is kept as an automatic change, so the audit list shows it; `audit revert` undoes
+// it either way (applies-to, topic and the core flag come back, ledger.go revert).
+func (s *Store) RecordEdit(before Memory, title, basis string, w Who) (string, error) {
+	status := StatusApproved
+	if !w.human() {
+		status = StatusAuto
+	}
+	if q := w.quote(); q != "" {
+		basis = strings.TrimSpace(basis + "\n사용자 말: " + q)
+	}
+	pi := ProposalInput{Kind: ProposalEdit, Title: title, Body: basis, MemoryIDs: []string{before.ID}, Payload: Payload{Actor: w.actor()}}
+	p, err := s.insertProposal(pi, status)
+	if err != nil {
+		return "", err
+	}
+	return s.recordLedger(p, LedgerBefore{Memories: []Memory{before}}, DecideResult{})
+}

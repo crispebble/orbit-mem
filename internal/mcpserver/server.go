@@ -761,8 +761,25 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 		r, _ := toolError(err)
 		return r, MemoryOut{}, nil
 	}
+	moved := before.ID != "" && (m.Scope != before.Scope || m.Project != before.Project)
 	if before.Pinned && !m.Pinned && in.Action != "unpin" {
-		warns = append(warns, "상시 핵심에서 빠짐: 이 변경으로 확정된 user·제품 기억이 아니게 됐거나 핵심 한도(user 3,000자·제품마다 2,000자)를 넘었습니다. 다시 올리려면 줄인 뒤 memory_update action=pin")
+		why := "이 변경으로 확정된 user·제품 기억이 아니게 됐거나 핵심 한도(user 3,000자·제품마다 2,000자)를 넘었습니다"
+		if moved {
+			why = fmt.Sprintf("적용 대상을 %s에서 %s로 옮겨 상시 핵심이 없는 층이 됐거나 그 층의 한도를 넘었습니다", place.AppliesTo(before.Scope), place.AppliesTo(m.Scope))
+		}
+		warns = append(warns, "상시 핵심에서 빠짐: "+why+". 되돌리려면 orbit-mem audit revert, 다시 올리려면 줄인 뒤 memory_update action=pin")
+	}
+	// 적용 대상 옮기기는 원장에 한 줄을 남긴다(S4 명세 1.1): 감사 목록에 보이고 audit revert로 되돌린다.
+	if moved {
+		reason := strings.TrimSpace(in.Reason)
+		if reason == "" {
+			reason = "memory_update로 적용 대상 옮김"
+		}
+		if lid, lerr := h.s.RecordEdit(before, fmt.Sprintf("적용 대상 옮김: %s → %s", place.AppliesTo(before.Scope), place.AppliesTo(m.Scope)), reason, h.o.who(in.UserQuote, "")); lerr != nil {
+			warns = append(warns, "원장 기록 실패: "+lerr.Error())
+		} else {
+			warns = append(warns, "원장 "+lid+"에 남김(되돌리기: orbit-mem audit revert "+lid+")")
+		}
 	}
 	return nil, MemoryOut{Memory: m, Warnings: warns}, nil
 }
