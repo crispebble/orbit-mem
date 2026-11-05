@@ -13,7 +13,6 @@ package memory
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // JournalHost is the host and launcher of an activity row that holds a journal moved from the memories.
@@ -60,59 +59,66 @@ func (s *Store) journalToActivity(id string, dry bool) (PlanResult, error) {
 	if err != nil {
 		return r, err
 	}
-	r.From, r.To = m.Scope, JournalHost+" "+JournalSession(id)
+	session := JournalSession(id)
+	r.From, r.To = m.Scope, JournalHost+" "+session
 	if m.Pinned {
 		r.Skip = "pinned: unpin it first"
 		return r, nil
 	}
+	pi := ProposalInput{Kind: ProposalStale, Title: JournalReason + ": " + m.Title,
+		Body:      "일지는 기억이 아니라 하루 기록이라 활동 기록 " + session + "으로 옮겼다(S4-8).",
+		MemoryIDs: []string{id}, Payload: Payload{Activity: JournalHost + "\x00" + session, Actor: ActorAI}}
+	if err := s.notAgain(pi); errors.Is(err, ErrAutoSkip) || errors.Is(err, ErrDuplicateProposal) {
+		r.Skip = "reverted before or already proposed"
+		return r, nil
+	} else if err != nil {
+		return r, err
+	}
 	if dry {
 		return r, nil
 	}
-	session := JournalSession(id)
+	// 활동 줄·낡음 표시·제안·원장을 한 트랜잭션에 쓴다: 하나라도 실패하면 아무것도 남지 않는다.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return r, err
+	}
+	defer tx.Rollback()
+	cur, err := getTx(tx, id) // 그사이 바뀌었으면(낡음 등) 건드리지 않는다
+	if err != nil {
+		return r, err
+	}
+	if cur.Kind != KindJournal || (cur.State != StateCandidate && cur.State != StateConfirmed) || cur.Pinned {
+		r.Skip = "not live: " + cur.State
+		return r, nil
+	}
+	if err := insertJournalActivity(tx, cur); err != nil {
+		return r, err
+	}
+	now := s.nowMs()
+	next := cur
+	next.State, next.StaleReason = StateStale, JournalReason+": "+session
+	next.Version++
+	next.UpdatedAt = now
+	if err := writeTx(tx, next, StateStale, next.StaleReason, now); err != nil {
+		return r, err
+	}
+	p, err := s.insertProposalTx(tx, pi, StatusAuto)
+	if err != nil {
+		return r, err
+	}
+	if r.LedgerID, err = s.recordLedgerTx(tx, p, LedgerBefore{Memories: []Memory{cur}}, DecideResult{}); err != nil {
+		return r, err
+	}
+	return r, tx.Commit()
+}
+
+// insertJournalActivity puts journal m into the activity log (title and body as they are); an existing row stays.
+func insertJournalActivity(q dbtx, m Memory) error {
 	scope := m.Scope
 	if scope == ScopeGlobal {
 		scope = ""
 	}
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO activity(host,session,project_scope,project_label,cwd,launcher,parent,started_at,last_at,ended_at,prompts,first_prompt,last_prompt,summary)
-		VALUES(?,?,?,?,'',?,'',?,?,?,0,?,'',?)`, JournalHost, session, scope, m.Project, JournalHost, m.CreatedAt, m.CreatedAt, m.CreatedAt, ClipRunes(m.Title, ActivityPromptRunes), m.Body)
-	if err != nil {
-		return r, err
-	}
-	inserted, _ := res.RowsAffected()
-	dr, err := s.AutoApply(AutoInput{Kind: ProposalStale, Title: JournalReason + ": " + m.Title,
-		Body:      "일지는 기억이 아니라 하루 기록이라 활동 기록 " + session + "으로 옮겼다(S4-8).",
-		MemoryIDs: []string{id}, Payload: Payload{Activity: JournalHost + "\x00" + session}, Who: Who{Actor: ActorAI}, JournalMove: true})
-	if err != nil {
-		if inserted == 1 { // 옮기지 못했으면 넣은 줄도 뺀다: 같은 일지가 두 곳에 남지 않는다
-			_, _ = s.db.Exec(`DELETE FROM activity WHERE host=? AND session=?`, JournalHost, session)
-		}
-		if errors.Is(err, ErrAutoSkip) || errors.Is(err, ErrDuplicateProposal) {
-			r.Skip = "reverted before or already proposed"
-			return r, nil
-		}
-		return r, err
-	}
-	r.LedgerID = dr.LedgerID
-	return r, nil
-}
-
-// journalMoveOnly checks a JournalMove change before it skips the user's-words guard: it marks one
-// journal stale, and the activity row it names holds that journal's title and body.
-func (s *Store) journalMoveOnly(in AutoInput) error {
-	if in.Kind != ProposalStale || len(in.MemoryIDs) != 1 {
-		return fmt.Errorf("%w: a journal move marks one journal stale", ErrInvalid)
-	}
-	m, err := getTx(s.db, in.MemoryIDs[0])
-	if err != nil {
-		return err
-	}
-	host, session, _ := strings.Cut(in.Payload.Activity, "\x00")
-	if m.Kind != KindJournal || host != JournalHost || session != JournalSession(m.ID) {
-		return fmt.Errorf("%w: a journal move needs the journal's activity row", ErrInvalid)
-	}
-	var body string
-	if err := s.db.QueryRow(`SELECT summary FROM activity WHERE host=? AND session=?`, host, session).Scan(&body); err != nil || body != m.Body {
-		return fmt.Errorf("%w: activity row %s does not hold the journal", ErrInvalid, session)
-	}
-	return nil
+	_, err := q.Exec(`INSERT OR IGNORE INTO activity(host,session,project_scope,project_label,cwd,launcher,parent,started_at,last_at,ended_at,prompts,first_prompt,last_prompt,summary)
+		VALUES(?,?,?,?,'',?,'',?,?,?,0,?,'',?)`, JournalHost, JournalSession(m.ID), scope, m.Project, JournalHost, m.CreatedAt, m.CreatedAt, m.CreatedAt, ClipRunes(m.Title, ActivityPromptRunes), m.Body)
+	return err
 }

@@ -4,10 +4,12 @@ package mcpserver
 // audit revert로 되돌릴 수 있다. 옮겨서 상시 핵심에서 빠지면 응답 경고에 그렇게 적는다.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 func TestS4_적용_대상_옮기기는_원장에_남고_되돌리면_핵심도_돌아온다(t *testing.T) {
@@ -87,4 +89,26 @@ func mustLedger(t *testing.T, s *memory.Store) []memory.LedgerEntry {
 		t.Fatal(err)
 	}
 	return l
+}
+
+// S4 검토 A10(b): MCP 감사 목록의 「A — B」 검사도 설정의 제품 지도를 쓴다.
+func TestS4_MCP_감사의_두_주제_검사는_제품_지도를_쓴다(t *testing.T) {
+	s, err := memory.Open(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	cs := connectServer(t, New(s, Options{Project: "project:github.com/me/app", ProjectLabel: "github.com/me/app", Version: "test",
+		Products: place.Map{"atlas": {Match: []string{"github.com/o/atlas"}}, "forma": {Match: []string{"github.com/o/forma"}}}}))
+	m := quotedRule(t, s, "Atlas 문서 위치는 Space — Forma 문서 위치는 사이트")
+	var out ProposalsOut
+	if res := call(t, cs, "proposals", map[string]any{"status": "audit"}, &out); res.IsError || out.Audit == nil {
+		t.Fatalf("%s", text(res))
+	}
+	for _, x := range out.Audit.TwoTopics {
+		if x.ID == m.ID && x.Why == memory.TwoTopicsProducts {
+			return
+		}
+	}
+	t.Fatalf("not listed: %+v", out.Audit.TwoTopics)
 }

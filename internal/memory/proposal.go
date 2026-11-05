@@ -588,8 +588,24 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			return err
 		}
 		next := editedMemory(m, p.Payload, in.Title, in.Body)
-		if _, err := s.Update(UpdateInput{ID: m.ID, Title: &next.Title, Body: &next.Body, Tags: &next.Tags, Scope: &next.Scope, Project: &next.Project,
-			Topic: &next.Topic, Reason: "제안 승인 " + p.ID, Action: "edit"}); err != nil {
+		// 고치는 것만 넘긴다: 자리·주제만 옮기는 고치기(이전 계획)는 제목 검사·태그 정리를 거치지 않는다(S4 검토 A7).
+		u := UpdateInput{ID: m.ID, Reason: "제안 승인 " + p.ID, Action: "edit"}
+		if p.Payload.Title != "" || given(in.Title) {
+			u.Title = &next.Title
+		}
+		if p.Payload.Body != "" || given(in.Body) {
+			u.Body = &next.Body
+		}
+		if p.Payload.Tags != nil {
+			u.Tags = &next.Tags
+		}
+		if p.Payload.Scope != "" {
+			u.Scope, u.Project = &next.Scope, &next.Project
+		}
+		if p.Payload.Topic != "" {
+			u.Topic = &next.Topic
+		}
+		if _, err := s.Update(u); err != nil {
 			return err
 		}
 		res.Changed = append(res.Changed, m.ID)

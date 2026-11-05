@@ -45,6 +45,9 @@ type LedgerBefore struct {
 	After    map[string]int `json:"after,omitempty"`    // 바꾼 직후 기억 판본. 되돌릴 때 그 뒤 바뀌었는지 본다
 	Link     string         `json:"link,omitempty"`     // 승인으로 생긴 연결. 되돌릴 때 이 연결만 뗀다
 	Activity string         `json:"activity,omitempty"` // 이 변경이 넣은 활동 기록 줄(host\x00session). 되돌릴 때 뺀다
+	// ActivityGone is the activity row this change took out (a revert of a journal move); undoing it puts
+	// the row back from the journal's title and body.
+	ActivityGone string `json:"activityGone,omitempty"`
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
@@ -278,6 +281,17 @@ func fileBefore(path string) *FileBefore {
 
 // recordLedger writes the line for an approved proposal.
 func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) (string, error) {
+	return s.recordLedgerTx(s.db, p, before, res)
+}
+
+// dbtx is a database or a transaction.
+type dbtx interface {
+	querier
+	Exec(string, ...any) (sql.Result, error)
+}
+
+// recordLedgerTx writes the ledger line within q (a transaction, so a change and its line land together).
+func (s *Store) recordLedgerTx(q dbtx, p Proposal, before LedgerBefore, res DecideResult) (string, error) {
 	e := LedgerEntry{ID: NewID("l-"), At: s.nowMs(), ProposalID: p.ID, ProposalKind: p.Kind, TargetKind: TargetMemory, Verdict: VerdictPending}
 	e.Day = Day(time.UnixMilli(e.At))
 	var change strings.Builder
@@ -296,10 +310,16 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 		host, session, _ := strings.Cut(p.Payload.Activity, "\x00")
 		fmt.Fprintf(&change, "활동 기록 %s %s에 옮김\n", host, session)
 	}
+	// 되돌림은 그 줄이 넣은 활동 줄을 뺐고 뺀 줄을 다시 넣었다: 이 되돌림을 다시 되돌릴 때 반대로 한다(S4-8).
+	if p.Kind == ProposalRevert {
+		if t, err := s.LedgerEntry(p.Payload.LedgerID); err == nil {
+			before.Activity, before.ActivityGone = t.Before.ActivityGone, t.Before.Activity
+		}
+	}
 	var memIDs []string
 	for _, m := range before.Memories {
 		memIDs = append(memIDs, m.ID)
-		after, err := getTx(s.db, m.ID)
+		after, err := getTx(q, m.ID)
 		if err != nil {
 			continue
 		}
@@ -309,7 +329,7 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 	}
 	for _, id := range before.Created {
 		memIDs = append(memIDs, id)
-		if m, err := getTx(s.db, id); err == nil {
+		if m, err := getTx(q, id); err == nil {
 			fmt.Fprintf(&change, "새 기억 %s\n%s", id, LineDiff("", memoryText(m), 0))
 		}
 	}
@@ -332,7 +352,7 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 	memIDs = uniq(memIDs)
 	before.After = map[string]int{}
 	for _, id := range memIDs {
-		if m, err := getTx(s.db, id); err == nil {
+		if m, err := getTx(q, id); err == nil {
 			before.After[id] = m.Version
 		}
 	}
@@ -355,13 +375,13 @@ func (s *Store) recordLedger(p Proposal, before LedgerBefore, res DecideResult) 
 	observe, _ := json.Marshal(nonNil(e.Observe))
 	bb, _ := json.Marshal(e.Before)
 	obs, _ := json.Marshal(e.Observation)
-	if _, err := s.db.Exec(`INSERT INTO ledger(`+ledgerCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err := q.Exec(`INSERT INTO ledger(`+ledgerCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, e.At, e.Day, e.ProposalID, e.ProposalKind, e.TargetKind, string(targets), string(observe), e.Change, e.Basis,
 		string(bb), e.Verdict, 0, string(obs), 0, "", e.RevertOf, ""); err != nil {
 		return "", err
 	}
 	if e.RevertOf != "" {
-		if _, err := s.db.Exec(`UPDATE ledger SET reverted_by=? WHERE id=?`, e.ID, e.RevertOf); err != nil {
+		if _, err := q.Exec(`UPDATE ledger SET reverted_by=? WHERE id=?`, e.ID, e.RevertOf); err != nil {
 			return e.ID, err
 		}
 	}
@@ -472,6 +492,21 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 	if e.Before.Activity != "" {
 		host, session, _ := strings.Cut(e.Before.Activity, "\x00")
 		if _, err := tx.Exec(`DELETE FROM activity WHERE host=? AND session=?`, host, session); err != nil {
+			return err
+		}
+	}
+	if e.Before.ActivityGone != "" {
+		for _, snap := range e.Before.Memories {
+			if m, err := getTx(tx, snap.ID); err == nil && m.Kind == KindJournal && JournalHost+"\x00"+JournalSession(m.ID) == e.Before.ActivityGone {
+				if err := insertJournalActivity(tx, m); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	// 되돌린 규칙·결정이 같은 자리·주제의 다른 현재값과 겹치면 되돌리기는 하되 감사 목록에 어긋남으로 남긴다.
+	for id := range restored {
+		if err := flagSlotTx(tx, id, p.Payload.Actor, now); err != nil {
 			return err
 		}
 	}
@@ -708,4 +743,31 @@ func (s *Store) observe(obs *Observation, ids []string) error {
 	obs.Before.Sessions, obs.After.Sessions = len(sessions[0]), len(sessions[1])
 	obs.Before.Bad, obs.After.Bad = len(bad[0]), len(bad[1])
 	return nil
+}
+
+// flagSlotTx marks a live rule or decision that shares (scope, topic) with another current value after a
+// revert, as a conflict the audit list shows (S4 검토 A4). The same open mark is not added twice.
+func flagSlotTx(tx *sql.Tx, id, actor string, now int64) error {
+	m, err := getTx(tx, id)
+	if err != nil || m.Topic == "" || (m.Kind != KindRule && m.Kind != KindDecision) || (m.State != StateCandidate && m.State != StateConfirmed) {
+		return err
+	}
+	var other string
+	err = tx.QueryRow(`SELECT id FROM memories WHERE scope=? AND topic=? AND id<>? AND state IN ('candidate','confirmed') ORDER BY created_at LIMIT 1`, m.Scope, m.Topic, m.ID).Scan(&other)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM audit_flags WHERE kind=? AND resolved_at=0 AND ((memory_id=? AND other_id=?) OR (memory_id=? AND other_id=?))`,
+		FlagConflict, m.ID, other, other, m.ID).Scan(&n); err != nil || n > 0 {
+		return err
+	}
+	if actor == "" {
+		actor = ActorUser
+	}
+	_, err = tx.Exec(`INSERT INTO audit_flags(id,kind,memory_id,other_id,note,actor,at) VALUES(?,?,?,?,?,?,?)`, NewID("f-"), FlagConflict, m.ID, other,
+		ClipRunes("되돌림 뒤 같은 자리·주제의 현재값이 둘: "+m.Scope+" · "+m.Topic, 300), actor, now)
+	return err
 }

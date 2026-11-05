@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
@@ -148,7 +150,9 @@ func placePlan(a *app, cfg config.Config, file string, dry, asJSON bool) error {
 		return err
 	}
 	var plan memory.Plan
-	if err := json.Unmarshal(b, &plan); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields() // 칸 이름 오타(topik 등)가 조용히 무시되지 않게
+	if err := dec.Decode(&plan); err != nil {
 		return fmt.Errorf("%s: %w", file, err)
 	}
 	s, err := openStore()
@@ -164,6 +168,9 @@ func placePlan(a *app, cfg config.Config, file string, dry, asJSON bool) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_head", len(plan.Items), len(rep.Applied), len(rep.Skipped), len(rep.Conflicts), dry))
+	if line := skipSummary(append(append([]memory.PlanResult{}, rep.Skipped...), rep.Conflicts...)); line != "" {
+		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_skips", line))
+	}
 	for _, r := range rep.Conflicts {
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_conflict", r.ID, r.Skip))
 	}
@@ -189,4 +196,24 @@ func placeJournals(a *app, dry, asJSON bool) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.place.plan_conflict", r.ID, r.Skip))
 	}
 	return err
+}
+
+// skipSummary counts the skip reasons by their head (the part before ":" or " by "): "already there 3, changed 1".
+func skipSummary(rs []memory.PlanResult) string {
+	n := map[string]int{}
+	for _, r := range rs {
+		head, _, _ := strings.Cut(r.Skip, ":")
+		head, _, _ = strings.Cut(head, " by ")
+		n[strings.TrimSpace(head)]++
+	}
+	keys := make([]string, 0, len(n))
+	for k := range n {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return n[keys[i]] > n[keys[j]] || n[keys[i]] == n[keys[j]] && keys[i] < keys[j] })
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = fmt.Sprintf("%s %d", k, n[k])
+	}
+	return strings.Join(parts, ", ")
 }

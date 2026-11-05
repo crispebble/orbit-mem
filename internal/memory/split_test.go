@@ -66,6 +66,7 @@ func TestSplit_사용자_말을_바꾸거나_틀린_나누기는_하지_않는�
 	a, b := strings.Repeat("가나다 ", 120), strings.Repeat("라마바 ", 120)
 	in := userSays(KindDecision, "사용자 결정 묶음", "결정 묶음")
 	in.Body = longBody(a, b)
+	in.Source.Excerpt = in.Body // 사용자 말이 본문에 있다: 자르기만 한다(Q2)
 	quoted, _ := mustSave(t, s, in)
 	ai := aiLearns(KindDecision, "AI 결정 묶음", "ai 묶음")
 	ai.Body = longBody(a, b)

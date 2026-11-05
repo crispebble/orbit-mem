@@ -102,3 +102,45 @@ func TestAudit_두_주제를_붙인_제목을_보인다(t *testing.T) {
 		t.Fatalf("audit: %d %s %s", code, out, errOut)
 	}
 }
+
+// S4 검토 A10: 계획 파일의 모르는 칸은 거절하고(오타가 조용히 무시되지 않게), 사람용 출력은 건너뛴 이유를 한 줄로 센다.
+// 활동 기록의 요약은 길면 잘라서 보인다.
+func TestPlacePlan_모르는_칸은_거절하고_건너뛴_이유를_한_줄로_보인다(t *testing.T) {
+	home(t)
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindLesson, Title: "교훈", Source: memory.Source{Kind: memory.SourceSession, Ref: "r"}, Who: memory.Who{Actor: memory.ActorAI}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindJournal, Title: "하루", Body: strings.Repeat("가", 2000), Source: memory.Source{Kind: memory.SourceSession, Ref: "r"}, Who: memory.Who{Actor: memory.ActorAI}})
+	s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.json")
+	os.WriteFile(bad, []byte(`{"items":[{"id":"`+m.ID+`","appliesTo":"user","topik":"오타"}]}`), 0o600)
+	if _, errOut, code := run(t, "", "place", "--plan", bad); code == 0 || !strings.Contains(errOut, "topik") {
+		t.Fatalf("unknown field accepted: %d %s", code, errOut)
+	}
+	good := filepath.Join(dir, "good.json")
+	os.WriteFile(good, []byte(`{"items":[{"id":"`+m.ID+`","appliesTo":"user"},{"id":"`+m.ID+`","appliesTo":"product:nope"}]}`), 0o600)
+	out, errOut, code := run(t, "", "place", "--plan", good)
+	if code != 0 || !strings.Contains(out, "already there 1") || !strings.Contains(out, "unknown product 1") {
+		t.Fatalf("summary: %d %s %s", code, out, errOut)
+	}
+	if _, _, code := run(t, "", "place", "--journals"); code != 0 {
+		t.Fatal("journals")
+	}
+	out, _, _ = run(t, "", "activity", "--project", "all", "--json")
+	var res struct {
+		Items []struct{ Session, Summary string }
+	}
+	if json.Unmarshal([]byte(out), &res) != nil || len(res.Items) != 1 || res.Items[0].Session != "journal:"+j.ID ||
+		len([]rune(res.Items[0].Summary)) > 601 || len([]rune(res.Items[0].Summary)) < 500 {
+		t.Fatalf("summary clip: %s", out[:min(len(out), 300)])
+	}
+}

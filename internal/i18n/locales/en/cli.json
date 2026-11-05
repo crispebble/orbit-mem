@@ -360,6 +360,7 @@
   "flag.place.root": "folder --suggest looks in (default: ~/_workspace)",
   "flag.place.move": "move the product:? memories the product map places to their product (automatic change, undone from the audit list)",
   "cli.place.plan_conflict": "conflict %s: %s",
+  "cli.place.plan_skips": "skip and conflict reasons: %s",
   "cli.place.plan_head": "migration plan of %d: applied %d · skipped %d · conflicts %d (dry run %v)",
   "flag.place.dry_run": "show what --plan would change without changing it",
   "cli.place.journals_head": "journals → activity log: moved %d · skipped %d (dry run %v)",

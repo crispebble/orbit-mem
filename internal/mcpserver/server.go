@@ -808,7 +808,13 @@ func (h handlers) proposals(_ context.Context, _ *mcp.CallToolRequest, in Propos
 	case "all":
 		status = ""
 	case "", "audit": // 기본은 감사 목록: 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6)
-		a, err := h.s.Audit(memory.AuditFilter{Days: in.Days})
+		var names []string // 「A — B」 검사의 제품 이름(S4-12): 이 PC 설정의 제품 지도
+		if m, perr := h.o.products(); perr == nil {
+			for n := range m {
+				names = append(names, n)
+			}
+		}
+		a, err := h.s.Audit(memory.AuditFilter{Days: in.Days, Products: names})
 		if err != nil {
 			r, _ := toolError(err)
 			return r, ProposalsOut{}, nil
