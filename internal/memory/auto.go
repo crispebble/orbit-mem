@@ -39,6 +39,10 @@ type AutoInput struct {
 	// product:<name>. The map the person wrote is its ground, so it moves a memory holding the user's
 	// words too; its content does not change.
 	MapMove bool
+	// PlanMove is a change of a migration plan (S4, planapply.go): an edit of one memory's applies-to and
+	// topic, or a supersession by the newer memory that source precedence allows. Its content does not
+	// change, so it moves a memory holding the user's words too.
+	PlanMove bool
 }
 
 // AutoApply applies one automatic change: it checks the rules (what the user
@@ -86,6 +90,12 @@ func (s *Store) AutoApply(in AutoInput) (DecideResult, error) {
 			return DecideResult{}, err
 		}
 		targets = nil // 범위만 옮긴다: 사용자 말을 바꾸지 않는다
+	}
+	if in.PlanMove {
+		if err := s.planMoveOnly(in); err != nil {
+			return DecideResult{}, err
+		}
+		targets = nil // 자리·주제만 옮기거나 출처 우선순위가 허락한 대체다: 사용자 말을 바꾸지 않는다
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -217,6 +227,11 @@ func (s *Store) applyRecorded(p *Proposal, in DecideInput) (DecideResult, error)
 
 // insertProposal stores a prepared proposal with a status (decided at once unless pending or lab).
 func (s *Store) insertProposal(in ProposalInput, status string) (Proposal, error) {
+	return s.insertProposalTx(s.db, in, status)
+}
+
+// insertProposalTx stores a prepared proposal within q.
+func (s *Store) insertProposalTx(q dbtx, in ProposalInput, status string) (Proposal, error) {
 	now := s.nowMs()
 	p := Proposal{ID: NewID("p-"), Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload,
 		Status: status, CreatedAt: now, RetroID: in.RetroID}
@@ -225,7 +240,7 @@ func (s *Store) insertProposal(in ProposalInput, status string) (Proposal, error
 	}
 	ids, _ := json.Marshal(nonNil(p.MemoryIDs))
 	payload, _ := json.Marshal(p.Payload)
-	_, err := s.db.Exec(`INSERT INTO proposals(id,kind,title,body,memory_ids,payload,fingerprint,status,created_at,decided_at,retro_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err := q.Exec(`INSERT INTO proposals(id,kind,title,body,memory_ids,payload,fingerprint,status,created_at,decided_at,retro_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 		p.ID, p.Kind, p.Title, p.Body, string(ids), string(payload), fingerprint(in), p.Status, p.CreatedAt, p.DecidedAt, p.RetroID)
 	return p, err
 }
@@ -471,4 +486,24 @@ func (s *Store) mapMoveOnly(in AutoInput) error {
 		return fmt.Errorf("%w: map move takes product:? only, not %s", ErrInvalid, m.Scope)
 	}
 	return nil
+}
+
+// RecordEdit leaves a ledger line for a direct edit that already happened (memory_update moving a
+// memory's applies-to, S4 명세 1.1·3.1): before is the memory as it was. An edit by someone other
+// than the person is kept as an automatic change, so the audit list shows it; `audit revert` undoes
+// it either way (applies-to, topic and the core flag come back, ledger.go revert).
+func (s *Store) RecordEdit(before Memory, title, basis string, w Who) (string, error) {
+	status := StatusApproved
+	if !w.human() {
+		status = StatusAuto
+	}
+	if q := w.quote(); q != "" {
+		basis = strings.TrimSpace(basis + "\n사용자 말: " + q)
+	}
+	pi := ProposalInput{Kind: ProposalEdit, Title: title, Body: basis, MemoryIDs: []string{before.ID}, Payload: Payload{Actor: w.actor()}}
+	p, err := s.insertProposal(pi, status)
+	if err != nil {
+		return "", err
+	}
+	return s.recordLedger(p, LedgerBefore{Memories: []Memory{before}}, DecideResult{})
 }

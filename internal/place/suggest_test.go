@@ -31,7 +31,7 @@ func TestSuggest_저장소_원격과_폴더로_첫_표를_만든다(t *testing.T
 	repo("onidot/doraft-plugins", "github.com/onidot-labs/onidot-plugins")
 	dir("onidot/prototypes/orbit-desktop-v4")
 	repo("personal/claude-code", "github.com/acme/claude-code")
-	repo("labs/demo", "")                                 // 원격 없음
+	repo("labs/demo", "")                           // 원격 없음
 	repo("personal/atlas", "github.com/acme/atlas") // 같은 이름, 다른 원격: 소유자를 붙인다
 	dir("wayviza/docs")
 	dir("archive/old")
@@ -40,13 +40,13 @@ func TestSuggest_저장소_원격과_폴더로_첫_표를_만든다(t *testing.T
 	dir("inbox")
 	got := Suggest([]string{root}, func(d string) string { return remotes[filepath.ToSlash(d)] }, filepath.ToSlash(h))
 	want := Map{
-		"atlas":            {Match: []string{"github.com/onidot-labs/atlas", "~/_workspace/onidot"}},
-		"orbit-studio":     {Match: []string{"github.com/onidot-labs/orbit-studio", "~/_workspace/onidot"}},
-		"onidot-plugins":   {Match: []string{"github.com/onidot-labs/onidot-plugins", "~/_workspace/onidot"}},
-		"claude-code":      {Match: []string{"github.com/acme/claude-code", "~/_workspace/personal"}},
-		"acme-atlas": {Match: []string{"github.com/acme/atlas", "~/_workspace/personal"}},
-		"demo":             {Match: []string{"~/_workspace/labs/demo"}},
-		"wayviza":          {Match: []string{"~/_workspace/wayviza"}},
+		"atlas":          {Match: []string{"github.com/onidot-labs/atlas", "~/_workspace/onidot"}},
+		"orbit-studio":   {Match: []string{"github.com/onidot-labs/orbit-studio", "~/_workspace/onidot"}},
+		"onidot-plugins": {Match: []string{"github.com/onidot-labs/onidot-plugins", "~/_workspace/onidot"}},
+		"claude-code":    {Match: []string{"github.com/acme/claude-code", "~/_workspace/personal"}},
+		"acme-atlas":     {Match: []string{"github.com/acme/atlas", "~/_workspace/personal"}},
+		"demo":           {Match: []string{"~/_workspace/labs/demo"}},
+		"wayviza":        {Match: []string{"~/_workspace/wayviza"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("suggest\n got %+v\nwant %+v", got, want)

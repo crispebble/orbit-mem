@@ -194,7 +194,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `onidot-labs/orbit-mem`을 더해 �
 - 나이 감쇠: 요청 회상에서 관련도가 같으면 마지막으로 바뀌거나 다시 나온 지 30일 안 → 180일 안 → 그 뒤 순으로 앞에 둔다. 관련도가 먼저다.
 - 회상 품질 고정 시험: `internal/inject/testdata/recall_fixtures.json`(모델 호출 없음). 회상 규칙을 바꾸면 이 묶음이 같은 답을 내는지 먼저 본다.
 - 저장 거부(`memory_save`·`orbit-mem tool memory_save`): 비밀값, 원본 로그·스택 추적(세 줄 이상), 대화 전사(역할 표시 두 줄 이상), 모델을 향한 지시문(이전 지시 무시·시스템 프롬프트), 지금 일의 진행 상태(사용자 말 인용이 아닐 때)는 저장하지 않고 까닭을 돌려준다. 「3주 뒤」·「내일」·「in 3 weeks」 같은 상대 시간은 제목·본문에서 날짜로 바꾸고 `rewrites`로 알린다. 규칙(일하는 방식)은 바꾸지 않는다(「배포 3일 전」은 사건 기준이고, 제목이 바뀌면 다른 날 다시 저장한 같은 규칙이 모이지 않는다). 출처 발췌는 그대로 둔다. 회고·들여오기의 저장에는 적용하지 않는다.
-- 스키마: `memories`에 `retention`·`review_days`·`review_at`·`expires_at`·`topic`·`tools`·`pinned`(0.15.0) 열과 색인 `memories_topic`, 표 `session_marks`(세션에 한 번만 알린 정정·새 기억·도구 회상)가 더해진다(`user_version`은 4 그대로). 새 판이 처음 열 때 `before-schema-*.sqlite` 사본을 남기고 열을 더한다. 옛 판 실행 파일은 열 이름을 대어 읽고 쓰므로 같은 DB를 함께 써도 깨지지 않고, 옛 판이 넣은 줄은 기본값(보통·날짜 없음·주제 없음)이 된다.
+- 스키마: `memories`에 `retention`·`review_days`·`review_at`·`expires_at`·`topic`·`tools`·`pinned`(0.15.0) 열과 색인 `memories_topic`, `activity`에 `summary`(0.16.0, 활동 기록으로 옮긴 일지의 본문) 열, 표 `session_marks`(세션에 한 번만 알린 정정·새 기억·도구 회상)가 더해진다(`user_version`은 4 그대로). 새 판이 처음 열 때 `before-schema-*.sqlite` 사본을 남기고 열을 더한다. 옛 판 실행 파일은 열 이름을 대어 읽고 쓰므로 같은 DB를 함께 써도 깨지지 않고, 옛 판이 넣은 줄은 기본값(보통·날짜 없음·주제 없음)이 된다.
 
 ## 확정 규칙과 감사 목록
 

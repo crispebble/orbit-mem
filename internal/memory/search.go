@@ -145,6 +145,7 @@ func Strong(docs []Doc, q string) []Match {
 	if len(terms) < 2 {
 		return nil
 	}
+	phrase := " " + strings.Join(Terms(q, 64), " ") + " " // 낱말 경계: 「규칙 2」는 「규칙 27」에 맞지 않는다
 	var hits []Match
 	for _, d := range docs {
 		title, all := haystack(d)
@@ -166,14 +167,28 @@ func Strong(docs []Doc, q string) []Match {
 			}
 		}
 		if full >= 1 && matched >= 2 && inTitle >= 1 && (inTitle >= 2 || matched >= 3) {
+			// 요청에 제목이 그대로 나오거나 요청 전체가 제목에 나오면 한 점을 더한다. 한 글자 낱말(「규칙 7」의 7)은
+			// 낱말 점수에서 빠지므로, 이것이 없으면 제목만 다른 기억들이 같은 점수가 된다.
+			if t := " " + strings.Join(Terms(d.Title, 64), " ") + " "; utf8.RuneCountInString(t) >= 6 && (strings.Contains(phrase, t) || strings.Contains(t, phrase)) {
+				score++
+				titleScore++
+			}
 			hits = append(hits, Match{d, score, titleScore})
 		}
 	}
+	// 같은 점수끼리는 제목 점수, 제목, id 순이다. 입력 순서(무작위 id)에 결과가 걸리지 않게 끝까지 정한다.
 	sort.SliceStable(hits, func(i, j int) bool {
-		if hits[i].Score != hits[j].Score {
-			return hits[i].Score > hits[j].Score
+		a, b := hits[i], hits[j]
+		if a.Score != b.Score {
+			return a.Score > b.Score
 		}
-		return hits[i].Title > hits[j].Title
+		if a.Title != b.Title {
+			return a.Title > b.Title
+		}
+		if a.Doc.Title != b.Doc.Title {
+			return a.Doc.Title < b.Doc.Title
+		}
+		return a.Doc.ID < b.Doc.ID
 	})
 	return hits
 }

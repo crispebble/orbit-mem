@@ -71,12 +71,14 @@ type Payload struct {
 	Body        string   `json:"body,omitempty"`        // edit: 새 본문(비우면 그대로)
 	Tags        []string `json:"tags,omitempty"`        // edit: 새 태그
 	Project     string   `json:"project,omitempty"`     // edit: 새 범위가 프로젝트면 그 이름
+	Topic       string   `json:"topic,omitempty"`       // edit: 새 주제(이전 계획, S4)
 	LedgerID    string   `json:"ledgerId,omitempty"`    // revert: 되돌릴 원장 줄
 	Note        string   `json:"note,omitempty"`        // link: 잇는 근거(연결에 남는다)
 	FromTags    []string `json:"fromTags,omitempty"`    // retag: 뺄 태그(표기 차이 무시)
 	ToTags      []string `json:"toTags,omitempty"`      // retag: 넣을 태그
 	Evidence    string   `json:"evidence,omitempty"`    // 자동 확정의 증거(seen_days·followed_verified·verified_fact)
 	Actor       string   `json:"actor,omitempty"`       // 자동 변경·되돌리기를 한 쪽(user·ai·automation)
+	Activity    string   `json:"activity,omitempty"`    // stale: 일지를 옮긴 활동 기록 줄(host\x00session, S4-8)
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -136,6 +138,9 @@ func fingerprint(in ProposalInput) string {
 		parts = append(parts, in.Payload.Kind)
 	case ProposalEdit:
 		parts = append(parts, in.Payload.Title, in.Payload.Body, strings.Join(in.Payload.Tags, ","), in.Payload.Scope)
+		if in.Payload.Topic != "" { // 주제를 준 고치기만 지문이 바뀐다: 옛 제안의 지문은 그대로다
+			parts = append(parts, "topic:"+in.Payload.Topic)
+		}
 	case ProposalRevert:
 		parts = append(parts, in.Payload.LedgerID)
 	case ProposalStale:
@@ -583,8 +588,24 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			return err
 		}
 		next := editedMemory(m, p.Payload, in.Title, in.Body)
-		if _, err := s.Update(UpdateInput{ID: m.ID, Title: &next.Title, Body: &next.Body, Tags: &next.Tags, Scope: &next.Scope, Project: &next.Project,
-			Reason: "제안 승인 " + p.ID, Action: "edit"}); err != nil {
+		// 고치는 것만 넘긴다: 자리·주제만 옮기는 고치기(이전 계획)는 제목 검사·태그 정리를 거치지 않는다(S4 검토 A7).
+		u := UpdateInput{ID: m.ID, Reason: "제안 승인 " + p.ID, Action: "edit"}
+		if p.Payload.Title != "" || given(in.Title) {
+			u.Title = &next.Title
+		}
+		if p.Payload.Body != "" || given(in.Body) {
+			u.Body = &next.Body
+		}
+		if p.Payload.Tags != nil {
+			u.Tags = &next.Tags
+		}
+		if p.Payload.Scope != "" {
+			u.Scope, u.Project = &next.Scope, &next.Project
+		}
+		if p.Payload.Topic != "" {
+			u.Topic = &next.Topic
+		}
+		if _, err := s.Update(u); err != nil {
 			return err
 		}
 		res.Changed = append(res.Changed, m.ID)
@@ -780,6 +801,9 @@ func editedMemory(m Memory, pl Payload, title, body *string) Memory {
 		if pl.Scope != ScopeGlobal {
 			m.Project = pl.Project
 		}
+	}
+	if pl.Topic != "" {
+		m.Topic = TopicKey(pl.Topic)
 	}
 	if given(title) {
 		m.Title = strings.TrimSpace(*title)
