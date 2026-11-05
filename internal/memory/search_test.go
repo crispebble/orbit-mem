@@ -1,6 +1,9 @@
 package memory
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // 옛 Knowledge(TS)의 점수 규칙을 그대로 옮겼는지 확인한다.
 func TestRelevance_한글_조사가_붙어도_앞부분_두글자로_반점을_준다(t *testing.T) {
@@ -76,5 +79,36 @@ func TestStrongMatch_최대_개수를_넘지_않는다(t *testing.T) {
 	}
 	if got := StrongMatches(docs, "launchd 회고 예약을 다시 설정", 3); len(got) != 3 {
 		t.Fatalf("got %d, want 3", len(got))
+	}
+}
+
+// 흔들리는 시험(r6_test.go:64)의 원인: 요청 「확정 규칙 7」의 「7」은 한 글자라 낱말에서 빠져서
+// 제목이 「확정 규칙 N」인 30개가 같은 점수가 되고, 순서가 무작위 id에 걸렸다. 요청에 제목이
+// 그대로 나오면(또는 요청 전체가 제목에 나오면) 그 기억이 앞이고, 같은 점수의 순서는 id와 무관하게 정해진다.
+func TestStrong_요청에_제목이_그대로_나오면_그_기억이_앞이다(t *testing.T) {
+	var docs []Doc
+	for i := 0; i < 30; i++ {
+		docs = append(docs, Doc{ID: fmt.Sprintf("m-%02d", 29-i), Title: fmt.Sprintf("확정 규칙 %d", i), Body: fmt.Sprintf("규칙 %d", i)})
+	}
+	for q, want := range map[string]string{"확정 규칙 7": "확정 규칙 7", "확정 규칙 7 다시 봐 줘": "확정 규칙 7", "확정 규칙 27": "확정 규칙 27"} {
+		hits := Strong(docs, q)
+		if len(hits) == 0 || hits[0].Doc.Title != want || hits[1].Score == hits[0].Score {
+			t.Fatalf("%q: first %v", q, hits)
+		}
+	}
+	// 같은 점수끼리는 제목 순(같으면 id 순)이다: 입력 순서를 뒤집어도 결과가 같다.
+	a := Strong(docs, "확정 규칙 고치기")
+	rev := append([]Doc(nil), docs...)
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	b := Strong(rev, "확정 규칙 고치기")
+	if len(a) != len(b) || len(a) == 0 {
+		t.Fatalf("len %d %d", len(a), len(b))
+	}
+	for i := range a {
+		if a[i].Doc.ID != b[i].Doc.ID {
+			t.Fatalf("order depends on input order at %d: %s vs %s", i, a[i].Doc.ID, b[i].Doc.ID)
+		}
 	}
 }
