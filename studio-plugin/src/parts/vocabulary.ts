@@ -1,4 +1,4 @@
-// OpenOrbit 기억·제안 어휘. Forma(forma-ai 0.9.x)의 management-model.ts에서 옮겨 왔다.
+// orbit-mem 기억·제안 어휘. Forma(forma-ai 0.9.x)의 management-model.ts에서 옮겨 왔다.
 // Forma 0.10.0에서 이 어휘가 빠지므로 플러그인이 갖는다.
 import {pick} from '../i18n/index.ts';
 import {memoryText} from '../i18n/messages/memory.ts';
@@ -28,12 +28,12 @@ export interface MemoryVersion {
   tone?: 'ok';
 }
 
-/** OpenOrbit 제안 종류. cleanup·harness는 0.8.0까지의 묶음 이름이며 그대로 받는다. */
+/** orbit-mem 제안 종류. cleanup·harness는 0.8.0까지의 묶음 이름이며 그대로 받는다. */
 export type ProposalKind = 'confirm' | 'stale' | 'merge' | 'reclassify' | 'apply_file' | 'direction' | 'link' | 'cleanup' | 'harness';
 
 /**
- * 부품이 그리는 기억 한 건. forma-ai의 MemoryRecord에서 OpenOrbit 칸을 그대로 가져온 플러그인 자기 형식이다.
- * kind·state 같은 OpenOrbit 칸은 모두 선택이며, 없으면 kind는 fact, state는 confirmed로 본다.
+ * 부품이 그리는 기억 한 건. forma-ai의 MemoryRecord에서 orbit-mem 칸을 그대로 가져온 플러그인 자기 형식이다.
+ * kind·state 같은 orbit-mem 칸은 모두 선택이며, 없으면 kind는 fact, state는 confirmed로 본다.
  */
 export interface OrbitMemory {
   id: string;

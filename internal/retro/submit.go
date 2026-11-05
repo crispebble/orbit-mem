@@ -521,7 +521,7 @@ func Submit(s *memory.Store, p config.Paths, id string, sub Submission) (string,
 		report = append(report, fmt.Sprintf("그중 사용자 말을 담은 기억이나 지침 파일에 닿아 적용하지 않은 것 %d건(일하는 중에 사용자에게 묻고 userQuote로 다시)", waiting))
 	}
 	if labbed > 0 {
-		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(openorbit 개발 도구 npm run lab -- candidates)", labbed))
+		report = append(report, fmt.Sprintf("그중 하네스 변경 실험실 대기 %d건(orbit-code 개발 도구 npm run lab -- candidates)", labbed))
 	}
 	if mat.Kind == KindLegacy {
 		report = append(report, fmt.Sprintf("판정 %d건", legacyJudgedN))

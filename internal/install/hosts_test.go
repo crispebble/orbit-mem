@@ -83,7 +83,7 @@ func TestRegisterClaude(t *testing.T) {
 	}
 }
 
-// 끝 기준: Codex 등록은 openorbit 하네스 registerPlugin과 같다: 로컬 폴더 마켓 add 뒤 plugin add(다시 해도 된다).
+// 끝 기준: Codex 등록은 orbit-code 하네스 registerPlugin과 같다: 로컬 폴더 마켓 add 뒤 plugin add(다시 해도 된다).
 func TestRegisterCodex(t *testing.T) {
 	f := &fakeHost{}
 	h := Hosts{Codex: "/bin/codex", Run: f.run}

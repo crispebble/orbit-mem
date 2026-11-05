@@ -12,18 +12,23 @@ export const READ_MAJOR = 1;
 /** 이 데이터만 멈추는 이유. 기억·제안은 영향 없다. */
 export type PauseKind = 'orb-newer' | 'orbit-older';
 
-export function pauseMessage(kind: PauseKind): string {
+/** 판이 맞지 않는 데이터를 주는 쪽: 작업·세션은 orbit-code(`orb work mcp`), 기억 그래프는 orbit-mem(`orbit-mem mcp --reader`) */
+export type PauseSource = 'orbit-code' | 'orbit-mem';
+
+export function pauseMessage(kind: PauseKind, source: PauseSource = 'orbit-code'): string {
   const e = pick(workText).error;
-  return kind === 'orb-newer' ? e.orbNewer : e.orbitOlder;
+  return kind === 'orb-newer' ? e.orbNewer(source) : e.orbitOlder(source);
 }
 
 /** 판 때문에 읽지 못함 */
 export class WorkPaused extends Error {
   kind: PauseKind;
-  constructor(kind: PauseKind) {
-    super(pauseMessage(kind));
+  source: PauseSource;
+  constructor(kind: PauseKind, source: PauseSource = 'orbit-code') {
+    super(pauseMessage(kind, source));
     this.name = 'WorkPaused';
     this.kind = kind;
+    this.source = source;
   }
 }
 

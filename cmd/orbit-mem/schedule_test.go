@@ -51,7 +51,7 @@ func fakeSchedule(t *testing.T) *[]string {
 }
 
 // K4: install은 아무것도 예약하지 않고, 이 orbit-mem(같은 ORBIT_HOME)이 예전에 남긴 회고 예약만 지운다.
-// OpenOrbit의 orb가 도는 예약과 다른 ORBIT_HOME의 예약은 그대로 둔다.
+// orbit-code의 orb가 도는 예약과 다른 ORBIT_HOME의 예약은 그대로 둔다.
 func TestInstall_옛_orbit_mem_회고_예약만_지운다(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("launchd 예약")
@@ -62,7 +62,7 @@ func TestInstall_옛_orbit_mem_회고_예약만_지운다(t *testing.T) {
 		removed              bool
 	}{
 		{name: "같은 홈의 orbit-mem", bin: "/Users/me/.local/bin/orbit-mem", sameHome: true, removed: true},
-		{name: "OpenOrbit의 orb", bin: "/Users/me/.local/bin/orb", sameHome: true},
+		{name: "orbit-code의 orb", bin: "/Users/me/.local/bin/orb", sameHome: true},
 		{name: "다른 ORBIT_HOME", bin: "/Users/me/.local/bin/orbit-mem", plistHome: "/Users/me/other-orbit"},
 		{name: "ORBIT_HOME 없음(기본 홈)", bin: "/Users/me/.local/bin/orbit-mem"},
 		{name: "--no-schedule", bin: "/Users/me/.local/bin/orbit-mem", sameHome: true, noSchedule: true},

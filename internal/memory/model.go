@@ -33,7 +33,7 @@ const (
 	// SourceVerification is a fact the work's own verification checked (a test
 	// or build run): a project fact with it is confirmed at once (A2 증거 ③).
 	SourceVerification = "verification"
-	// SourceWork is a finished OpenOrbit work the work retrospective read (ref
+	// SourceWork is a finished orbit-code work the work retrospective read (ref
 	// is the work id): what came out of which works.
 	SourceWork = "work"
 )

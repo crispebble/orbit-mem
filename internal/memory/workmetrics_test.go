@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// AU-7(ONID-132) 능숙해짐 지표: OpenOrbit이 넣은 작업 지표(work.metrics)와 작업별 교정 수,
+// AU-7(ONID-132) 능숙해짐 지표: orbit-code가 넣은 작업 지표(work.metrics)와 작업별 교정 수,
 // 그리고 변경 효과 원장 판정에 작업 지표가 근거로 들어가는 것.
 
 func workRec(id string, ended time.Time, m WorkMetrics, sessions ...WorkSession) WorkRecord {
@@ -54,12 +54,12 @@ func TestWorkCorrections_작업_세션_창_안의_교정만_센다(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	corr("openorbit", "w-1", t0.Add(3*time.Hour))   // 작업 회고가 남긴 교정
-	corr("claude", "S", t0.Add(30*time.Minute))     // 창 안
-	corr("claude", "S", t0.Add(-time.Minute))       // 작업 열리기 전
-	corr("claude", "S", t0.Add(2*time.Hour))        // 다음 작업이 열린 뒤
-	corr("codex", "S", t0.Add(30*time.Minute))      // 다른 호스트의 같은 세션 id
-	corr("claude", "other", t0.Add(30*time.Minute)) // 다른 세션
+	corr(WorkMetricsHost, "w-1", t0.Add(3*time.Hour)) // 작업 회고가 남긴 교정
+	corr("claude", "S", t0.Add(30*time.Minute))       // 창 안
+	corr("claude", "S", t0.Add(-time.Minute))         // 작업 열리기 전
+	corr("claude", "S", t0.Add(2*time.Hour))          // 다음 작업이 열린 뒤
+	corr("codex", "S", t0.Add(30*time.Minute))        // 다른 호스트의 같은 세션 id
+	corr("claude", "other", t0.Add(30*time.Minute))   // 다른 세션
 	refs := []WorkRef{
 		{WorkID: "w-1", Sessions: []WorkSession{{Host: "claude", Session: "S", From: t0.UnixMilli(), To: t0.Add(time.Hour).UnixMilli()}}},
 		{WorkID: "w-2", Sessions: []WorkSession{{Host: "claude", Session: "S", From: t0.Add(time.Hour).UnixMilli()}}}, // 끝 없음
@@ -74,7 +74,7 @@ func TestWorkCorrections_작업_세션_창_안의_교정만_센다(t *testing.T)
 	}
 }
 
-// injectWork puts a memory into a work's step recall (host openorbit, session = work id).
+// injectWork puts a memory into a work's step recall (host orbit-code, session = work id).
 func injectWork(t *testing.T, s *Store, workID string, at time.Time, ids ...string) {
 	t.Helper()
 	if err := s.RecordEvent(Event{Kind: EventInjectPrompt, Host: WorkMetricsHost, At: at.UnixMilli(), Day: Day(at), Session: workID}, map[string]any{"memoryIds": ids}); err != nil {

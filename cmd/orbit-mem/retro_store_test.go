@@ -293,7 +293,7 @@ func TestRetroStore_작업_회고_준비(t *testing.T) {
 		return string(b)
 	}
 	p := storeJSON(t, rec("w-1", ended.UnixMilli(), "로그인을 고쳤다"), "prepare", "--kind", "work", "--host", "codex")
-	if keys(p) != "id,kind,period,session,sourceChecks,status" || p["status"] != "running" || p["kind"] != "work" || p["period"] != day || p["session"] != "openorbit:w-1" {
+	if keys(p) != "id,kind,period,session,sourceChecks,status" || p["status"] != "running" || p["kind"] != "work" || p["period"] != day || p["session"] != "orbit-code:w-1" {
 		t.Fatalf("prepare = %v", p)
 	}
 	s := seed(t)
@@ -336,7 +336,7 @@ func TestRetroStore_작업_회고_준비(t *testing.T) {
 	}
 }
 
-// AU-7 L2·L6: OpenOrbit이 작업 지표를 넣고(work-metrics), 작업별 교정 수를 읽는다(work-signals).
+// AU-7 L2·L6: orbit-code가 작업 지표를 넣고(work-metrics), 작업별 교정 수를 읽는다(work-signals).
 // 같은 내용은 다시 쌓지 않는다. 모델을 부르지 않는 저장 API다.
 func TestRetroStore_작업_지표_넣기와_교정_수(t *testing.T) {
 	storeHome(t)
@@ -356,7 +356,7 @@ func TestRetroStore_작업_지표_넣기와_교정_수(t *testing.T) {
 	if err := s.RecordCorrection(memory.CorrectionInput{Quote: "그거 아니야", Host: "claude", Session: "S", OccurredAt: now - 60000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordCorrection(memory.CorrectionInput{Quote: "아니", Host: "openorbit", Session: "w-1"}); err != nil {
+	if err := s.RecordCorrection(memory.CorrectionInput{Quote: "아니", Host: memory.WorkMetricsHost, Session: "w-1"}); err != nil {
 		t.Fatal(err)
 	}
 	recs, _ := s.WorkRecords(0, now+1)

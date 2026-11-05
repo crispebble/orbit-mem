@@ -165,7 +165,7 @@ export function GraphBody({ctx, store, state, request, onRequestDone}: GraphBody
   if (state.status === 'paused' && state.pause) {
     return (
       <div className="orbit-pane">
-        <StateView title={g.tab.pausedTitle} description={pauseMessage(state.pause.kind)}
+        <StateView title={g.tab.pausedTitle} description={pauseMessage(state.pause.kind, 'orbit-mem')}
           action={<Button variant="secondary" size="sm" onClick={() => void store.load()}>{g.tab.recheck}</Button>} />
       </div>
     );

@@ -35,7 +35,7 @@ describe('memory_graph 응답 읽기', () => {
     }
   });
 
-  it('OpenOrbit이 2판만 읽으면 멈춤(OpenOrbit 앱을 올려 주세요), 0판이면 OpenOrbit을 올려 주세요', () => {
+  it('orbit-mem이 2판만 읽으면 멈춤(orbit-mem 앱을 올려 주세요), 0판이면 orbit-mem을 올려 주세요', () => {
     const newer = {contract: {...contract, major: 2, supportedMajors: [2]}, error: {code: 'UNSUPPORTED_MAJOR', message: 'x', supportedMajors: [2]}};
     assert.throws(() => parseMemoryGraph(newer), (e: unknown) => e instanceof WorkPaused && e.kind === 'orb-newer');
     assert.throws(() => parseMemoryGraph({...(example('memory_graph.all') as object), contract: {...contract, major: 0}}), (e: unknown) => e instanceof WorkPaused && e.kind === 'orbit-older');

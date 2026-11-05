@@ -16,7 +16,7 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
-// cmdRetroStore is the retrospectives' storage API for OpenOrbit's orb retro, which runs
+// cmdRetroStore is the retrospectives' storage API for orbit-code's orb retro, which runs
 // the retrospectives (orbit-mem never calls a model). Every op prints one JSON object on
 // stdout; a failure exits 1 with one line on stderr. A failed retrospective is a result
 // (finish prints it), not a failure of the command. No op creates the memory DB.
@@ -78,10 +78,10 @@ var storeOps = map[string]storeOp{
 	"backup":     storeBackup,
 	"judge":      storeJudge,
 	"settle":     storeSettle,
-	// AU-7: OpenOrbit이 작업 지표를 넣고, 작업별 교정 수를 읽는다(모델을 부르지 않는다).
+	// AU-7: orbit-code가 작업 지표를 넣고, 작업별 교정 수를 읽는다(모델을 부르지 않는다).
 	"work-metrics": storeWorkMetrics,
 	"work-signals": storeWorkSignals,
-	// ONID-124: 하네스 실험실(OpenOrbit 개발 도구)이 교정·대기 제안을 읽고 실험 기록을 넣는다.
+	// ONID-124: 하네스 실험실(orbit-code 개발 도구)이 교정·대기 제안을 읽고 실험 기록을 넣는다.
 	"experiment corrections": storeExperimentCorrections,
 	"experiment candidates":  storeExperimentCandidates,
 	"experiment drop":        storeExperimentDrop,
@@ -283,7 +283,7 @@ func readWorks[T any](r io.Reader) ([]T, error) {
 	return in.Works, nil
 }
 
-// storeWorkMetrics keeps the works' metrics OpenOrbit computed (사건 work.metrics).
+// storeWorkMetrics keeps the works' metrics orbit-code computed (사건 work.metrics).
 func storeWorkMetrics(*flag.FlagSet) func(*app, *retro.Keeper, config.Config) (any, error) {
 	return func(a *app, k *retro.Keeper, _ config.Config) (any, error) {
 		works, err := readWorks[memory.WorkRecord](a.stdin)

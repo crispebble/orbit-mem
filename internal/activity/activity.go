@@ -1,6 +1,6 @@
 // Package activity finds what sessions did on this PC: the activity log the memory hooks
 // keep in memory.db, and the sessions of the old work record (work.db), read only. The work
-// record itself (steps, states, decision cards) moved to OpenOrbit; work.db is kept as is
+// record itself (steps, states, decision cards) moved to orbit-code; work.db is kept as is
 // and never written here.
 package activity
 

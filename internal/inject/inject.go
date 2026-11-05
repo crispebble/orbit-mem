@@ -43,6 +43,9 @@ const (
 	moreLineRunes = 60
 )
 
+// Label is the name every memory context heading carries: the memory system's own name.
+const Label = "orbit-mem"
+
 // at is the place of a session working in scope, by the product map of cfg (S3 명세 2.2·2.3).
 func at(cfg config.Config, scope string) place.Place { return place.Resolve(scope, cfg.Products) }
 
@@ -202,9 +205,9 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 			core.WriteString(body.String())
 		}
 	}
-	layer(memory.ScopeGlobal, "[OpenOrbit 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다.\n")
+	layer(memory.ScopeGlobal, "["+Label+" 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다.\n")
 	if p := pl.Product(); p != "" {
-		layer("product:"+p, fmt.Sprintf("[OpenOrbit 기억 · %s 핵심] 이 제품에서 늘 지키는 결정이다.\n", p))
+		layer("product:"+p, fmt.Sprintf("["+Label+" 기억 · %s 핵심] 이 제품에서 늘 지키는 결정이다.\n", p))
 	}
 	b.WriteString(core.String())
 	inCore := map[string]bool{}
@@ -233,11 +236,11 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 			decisions = append(decisions, m)
 		}
 	}
-	footer := "기억은 OpenOrbit MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
-	head := "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
+	footer := "기억은 " + Label + " MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
+	head := "[" + Label + " 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
 	if opts.Brief {
 		footer = "기억은 memory_find·memory_get·memory_save로 찾고 남긴다."
-		head = "[OpenOrbit 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n"
+		head = "[" + Label + " 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n"
 	}
 	omittedLine := func(n int) string {
 		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
@@ -275,16 +278,16 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	// 요청 회상·도구 직전·memory_find로 들어온다(S3-R7).
 	find := ""
 	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; nr+nd > 0 {
-		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개의 본문은 여기 없다(최근 결정 몇 개는 아래에 제목으로 있다). 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
+		find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개의 본문은 여기 없다(최근 결정 몇 개는 아래에 제목으로 있다). 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
 			nr, nd)
 		if opts.Brief {
-			find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
+			find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
 		}
 	}
 	// 핵심이 한도까지 차면 찾는 곳 줄은 짧은 꼴로 줄인다(합계 한도).
 	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; find != "" && !opts.Brief &&
 		runes(core.String())+runes(find)+runes(footer) > MaxSessionStartRunes-sessionNoteRunes {
-		find = fmt.Sprintf("[OpenOrbit 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
+		find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
 	}
 	// 꼬리(결정 제목·회고 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
 	var tail strings.Builder
@@ -539,7 +542,7 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 	if used == 0 {
 		return ""
 	}
-	return "[OpenOrbit 기억 · 이 세션 중 바뀐 것] 세션 시작 뒤 대체되거나 다른 세션에서 확정된 기억이다.\n" + lines.String()
+	return "[" + Label + " 기억 · 이 세션 중 바뀐 것] 세션 시작 뒤 대체되거나 다른 세션에서 확정된 기억이다.\n" + lines.String()
 }
 
 // liveSuccessor follows superseded_by from old to the live (candidate or confirmed)
@@ -612,7 +615,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		budget = config.Default().RecallChars
 	}
 	budget = min(budget, limit-moreLineRunes) // 분야 신호의 「N개 중 M개만 보임」 줄 몫
-	head := "[OpenOrbit 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
+	head := "[" + Label + " 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
 	used := utf8.RuneCountInString(head)
 	var entries strings.Builder
 	shown := 0
@@ -748,7 +751,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		}
 		return a.m.UpdatedAt > c.m.UpdatedAt
 	})
-	head := fmt.Sprintf("[OpenOrbit 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다.\n", tool)
+	head := fmt.Sprintf("["+Label+" 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다.\n", tool)
 	used := runes(head)
 	var entries strings.Builder
 	for _, h := range hits {
@@ -833,7 +836,7 @@ func SubagentStart(s *memory.Store, cfg config.Config) Injection {
 	if used == 0 {
 		return inj.done(&b)
 	}
-	b.WriteString("[OpenOrbit 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다. 다른 기억은 memory_find로 찾는다.\n")
+	b.WriteString("[" + Label + " 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다. 다른 기억은 memory_find로 찾는다.\n")
 	b.WriteString(body.String())
 	return inj.done(&b)
 }

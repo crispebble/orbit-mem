@@ -15,13 +15,17 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/transcript"
 )
 
-// KindWork is the retrospective of one finished OpenOrbit work (AU-5): it
+// KindWork is the retrospective of one finished orbit-code work (AU-5): it
 // reads the work's record (what was done, the verification evidence, the
 // user's words) instead of a transcript.
 const KindWork = "work"
 
 // WorkHost is the host of a work record's pseudo-session in the material.
-const WorkHost = "openorbit"
+const WorkHost = memory.WorkMetricsHost
+
+// LegacyWorkHost is the host older retrospective rows of a work carry in their key
+// (before orbit-code dropped its old name). A work end done under it is still done.
+const LegacyWorkHost = memory.LegacyWorkMetricsHost
 
 // WorkStatuses are the ends a work can have.
 var WorkStatuses = []string{"completed", "failed", "stopped", "cancelled"}
@@ -29,7 +33,7 @@ var WorkStatuses = []string{"completed", "failed", "stopped", "cancelled"}
 // ErrWorkInput means the work record handed to prepare is not usable.
 var ErrWorkInput = i18n.Err("retro.err.work_input")
 
-// WorkIn is the record of a finished work OpenOrbit hands to prepare.
+// WorkIn is the record of a finished work orbit-code hands to prepare.
 type WorkIn struct {
 	Ref       string           `json:"ref"`
 	Cwd       string           `json:"cwd"`
@@ -107,32 +111,46 @@ const (
 )
 
 // workStaleAfter is how long a work retrospective may stay running or
-// submitting before a new prepare of the same work end takes over: OpenOrbit's
+// submitting before a new prepare of the same work end takes over: orbit-code's
 // run timeout is 30 minutes, so a row older than this lost its runner.
 const workStaleAfter = 45 * time.Minute
 
-// workKey is what the retros row keeps to run a work's end once: the same work
-// ending at the same time is the same retrospective.
-func workKey(ref string, endedAt int64) string {
-	return WorkHost + ":" + ref + "#" + strconv.FormatInt(endedAt, 10)
+// workKeys are what the retros row keeps to run a work's end once: the same work
+// ending at the same time is the same retrospective. The first is the key a new
+// row gets; the second is the key older rows got under LegacyWorkHost, which
+// still holds the work's end.
+func workKeys(ref string, endedAt int64) []string {
+	end := ref + "#" + strconv.FormatInt(endedAt, 10)
+	return []string{WorkHost + ":" + end, LegacyWorkHost + ":" + end}
+}
+
+// inKeys is the "session IN (?,…)" condition and its arguments for keys.
+func inKeys(keys []string) (string, []any) {
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		args[i] = k
+	}
+	return `session IN (?` + strings.Repeat(",?", len(keys)-1) + `)`, args
 }
 
 // activeWork says whether a retrospective of this work's end is running or done.
-func (r *Keeper) activeWork(key string) bool {
+func (r *Keeper) activeWork(keys []string) bool {
+	cond, args := inKeys(keys)
 	var n int
-	_ = r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND session=? AND status IN (?,?,?)`,
-		KindWork, key, StatusRunning, "submitting", StatusDone).Scan(&n)
+	_ = r.Store.DB().QueryRow(`SELECT COUNT(*) FROM retros WHERE kind=? AND `+cond+` AND status IN (?,?,?)`,
+		append(append([]any{KindWork}, args...), StatusRunning, "submitting", StatusDone)...).Scan(&n)
 	return n > 0
 }
 
-// closeStaleWork fails the runs of key still running or submitting after
+// closeStaleWork fails the runs of keys still running or submitting after
 // workStaleAfter: their runner died (reboot, kill, finish that never came), so
 // they no longer hold the work's end. Their material goes as finish would do.
-func (r *Keeper) closeStaleWork(key string) error {
+func (r *Keeper) closeStaleWork(keys []string) error {
 	now := r.now()
 	cutoff := now.Add(-workStaleAfter).UnixMilli()
-	rows, err := r.Store.DB().Query(`SELECT id FROM retros WHERE kind=? AND session=? AND status IN (?,?) AND started_at<?`,
-		KindWork, key, StatusRunning, "submitting", cutoff)
+	cond, args := inKeys(keys)
+	rows, err := r.Store.DB().Query(`SELECT id FROM retros WHERE kind=? AND `+cond+` AND status IN (?,?) AND started_at<?`,
+		append(append([]any{KindWork}, args...), StatusRunning, "submitting", cutoff)...)
 	if err != nil {
 		return err
 	}
@@ -165,18 +183,18 @@ func (r *Keeper) PrepareWork(host string, in WorkIn) (Prepared, error) {
 	}
 	in.Ref = strings.TrimSpace(in.Ref)
 	period := dayOf(time.UnixMilli(in.EndedAt).In(r.loc()))
-	key := workKey(in.Ref, in.EndedAt)
-	if err := r.closeStaleWork(key); err != nil {
+	keys := workKeys(in.Ref, in.EndedAt)
+	if err := r.closeStaleWork(keys); err != nil {
 		return Prepared{Kind: KindWork, Period: period}, err
 	}
-	if r.activeWork(key) {
+	if r.activeWork(keys) {
 		return Prepared{Status: StatusSkipped, Kind: KindWork, Period: period}, nil
 	}
 	mat, err := r.workMaterial(in, period)
 	if err != nil {
 		return Prepared{Kind: KindWork, Period: period}, err
 	}
-	return r.beginOnce(mat, host, key)
+	return r.beginOnce(mat, host, keys)
 }
 
 func (r *Keeper) workMaterial(in WorkIn, period string) (Material, error) {
@@ -247,16 +265,18 @@ func (r *Keeper) workMaterial(in WorkIn, period string) (Material, error) {
 // beginOnce begins mat like begin, keyed so that only one retrospective of the
 // key runs or is done: of several prepares racing, one runs and the others are
 // skipped (the row is written in one statement).
-func (r *Keeper) beginOnce(mat Material, host, key string) (Prepared, error) {
+func (r *Keeper) beginOnce(mat Material, host string, keys []string) (Prepared, error) {
 	res := Prepared{Kind: mat.Kind, Period: mat.Period, Session: mat.Session}
 	nowMs := r.now().UnixMilli()
 	res.ID = memory.NewID("r-")
 	mat.ID = res.ID
-	const guard = ` WHERE NOT EXISTS (SELECT 1 FROM retros WHERE kind=? AND session=? AND status IN ('running','submitting','done'))`
+	key := keys[0]
+	cond, keyArgs := inKeys(keys)
+	guard := ` WHERE NOT EXISTS (SELECT 1 FROM retros WHERE kind=? AND ` + cond + ` AND status IN ('running','submitting','done'))`
 	skipped := Prepared{Status: StatusSkipped, Kind: mat.Kind, Period: mat.Period}
 	if mat.empty() {
 		out, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,finished_at,summary,session) SELECT ?,?,?,?,?,?,?,?,?`+guard,
-			res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, emptySummary(), key, mat.Kind, key)
+			append([]any{res.ID, mat.Kind, mat.Period, StatusEmpty, "", nowMs, nowMs, emptySummary(), key, mat.Kind}, keyArgs...)...)
 		if err != nil {
 			return res, err
 		}
@@ -271,7 +291,7 @@ func (r *Keeper) beginOnce(mat Material, host, key string) (Prepared, error) {
 		return res, err
 	}
 	out, err := r.Store.DB().Exec(`INSERT INTO retros(id,kind,period,status,host,started_at,session) SELECT ?,?,?,?,?,?,?`+guard,
-		res.ID, mat.Kind, mat.Period, StatusRunning, host, nowMs, key, mat.Kind, key)
+		append([]any{res.ID, mat.Kind, mat.Period, StatusRunning, host, nowMs, key, mat.Kind}, keyArgs...)...)
 	if err != nil {
 		os.RemoveAll(dir) // 줄 없이 재료만 남기지 않는다
 		return res, err

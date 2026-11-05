@@ -8,15 +8,27 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 )
 
-// AU-7(설계 「능숙해짐 측정」): OpenOrbit이 작업 기록(work.db)에서 계산한 작업별 지표를
-// 사건 work.metrics로 넣는다. orbit-mem은 work.db를 읽지 않고 OpenOrbit을 부르지 않는다.
+// AU-7(설계 「능숙해짐 측정」): orbit-code가 작업 기록(work.db)에서 계산한 작업별 지표를
+// 사건 work.metrics로 넣는다. orbit-mem은 work.db를 읽지 않고 orbit-code를 부르지 않는다.
 // 변경 효과 원장은 관찰할 기억이 붙은 작업의 지표를 변경 전·후로 견준다.
 
-// EventWorkMetrics is one work's metrics as OpenOrbit computed them; the newest per work wins.
+// EventWorkMetrics is one work's metrics as orbit-code computed them; the newest per work wins.
 const EventWorkMetrics = "work.metrics"
 
-// WorkMetricsHost is the host of work events: OpenOrbit's step recall and work retrospective use it too.
-const WorkMetricsHost = "openorbit"
+// WorkMetricsHost is the host of work events: orbit-code's step recall and work retrospective use it too.
+const WorkMetricsHost = "orbit-code"
+
+// LegacyWorkMetricsHost is the host the work events had before orbit-code dropped its old name
+// (2026-11-05). Events and retrospective rows already stored keep it; reading treats it as WorkMetricsHost.
+const LegacyWorkMetricsHost = "openorbit"
+
+// WorkHostKey is host with the legacy work host read as WorkMetricsHost, for comparing hosts.
+func WorkHostKey(host string) string {
+	if host == LegacyWorkMetricsHost {
+		return WorkMetricsHost
+	}
+	return host
+}
 
 // WorkMetrics are the numbers of one work (계획 · AU-7 「지표 정의」).
 type WorkMetrics struct {
@@ -41,7 +53,7 @@ type WorkSession struct {
 	To      int64  `json:"to,omitempty"`
 }
 
-// WorkRecord is what OpenOrbit hands in for one work.
+// WorkRecord is what orbit-code hands in for one work.
 type WorkRecord struct {
 	WorkID   string        `json:"workId"`
 	EndedAt  int64         `json:"endedAt"`
@@ -151,7 +163,7 @@ func (s *Store) WorkRecords(fromMs, toMs int64) ([]WorkRecord, error) {
 }
 
 // inWindow says whether an event of host and session at time at falls in one of the work's windows,
-// or belongs to the work's own session (host openorbit, session = work id).
+// or belongs to the work's own session (host WorkMetricsHost, session = work id).
 func (r WorkRef) inWindow(host, session string, at int64) bool {
 	if session == "" {
 		return false
@@ -160,7 +172,7 @@ func (r WorkRef) inWindow(host, session string, at int64) bool {
 		return true
 	}
 	for _, w := range r.Sessions {
-		if w.Session != session || (w.Host != "" && host != "" && w.Host != host) {
+		if w.Session != session || (w.Host != "" && host != "" && WorkHostKey(w.Host) != WorkHostKey(host)) {
 			continue
 		}
 		if at >= w.From && (w.To == 0 || at < w.To) {

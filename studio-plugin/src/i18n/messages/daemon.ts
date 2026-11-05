@@ -13,7 +13,7 @@ export const daemonText = defineMessages({
       starting_: 'Starting…',
     },
     errors: {
-      ORB_MISSING: 'The orb command was not found. Install OpenOrbit and try again.',
+      ORB_MISSING: 'The orb command was not found. Install orbit-code and try again.',
       DAEMON_DOWN: 'The daemon is not running. Start it first.',
       DAEMON_START_FAILED: 'The daemon could not start.',
       PAIR_FAILED: 'Pairing with the daemon failed.',
@@ -35,7 +35,7 @@ export const daemonText = defineMessages({
       starting_: '시작 중…',
     },
     errors: {
-      ORB_MISSING: 'orb 명령을 찾지 못했습니다. OpenOrbit을 설치한 뒤 다시 시도하세요.',
+      ORB_MISSING: 'orb 명령을 찾지 못했습니다. orbit-code를 설치한 뒤 다시 시도하세요.',
       DAEMON_DOWN: '데몬이 실행 중이 아닙니다. 먼저 시작하세요.',
       DAEMON_START_FAILED: '데몬을 시작하지 못했습니다.',
       PAIR_FAILED: '데몬과 페어링하지 못했습니다.',

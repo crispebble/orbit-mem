@@ -1,17 +1,17 @@
 {
   "id": "orbit",
-  "name": "OpenOrbit",
+  "name": "orbit-mem",
   "version": "0.5.1",
   "studioApi": "^0.1.20",
   "main": "dist/index.js",
   "styles": [
     "dist/index.css"
   ],
-  "description": "View OpenOrbit memories, the memory graph and proposals in Orbit Studio, put AI work on the Orbit Studio home map, and answer agents' decision cards in Needs you.",
+  "description": "View orbit-mem memories, the memory graph and proposals in Orbit Studio, put AI work on the Orbit Studio home map, and answer agents' decision cards in Needs you.",
   "apps": [
     {
       "id": "orbit",
-      "title": "OpenOrbit",
+      "title": "orbit-mem",
       "icon": "icon.svg",
       "tabs": true,
       "split": true,
@@ -102,7 +102,7 @@
   },
   "locales": {
     "ko": {
-      "description": "OpenOrbit 기억·기억 그래프·제안을 Orbit Studio에서 보고, AI 작업을 홈 작업 지도에 올리며, 에이전트의 결정 카드에 확인할 일에서 답합니다.",
+      "description": "orbit-mem 기억·기억 그래프·제안을 Orbit Studio에서 보고, AI 작업을 홈 작업 지도에 올리며, 에이전트의 결정 카드에 확인할 일에서 답합니다.",
       "apps": {
         "orbit": {
           "views": {

@@ -1,4 +1,4 @@
-// OpenOrbit 앱의 공유 상태: 제안 목록, 배지 동기화, 결정·기억 호출.
+// orbit-mem 앱의 공유 상태: 제안 목록, 배지 동기화, 결정·기억 호출.
 // 회고 제안은 Orbit Studio Needs you(받은 일)에 내지 않는다(Studio 4차 S4-3: 기억 후보 정리는 에이전트의 질문과 별개다).
 // React에 기대지 않는다(화면은 subscribe/getState로 읽는다). ctx만 있으면 시험할 수 있다.
 import type {PluginContext} from '@onidot-labs/orbit-studio-plugin';
@@ -65,7 +65,7 @@ export function createStore(ctx: PluginContext, timers: Timers = browserTimers) 
     listeners.forEach(l => l());
   };
 
-  /** OpenOrbit 앱 배지: 사람이 볼 것(대기 제안 + 어긋남 + 확인 전 반복 교정) */
+  /** orbit-mem 앱 배지: 사람이 볼 것(대기 제안 + 어긋남 + 확인 전 반복 교정) */
   function publishBadge(): void {
     const pending = state.proposals.filter(p => p.status === 'pending').length;
     const n = auditAttention(pending, state.audit);

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// The activity log (설계 · OpenOrbit 4차 M5): one row per host session, kept by the
+// The activity log (설계 · orbit-code 4차 M5): one row per host session, kept by the
 // session-start, prompt and session-end hooks. It says when, on which host, in which
 // project and on what a session worked; it is not a work record (no steps or states).
 const activitySchema = `

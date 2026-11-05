@@ -148,7 +148,7 @@ func (in hookInput) sessionKey() string {
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
 // session-start, prompt and pre-tool give the memory context; session-start, prompt
 // and session-end keep the activity log. session-end only ends the activity row: the
-// retrospectives (and their session-end queue) are OpenOrbit's.
+// retrospectives (and their session-end queue) are orbit-code's.
 func cmdHook(a *app, args []string) error {
 	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
 	fs := a.flags("hook")
@@ -163,7 +163,7 @@ func cmdHook(a *app, args []string) error {
 	recordOnly := fs.Bool("record-only", false, i18n.T("flag.hook.record_only"))
 	pos, err := parse(fs, args)
 	if err == nil && len(pos) == 1 && pos[0] == "work" {
-		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 OpenOrbit으로 옮겼다: 입력을 버리고 끝낸다.
+		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 orbit-code로 옮겼다: 입력을 버리고 끝낸다.
 		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
 		return nil
 	}
@@ -286,7 +286,7 @@ func launcherOf(runtime, launcher string) hookCaller {
 	return hookCaller{launcher: launcher, runtime: true}
 }
 
-// recordActivity keeps the session in the activity log (설계 · OpenOrbit 4차 M5). Sessions
+// recordActivity keeps the session in the activity log (설계 · orbit-code 4차 M5). Sessions
 // inside a retrospective run are not activity.
 func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, who hookCaller, at int64) {
 	if os.Getenv("ORBIT_RETRO_ID") != "" || in.SessionID == "" {

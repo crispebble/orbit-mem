@@ -265,7 +265,7 @@ func TestDoctor_JSON(t *testing.T) {
 		}
 	}
 	if _, ok := raw["schedule"]; ok {
-		t.Error("schedule 키는 뺐습니다(회고 예약은 OpenOrbit)")
+		t.Error("schedule 키는 뺐습니다(회고 예약은 orbit-code)")
 	}
 	for _, id := range []string{"claude-plugin-version", "codex-hooks-untrusted"} {
 		if _, ok := ids[id]; !ok {
@@ -358,7 +358,7 @@ func TestPluginBuild(t *testing.T) {
 	}
 }
 
-// OpenOrbit이 같은 config.json에서 읽는 작업 설정(work·workStaleAfter·workTestCommands)은
+// orbit-code가 같은 config.json에서 읽는 작업 설정(work·workStaleAfter·workTestCommands)은
 // config set과 install이 다시 저장해도 남는다.
 func TestConfig_set과_install은_모르는_키를_지우지_않는다(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")

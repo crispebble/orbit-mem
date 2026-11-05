@@ -1,7 +1,7 @@
 // Package retro keeps the retrospectives' storage: it builds the material a
 // retrospective reads, takes its single submission (journal, candidate memories,
 // flags and proposals) and keeps the records and the session-end queue. It never
-// runs a model or a headless host: OpenOrbit runs the retrospectives (orb retro)
+// runs a model or a headless host: orbit-code runs the retrospectives (orb retro)
 // and calls this storage through orbit-mem retro-store and the retro MCP tools
 // (orbit-mem mcp --retro).
 package retro

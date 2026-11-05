@@ -27,10 +27,10 @@ var hostArgs = []string{"-p", "--print", "--output-format", "--ephemeral", "--st
 	"--no-session-persistence", "--skip-git-repo-check", "--dangerously-skip-permissions"}
 
 // K2: orbit-mem keeps the memory and never runs a model or a headless host; the
-// retrospectives run in OpenOrbit. No file imports os/exec unless the allow-list says why,
+// retrospectives run in orbit-code. No file imports os/exec unless the allow-list says why,
 // and no file carries the argument literals of a headless host run. ONID-124: the harness
-// lab went to OpenOrbit's dev tools, so orbit-mem calls no orb either (no "orb" literal):
-// OpenOrbit calls orbit-mem, never the other way.
+// lab went to orbit-code's dev tools, so orbit-mem calls no orb either (no "orb" literal):
+// orbit-code calls orbit-mem, never the other way.
 func TestNoHostCalls(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -79,7 +79,7 @@ func TestNoHostCalls(t *testing.T) {
 			}
 			codexExec = codexExec || s == "exec"
 			if s == "orb" || s == "orb.exe" || strings.Contains(s, "ORBIT_ORB") {
-				t.Errorf("%s:%d has the literal %q: orbit-mem does not call OpenOrbit's orb", rel, fset.Position(lit.Pos()).Line, s)
+				t.Errorf("%s:%d has the literal %q: orbit-mem does not call orbit-code's orb", rel, fset.Position(lit.Pos()).Line, s)
 			}
 			return true
 		})

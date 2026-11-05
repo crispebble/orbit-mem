@@ -11,7 +11,7 @@ import (
 )
 
 // Until 0.6.0 orbit-mem install registered the retrospective schedule itself; the
-// retrospectives now run in OpenOrbit, whose orb install registers its own schedule,
+// retrospectives now run in orbit-code, whose orb install registers its own schedule,
 // possibly under the same names. These find and remove only the schedule this orbit-mem
 // left: one that runs an orbit-mem binary for the same ORBIT_HOME.
 
@@ -29,7 +29,7 @@ func LaunchAgentPath() string {
 
 // RemoveLegacySchedule removes the retrospective schedule an earlier orbit-mem install
 // registered for home (this orbit-mem's ORBIT_HOME; defaultHome is the home without
-// ORBIT_HOME). A schedule that runs another program (OpenOrbit's orb) or belongs to
+// ORBIT_HOME). A schedule that runs another program (orbit-code's orb) or belongs to
 // another home is left alone. It says whether it removed one.
 func RemoveLegacySchedule(goos, home, defaultHome string, run func(string, ...string) (string, error)) (bool, error) {
 	switch goos {

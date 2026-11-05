@@ -1,4 +1,4 @@
-// 제안 묶어 보기와 묶음 결정(설계 · Orbit 3차 O3-1 「묶어 보기와 일괄 결정」 Orbit Studio의 OpenOrbit 앱).
+// 제안 묶어 보기와 묶음 결정(설계 · Orbit 3차 O3-1 「묶어 보기와 일괄 결정」 Orbit Studio의 orbit-mem 앱).
 import assert from 'node:assert/strict';
 import {mkdirSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
