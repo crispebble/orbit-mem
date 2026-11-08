@@ -838,17 +838,202 @@ func TestDecode_계약과_사용법(t *testing.T) {
 	}
 }
 
-// 설정을 읽지 못하면 internal 오류이고 DB를 열지 않는다. version은 설정 없이도 답한다.
-func TestConfig_설정을_읽지_못하면_internal(t *testing.T) {
+// 설정을 읽지 못하면(검토 M1) call은 기본 설정으로 진행한다(옛 tool과 같다: 깨진 설정이 기억 도구를 막지 않는다).
+// 회상 op(context·recall·tool-context)는 internal 오류이고 DB를 열지 않는다: 사용자가 끈 회상을 기본값으로 켜지 않는다.
+// version은 설정 없이도 답한다. 읽다 만 설정(여기서는 call 한도 1ns)은 쓰지 않는다.
+func TestConfig_설정을_읽지_못하면_call은_기본_설정이고_회상_op는_internal(t *testing.T) {
 	e := newEnv(t)
-	e.svc = host.New(host.Setup{DB: e.db, LoadConfig: func() (config.Config, error) { return config.Default(), os.ErrPermission }})
-	if _, err := e.adapter("s").do(host.OpContext, nil); err == nil || err.Code != host.CodeInternal {
-		t.Fatalf("context = %v", err)
+	broken := config.Default()
+	broken.Inject = config.InjectOff
+	broken.HostTimeouts = map[string]string{"call": "1ns"}
+	e.svc = host.New(host.Setup{DB: e.db, LoadConfig: func() (config.Config, error) { return broken, os.ErrPermission }})
+	a := e.adapter("s")
+	for _, op := range []string{host.OpContext, host.OpRecall, host.OpToolContext} {
+		if _, err := a.do(op, map[string]any{"prompt": "존댓말", "tool": "Bash"}); err == nil || err.Code != host.CodeInternal {
+			t.Fatalf("%s = %v", op, err)
+		}
 	}
-	if _, err := e.adapter("s").do(host.OpVersion, nil); err != nil {
+	if _, err := os.Stat(e.db); !os.IsNotExist(err) {
+		t.Fatalf("회상 op가 DB를 열었다: %v", err)
+	}
+	if _, err := a.do(host.OpVersion, nil); err != nil {
 		t.Fatalf("version = %v", err)
 	}
+	out, err := a.do(host.OpCall, map[string]any{"name": "memory_save", "args": json.RawMessage(`{"kind":"lesson","title":"깨진 설정에도 저장","source":{"kind":"session","ref":"x:s"}}`)})
+	if err != nil {
+		t.Fatalf("memory_save = %v", err)
+	}
+	var saved struct {
+		Result struct {
+			Memory struct{ ID string } `json:"memory"`
+		} `json:"result"`
+	}
+	if json.Unmarshal([]byte(mustJSON(out)), &saved) != nil || saved.Result.Memory.ID == "" {
+		t.Fatalf("memory_save = %s", mustJSON(out))
+	}
+	id := saved.Result.Memory.ID
+	out, err = a.do(host.OpCall, map[string]any{"name": "memory_get", "args": json.RawMessage(`{"ids":["` + id + `"]}`)})
+	if err != nil || !strings.Contains(mustJSON(out), "깨진 설정에도 저장") {
+		t.Fatalf("memory_get = %v %v", mustJSON(out), err)
+	}
 	e.svc.Wait()
+}
+
+// 쓰기 도구(memory_save·memory_update)의 timeout은 「반영됐을 수 있음」(mayHaveApplied)을 알린다(검토 M3): 한도를 넘긴
+// 계산도 끝까지 돌아 쓰기가 커밋될 수 있다. 읽기 도구와 다른 op의 timeout에는 이 칸이 없다.
+func TestTimeout_쓰기_도구의_timeout만_반영됐을_수_있음을_알린다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	m := save(t, s, memory.SaveInput{Kind: memory.KindLesson, Title: "고칠 교훈", Scope: memory.ScopeGlobal})
+	a := e.adapter("t-1")
+	e.cfg.HostTimeouts = map[string]string{"context": "1ns", "call": "1ns"}
+	for _, f := range []struct {
+		op     string
+		fields map[string]any
+		write  bool
+	}{
+		{host.OpCall, map[string]any{"name": "memory_save", "args": json.RawMessage(`{"kind":"lesson","title":"x","source":{"kind":"session","ref":"x:s"}}`)}, true},
+		{host.OpCall, map[string]any{"name": "memory_update", "args": json.RawMessage(`{"id":"` + m.ID + `","title":"바뀜"}`)}, true},
+		{host.OpCall, map[string]any{"name": "memory_find", "args": json.RawMessage(`{}`)}, false},
+		{host.OpCall, map[string]any{"name": "memory_get", "args": json.RawMessage(`{"id":"` + m.ID + `"}`)}, false},
+		{host.OpContext, map[string]any{"source": "startup"}, false},
+	} {
+		_, err := a.do(f.op, f.fields)
+		if err == nil || err.Code != host.CodeTimeout || err.MayHaveApplied != f.write {
+			t.Fatalf("%s %v = %+v", f.op, f.fields["name"], err)
+		}
+		if got := strings.Contains(mustJSON(err), `"mayHaveApplied":true`); got != f.write {
+			t.Fatalf("%s %v JSON = %s", f.op, f.fields["name"], mustJSON(err))
+		}
+	}
+}
+
+// 한도를 넘긴 뒤 나온 결과도 timeout이다(결정적). 막는 쪽은 시험이 놓을 때까지 막는다(검토 L1: 시간 여유에 기대지 않는다).
+// ① memory_save가 DB를 연 뒤(한도 검사를 지난 뒤) 저장 중 기억 저장소의 시계에서 시험이 문을 열 때까지 멈춘다.
+// Result는 200ms 한도에서 timeout을 낸다: 한도 + 1초 안에 돌아오고, 그때 계산은 끝나지 않았다(문이 닫혀 있다).
+// 문을 열면 저장은 한도 뒤에 커밋된다: 그래서 쓰기 도구의 timeout은 mayHaveApplied이고, 다시 불러도 timeout이다.
+// ② 계산이 한도 뒤에 끝난 다음 Result를 불러도 timeout이다(context: 세션 묶음 저장이 잠금에 막혀 한도를 넘긴다).
+func TestTimeout_계산이_한도를_넘기면_결과도_timeout이다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
+	const limit = 200 * time.Millisecond
+	e.cfg.HostTimeouts = map[string]string{"context": limit.String(), "call": limit.String()}
+	gate := make(chan struct{})
+	var opened sync.Once
+	open := func() { opened.Do(func() { close(gate) }) }
+	gated := host.New(host.Setup{DB: e.db, LoadConfig: func() (config.Config, error) { return e.cfg, nil },
+		Now: func() time.Time { <-gate; return time.Now() }})
+	t.Cleanup(gated.Wait)
+	t.Cleanup(open)
+	a := e.adapter("late-1")
+
+	start := time.Now()
+	run := gated.Start(host.OpCall, a.request(map[string]any{"name": "memory_save",
+		"args": json.RawMessage(`{"kind":"lesson","title":"한도 뒤에 커밋된 교훈","source":{"kind":"session","ref":"x:s"}}`)}), host.Options{At: 1})
+	out, err := run.Result()
+	if err == nil || err.Code != host.CodeTimeout || !err.MayHaveApplied || out != nil {
+		t.Fatalf("result = %v %+v", out, err)
+	}
+	if took := time.Since(start); took >= limit+time.Second {
+		t.Fatalf("Result가 %v 걸렸다", took)
+	}
+	select {
+	case <-run.Recorded():
+		t.Fatal("Result가 계산이 끝나기를 기다렸다")
+	default:
+	}
+	open()
+	gated.Wait()
+	if _, err := run.Result(); err == nil || err.Code != host.CodeTimeout || !err.MayHaveApplied {
+		t.Fatalf("끝난 뒤 result = %+v", err)
+	}
+	found, ferr := s.Find(memory.FindInput{Query: "한도 뒤에 커밋된 교훈", AllProjects: true})
+	if ferr != nil || len(found) != 1 {
+		t.Fatalf("한도 뒤의 쓰기가 커밋되지 않았다: %v %v", found, ferr)
+	}
+
+	release := holdWriteLock(t, e.db)
+	a.session = "late-2"
+	run = e.svc.Start(host.OpContext, a.request(map[string]any{"source": "startup"}), host.Options{})
+	e.svc.Wait() // 묶음 저장이 잠금 대기(300ms) 끝에 실패한 뒤: 계산은 한도(200ms) 뒤에 끝났다
+	if out, err := run.Result(); err == nil || err.Code != host.CodeTimeout || err.MayHaveApplied || out != nil {
+		t.Fatalf("끝난 뒤 result = %v %+v", out, err)
+	}
+	release()
+	if len(activities(t, s)) != 0 || e.upkeep.count() != 0 {
+		t.Fatal("시간 초과 뒤 활동·유지보수")
+	}
+}
+
+// reset이 표시를 지우지 못하면(쓰기 잠금) 성공으로 숨기지 않고 internal이다(검토 L4): 숨기면 압축 뒤 회상에서
+// 기억이 「이미 보인 것」으로 빠진다. 잠금이 풀리면 다시 reset해 지운다.
+func TestReset_표시를_지우지_못하면_internal이다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
+	a := e.adapter("rs-1")
+	a.recall(host.OpContext, map[string]any{"source": "startup"})
+	e.cfg.HostTimeouts = map[string]string{"reset": "10s"} // 잠금 대기(300ms) 끝의 실패를 한도와 섞지 않는다
+	release := holdWriteLock(t, e.db)
+	if out, err := a.do(host.OpReset, nil); err == nil || err.Code != host.CodeInternal || out != nil {
+		t.Fatalf("reset under lock = %v %+v", out, err)
+	}
+	release()
+	if _, _, ok := s.SessionBundle("host-x", "rs-1"); !ok {
+		t.Fatal("묶음이 이미 없다")
+	}
+	if out, err := a.do(host.OpReset, nil); err != nil || mustJSON(out) != `{"ok":true}` {
+		t.Fatalf("reset = %v %v", out, err)
+	}
+	if _, _, ok := s.SessionBundle("host-x", "rs-1"); ok {
+		t.Fatal("reset이 묶음을 지우지 않았다")
+	}
+}
+
+// 사용법·계약 오류의 세부는 사람 글이 아니라 구조(Detail: 세부 코드와 인자)다(검토 L5): 글은 CLI가 언어 설정대로 만든다.
+// Detail은 계약 JSON에 나가지 않는다(짝 파일의 오류 꼴 {error, code}는 그대로).
+func TestError_사용법과_계약_오류의_세부는_구조다(t *testing.T) {
+	e := newEnv(t)
+	e.store()
+	a := e.adapter("s")
+	_, broken := host.Decode([]byte(`not json`))
+	two, _ := host.Decode([]byte(`{"contract":2,"session":"s"}`))
+	errOf := func(op string, req host.Request) *host.Error {
+		_, err := e.svc.Do(op, req, host.Options{})
+		return err
+	}
+	cases := []struct {
+		name string
+		err  *host.Error
+		code string
+		want host.Detail
+	}{
+		{"broken json", broken, host.CodeUsage, host.Detail{Reason: host.DetailInput}},
+		{"unknown op", errOf("ingest-session", a.request(nil)), host.CodeUsage, host.Detail{Reason: host.DetailUnknownOp, Args: []string{"ingest-session"}}},
+		{"contract 2", errOf(host.OpContext, two), host.CodeContract, host.Detail{Reason: host.DetailContract, Args: []string{"2", "1"}}},
+		{"bad source", errOf(host.OpContext, a.request(map[string]any{"source": "later"})), host.CodeUsage, host.Detail{Reason: host.DetailBadValue, Args: []string{"source", "later"}}},
+		{"bad audience", errOf(host.OpContext, a.request(map[string]any{"audience": "team"})), host.CodeUsage, host.Detail{Reason: host.DetailBadValue, Args: []string{"audience", "team"}}},
+		{"bad origin", errOf(host.OpRecall, a.request(map[string]any{"origin": "bot"})), host.CodeUsage, host.Detail{Reason: host.DetailBadValue, Args: []string{"origin", "bot"}}},
+		{"no name", errOf(host.OpCall, a.request(nil)), host.CodeUsage, host.Detail{Reason: host.DetailMissing, Args: []string{"name"}}},
+		{"no ids", errOf(host.OpDelivered, a.request(map[string]any{"memoryIds": []string{" "}})), host.CodeUsage, host.Detail{Reason: host.DetailMissing, Args: []string{"memoryIds"}}},
+		{"no session", errOf(host.OpDelivered, e.adapter("").request(map[string]any{"memoryIds": []string{"m-1"}})), host.CodeUsage, host.Detail{Reason: host.DetailMissing, Args: []string{"session"}}},
+		{"neither", errOf(host.OpDelivered, e.adapter("").request(nil)), host.CodeUsage, host.Detail{Reason: host.DetailMissing, Args: []string{"session", "memoryIds"}}},
+	}
+	for _, c := range cases {
+		if c.err == nil || c.err.Code != c.code || c.err.Detail == nil || c.err.Detail.Reason != c.want.Reason || !slices.Equal(c.err.Detail.Args, c.want.Args) {
+			t.Errorf("%s = %+v (detail %+v)", c.name, c.err, c.err.Detail)
+			continue
+		}
+		if j := mustJSON(c.err); strings.Contains(j, "detail") || strings.Contains(j, "reason") {
+			t.Errorf("%s: Detail이 JSON에 나갔다: %s", c.name, j)
+		}
+	}
+	// 그 밖의 오류에는 세부가 없다.
+	e.cfg.HostTimeouts = map[string]string{"context": "1ns"}
+	if _, err := a.do(host.OpContext, nil); err == nil || err.Code != host.CodeTimeout || err.Detail != nil {
+		t.Fatalf("timeout = %+v", err)
+	}
 }
 
 func mustJSON(v any) string {
@@ -883,43 +1068,6 @@ func holdWriteLock(t *testing.T, db string) func() {
 	}
 	t.Cleanup(release)
 	return release
-}
-
-// 한도를 넘긴 뒤 나온 결과도 timeout이다(결정적): 계산 중 세션 묶음 저장이 잠금에 300ms 막혀 200ms 한도를 넘긴다.
-// ① Result는 한도에서 바로 timeout을 낸다(계산이 끝나기를 기다리지 않는다). ② 계산이 다 끝난 뒤 Result를 불러도 timeout이다.
-func TestTimeout_계산이_한도를_넘기면_결과도_timeout이다(t *testing.T) {
-	e := newEnv(t)
-	s := e.store()
-	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
-	e.cfg.HostTimeouts = map[string]string{"context": "200ms"}
-	release := holdWriteLock(t, e.db)
-	a := e.adapter("late-1")
-
-	start := time.Now()
-	run := e.svc.Start(host.OpContext, a.request(map[string]any{"source": "startup"}), host.Options{})
-	if out, err := run.Result(); err == nil || err.Code != host.CodeTimeout || out != nil {
-		t.Fatalf("result = %v %v", out, err)
-	}
-	// 계산은 잠금 대기(300ms)보다 짧을 수 없다: 그 전에 돌아왔으면 계산을 기다리지 않은 것이다.
-	if took := time.Since(start); took >= 300*time.Millisecond {
-		t.Fatalf("Result가 %v 걸렸다", took)
-	}
-	select {
-	case <-run.Recorded():
-		t.Fatal("Result가 계산이 끝나기를 기다렸다")
-	default:
-	}
-
-	a.session = "late-2"
-	run = e.svc.Start(host.OpContext, a.request(map[string]any{"source": "startup"}), host.Options{})
-	e.svc.Wait()
-	if out, err := run.Result(); err == nil || err.Code != host.CodeTimeout || out != nil {
-		t.Fatalf("끝난 뒤 result = %v %v", out, err)
-	}
-	release()
-	if len(activities(t, s)) != 0 || e.upkeep.count() != 0 {
-		t.Fatal("시간 초과 뒤 활동·유지보수")
-	}
 }
 
 // 기록은 남은 시간 안에서만 한다: 결과는 한도 안에 나왔지만 사건·활동 쓰기가 잠금에 막혀 한도를 넘기면

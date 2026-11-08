@@ -57,11 +57,12 @@ type Config struct {
 	// 그 제품을 가리키는 말. 제품 범위 기억(product:<이름>)이 어느 폴더에서 보이는지를 정한다. 비어 있으면 제품이 없다.
 	Products place.Map `json:"products,omitempty"`
 	// host 계약의 시간 한도(설계 · 지연 회상·호스트 계약 10.1): op 이름 → Go 기간 글(예 "1.5s"). 빠진 op는 기본값이다.
+	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
 	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
 }
 
 // defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
-// Its keys are the operations hostTimeouts may name.
+// Its keys are the operations whose hostTimeouts value is checked; other keys are ignored.
 var defaultHostTimeouts = map[string]time.Duration{
 	"version":      500 * time.Millisecond,
 	"context":      1500 * time.Millisecond,
@@ -135,7 +136,7 @@ func (c Config) Validate() error {
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {
-			return i18n.Errorf("config.err.host_timeout_op", op)
+			continue // 뒤 판의 op: 이 판은 쓰지 않으니 거절하지 않는다(옛 실행 파일이 새 설정 파일을 읽는다)
 		}
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
 			return i18n.Errorf("config.err.host_timeout", op, v)

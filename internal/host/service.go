@@ -3,6 +3,7 @@ package host
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -74,6 +75,7 @@ func (s *Service) config() (config.Config, error) {
 // the records (marks, events, activity, upkeep) follow within the time left (Recorded).
 type Run struct {
 	deadline time.Time
+	write    bool // 쓰기 도구의 call: 그 timeout은 반영됐을 수 있다
 	state    atomic.Int32
 	res      chan outcome
 	once     sync.Once
@@ -103,7 +105,7 @@ func (r *Run) Result() (any, *Error) {
 		case o = <-r.res:
 		case <-timer.C:
 			if r.state.CompareAndSwap(pending, late) {
-				r.err = fail(CodeTimeout)
+				r.err = r.timeout()
 				return
 			}
 			o = <-r.res // 계산이 한도 안에 끝났다고 이미 정했다: 곧 온다
@@ -130,6 +132,14 @@ func (r *Run) Finish() {
 	}
 }
 
+// timeout is the run's timeout error. The computing of a write tool goes on past the limit and
+// may still commit, so its timeout says the write may have been applied.
+func (r *Run) timeout() *Error {
+	e := fail(CodeTimeout)
+	e.MayHaveApplied = r.write
+	return e
+}
+
 // settle decides whether the computed result is in time and hands it to Result. It reports
 // whether the result counts (false: a timeout).
 func (r *Run) settle(out any, err *Error) bool {
@@ -139,8 +149,11 @@ func (r *Run) settle(out any, err *Error) bool {
 		r.state.CompareAndSwap(pending, inTime)
 	}
 	if r.state.Load() == late {
-		r.res <- outcome{err: fail(CodeTimeout)}
+		r.res <- outcome{err: r.timeout()}
 		return false
+	}
+	if err != nil && err.Code == CodeTimeout { // 계산이 한도에 걸려 스스로 멈췄다
+		err = r.timeout()
 	}
 	r.res <- outcome{out: out, err: err}
 	return true
@@ -165,22 +178,27 @@ func (s *Service) Do(op string, req Request, o Options) (any, *Error) {
 
 // Start starts an operation. The request is checked first (usage and contract errors come back at
 // once); then the operation runs in its own goroutine within the time limit of its op (hostTimeouts).
+//
+// Settings that cannot be read stop the recall-shaped operations (an internal error: the defaults
+// would turn on a recall the person turned off), while version and call go on with the defaults
+// (a broken settings file does not block the memory tools, as the old tool command did not).
 func (s *Service) Start(op string, req Request, o Options) *Run {
 	if !slices.Contains(Ops, op) {
-		return done(&Error{Code: CodeUsage, Message: "unknown operation: " + op})
+		return done(usageError(DetailUnknownOp, op))
 	}
 	if req.Contract == 0 {
 		req.Contract = Contract
 	}
 	if req.Contract != Contract {
-		return done(&Error{Code: CodeContract, Message: fmt.Sprintf("contract %d is not %d", req.Contract, Contract)})
+		return done(&Error{Code: CodeContract, Message: fmt.Sprintf("contract %d is not %d", req.Contract, Contract),
+			Detail: &Detail{Reason: DetailContract, Args: []string{strconv.Itoa(req.Contract), strconv.Itoa(Contract)}}})
 	}
 	if err := check(op, &req); err != nil {
 		return done(err)
 	}
 	cfg, cerr := s.config()
 	if cerr != nil {
-		if op != OpVersion { // version은 설정 없이 답한다
+		if op != OpVersion && op != OpCall {
 			return done(&Error{Code: CodeInternal, Message: cerr.Error()})
 		}
 		cfg = config.Default()
@@ -188,7 +206,8 @@ func (s *Service) Start(op string, req Request, o Options) *Run {
 	if o.At == 0 {
 		o.At = s.now().UnixMilli()
 	}
-	r := &Run{deadline: time.Now().Add(cfg.HostTimeout(op)), res: make(chan outcome, 1), recorded: make(chan struct{})}
+	r := &Run{deadline: time.Now().Add(cfg.HostTimeout(op)), write: op == OpCall && slices.Contains(writeTools, req.Name),
+		res: make(chan outcome, 1), recorded: make(chan struct{})}
 	s.wg.Add(1)
 	go s.run(r, op, req, o, cfg)
 	return r
@@ -220,26 +239,33 @@ func (s *Service) run(r *Run, op string, req Request, o Options, cfg config.Conf
 	c.record()
 }
 
+// usageError is a usage error about reason and its arguments. Its message is the same in parts,
+// for a reader of the Go error (the CLI words it from Detail).
+func usageError(reason string, args ...string) *Error {
+	msg := reason
+	if len(args) > 0 {
+		msg += ": " + strings.Join(args, ", ")
+	}
+	return &Error{Code: CodeUsage, Message: msg, Detail: &Detail{Reason: reason, Args: args}}
+}
+
 // check reads the fields an operation needs; a missing or unknown value is a usage error.
 func check(op string, req *Request) *Error {
-	usage := func(field, v string) *Error {
-		return &Error{Code: CodeUsage, Message: fmt.Sprintf("%s: %s %q", op, field, v)}
-	}
 	switch op {
 	case OpContext:
 		if !slices.Contains([]string{"", SourceStartup, SourceResume, SourceFork, SourceCompact, SourceClear}, req.Source) {
-			return usage("source", req.Source)
+			return usageError(DetailBadValue, "source", req.Source)
 		}
 		if !slices.Contains([]string{"", AudienceMain, AudienceSubagent}, req.Audience) {
-			return usage("audience", req.Audience)
+			return usageError(DetailBadValue, "audience", req.Audience)
 		}
 	case OpRecall:
 		if !slices.Contains([]string{"", OriginUser, OriginAgent, OriginSystem}, req.Origin) {
-			return usage("origin", req.Origin)
+			return usageError(DetailBadValue, "origin", req.Origin)
 		}
 	case OpCall:
 		if req.Name == "" {
-			return usage("name", req.Name)
+			return usageError(DetailMissing, "name")
 		}
 	case OpDelivered:
 		var ids []string
@@ -248,8 +274,15 @@ func check(op string, req *Request) *Error {
 				ids = append(ids, id)
 			}
 		}
-		if req.Session == "" || len(ids) == 0 {
-			return &Error{Code: CodeUsage, Message: "delivered: session and memoryIds"}
+		var missing []string
+		if req.Session == "" {
+			missing = append(missing, "session")
+		}
+		if len(ids) == 0 {
+			missing = append(missing, "memoryIds")
+		}
+		if len(missing) > 0 {
+			return usageError(DetailMissing, missing...)
 		}
 		req.MemoryIDs = ids
 	}

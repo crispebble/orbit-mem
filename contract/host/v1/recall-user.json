@@ -34,8 +34,8 @@
   },
   "exit": 0,
   "output": {
-    "text": "$string",
-    "memoryIds": "$array",
+    "text": "$nonEmptyString",
+    "memoryIds": "$nonEmptyArray",
     "budget": {
       "chars": "$number",
       "limit": "$number"

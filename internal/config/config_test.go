@@ -266,14 +266,15 @@ func TestHostTimeout_기본값과_설정값(t *testing.T) {
 	}
 }
 
-func TestValidate_hostTimeouts는_모르는_op와_잘못된_기간을_거절한다(t *testing.T) {
+// 모르는 op 키는 거절하지 않고 무시한다(검토 M1): 뒤 판에서 op가 늘어 새 설정 파일에 그 op가 있어도 옛 실행 파일이
+// 설정을 읽는다. 아는 op의 잘못된 기간(파싱 실패·0 이하)만 거절한다.
+func TestValidate_hostTimeouts는_아는_op의_잘못된_기간만_거절하고_모르는_op는_무시한다(t *testing.T) {
 	for _, bad := range []map[string]string{
-		{"memory_search": "1s"},
-		{"ingest-session": "1s"},
 		{"recall": "soon"},
 		{"recall": "0s"},
 		{"recall": "-1s"},
 		{"recall": ""},
+		{"ingest-session": "1s", "call": "never"},
 	} {
 		c := Default()
 		c.HostTimeouts = bad
@@ -281,9 +282,33 @@ func TestValidate_hostTimeouts는_모르는_op와_잘못된_기간을_거절한�
 			t.Errorf("accepted %v", bad)
 		}
 	}
-	c := Default()
-	c.HostTimeouts = map[string]string{"call": "10s", "context": "1ns"}
-	if err := c.Validate(); err != nil {
+	for _, good := range []map[string]string{
+		{"call": "10s", "context": "1ns"},
+		{"memory_search": "1s"},
+		{"ingest-session": "soon", "ctx": ""},
+	} {
+		c := Default()
+		c.HostTimeouts = good
+		if err := c.Validate(); err != nil {
+			t.Errorf("%v: %v", good, err)
+		}
+	}
+	// 새 판이 쓴 설정 파일: 모르는 op가 있어도 읽히고, 아는 op의 값은 쓰이고, 저장해도 모르는 op 키가 남는다.
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"hostTimeouts":{"ingest-session":"2s","recall":"3s"}}`), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HostTimeout("recall") != 3*time.Second || c.HostTimeout("call") != 5*time.Second {
+		t.Fatalf("loaded = %v", c.HostTimeouts)
+	}
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"ingest-session": "2s"`) {
+		t.Fatalf("모르는 op 키를 잃었다: %s", b)
 	}
 }

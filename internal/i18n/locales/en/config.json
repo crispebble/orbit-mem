@@ -8,6 +8,5 @@
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
   "config.err.host_memory": "hostMemory is ask or keep: %q",
   "config.err.ledger_window": "ledgerWindowDays is 1-90",
-  "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q",
-  "config.err.host_timeout_op": "hostTimeouts names an unknown operation: %q (version, context, recall, tool-context, call, delivered, reset, session-end)"
+  "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q"
 }

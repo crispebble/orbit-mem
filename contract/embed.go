@@ -2,24 +2,18 @@
 // for each operation, one input and the output (and exit code) it must give. The Go tests of
 // orbit-mem and the TypeScript adapter tests read these same files, so the two sides cannot drift.
 //
-// A pair is {name, op, setup, input, exit, output}:
+// The rules a reader needs to run a pair without Go (its shape, how each setup is made, the
+// placeholders and the exit codes) are in host/v1/README.md. In short, a pair is
+// {name, op, setup, input, exit, output}:
 //
-//   - setup.db: "none" (no database file; the default), "empty" (a database of the current
-//     schema with nothing saved) or "memories" (like empty, then setup.calls make the memories).
-//   - setup.calls: contract calls run in order before the pair, each {op, input} (for example a
-//     call to memory_save). They need no database of their own: memory_save makes it.
-//   - setup.meta: stored settings of the database written after the calls (for example
-//     {"schema.version": "99"} makes a newer database).
-//   - setup.config: the settings file's content (for example {"hostTimeouts": {"context": "1ns"}}).
-//   - input: the request JSON given to the operation on stdin. A JSON string is the raw stdin
-//     text instead (how a pair gives input that is not JSON).
-//   - "$calls[N].path": a string value in an input (or in a later setup call's input) that is
-//     the value at path in the output of setup.calls[N] (the JSON it printed), for example
-//     "$calls[0].result.memory.id". The path is keys after dots and numbers in brackets only;
-//     a path that leads nowhere fails the pair. Only calls before the one that uses it count.
-//   - exit: the exit code of `orbit-mem host <op>`.
-//   - output: the JSON the operation prints, compared exactly, except that the strings "$string",
-//     "$number", "$array" and "$any" stand for any value of that type (any value, for "$any").
+//   - setup.db: "none" (no database file; the default), "empty" (what `orbit-mem migrate` makes in an
+//     empty home) or "memories" (like empty, then setup.calls make the memories).
+//   - setup.calls: contract calls run in order before the pair, each {op, input}.
+//   - setup.meta: rows written into the database's meta(key, value) table after the calls.
+//   - setup.config: the content of $ORBIT_HOME/config.json.
+//   - input: the stdin of `orbit-mem host <op>`; a JSON string is the raw stdin text instead.
+//     "$calls[N].path" strings in it are replaced by values of earlier calls' outputs (Resolve).
+//   - exit and output: the exit code and the JSON printed, compared by Match.
 package contract
 
 import (
@@ -60,6 +54,9 @@ type Call struct {
 	Op    string          `json:"op"`
 	Input json.RawMessage `json:"input"`
 }
+
+// Placeholders are the strings that stand for a value in a pair's output (see Match).
+var Placeholders = []string{"$string", "$nonEmptyString", "$number", "$array", "$nonEmptyArray", "$any"}
 
 // HostV1 reads every pair of the host contract v1, ordered by file name.
 func HostV1() ([]Pair, error) {
@@ -139,8 +136,11 @@ func Resolve(v any, calls []any) (any, error) {
 	return v, nil
 }
 
-// Match compares a decoded JSON output with the one a pair expects. The error names the path
-// ("$.result.name") of the first difference.
+// Match compares a decoded JSON output with the one a pair expects: exactly, except for the
+// placeholders (Placeholders). "$string", "$number" and "$array" are any value of that type,
+// "$nonEmptyString" a string that is not blank, "$nonEmptyArray" an array with one element or
+// more, and "$any" any value (the key must be there). Any other string, "$" ones included, is
+// compared as it is. The error names the path ("$.result.name") of the first difference.
 func Match(want, got any) error { return match("$", want, got) }
 
 func match(path string, want, got any) error {
@@ -156,8 +156,16 @@ func match(path string, want, got any) error {
 			if _, ok := got.(float64); ok {
 				return nil
 			}
+		case "$nonEmptyString":
+			if g, ok := got.(string); ok && strings.TrimSpace(g) != "" {
+				return nil
+			}
 		case "$array":
 			if _, ok := got.([]any); ok {
+				return nil
+			}
+		case "$nonEmptyArray":
+			if g, ok := got.([]any); ok && len(g) > 0 {
 				return nil
 			}
 		default:

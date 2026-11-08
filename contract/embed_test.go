@@ -2,6 +2,7 @@ package contract
 
 import (
 	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -84,6 +85,8 @@ func TestMatch_자리표와_정확한_값(t *testing.T) {
 		{`{"t":"$string","n":"$number","l":"$array","z":"$any"}`, `{"t":"","n":3.5,"l":[],"z":{"k":1}}`},
 		{`{"l":["$string",2]}`, `{"l":["q",2]}`},
 		{`"$string"`, `"$x"`}, // 자리표는 문자열 자리에서만: 값이 문자열이면 맞는다
+		{`{"t":"$nonEmptyString","l":"$nonEmptyArray"}`, `{"t":"x","l":["m-1"]}`},
+		{`{"t":"$nonEmptyString"}`, `{"t":" a "}`},
 	}
 	for _, c := range ok {
 		if err := Match(parse(c.want), parse(c.got)); err != nil {
@@ -99,6 +102,12 @@ func TestMatch_자리표와_정확한_값(t *testing.T) {
 		{`{"l":"$array"}`, `{"l":{}}`, "placeholder type"},
 		{`{"z":"$any"}`, `{}`, "any needs the key"},
 		{`{"l":[1,2]}`, `{"l":[1]}`, "array length"},
+		{`{"t":"$nonEmptyString"}`, `{"t":""}`, "empty string"},
+		{`{"t":"$nonEmptyString"}`, `{"t":"  \n"}`, "blank string"},
+		{`{"t":"$nonEmptyString"}`, `{"t":1}`, "placeholder type"},
+		{`{"l":"$nonEmptyArray"}`, `{"l":[]}`, "empty array"},
+		{`{"l":"$nonEmptyArray"}`, `{"l":"m-1"}`, "placeholder type"},
+		{`{"t":"$nonEmpty"}`, `{"t":"x"}`, "unknown placeholder is exact"},
 	}
 	for _, c := range bad {
 		if err := Match(parse(c.want), parse(c.got)); err == nil {
@@ -146,4 +155,62 @@ func TestHostV1_자리표는_앞선_호출만_가리킨다(t *testing.T) {
 	if uses < 2 {
 		t.Errorf("pairs using $calls = %d", uses)
 	}
+}
+
+// 짝 파일 옆 README가 TypeScript 쪽이 Go 없이 짝을 재현하는 데 필요한 것을 적는다(검토 M4): 모든 자리표,
+// setup.db 값마다 만드는 법, meta·config가 쓰이는 곳, 종료 코드.
+func TestHostV1_README가_짝_꼴과_자리표와_setup을_적는다(t *testing.T) {
+	b, err := os.ReadFile("host/v1/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(b)
+	for _, want := range append(slices.Clone(Placeholders),
+		"$calls[N]", `"none"`, `"empty"`, `"memories"`, "orbit-mem migrate", "meta(key, value)", "$ORBIT_HOME/config.json",
+		"mayHaveApplied", "`0`", "`1`", "`2`") {
+		if !strings.Contains(doc, want) {
+			t.Errorf("README에 %q가 없다", want)
+		}
+	}
+	for _, p := range Placeholders {
+		if err := Match(p, "x"); p != "$number" && p != "$array" && p != "$nonEmptyArray" && err != nil {
+			t.Errorf("%s가 Match에서 자리표가 아니다: %v", p, err)
+		}
+	}
+}
+
+// 기억이 있는 짝(setup.db memories)의 회상 결과는 건너뛴 까닭(skipped)이 없으면 빈 결과로 통과하지 않는다: 글과 memoryIds가 비지 않아야 한다(검토 M4).
+func TestHostV1_기억이_있는_회상_짝은_실제_주입을_요구한다(t *testing.T) {
+	pairs, err := HostV1()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	for _, p := range pairs {
+		m, _ := p.Output.(map[string]any)
+		if p.Setup.DB != "memories" || (p.Op != host.OpContext && p.Op != host.OpRecall) || p.Exit != 0 || m["skipped"] != nil {
+			continue
+		}
+		n++
+		if m["text"] != "$nonEmptyString" || m["memoryIds"] != "$nonEmptyArray" {
+			t.Errorf("%s: text %v memoryIds %v", p.Name, m["text"], m["memoryIds"])
+		}
+	}
+	if n < 3 {
+		t.Fatalf("기억이 있는 회상 짝 = %d", n)
+	}
+}
+
+// 쓰기 도구의 timeout 짝이 mayHaveApplied를 고정한다(검토 M3).
+func TestHostV1_쓰기_도구_timeout_짝이_있다(t *testing.T) {
+	pairs, err := HostV1()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pairs {
+		if m, ok := p.Output.(map[string]any); ok && m["code"] == host.CodeTimeout && m["mayHaveApplied"] == true {
+			return
+		}
+	}
+	t.Fatal("no write tool timeout pair with mayHaveApplied")
 }

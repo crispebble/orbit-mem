@@ -89,7 +89,7 @@ func Decode(b []byte) (Request, *Error) {
 		return r, nil
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
-		return r, &Error{Code: CodeUsage, Message: err.Error()}
+		return r, &Error{Code: CodeUsage, Message: err.Error(), Detail: &Detail{Reason: DetailInput}}
 	}
 	return r, nil
 }
@@ -156,12 +156,36 @@ const (
 )
 
 // Error is an operation's error: a code, a message and, for a tool, its name. Its JSON is the
-// contract's {"error", "code", "name"?}.
+// contract's {"error", "code", "name"?, "mayHaveApplied"?}.
+//
+// Message is not for people: the CLI words an error from its code and Detail in the user's
+// language (a tool's own error and an internal one carry their cause in Message).
 type Error struct {
 	Message string `json:"error"`
 	Code    string `json:"code"`
 	Name    string `json:"name,omitempty"`
+	// MayHaveApplied is set on the timeout of a write tool (memory_save, memory_update): the
+	// computing goes on past the limit, so the write may have been committed. The caller looks
+	// before it writes again (memory_find, memory_get).
+	MayHaveApplied bool `json:"mayHaveApplied,omitempty"`
+	// Detail is what a usage or contract error is about, in parts (not in the contract JSON).
+	Detail *Detail `json:"-"`
 }
+
+// Detail is the reason of a usage or contract error and its arguments, for the CLI to word.
+type Detail struct {
+	Reason string
+	Args   []string
+}
+
+// Detail reasons and their arguments.
+const (
+	DetailInput     = "input"      // 입력이 JSON 객체 하나가 아니다. 인자 없음
+	DetailUnknownOp = "unknown-op" // 모르는 op. [op]
+	DetailContract  = "contract"   // 계약 판이 다르다. [요청의 판, 이 실행 파일의 판]
+	DetailBadValue  = "bad-value"  // 칸의 값을 모른다. [칸, 값]
+	DetailMissing   = "missing"    // 꼭 있어야 할 칸이 없다. [칸...]
+)
 
 func (e *Error) Error() string {
 	if e.Message == "" {

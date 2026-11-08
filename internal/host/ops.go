@@ -344,7 +344,10 @@ func (c *call) reset() (any, *Error) {
 	if err := c.openRead(); err != nil {
 		return nil, err
 	}
-	inject.ResetSession(c.store, c.req.Host, c.req.Session)
+	// 표시를 지우지 못한 reset을 성공으로 숨기지 않는다: 숨기면 압축 뒤 회상에서 기억이 「이미 보인 것」으로 빠진다.
+	if err := c.store.ResetSession(c.req.Host, c.req.Session); err != nil {
+		return nil, &Error{Code: CodeInternal, Message: err.Error()}
+	}
 	return OK{OK: true}, nil
 }
 

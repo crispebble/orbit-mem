@@ -8,6 +8,5 @@
   "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
   "config.err.host_memory": "hostMemory는 ask 또는 keep입니다: %q",
   "config.err.ledger_window": "ledgerWindowDays는 1~90입니다",
-  "config.err.host_timeout": "hostTimeouts.%s는 \"1.5s\" 같은 양의 Go 기간입니다: %q",
-  "config.err.host_timeout_op": "hostTimeouts에 모르는 op가 있습니다: %q (version, context, recall, tool-context, call, delivered, reset, session-end)"
+  "config.err.host_timeout": "hostTimeouts.%s는 \"1.5s\" 같은 양의 Go 기간입니다: %q"
 }
