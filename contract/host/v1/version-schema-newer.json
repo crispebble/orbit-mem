@@ -1,0 +1,24 @@
+{
+  "name": "version-schema-newer",
+  "op": "version",
+  "setup": {
+    "db": "empty",
+    "meta": {
+      "schema.version": "99"
+    }
+  },
+  "input": {
+    "contract": 1,
+    "host": "test"
+  },
+  "exit": 0,
+  "output": {
+    "binary": "$string",
+    "contract": 1,
+    "schema": "$number",
+    "db": {
+      "schema": 99,
+      "state": "newer"
+    }
+  }
+}

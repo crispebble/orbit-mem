@@ -1,9 +1,10 @@
 // Command orbit-mem is the shared memory of this PC for AI hosts: memories with
 // their sources, the activity log of host sessions, and its own Claude Code and
 // Codex plugin (the memory MCP server, hooks and skills) that it builds and
-// registers itself. A host without hooks or MCP uses orbit-mem inject and
-// orbit-mem tool. It never runs a model or a headless host and knows no other
-// product: the model-free tidy runs once a day behind the session-start hook.
+// registers itself. A host without hooks or MCP uses orbit-mem host (the host
+// contract: one JSON request in, one JSON result out) or its older names
+// orbit-mem inject and orbit-mem tool. It never runs a model or a headless host
+// and knows no other product: the model-free tidy runs once a day behind the session-start hook.
 package main
 
 import (
@@ -57,6 +58,7 @@ func commands() []command {
 		{"proposals", "usage.proposals", cmdProposals},
 		{"mcp", "usage.mcp", cmdMCP},
 		{"hook", "usage.hook", cmdHook},
+		{"host", "usage.host", cmdHost},
 		{"inject", "usage.inject", cmdInject},
 		{"tool", "usage.tool", cmdTool},
 		{"why", "usage.why", cmdWhy},

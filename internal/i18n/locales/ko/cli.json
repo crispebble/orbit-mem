@@ -225,7 +225,7 @@
   "verdict.pending": "관찰 중",
   "flag.inject.rules": "확정 규칙의 꼴: brief(규칙마다 한 줄)·full. --host orbit-code면 brief",
   "flag.inject.ids": "delivered: 호스트가 모델 요청에 실은 기억 id(쉼표로 구분)",
-  "usage.tool": "orbit-mem tool memory_find|memory_get|memory_save|memory_update --host H [--cwd DIR] [--session ID] [--actor ai]   # MCP 없는 호스트용 기억 도구: 입력 JSON은 stdin, 결과 JSON은 stdout",
+  "usage.tool": "orbit-mem tool memory_find|memory_get|memory_save|memory_update|activity_find --host H [--cwd DIR] [--session ID] [--actor ai]   # MCP 없는 호스트용 기억 도구: 입력 JSON은 stdin, 결과 JSON은 stdout",
   "cli.tool.no_db": "기억 DB가 아직 없습니다(먼저 기억을 저장하거나 orbit-mem install을 실행)",
   "usage.why": "orbit-mem why <기억 id> [요청 글…] [--cwd DIR] [--host H] [--session S] [--rules brief|full] [--json]   # 기억이 왜 요청에 안 나왔나: 저장됨·적격·선택됨·주입됨·전달됨·사용됨",
   "cli.why.head": "왜 안 나왔나: %s (%s)",
@@ -372,5 +372,14 @@
   "usage.tidy": "orbit-mem tidy [--json]   # 모델 없는 하루 정리를 지금 돌린다(세션 시작 훅이 하루 한 번 뒤에서 돌린다)",
   "cli.tidy.done": "정리했습니다: 판정 %d, 해로운 자동 변경 되돌림 %d, 확정 %d, 제안 닫음 %d, 기한 지난 기억 낡음 %d, 안 쓴 후보 낡음 %d, 제품으로 옮김 %d",
   "cli.tidy.error": "오류: %s",
-  "cli.doctor.recall": "기억 주입 %s · 작업 회상 %d자 · 하루 정리 %s(마지막 %s)"
+  "cli.doctor.recall": "기억 주입 %s · 작업 회상 %d자 · 하루 정리 %s(마지막 %s)",
+  "usage.host": "orbit-mem host version|context|recall|tool-context|call|delivered|reset|session-end [--actor ai]   # 호스트 계약 v1: stdin에 JSON 요청 하나, stdout에 JSON 결과 하나(종료 0 성공, 1 op 오류, 2 사용법 오류)",
+  "cli.host.err.usage": "사용법 오류: %s",
+  "cli.host.err.contract": "지원하지 않는 계약 판입니다: %s",
+  "cli.host.err.timeout": "시간 한도 안에 끝나지 않았습니다",
+  "cli.host.err.no_db": "기억 DB가 아직 없습니다(먼저 기억을 저장하거나 orbit-mem install을 실행)",
+  "cli.host.err.schema_newer": "기억 DB가 이 orbit-mem보다 새 판입니다(orbit-mem update를 실행)",
+  "cli.host.err.schema_older": "기억 DB의 스키마 이전이 필요합니다(orbit-mem migrate를 실행)",
+  "cli.host.err.unknown_tool": "이 계약이 부르는 도구가 아닙니다: %s",
+  "cli.host.err.internal": "내부 오류: %s"
 }

@@ -1,0 +1,17 @@
+{
+  "name": "reset-ok",
+  "op": "reset",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract"
+  },
+  "exit": 0,
+  "output": {
+    "ok": true
+  }
+}

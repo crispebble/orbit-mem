@@ -1,0 +1,25 @@
+{
+  "name": "call-memory_get-missing",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_get",
+    "args": {
+      "ids": [
+        "m-000000000000"
+      ]
+    }
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "tool",
+    "name": "memory_get"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "delivered-empty-session",
+  "op": "delivered",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "memoryIds": [
+      "m-000000000000"
+    ]
+  },
+  "exit": 2,
+  "output": {
+    "error": "$string",
+    "code": "usage"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "context-timeout",
+  "op": "context",
+  "setup": {
+    "db": "empty",
+    "config": {
+      "hostTimeouts": {
+        "context": "1ns"
+      }
+    }
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "source": "startup"
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "timeout"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "call-memory_update-missing",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_update",
+    "args": {
+      "id": "m-000000000000",
+      "title": "x"
+    }
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "tool",
+    "name": "memory_update"
+  }
+}
