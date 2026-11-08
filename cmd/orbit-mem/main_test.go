@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 func run(t *testing.T, stdin string, args ...string) (string, string, int) {

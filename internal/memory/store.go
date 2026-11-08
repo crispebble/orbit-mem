@@ -13,9 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
 // Store is this PC's memory database (one SQLite file).

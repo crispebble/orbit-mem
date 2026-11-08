@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // fakeTidy records the background tidy runs the session-start hook asks for.

@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/update"
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/update"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 // releaseServer is a fake GitHub: the newest tag is latest, and its archive holds body.

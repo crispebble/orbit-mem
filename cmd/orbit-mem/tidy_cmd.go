@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // 하루 한 번 정리(기획 · orbit-mem 4.3 H1~H4): 세션 시작 훅이 그날 정리가 아직이면 orbit-mem tidy auto를

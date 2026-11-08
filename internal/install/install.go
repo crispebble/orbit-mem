@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // Hosts are the host CLIs found on this PC. An empty path means not installed.

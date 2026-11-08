@@ -6,7 +6,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestMoveUnknown_지도에_맞는_product_물음표_기억을_제품으로_옮긴다(t *testing.T) {

@@ -27,7 +27,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/inject"
+	"github.com/crispebble/orbit-mem/internal/inject"
 )
 
 //go:embed all:source
@@ -38,7 +38,7 @@ const (
 	Name       = "orbit-mem"
 	Market     = "orbit-mem"
 	ID         = Name + "@" + Market
-	GitHubRepo = "onidot-labs/orbit-mem"
+	GitHubRepo = "crispebble/orbit-mem"
 	// PluginDir is the plugin folder inside a marketplace (Repo and Local).
 	PluginDir = "plugin"
 )

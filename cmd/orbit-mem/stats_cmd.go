@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/metrics"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/metrics"
 )
 
 // cmdStats prints the metrics of recent days or of one week (설계 「측정」).

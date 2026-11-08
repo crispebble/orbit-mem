@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // CoreCandidate is one memory of a core suggestion with why it ranks where it does.

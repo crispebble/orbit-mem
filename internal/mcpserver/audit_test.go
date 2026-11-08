@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 // AU-6 AC-7: MCP가 쓰는 쪽(actor)으로 사용자 인용 보호를 걸고, 감사 목록과 되돌리기·확인함을 준다.
@@ -83,7 +83,7 @@ func TestAC7_감사_목록과_되돌리기와_확인함(t *testing.T) {
 	}
 	s.Policy.CorrectionSessions = 2
 	for _, sess := range []string{"a", "b"} {
-		if err := s.RecordCorrection(memory.CorrectionInput{Quote: "테스트 먼저 쓰라고", Session: sess, TargetKind: memory.TargetKindSkill, Target: "orbit:tdd"}); err != nil {
+		if err := s.RecordCorrection(memory.CorrectionInput{Quote: "테스트 먼저 쓰라고", Session: sess, TargetKind: memory.TargetKindSkill, Target: "orbit-code:tdd"}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/inject"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/inject"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/project"
 )
 
 // cmdInject gives a host without hooks (one that calls orbit-mem itself) the memory context the

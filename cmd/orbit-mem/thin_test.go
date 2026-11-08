@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // onTerminal makes the thin commands see a terminal on stdout.

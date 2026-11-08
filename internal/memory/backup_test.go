@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
 func saveFact(t *testing.T, s *Store, title string) {

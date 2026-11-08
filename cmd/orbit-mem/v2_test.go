@@ -12,7 +12,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 func eventContext(t *testing.T, out, event string) string {

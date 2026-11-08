@@ -98,9 +98,9 @@ func newFake(t *testing.T, tag string) *fake {
 		f.mu.Lock()
 		f.paths = append(f.paths, r.URL.Path)
 		f.mu.Unlock()
-		const rel = "/onidot-labs/orbit-mem/releases/download/"
+		const rel = "/crispebble/orbit-mem/releases/download/"
 		switch {
-		case r.URL.Path == "/repos/onidot-labs/orbit-mem/releases/latest":
+		case r.URL.Path == "/repos/crispebble/orbit-mem/releases/latest":
 			fmt.Fprintf(w, `{"tag_name":%q}`, f.latestTag)
 		case strings.HasPrefix(r.URL.Path, rel) && strings.HasSuffix(r.URL.Path, "/SHA256SUMS"):
 			if f.sums != "" {

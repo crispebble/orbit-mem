@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // What an approved change touched (설계 「변경 효과 원장」).

@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // 자동 변경(A2 「자동화가 고칠 수 있다」): 자동화의 확정·합치기·낡음·대체·연결·retag·고치기·재분류는 승인 없이

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // Why a memory is not saved.

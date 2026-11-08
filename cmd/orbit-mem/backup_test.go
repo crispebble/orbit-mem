@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
 // fakeBackground records the background runs a test asks for instead of starting a process.

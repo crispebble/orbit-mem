@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 func TestErrors_언어를_따른다(t *testing.T) {

@@ -1,8 +1,8 @@
 package memory
 
 import (
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Kinds of memory (설계 「기억 모델」).

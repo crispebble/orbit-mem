@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/update"
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/update"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 // updateTarget is the orbit-mem file `update` replaces (tests point it elsewhere).

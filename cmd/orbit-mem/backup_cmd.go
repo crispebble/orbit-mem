@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // 백업(ONID-136): 세션 시작 훅이 하루 한 번 뒤에서 사본을 만들고, 사람은 orbit-mem backup 하나로

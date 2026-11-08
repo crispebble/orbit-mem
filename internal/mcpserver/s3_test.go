@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 func s3Map() place.Map {

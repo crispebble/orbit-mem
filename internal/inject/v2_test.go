@@ -10,9 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // thousand fills a store with 1,000 memories shaped like this PC's DB (2026-11-03): many

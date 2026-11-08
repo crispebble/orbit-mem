@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestHook_subagent_start는_user_핵심만_넣는다(t *testing.T) {

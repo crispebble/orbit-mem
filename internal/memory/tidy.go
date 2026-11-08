@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/onidot-labs/orbit-mem/internal/place"
+import "github.com/crispebble/orbit-mem/internal/place"
 
 // 하루 한 번 정리(기획 · orbit-mem 4.3 H1~H4): 모델 없이 도는 정리 단계다. 예전에는 회고 마무리
 // (Keeper.Judge·Settle)가 돌렸고, 이제는 세션 시작 훅이 하루 한 번 뒤 프로세스(orbit-mem tidy auto)로 돌린다.

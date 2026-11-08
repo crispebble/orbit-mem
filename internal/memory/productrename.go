@@ -12,7 +12,7 @@ package memory
 import (
 	"fmt"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // ProductRename is what a product rename moved (or, in a dry run, would move).

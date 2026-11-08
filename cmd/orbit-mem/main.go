@@ -17,8 +17,8 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 type app struct {

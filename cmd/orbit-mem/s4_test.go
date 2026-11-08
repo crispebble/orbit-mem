@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestPlacePlan_미리_보고_적용한다(t *testing.T) {

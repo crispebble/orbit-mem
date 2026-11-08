@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).

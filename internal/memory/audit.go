@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // 감사 목록(A2 「기억 정리」 → 감사 목록): 최근 자동 확정·자동 정리, 어긋남 표시, 기준을 넘은 반복 교정과
@@ -155,7 +155,7 @@ type CorrectionInput struct {
 	Session    string
 	Day        string // 비우면 오늘
 	TargetKind string // memory·skill·role. 비우면 대상 없음
-	Target     string // 기억 id, 스킬·역할 이름(orbit:tdd 같은)
+	Target     string // 기억 id, 스킬·역할 이름(orbit-code:tdd 같은)
 	Injected   string // 기억 대상: 그 세션에 넣었나(yes·no·unknown)
 	RetroID    string
 	OccurredAt int64

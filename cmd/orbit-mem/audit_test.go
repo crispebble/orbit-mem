@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // AU-6: 감사 목록 CLI, 하네스 개선 후보 읽기(실험실용), 설정의 기준 횟수, CLI의 쓰는 쪽.
@@ -24,7 +24,7 @@ func TestAudit_감사_목록과_되돌리기와_확인함(t *testing.T) {
 		t.Fatalf("state %s", got.State)
 	}
 	for _, sess := range []string{"a", "b", "c"} {
-		if err := s.RecordCorrection(memory.CorrectionInput{Quote: "리뷰어가 근거 없이 승인했어", Session: sess, TargetKind: memory.TargetKindRole, Target: "orbit:reviewer"}); err != nil {
+		if err := s.RecordCorrection(memory.CorrectionInput{Quote: "리뷰어가 근거 없이 승인했어", Session: sess, TargetKind: memory.TargetKindRole, Target: "orbit-code:reviewer"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -35,7 +35,7 @@ func TestAudit_감사_목록과_되돌리기와_확인함(t *testing.T) {
 		t.Fatalf("audit json (%d): %s", code, out)
 	}
 	out, _, code = run(t, "", "audit", "--days", "3650")
-	if code != 0 || !strings.Contains(out, a.Changes[0].LedgerID) || !strings.Contains(out, "orbit:reviewer") {
+	if code != 0 || !strings.Contains(out, a.Changes[0].LedgerID) || !strings.Contains(out, "orbit-code:reviewer") {
 		t.Fatalf("audit text: %s", out)
 	}
 

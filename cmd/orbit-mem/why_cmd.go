@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/inject"
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/inject"
+	"github.com/crispebble/orbit-mem/internal/project"
 )
 
 // cmdWhy is the recall diagnosis: why one memory did not reach a request

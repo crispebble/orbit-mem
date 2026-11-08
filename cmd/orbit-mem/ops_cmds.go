@@ -14,15 +14,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/install"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/memplugin"
-	"github.com/onidot-labs/orbit-mem/internal/migrate"
-	"github.com/onidot-labs/orbit-mem/internal/transcript"
-	"github.com/onidot-labs/orbit-mem/internal/update"
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/install"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memplugin"
+	"github.com/crispebble/orbit-mem/internal/migrate"
+	"github.com/crispebble/orbit-mem/internal/transcript"
+	"github.com/crispebble/orbit-mem/internal/update"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 func selfPath() string {

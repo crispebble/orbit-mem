@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // s3Config is the fixed product map: two products share the parent folder ~/_workspace/onidot.

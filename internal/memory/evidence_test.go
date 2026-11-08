@@ -278,15 +278,15 @@ func TestAC3_반복_교정이_기준을_넘으면_표시되고_스킬은_하네�
 	add("s1", TargetKindMemory, m.ID)
 	add("s1", TargetKindMemory, m.ID) // 같은 세션은 한 번
 	add("s2", TargetKindMemory, m.ID)
-	add("s1", TargetKindSkill, "orbit:tdd")
-	add("s2", TargetKindSkill, "orbit:tdd")
+	add("s1", TargetKindSkill, "orbit-code:tdd")
+	add("s2", TargetKindSkill, "orbit-code:tdd")
 	if over, _ := s.RepeatedCorrections(false); len(over) != 0 {
 		t.Fatalf("기준 전인데 표시: %+v", over)
 	}
 	c.t = c.t.Add(time.Hour)
 	add("s3", TargetKindMemory, m.ID)
-	add("s3", TargetKindSkill, "orbit:tdd")
-	add("s4", TargetKindRole, "orbit:reviewer")
+	add("s3", TargetKindSkill, "orbit-code:tdd")
+	add("s4", TargetKindRole, "orbit-code:reviewer")
 	over, err := s.RepeatedCorrections(false)
 	if err != nil {
 		t.Fatal(err)
@@ -301,14 +301,14 @@ func TestAC3_반복_교정이_기준을_넘으면_표시되고_스킬은_하네�
 	if r := byTarget[m.ID]; r.Sessions != 3 || r.Harness || r.Title != m.Title || !r.Over {
 		t.Fatalf("memory = %+v", r)
 	}
-	if r := byTarget["orbit:tdd"]; r.Sessions != 3 || !r.Harness || r.TargetKind != TargetKindSkill {
+	if r := byTarget["orbit-code:tdd"]; r.Sessions != 3 || !r.Harness || r.TargetKind != TargetKindSkill {
 		t.Fatalf("skill = %+v", r)
 	}
 	// 확인함을 누르면 그 뒤 교정만 다시 센다.
 	if err := s.Acknowledge(byTarget[m.ID].Key, Who{}); err != nil {
 		t.Fatal(err)
 	}
-	if over, _ := s.RepeatedCorrections(false); len(over) != 1 || over[0].Target != "orbit:tdd" {
+	if over, _ := s.RepeatedCorrections(false); len(over) != 1 || over[0].Target != "orbit-code:tdd" {
 		t.Fatalf("확인 뒤 over = %+v", over)
 	}
 }

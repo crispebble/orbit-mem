@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crispebble/orbit-mem/internal/activity"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/activity"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
 // ActivityIn is activity_find's input.

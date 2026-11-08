@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/inject"
+	"github.com/crispebble/orbit-mem/internal/mcpserver"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/inject"
-	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/project"
-	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
 func paths() config.Paths { return config.Paths{Home: config.Home()} }

@@ -271,7 +271,7 @@ func TestHook_sh_꼴(t *testing.T) {
 		HookSpecificOutput struct{ HookEventName, AdditionalContext string }
 	}
 	if code != 0 || json.Unmarshal([]byte(out), &v) != nil || v.HookSpecificOutput.HookEventName != "SessionStart" ||
-		!strings.Contains(v.HookSpecificOutput.AdditionalContext, "orbit-mem install") || !strings.Contains(v.HookSpecificOutput.AdditionalContext, "https://github.com/onidot-labs/orbit-mem") {
+		!strings.Contains(v.HookSpecificOutput.AdditionalContext, "orbit-mem install") || !strings.Contains(v.HookSpecificOutput.AdditionalContext, "https://github.com/crispebble/orbit-mem") {
 		t.Fatalf("없을 때 시작 훅 %d %q", code, out)
 	}
 	for _, c := range []string{prompt, end} {

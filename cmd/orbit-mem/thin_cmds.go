@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/mcpserver"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // tools opens the store and gives the AI host tools for this directory's project.

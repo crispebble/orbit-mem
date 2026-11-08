@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // cmdCore suggests the first core of each layer and pins the memories a person keeps (S3 명세 2.7c). The

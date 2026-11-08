@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Plan is a migration plan an AI wrote: what to move where, which topic to give, what supersedes what.

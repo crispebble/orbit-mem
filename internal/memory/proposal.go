@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // Proposal kinds (설계 「제안과 승인」).

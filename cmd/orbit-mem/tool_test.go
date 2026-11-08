@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // MCP 없는 호스트는 `orbit-mem tool <이름> --host H`로 같은 기억 도구를 부른다(입력·출력은 MCP 도구와 같은 JSON).

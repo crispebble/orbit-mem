@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memplugin"
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memplugin"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 // fakePC is a PC with fake claude and codex on PATH that log their arguments: HOME, PATH
@@ -113,7 +113,7 @@ func TestInstall_local_plugin_끝까지(t *testing.T) {
 	}
 }
 
-// 끝 기준: 기본 install은 Claude에 GitHub 마켓 onidot-labs/orbit-mem을 더하고, Codex는 언제나 로컬 폴더다.
+// 끝 기준: 기본 install은 Claude에 GitHub 마켓 crispebble/orbit-mem을 더하고, Codex는 언제나 로컬 폴더다.
 // 호스트가 하나뿐이면 그 호스트만.
 func TestInstall_기본은_GitHub_마켓(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
@@ -121,7 +121,7 @@ func TestInstall_기본은_GitHub_마켓(t *testing.T) {
 		t.Fatalf("%d %s %s", code, out, errOut)
 	}
 	want := []string{
-		"claude plugin marketplace add onidot-labs/orbit-mem",
+		"claude plugin marketplace add crispebble/orbit-mem",
 		"claude plugin install orbit-mem@orbit-mem --scope user",
 		"codex plugin marketplace add " + f.localPlugin(),
 		"codex plugin add orbit-mem@orbit-mem",
@@ -216,7 +216,7 @@ func TestUninstall_호스트에서_뺀다(t *testing.T) {
 func TestDoctor_JSON(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
 	os.WriteFile(filepath.Join(f.bin, "orbit-mem"), []byte("#!/bin/sh\n"), 0o755)
-	os.WriteFile(filepath.Join(f.state, "markets.json"), []byte(`[{"name":"orbit-mem","source":"github","repo":"onidot-labs/orbit-mem"}]`), 0o644)
+	os.WriteFile(filepath.Join(f.state, "markets.json"), []byte(`[{"name":"orbit-mem","source":"github","repo":"crispebble/orbit-mem"}]`), 0o644)
 	os.WriteFile(filepath.Join(f.state, "plugins.json"), []byte(`[{"id":"orbit-mem@orbit-mem","version":"0.3.0","enabled":true}]`), 0o644)
 	os.WriteFile(filepath.Join(f.codexHome, "config.toml"), []byte("[marketplaces.orbit-mem]\nsource = \"/x\"\n\n[plugins.\"orbit-mem@orbit-mem\"]\nenabled = true\n"), 0o600)
 	seed(t)
@@ -255,7 +255,7 @@ func TestDoctor_JSON(t *testing.T) {
 	if rep.Version != version.Version || rep.PathBinary != filepath.Join(f.bin, "orbit-mem") || !rep.DB {
 		t.Fatalf("%+v", rep)
 	}
-	if rep.Claude.Path != filepath.Join(f.bin, "claude") || rep.Claude.Plugin != "installed" || rep.Claude.Version != "0.3.0" || !rep.Claude.Enabled || rep.Claude.Marketplace != "github:onidot-labs/orbit-mem" {
+	if rep.Claude.Path != filepath.Join(f.bin, "claude") || rep.Claude.Plugin != "installed" || rep.Claude.Version != "0.3.0" || !rep.Claude.Enabled || rep.Claude.Marketplace != "github:crispebble/orbit-mem" {
 		t.Fatalf("claude %+v", rep.Claude)
 	}
 	if rep.Codex.Config != filepath.Join(f.codexHome, "config.toml") || rep.Codex.Plugin != "installed" || !rep.Codex.Marketplace || !rep.Codex.Enabled || rep.Codex.HooksTrusted {

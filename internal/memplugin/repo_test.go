@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 // 끝 기준: 저장소에 커밋한 GitHub 마켓(.claude-plugin/marketplace.json, plugin/)이 내장 원본과 지금 판으로

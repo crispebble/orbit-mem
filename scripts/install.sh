@@ -1,6 +1,6 @@
 #!/bin/sh
 # orbit-mem 설치기: 릴리스를 받아 SHA256을 검증한 뒤 `orbit-mem install`에 넘긴다.
-#   curl -fsSL https://raw.githubusercontent.com/onidot-labs/orbit-mem/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/crispebble/orbit-mem/main/scripts/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --no-hosts
 # 환경 변수: ORBIT_MEM_VERSION(판), ORBIT_MEM_RELEASES_URL(다운로드 베이스), ORBIT_MEM_LATEST_URL(최신 판 조회).
 # (바이너리 `orbit-mem update`가 읽는 ORBIT_MEM_BASE_URL과 뜻이 달라 이름을 나눴다.)
@@ -13,8 +13,8 @@ set -eu
 die() { echo "orbit-mem 설치 실패: $*" >&2; exit 1; }
 
 main() {
-	BASE_URL="${ORBIT_MEM_RELEASES_URL:-https://github.com/onidot-labs/orbit-mem/releases}"
-	LATEST_URL="${ORBIT_MEM_LATEST_URL:-https://api.github.com/repos/onidot-labs/orbit-mem/releases/latest}"
+	BASE_URL="${ORBIT_MEM_RELEASES_URL:-https://github.com/crispebble/orbit-mem/releases}"
+	LATEST_URL="${ORBIT_MEM_LATEST_URL:-https://api.github.com/repos/crispebble/orbit-mem/releases/latest}"
 	VERSION="${ORBIT_MEM_VERSION:-}"
 
 	# --version 만 가려내고 나머지는 install에 그대로 전달한다.

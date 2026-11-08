@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // SourceActivity is the source of a record: the memory.db activity log (session hooks).

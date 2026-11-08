@@ -15,7 +15,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/install"
+	"github.com/crispebble/orbit-mem/internal/install"
 )
 
 // knownMemory is a memory system known to keep memories apart from orbit-mem. Only

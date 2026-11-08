@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // hostPC is a fake HOME with Claude Code's and Codex's settings folders, a project folder

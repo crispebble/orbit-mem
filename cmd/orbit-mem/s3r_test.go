@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/project"
 )
 
 func TestPlace_suggest는_첫_표를_내고_설정을_쓰지_않는다(t *testing.T) {

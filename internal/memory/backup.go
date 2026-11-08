@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 	"modernc.org/sqlite"
 )
 

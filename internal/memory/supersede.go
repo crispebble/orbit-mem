@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // supersedeTx replaces, for the memory m just saved, the current value of its scope and

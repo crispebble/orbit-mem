@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // 확정 규칙(A2, 설계 · orbit-code 자율 완수와 학습 「확정 규칙」, 계획 · AU-6). 규칙은 이 저장 계층에 있다:
