@@ -1,0 +1,182 @@
+// Package host is orbit-mem's side of the host contract v1 (설계 · 지연 회상·호스트 계약 10절, ORBIT-23 D3):
+// the one entry every host adapter calls, one JSON request in and one JSON result out per operation. It
+// is a port: the memory, recall and save domain below it never learn a host's name or the shape of its
+// input, and the adapters above it translate their host into these types. The host field of a request
+// is kept in the records only; nothing is decided by it.
+//
+// The package reads no environment. The assembly point gives a Service the DB path, the settings, the
+// upkeep port, the activity launcher and the default parent; whatever the JSON contract does not carry
+// (the brief rule form, the writer of a call, the activity time) comes as Go options.
+package host
+
+import (
+	"encoding/json"
+	"strings"
+)
+
+// Contract is the contract version this package speaks.
+const Contract = 1
+
+// Operations (설계 10.1).
+const (
+	OpVersion     = "version"
+	OpContext     = "context"
+	OpRecall      = "recall"
+	OpToolContext = "tool-context"
+	OpCall        = "call"
+	OpDelivered   = "delivered"
+	OpReset       = "reset"
+	OpSessionEnd  = "session-end"
+)
+
+// Ops are the operations in the order of the contract table.
+var Ops = []string{OpVersion, OpContext, OpRecall, OpToolContext, OpCall, OpDelivered, OpReset, OpSessionEnd}
+
+// Context sources, audiences and request origins.
+const (
+	SourceStartup = "startup"
+	SourceResume  = "resume"
+	SourceFork    = "fork"
+	SourceCompact = "compact"
+	SourceClear   = "clear"
+
+	AudienceMain     = "main"
+	AudienceSubagent = "subagent"
+
+	OriginUser   = "user"
+	OriginAgent  = "agent"
+	OriginSystem = "system"
+)
+
+// Skipped reasons of an empty recall-shaped result: the request was not a person's, or the DB is not
+// one this binary reads (so the model does not take an empty result for "no memories").
+const (
+	SkippedOrigin = "origin"
+)
+
+// Request is one contract request: the common fields and those of every operation (an operation
+// reads its own). Profile, Trust, ReadScope, Sandboxed, Task, RequestID and IdempotencyKey are taken
+// and not used yet.
+type Request struct {
+	Contract  int             `json:"contract,omitempty"` // 없으면 1
+	Host      string          `json:"host,omitempty"`     // 기록에만 쓴다
+	Session   string          `json:"session,omitempty"`
+	Agent     string          `json:"agent,omitempty"` // 서브에이전트 id
+	Cwd       string          `json:"cwd,omitempty"`   // 세션 폴더
+	Parent    string          `json:"parent,omitempty"`
+	Profile   string          `json:"profile,omitempty"`
+	Trust     json.RawMessage `json:"trust,omitempty"`
+	ReadScope json.RawMessage `json:"readScope,omitempty"`
+	Sandboxed *bool           `json:"sandboxed,omitempty"`
+
+	Source         string          `json:"source,omitempty"`   // context
+	Audience       string          `json:"audience,omitempty"` // context, 없으면 main
+	Task           string          `json:"task,omitempty"`     // context
+	Prompt         string          `json:"prompt,omitempty"`   // recall
+	Origin         string          `json:"origin,omitempty"`   // recall, 없으면 user
+	RequestID      string          `json:"requestId,omitempty"`
+	Tool           string          `json:"tool,omitempty"` // tool-context
+	Name           string          `json:"name,omitempty"` // call
+	Args           json.RawMessage `json:"args,omitempty"` // call
+	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
+	MemoryIDs      []string        `json:"memoryIds,omitempty"` // delivered
+}
+
+// Decode reads one contract request. Input that is not one JSON object is a usage error.
+func Decode(b []byte) (Request, *Error) {
+	var r Request
+	if len(strings.TrimSpace(string(b))) == 0 {
+		return r, nil
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return r, &Error{Code: CodeUsage, Message: err.Error()}
+	}
+	return r, nil
+}
+
+// key is the session the marks and events of a request are kept under: a subagent has its own
+// context, so it is told once more what the main session was told.
+func (r Request) key() string {
+	if r.Agent == "" || r.Session == "" {
+		return r.Session
+	}
+	return r.Session + "/" + r.Agent
+}
+
+// Budget is how much of its limit a recall-shaped result used, in characters (runes).
+type Budget struct {
+	Chars int `json:"chars"`
+	Limit int `json:"limit"`
+}
+
+// Recall is the result of context, recall and tool-context.
+type Recall struct {
+	Text      string   `json:"text"`
+	MemoryIDs []string `json:"memoryIds"` // 빈 결과도 []
+	Budget    Budget   `json:"budget"`
+	Skipped   string   `json:"skipped,omitempty"`
+}
+
+// DBSchema is the DB's schema version and its state against this binary.
+type DBSchema struct {
+	Schema int    `json:"schema"`
+	State  string `json:"state"`
+}
+
+// VersionOut is the result of version.
+type VersionOut struct {
+	Binary   string   `json:"binary"`
+	Contract int      `json:"contract"`
+	Schema   int      `json:"schema"`
+	DB       DBSchema `json:"db"`
+}
+
+// CallOut is the result of call: the tool's own result, as the MCP tool gives it.
+type CallOut struct {
+	Name   string `json:"name"`
+	Result any    `json:"result"`
+}
+
+// OK is the result of delivered, reset and session-end.
+type OK struct {
+	OK bool `json:"ok"`
+}
+
+// Error codes.
+const (
+	CodeUsage       = "usage"
+	CodeContract    = "contract"
+	CodeTimeout     = "timeout"
+	CodeNoDB        = "no-db"
+	CodeSchemaNewer = "schema-newer"
+	CodeSchemaOlder = "schema-older"
+	CodeUnknownTool = "unknown-tool"
+	CodeTool        = "tool"
+	CodeInternal    = "internal"
+)
+
+// Error is an operation's error: a code, a message and, for a tool, its name. Its JSON is the
+// contract's {"error", "code", "name"?}.
+type Error struct {
+	Message string `json:"error"`
+	Code    string `json:"code"`
+	Name    string `json:"name,omitempty"`
+}
+
+func (e *Error) Error() string {
+	if e.Message == "" {
+		return e.Code
+	}
+	return e.Message
+}
+
+// Exit is the exit code of the error: 2 for a usage error, 1 for any other.
+func (e *Error) Exit() int {
+	if e.Code == CodeUsage {
+		return 2
+	}
+	return 1
+}
+
+// fail is an error whose message is its code (the CLI gives the words).
+func fail(code string) *Error { return &Error{Code: code, Message: code} }
