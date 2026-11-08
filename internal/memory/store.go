@@ -115,6 +115,8 @@ func addColumns(db *sql.Tx) error {
 		{"memories", "pinned", "INTEGER NOT NULL DEFAULT 0"},
 		// 활동 기록의 하루 요약(S4-8: 일지 기억을 옮겨 온 것). 옛 판 훅은 이 열을 모르고 넣으므로 그 줄은 빈 요약이다.
 		{"activity", "summary", "TEXT NOT NULL DEFAULT ''"},
+		// 출처 등급(판 5, 설계 9절). 옛 판은 이 열을 모르고 넣으므로 그 줄은 빈 등급이고, 읽을 때 kind로 정한다.
+		{"sources", "trust", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -167,11 +169,20 @@ func migrate(db *sql.DB) error {
 	if v > SchemaVersion {
 		return schemaNewerError(v)
 	}
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema); err != nil {
+	var indexed int // 색인 표가 이미 있으면 채우지 않는다: 열기는 늦은 줄을 채우지 않는다(채우기는 쓰기 트랜잭션 끝에서)
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_index'`).Scan(&indexed); err != nil {
+		return i18n.Errorf("memory.err.db_open", err)
+	}
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
+	}
+	if indexed == 0 { // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
+		if _, err := fillStaleTx(tx, 0); err != nil {
+			return i18n.Errorf("memory.err.db_upgrade", err)
+		}
 	}
 	if _, err := tx.Exec(`INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		metaSchemaVersion, strconv.Itoa(SchemaVersion)); err != nil {
@@ -477,6 +488,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if err := versionTx(tx, m, "create", "", now); err != nil {
 		return Memory{}, rep, err
 	}
+	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 새 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
+		return Memory{}, rep, err
+	}
 	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
 		return Memory{}, rep, err
 	}
@@ -587,6 +601,9 @@ func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,pinned=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
 		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.Pinned, m.ID); err != nil {
+		return err
+	}
+	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 고친 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
 		return err
 	}
 	return versionTx(tx, m, action, reason, now)

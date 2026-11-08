@@ -461,7 +461,7 @@ func TestAC8_스키마_3을_4로_올린다(t *testing.T) {
 	}
 	defer s.Close()
 	var v, n int
-	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != 4 {
+	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != SchemaVersion { // 3 → 4(감사 표) → 지금 판
 		t.Fatalf("user_version %d %v", v, err)
 	}
 	for _, table := range []string{"audit_flags", "audit_acks"} {

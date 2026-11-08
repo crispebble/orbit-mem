@@ -278,7 +278,7 @@ func TestOpen_스키마_2를_3으로_올린다(t *testing.T) {
 	}
 	defer s.Close()
 	var v, n int
-	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != 4 { // 2 → 3 → 4(AU-6 감사 표)
+	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != SchemaVersion { // 2 → 3 → 4(AU-6 감사 표) → 지금 판
 		t.Fatalf("user_version %d %v", v, err)
 	}
 	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM pragma_table_info('activity')`).Scan(&n); err != nil || n == 0 {

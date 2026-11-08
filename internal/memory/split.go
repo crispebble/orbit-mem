@@ -276,6 +276,9 @@ func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi 
 			n.Retention, n.ReviewDays, n.ReviewAt, n.ExpiresAt, n.Topic, toolsJSON(n.Tools)); err != nil {
 			return nil, "", err
 		}
+		if err := indexTx(tx, n.ID); err != nil {
+			return nil, "", err
+		}
 		for _, x := range srcs {
 			if _, err := tx.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
 				NewID("s-"), n.ID, x.kind, x.ref, x.excerpt, x.hash, x.at); err != nil {
