@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -885,11 +886,35 @@ type FindInput struct {
 	AllProjects bool
 	GlobalOnly  bool
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
+	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
 }
 
-// Find returns matching memories ranked by relevance, then recency.
+// Hit is a found memory with its score for the query: 0~1 for each query on its own (rank.go), 1 for an
+// empty query.
+type Hit struct {
+	Memory Memory
+	Score  float64
+}
+
+// Find returns matching memories ranked by score, then confirmed before candidate, then the memories of
+// here (not global) before the rest, then newest. An empty query lists them confirmed first, then newest.
 func (s *Store) Find(in FindInput) ([]Memory, error) {
+	hits, err := s.FindScored(in)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Memory, len(hits))
+	for i, h := range hits {
+		out[i] = h.Memory
+	}
+	return out, nil
+}
+
+// FindScored is Find with each memory's score. The search index finds the candidates; late memories (not
+// indexed or indexed before their last change) are read by scanning, and every candidate gets the same
+// score function. It only reads, so it works on a read-only store.
+func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	states := in.States
 	if len(states) == 0 {
 		states = []string{StateCandidate, StateConfirmed}
@@ -898,9 +923,20 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 빈 질의(공백뿐)는 색인을 거치지 않고 모두 1점이다. 토큰이 없는 질의(기호뿐)는 아무것도 맞지 않는다.
+	empty := strings.TrimSpace(in.Query) == ""
+	var scores map[string]float64
+	if !empty {
+		if qs := scoreTokens(in.Query); len(qs) > 0 {
+			if scores, err = s.queryScores(qs); err != nil {
+				return nil, err
+			}
+		}
+	}
 	type ranked struct {
-		m Memory
-		r Rank
+		Hit
+		key  float64 // 비교용으로 반올림한 점수: 같은 값의 부동소수점 오차가 순위를 가르지 않게
+		here bool
 	}
 	var tags []string
 	for _, t := range in.Tags {
@@ -913,56 +949,75 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 		if len(in.Kinds) > 0 && !contains(in.Kinds, m.Kind) {
 			continue
 		}
+		if in.Scope != "" && m.Scope != in.Scope {
+			continue
+		}
 		if len(tags) > 0 && !slices.ContainsFunc(tags, func(k string) bool { return hasTagKey(m.Tags, k) }) {
 			continue
 		}
-		switch {
-		case in.AllProjects:
-		case in.GlobalOnly || (in.Project == "" && in.Place == nil):
-			if m.Scope != ScopeGlobal {
-				continue
-			}
-		case in.Place != nil:
-			if !in.Place.Sees(m.Scope, m.Project) {
-				continue
-			}
-		default:
-			if !(place.Place{Scope: in.Project}).Sees(m.Scope, m.Project) {
-				continue
-			}
-		}
-		r := Relevance(m.Doc(), in.Query)
-		if r.Score <= 0 {
+		if !in.sees(m) {
 			continue
 		}
-		hits = append(hits, ranked{m, r})
+		score := 1.0
+		if !empty {
+			if score = scores[m.ID]; score <= 0 {
+				continue
+			}
+		}
+		hits = append(hits, ranked{Hit{m, score}, math.Round(score * 1e9), !empty && in.here(m)})
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, b := hits[i], hits[j]
-		if a.r.Score != b.r.Score {
-			return a.r.Score > b.r.Score
+		if a.key != b.key {
+			return a.key > b.key
 		}
 		// 후보는 회상에 쓰되 확정보다 뒤에 둔다(A2).
-		if ca, cb := a.m.State == StateConfirmed, b.m.State == StateConfirmed; ca != cb {
+		if ca, cb := a.Memory.State == StateConfirmed, b.Memory.State == StateConfirmed; ca != cb {
 			return ca
 		}
-		if a.r.Title != b.r.Title {
-			return a.r.Title > b.r.Title
+		if a.here != b.here {
+			return a.here
 		}
-		if a.m.UpdatedAt != b.m.UpdatedAt {
-			return a.m.UpdatedAt > b.m.UpdatedAt
+		if a.Memory.UpdatedAt != b.Memory.UpdatedAt {
+			return a.Memory.UpdatedAt > b.Memory.UpdatedAt
 		}
-		return a.m.ID < b.m.ID
+		return a.Memory.ID < b.Memory.ID
 	})
 	limit := in.Limit
 	if limit <= 0 {
 		limit = 20
 	}
-	var out []Memory
+	var out []Hit
 	for i := 0; i < len(hits) && i < limit; i++ {
-		out = append(out, hits[i].m)
+		out = append(out, hits[i].Hit)
 	}
 	return out, nil
+}
+
+// sees says whether the find's place sees m. A given Scope alone decides (FindScored checks it).
+func (in FindInput) sees(m Memory) bool {
+	switch {
+	case in.AllProjects, in.Scope != "":
+		return true
+	case in.GlobalOnly || (in.Project == "" && in.Place == nil):
+		return m.Scope == ScopeGlobal
+	case in.Place != nil:
+		return in.Place.Sees(m.Scope, m.Project)
+	}
+	return (place.Place{Scope: in.Project}).Sees(m.Scope, m.Project)
+}
+
+// here says whether m belongs to the find's place itself (its product, repository or folder), not global.
+func (in FindInput) here(m Memory) bool {
+	switch {
+	case m.Scope == ScopeGlobal:
+		return false
+	case in.Place != nil:
+		return in.Place.Sees(m.Scope, m.Project)
+	case in.Project != "":
+		return (place.Place{Scope: in.Project}).Sees(m.Scope, m.Project)
+	}
+	return false
 }
 
 // List returns memories in the given states (all states when empty), newest first.
