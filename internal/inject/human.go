@@ -1,0 +1,142 @@
+package inject
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+)
+
+// The host runs its prompt hook for more than what a person types: background
+// sub-agent reports, messages from other sessions, scheduled-task events and
+// system notices arrive as prompts too. Recall for the request must not run on
+// those. All the shapes that mark such a message live in this file.
+
+// hostHeaders are plain-text openers with no closing mark: a message that
+// starts with one is entirely the host's own.
+var hostHeaders = []string{
+	"Another Claude session sent a message:",
+	"[Subagent hand-back]",
+}
+
+// hostTags are tag names whose blocks are the host's own. A block opens with
+// "<name" followed by a space or ">" and ends at the first "</name>".
+var hostTags = []string{
+	"agent-message",
+	"cross-session-message",
+	"teammate-message",
+	"task-notification",
+	"side-sessions-event",
+	"ci-monitor-event",
+}
+
+// reminderBlock is a system notice the host appends to a prompt.
+var reminderBlock = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+
+// trivialWords are whole-message acknowledgements and greetings (compared
+// after trimming and lower-casing). Hangul-jamo-only text and short numbers
+// are trivial too; see isTrivial.
+var trivialWords = map[string]bool{
+	"네": true, "넵": true, "응": true, "좋아": true,
+	"안녕": true, "안녕하세요": true, "고마워": true, "감사합니다": true,
+	"ok": true, "okay": true, "yes": true, "y": true,
+	"thanks": true, "thx": true, "hi": true, "hello": true,
+}
+
+// maxTrivialDigits is the longest all-digit reply counted as trivial.
+const maxTrivialDigits = 3
+
+// PersonWords returns the part of a hook prompt a person wrote and whether the
+// prompt is a person's request at all. A prompt that is empty (for example
+// only an image) is a person's. System notices are removed first; what is left
+// is host-made when it starts with a host shape that has nothing after it. A
+// pasted host message followed by a question is a person's, and the words are
+// what follows the pasted blocks. A host shape that is not at the very start
+// (text before it, or inside pasted content) does not make the prompt the host's.
+func PersonWords(prompt string) (words string, ok bool) {
+	if strings.TrimSpace(prompt) == "" {
+		return "", true
+	}
+	rest := strings.TrimSpace(reminderBlock.ReplaceAllString(prompt, ""))
+	for {
+		if rest == "" {
+			return "", false
+		}
+		for _, h := range hostHeaders {
+			if strings.HasPrefix(rest, h) {
+				return "", false
+			}
+		}
+		name := openingTag(rest)
+		if name == "" {
+			return rest, true
+		}
+		end := strings.Index(rest, "</"+name+">")
+		if end < 0 {
+			return "", false
+		}
+		rest = strings.TrimSpace(reminderBlock.ReplaceAllString(rest[end+len("</"+name+">"):], ""))
+	}
+}
+
+// openingTag returns the host tag name s starts with, or "".
+func openingTag(s string) string {
+	for _, name := range hostTags {
+		p := "<" + name
+		if !strings.HasPrefix(s, p) || len(s) == len(p) {
+			continue
+		}
+		if c := s[len(p)]; c == '>' || unicode.IsSpace(rune(c)) {
+			return name
+		}
+	}
+	return ""
+}
+
+// RequestText returns the text recall should use for a person's words and
+// whether the request is trivial (nothing worth recalling for). A slash
+// command without arguments is trivial; with arguments the arguments are the
+// request. A first token with another "/" is a path, not a command. Empty
+// words (an image-only request) are not trivial.
+func RequestText(words string) (text string, trivial bool) {
+	text = strings.TrimSpace(words)
+	if strings.HasPrefix(text, "/") {
+		first, args := text, ""
+		if i := strings.IndexFunc(text, unicode.IsSpace); i >= 0 {
+			first, args = text[:i], text[i:]
+		}
+		if !strings.Contains(first[1:], "/") {
+			text = strings.TrimSpace(args)
+			if text == "" {
+				return "", true
+			}
+		}
+	}
+	return text, isTrivial(text)
+}
+
+// isTrivial reports whether text, once trimmed of surrounding space,
+// punctuation and symbols (emoji included) and lower-cased, is wholly in the
+// closed trivial set.
+func isTrivial(text string) bool {
+	if text == "" {
+		return false
+	}
+	core := strings.ToLower(strings.TrimFunc(text, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
+	}))
+	if core == "" || trivialWords[core] {
+		return true
+	}
+	jamo, digits := true, true
+	n := 0
+	for _, r := range core {
+		n++
+		if r < 0x3131 || r > 0x318E {
+			jamo = false
+		}
+		if !unicode.IsDigit(r) {
+			digits = false
+		}
+	}
+	return jamo || (digits && n <= maxTrivialDigits)
+}

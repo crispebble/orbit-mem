@@ -1,0 +1,403 @@
+{
+ "about": "사람 요청 판정 고정 묶음. 꼴만 흉내 낸 가짜 글이며 개인 내용은 없다. persons는 PersonWords, requests는 RequestText 사례.",
+ "persons": [
+  {
+   "name": "서브에이전트 보고 머리말만",
+   "prompt": "[Subagent hand-back]\nstep done, files changed: a.go",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "다른 세션 머리말과 agent-message",
+   "prompt": "Another Claude session sent a message:\n<agent-message from=\"s-1\">\nplease check the build\n</agent-message>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "다른 세션 머리말만",
+   "prompt": "Another Claude session sent a message:\nplease check the build",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "cross-session-message만",
+   "prompt": "<cross-session-message from=\"s-1\" from-name=\"worker\" from-mode=\"auto\">\nhello there\n</cross-session-message>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "teammate-message만",
+   "prompt": "<teammate-message teammate_id=\"t1\">\nstatus ok\n</teammate-message>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "task-notification만",
+   "prompt": "<task-notification>\n<task-id>x1</task-id>\n<status>completed</status>\n</task-notification>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "side-sessions-event만",
+   "prompt": "<side-sessions-event>\nsession finished\n</side-sessions-event>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "ci-monitor-event만",
+   "prompt": "<ci-monitor-event kind=\"failed\">\njob lint failed\n</ci-monitor-event>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "여러 틀 블록이 이어짐",
+   "prompt": "<task-notification>\na\n</task-notification>\n\n<ci-monitor-event>\nb\n</ci-monitor-event>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "닫는 표시 없는 태그 틀",
+   "prompt": "<task-notification>\nnever closed",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "틀 뒤에 질문이 있으면 사람",
+   "prompt": "<task-notification>\n<status>completed</status>\n</task-notification>\n이 알림이 왜 왔는지 설명해 줘",
+   "person": true,
+   "words": "이 알림이 왜 왔는지 설명해 줘"
+  },
+  {
+   "name": "agent-message 뒤 질문",
+   "prompt": "<agent-message from=\"s-2\">\nbuild is red\n</agent-message>\nwhy is the build red?",
+   "person": true,
+   "words": "why is the build red?"
+  },
+  {
+   "name": "틀 둘 뒤 질문",
+   "prompt": "<cross-session-message from=\"a\" from-name=\"b\" from-mode=\"c\">\nx\n</cross-session-message>\n<side-sessions-event>\ny\n</side-sessions-event>\n정리해 줘",
+   "person": true,
+   "words": "정리해 줘"
+  },
+  {
+   "name": "머리말 틀은 닫는 표시가 없어 전체가 사람 아님",
+   "prompt": "Another Claude session sent a message:\n<agent-message from=\"s\">\nhi\n</agent-message>\n그럼 이건?",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "질문 뒤에 틀 붙여 넣기",
+   "prompt": "이 알림이 뭐야?\n<task-notification>\n<status>completed</status>\n</task-notification>",
+   "person": true,
+   "words": "이 알림이 뭐야?\n<task-notification>\n<status>completed</status>\n</task-notification>"
+  },
+  {
+   "name": "pasted_content 안 틀",
+   "prompt": "<pasted_content id=\"1\">\n<task-notification>\nx\n</task-notification>\n</pasted_content>\n이게 뭔지 알려 줘",
+   "person": true,
+   "words": "<pasted_content id=\"1\">\n<task-notification>\nx\n</task-notification>\n</pasted_content>\n이게 뭔지 알려 줘"
+  },
+  {
+   "name": "머리말을 붙여 넣고 질문",
+   "prompt": "Subagent 보고가 이렇게 왔어: [Subagent hand-back] 끝",
+   "person": true,
+   "words": "Subagent 보고가 이렇게 왔어: [Subagent hand-back] 끝"
+  },
+  {
+   "name": "비슷한 태그 이름은 틀이 아님",
+   "prompt": "<task-notifications>x</task-notifications> 이건 뭐야",
+   "person": true,
+   "words": "<task-notifications>x</task-notifications> 이건 뭐야"
+  },
+  {
+   "name": "system-reminder만",
+   "prompt": "<system-reminder>\nsome reminder text\n</system-reminder>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "system-reminder 둘만",
+   "prompt": "<system-reminder>\nsome reminder text\n</system-reminder>\n<system-reminder>\nsome reminder text\n</system-reminder>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "system-reminder와 사람 글",
+   "prompt": "<system-reminder>\nsome reminder text\n</system-reminder>\n로그인 오류를 고쳐 줘",
+   "person": true,
+   "words": "로그인 오류를 고쳐 줘"
+  },
+  {
+   "name": "사람 글 뒤 system-reminder",
+   "prompt": "로그인 오류를 고쳐 줘\n<system-reminder>\nsome reminder text\n</system-reminder>",
+   "person": true,
+   "words": "로그인 오류를 고쳐 줘"
+  },
+  {
+   "name": "system-reminder 뒤 틀만",
+   "prompt": "<system-reminder>\nsome reminder text\n</system-reminder>\n<task-notification>\nx\n</task-notification>",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "system-reminder 뒤 틀과 질문",
+   "prompt": "<system-reminder>\nsome reminder text\n</system-reminder>\n<task-notification>\nx\n</task-notification>\n결과 알려 줘",
+   "person": true,
+   "words": "결과 알려 줘"
+  },
+  {
+   "name": "빈 요청은 사람",
+   "prompt": "",
+   "person": true,
+   "words": ""
+  },
+  {
+   "name": "공백만 있는 요청은 사람",
+   "prompt": "  \n ",
+   "person": true,
+   "words": ""
+  },
+  {
+   "name": "일반 글",
+   "prompt": "README에 설치 방법을 추가해 줘",
+   "person": true,
+   "words": "README에 설치 방법을 추가해 줘"
+  }
+ ],
+ "requests": [
+  {
+   "name": "사소함 ㅇㅇ",
+   "words": "ㅇㅇ",
+   "text": "ㅇㅇ",
+   "trivial": true
+  },
+  {
+   "name": "사소함 ㅋㅋㅋ",
+   "words": "ㅋㅋㅋ",
+   "text": "ㅋㅋㅋ",
+   "trivial": true
+  },
+  {
+   "name": "사소함 ㄱㄱ",
+   "words": "ㄱㄱ",
+   "text": "ㄱㄱ",
+   "trivial": true
+  },
+  {
+   "name": "사소함 ㅇㅋ!",
+   "words": "ㅇㅋ!",
+   "text": "ㅇㅋ!",
+   "trivial": true
+  },
+  {
+   "name": "사소함 네",
+   "words": "네",
+   "text": "네",
+   "trivial": true
+  },
+  {
+   "name": "사소함 넵.",
+   "words": "넵.",
+   "text": "넵.",
+   "trivial": true
+  },
+  {
+   "name": "사소함 응",
+   "words": "응",
+   "text": "응",
+   "trivial": true
+  },
+  {
+   "name": "사소함 좋아",
+   "words": "좋아",
+   "text": "좋아",
+   "trivial": true
+  },
+  {
+   "name": "사소함 안녕",
+   "words": "안녕",
+   "text": "안녕",
+   "trivial": true
+  },
+  {
+   "name": "사소함 안녕하세요 😀",
+   "words": "안녕하세요 😀",
+   "text": "안녕하세요 😀",
+   "trivial": true
+  },
+  {
+   "name": "사소함 고마워",
+   "words": "고마워",
+   "text": "고마워",
+   "trivial": true
+  },
+  {
+   "name": "사소함 감사합니다!",
+   "words": "감사합니다!",
+   "text": "감사합니다!",
+   "trivial": true
+  },
+  {
+   "name": "사소함 OK",
+   "words": "OK",
+   "text": "OK",
+   "trivial": true
+  },
+  {
+   "name": "사소함 Okay",
+   "words": "Okay",
+   "text": "Okay",
+   "trivial": true
+  },
+  {
+   "name": "사소함 yes",
+   "words": "yes",
+   "text": "yes",
+   "trivial": true
+  },
+  {
+   "name": "사소함 y",
+   "words": "y",
+   "text": "y",
+   "trivial": true
+  },
+  {
+   "name": "사소함 Thanks",
+   "words": "Thanks",
+   "text": "Thanks",
+   "trivial": true
+  },
+  {
+   "name": "사소함 thx",
+   "words": "thx",
+   "text": "thx",
+   "trivial": true
+  },
+  {
+   "name": "사소함 Hi",
+   "words": "Hi",
+   "text": "Hi",
+   "trivial": true
+  },
+  {
+   "name": "사소함 hello",
+   "words": "hello",
+   "text": "hello",
+   "trivial": true
+  },
+  {
+   "name": "사소함 7",
+   "words": "7",
+   "text": "7",
+   "trivial": true
+  },
+  {
+   "name": "사소함 42",
+   "words": "42",
+   "text": "42",
+   "trivial": true
+  },
+  {
+   "name": "사소함 123",
+   "words": "123",
+   "text": "123",
+   "trivial": true
+  },
+  {
+   "name": "사소하지 않음 보고 한국어로",
+   "words": "보고 한국어로",
+   "text": "보고 한국어로",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 ㅇㅇ 근데 README도",
+   "words": "ㅇㅇ 근데 README도",
+   "text": "ㅇㅇ 근데 README도",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 네, 그렇게 하되 시험도 추가",
+   "words": "네, 그렇게 하되 시험도 추가",
+   "text": "네, 그렇게 하되 시험도 추가",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 1234",
+   "words": "1234",
+   "text": "1234",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 yes please",
+   "words": "yes please",
+   "text": "yes please",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 안녕 하세요 반가워요",
+   "words": "안녕 하세요 반가워요",
+   "text": "안녕 하세요 반가워요",
+   "trivial": false
+  },
+  {
+   "name": "사소하지 않음 go",
+   "words": "go",
+   "text": "go",
+   "trivial": false
+  },
+  {
+   "name": "빈 글",
+   "words": "",
+   "text": "",
+   "trivial": false
+  },
+  {
+   "name": "이모지만",
+   "words": "👍",
+   "text": "👍",
+   "trivial": true
+  },
+  {
+   "name": "인자 없는 명령",
+   "words": "/compact",
+   "text": "",
+   "trivial": true
+  },
+  {
+   "name": "네임스페이스 명령 인자 없음",
+   "words": "/orbit-code:verify  ",
+   "text": "",
+   "trivial": true
+  },
+  {
+   "name": "인자 있는 명령",
+   "words": "/orbit-code:ultrawork 설계 고쳐 줘",
+   "text": "설계 고쳐 줘",
+   "trivial": false
+  },
+  {
+   "name": "인자가 사소하면 사소함",
+   "words": "/clear ㅇㅇ",
+   "text": "ㅇㅇ",
+   "trivial": true
+  },
+  {
+   "name": "경로로 시작하면 명령 아님",
+   "words": "/Users/x/y 이 파일 봐 줘",
+   "text": "/Users/x/y 이 파일 봐 줘",
+   "trivial": false
+  },
+  {
+   "name": "경로만이면 명령 아님",
+   "words": "/Users/x/y",
+   "text": "/Users/x/y",
+   "trivial": false
+  },
+  {
+   "name": "슬래시가 아닌 시작",
+   "words": "compact /x",
+   "text": "compact /x",
+   "trivial": false
+  }
+ ]
+}
