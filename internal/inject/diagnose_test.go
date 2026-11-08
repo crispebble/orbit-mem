@@ -127,3 +127,19 @@ func TestPrompt_짧은_꼴에서_잘린_규칙_본문은_전문_자리를_알린
 		t.Fatalf("%s", inj.Text)
 	}
 }
+
+// 기획 · orbit-mem M-4: 훅 호스트(claude·codex)만 「훅이 돌려줌」으로 보고, 이름을 모르는 다른 호스트는 모두
+// inject delivered로 알려야 전달됨이다.
+func TestDiagnose_훅_호스트_밖의_호스트는_전달_사건이_있어야_전달됨이다(t *testing.T) {
+	for host, want := range map[string]string{"claude": "hook_returned", "codex": "hook_returned", "openclaw": "not_delivered", "host-x": "not_delivered"} {
+		s := store(t)
+		m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
+		if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectPrompt, Host: host, Session: "h-1"}, map[string]any{"memoryIds": []string{m.ID}}); err != nil {
+			t.Fatal(err)
+		}
+		d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex exec stdin 닫힘 문제", Host: host, Session: "h-1"})
+		if got := stages(d)[StageDelivered].Code; got != want {
+			t.Errorf("%s: delivered = %s, want %s", host, got, want)
+		}
+	}
+}
