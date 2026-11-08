@@ -2,6 +2,7 @@
   "config.err.candidate_expiry": "candidateExpiryDays is 0 (off) to 365 days: %d",
   "config.err.evidence": "check confirmSeenDays, confirmFollowedVerified and correctionRepeatSessions (1-30)",
   "config.err.inject": "inject is full|rules|off: %q",
+  "config.err.recall": "recall is auto|on_demand|off: %q",
   "config.err.language": "language is en or ko: %q",
   "config.err.read": "cannot read the settings file (%s): %w",
   "config.err.recall_chars": "recallChars is 100-%d: %d",

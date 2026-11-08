@@ -21,13 +21,52 @@ const (
 	InjectOff   = "off"   // 아무것도 넣지 않음(MCP로만 씀)
 )
 
+// Recall modes (설계 보완 T-2): the new key `recall`. The old key `inject` reads as the same meaning
+// (full=auto, rules=on_demand, off=off).
+const (
+	RecallAuto     = "auto"      // 기본: 규칙·B1 회상·요청마다 회상
+	RecallOnDemand = "on_demand" // B1 없음(옛 inject=rules와 같은 뜻)
+	RecallOff      = "off"       // 아무것도 넣지 않음
+)
+
+var recallRank = map[string]int{RecallAuto: 0, RecallOnDemand: 1, RecallOff: 2}
+
+// InjectOfRecall maps a recall mode to the old inject value, which an older executable still reads.
+func InjectOfRecall(recall string) string {
+	switch recall {
+	case RecallOnDemand:
+		return InjectRules
+	case RecallOff:
+		return InjectOff
+	}
+	return InjectFull
+}
+
+// RecallMode is the recall setting: `recall` and the old `inject` read alike; when they differ the
+// more restrictive one wins (off > on_demand > auto). An empty recall (the default, or a file from
+// before the key) follows inject.
+func (c Config) RecallMode() string {
+	mode := RecallAuto
+	switch c.Inject {
+	case InjectRules:
+		mode = RecallOnDemand
+	case InjectOff:
+		mode = RecallOff
+	}
+	if r, ok := recallRank[c.Recall]; ok && r > recallRank[mode] {
+		mode = c.Recall
+	}
+	return mode
+}
+
 // Config is this PC's settings. Keys of earlier versions that are gone (the retrospective
 // settings retroHost·sessionRetro·graphTidy*·legacy*·applyTargets·pluginSource… removed
 // 2026-11-08, and orbit-code's old work settings) are ignored when read and kept as they
 // were in the file when saved.
 type Config struct {
 	Language         string   `json:"language,omitempty"` // en(기본) | ko: orbit-mem이 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
-	Inject           string   `json:"inject"`             // full | rules | off
+	Inject           string   `json:"inject"`             // full | rules | off (옛 키: recall과 같은 뜻으로 읽는다)
+	Recall           string   `json:"recall,omitempty"`   // auto | on_demand | off (비면 inject를 따른다)
 	RecentDecisions  int      `json:"recentDecisions"`    // 세션 시작에 넣을 최근 결정 제목 수
 	BackupKeep       int      `json:"backupKeep"`         // 남길 하루 사본 수(넘는 memory-YYYYMMDD 사본만 지운다)
 	AutoBackup       bool     `json:"autoBackup"`         // 세션 시작 훅이 마지막 사본이 24시간보다 오래됐으면 뒤에서 사본을 만든다
@@ -118,6 +157,9 @@ func (c Config) Validate() error {
 	}
 	if c.Inject != InjectFull && c.Inject != InjectRules && c.Inject != InjectOff {
 		return i18n.Errorf("config.err.inject", c.Inject)
+	}
+	if _, ok := recallRank[c.Recall]; c.Recall != "" && !ok {
+		return i18n.Errorf("config.err.recall", c.Recall)
 	}
 	if c.RecentDecisions < 0 || c.RecentDecisions > 20 || c.BackupKeep < 1 {
 		return i18n.Errorf("config.err.recent_backup")
@@ -217,6 +259,9 @@ func Save(path string, c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
+	// 두 키를 같은 뜻으로 쓴다: 옛 실행 파일은 recall을 모르고 inject대로 돈다.
+	c.Recall = c.RecallMode()
+	c.Inject = InjectOfRecall(c.Recall)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
