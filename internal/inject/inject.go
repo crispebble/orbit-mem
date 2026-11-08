@@ -32,9 +32,6 @@ const (
 	sessionNoteRunes = 600
 	// maxDecisionsRunes bounds the line of recent decision titles.
 	maxDecisionsRunes = 1000
-	// MaxToolRunes and MaxToolMemories bound what a tool call brings (6절).
-	MaxToolRunes    = 1000
-	MaxToolMemories = 3
 	// maxNewMemories is how many memories confirmed elsewhere one request announces.
 	maxNewMemories = 3
 	// maxSessionNewsRunes bounds the corrections and new memories of one request.
@@ -677,91 +674,6 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		return ""
 	}
 	return head + entries.String()
-}
-
-// ToolInjection is what a tool call brings right before it runs (PreToolUse, 설계 ·
-// orbit-mem 2판 6절): the live current values in scope whose tool triggers name the
-// tool or a prefix of it, exact names first, then confirmed, this project, newest, at
-// most MaxToolMemories within MaxToolRunes, each once per session (RecordShown).
-func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
-	var inj Injection
-	var b strings.Builder
-	if cfg.Inject == config.InjectOff || strings.TrimSpace(tool) == "" {
-		return inj.done(&b)
-	}
-	active, err := s.Triggered()
-	if err != nil || len(active) == 0 {
-		return inj.done(&b)
-	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
-	given := s.SessionMarks(host, session, memory.MarkTool)
-	pl := at(cfg, scope)
-	type hit struct {
-		m     memory.Memory
-		exact bool
-	}
-	var hits []hit
-	for _, m := range active {
-		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
-			continue
-		}
-		if exact, ok := m.TriggeredBy(tool); ok {
-			hits = append(hits, hit{m, exact})
-		}
-	}
-	if len(hits) == 0 {
-		return inj.done(&b)
-	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		a, c := hits[i], hits[j]
-		if a.exact != c.exact {
-			return a.exact
-		}
-		if ca, cc := a.m.State == memory.StateConfirmed, c.m.State == memory.StateConfirmed; ca != cc {
-			return ca
-		}
-		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
-			return la
-		}
-		return a.m.UpdatedAt > c.m.UpdatedAt
-	})
-	head := fmt.Sprintf("["+Label+" 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다.\n", tool)
-	used := runes(head)
-	var entries strings.Builder
-	for _, h := range hits {
-		if len(inj.MemoryIDs) == MaxToolMemories {
-			break
-		}
-		m := h.m
-		state := "확정"
-		if m.State == memory.StateCandidate {
-			state = "후보"
-		}
-		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
-		if used+runes(line) > MaxToolRunes {
-			break
-		}
-		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			room := min(ruleBodyRunes, MaxToolRunes-used-runes(line)-3)
-			if room > 20 {
-				line += "  " + memory.ClipRunes(text, room) + "\n"
-			}
-		}
-		if used+runes(line) > MaxToolRunes {
-			continue
-		}
-		entries.WriteString(line)
-		used += runes(line)
-		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-		inj.mark(memory.MarkTool, m.ID)
-	}
-	if len(inj.MemoryIDs) == 0 {
-		return inj.done(&b)
-	}
-	b.WriteString(head)
-	b.WriteString(entries.String())
-	return inj.done(&b)
 }
 
 func kindName(k string) string {

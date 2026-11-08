@@ -5,11 +5,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/memory"
@@ -104,5 +106,60 @@ func TestPlace_지금_폴더의_제품을_보인다(t *testing.T) {
 	}
 	if out, _, code := run(t, "", "place", "--cwd", draft); code != 0 || !strings.Contains(out, "orbit-code-desktop") {
 		t.Fatalf("text: %d %s", code, out)
+	}
+}
+
+// 설계 · orbit-mem 5.2절·L-4: 한 접두에 기억이 많아도 도구 훅 글은 2,500자 이하이고, 같은 세션의 기억 줄 합은
+// 2,000자에서 멈춘 뒤 「N개 더」 줄만 온다. 도구 이름이 아주 길어도 넘지 않는다.
+func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에서_멈춘다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	const n = 10
+	for i := 0; i < n; i++ {
+		title := fmt.Sprintf("문서 도구 규칙 %d", i)
+		if _, err := s.Save(memory.SaveInput{Kind: "rule", Title: title, Body: strings.Repeat("길다 ", 300), Topic: title, Scope: memory.ScopeGlobal,
+			Tools: []string{"mcp__docs__*"}, Source: memory.Source{Kind: "quote", Excerpt: title}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pre := func(session, tool string) string {
+		b, _ := json.Marshal(map[string]string{"session_id": session, "cwd": "/tmp", "hook_event_name": "PreToolUse", "tool_name": tool})
+		out, _, code := run(t, string(b), "hook", "pre-tool", "--host", "claude")
+		if code != 0 {
+			t.Fatalf("pre-tool exit %d", code)
+		}
+		ctx := eventContext(t, out, "PreToolUse")
+		if c := utf8.RuneCountInString(ctx); c > 2500 {
+			t.Fatalf("tool hook %d runes", c)
+		}
+		return ctx
+	}
+	total, shown := 0, 0
+	for call := 0; call < 6; call++ {
+		ctx := pre("S", "mcp__docs__write_page")
+		var more string
+		for _, line := range strings.Split(ctx, "\n")[1:] {
+			switch {
+			case strings.HasPrefix(line, "- 이 도구에 걸린 기억 "):
+				more = line
+			case strings.HasPrefix(line, "- "):
+				shown++
+				total += utf8.RuneCountInString(line) + 1
+			default:
+				total += utf8.RuneCountInString(line) + 1
+			}
+		}
+		if total > 2000 {
+			t.Fatalf("call %d: session memory lines %d runes", call, total)
+		}
+		if want := fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find", n-shown); more != want {
+			t.Fatalf("call %d: more %q, want %q\n%s", call, more, want, ctx)
+		}
+	}
+	if shown >= n || total+400 <= 2000 {
+		t.Fatalf("did not stop at the session sum: shown=%d total=%d", shown, total)
+	}
+	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "기억 8개 더") {
+		t.Fatalf("long tool name:\n%.300s", ctx)
 	}
 }
