@@ -40,8 +40,6 @@ const (
 	// getItemBudget is the serialized size of one view that keeps a one-memory result
 	// within 2,500 runes: 2,500 - `{"items":[` 10 - `]}` 2.
 	getItemBudget   = 2488
-	getAppliesRunes = 60
-	getTopicRunes   = 60
 	getStaleRunes   = 100
 	getSources      = 2
 	getRefRunes     = 60
@@ -250,8 +248,7 @@ func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
 		return v
 	}
 
-	v.AppliesTo = clip(oneLine(v.AppliesTo), getAppliesRunes)
-	v.Topic = clip(oneLine(v.Topic), getTopicRunes)
+	// appliesTo와 topic은 키라서 자르지 않는다. topic은 줄이기 단계에서 통째로만 뺀다.
 	v.StaleReason = clip(oneLine(v.StaleReason), getStaleRunes)
 	srcs := m.Sources
 	if len(srcs) > getSources { // 최근 것
@@ -313,6 +310,16 @@ func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
 			break
 		}
 		step()
+		n = room(v)
+	}
+	// 모든 칸을 줄이고 본문을 0까지 줄여도 넘는 비정상 자료에서만 appliesTo를 자른다.
+	if jsonLen(withBody(v, 0)) > getItemBudget {
+		applies := oneLine(m.AppliesTo)
+		v.AppliesTo, _ = fitClip(applies, utf8Count(applies), func(c string) bool {
+			w := v
+			w.AppliesTo = c
+			return jsonLen(withBody(w, 0)) <= getItemBudget
+		})
 		n = room(v)
 	}
 	return withBody(v, n)

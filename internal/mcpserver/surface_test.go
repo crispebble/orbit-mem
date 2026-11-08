@@ -405,6 +405,9 @@ func TestSurface_글자가_모두_이스케이프돼도_상한을_지킨다(t *t
 	if n := jsonLen(GetOut{Items: []MemoryView{v}}); n > getBudget {
 		t.Errorf("get 한 건 %d룬 > %d", n, getBudget)
 	}
+	if !strings.HasSuffix(v.AppliesTo, "…") {
+		t.Errorf("비정상 자료에서는 appliesTo가 …로 잘려야 합니다: %q", tail(v.AppliesTo, 10))
+	}
 	if !strings.HasSuffix(v.Body, "… (전문은 full: true)") || v.ID != m.ID {
 		t.Errorf("본문 끝 = %q", tail(v.Body, 30))
 	}
@@ -559,5 +562,42 @@ func TestSurface_안내_첫_문장은_모든_답_앞에_찾기를_시키지_않�
 	ins := cs.InitializeResult().Instructions
 	if strings.Contains(ins, "답하거나 일하기 전에") {
 		t.Errorf("안내가 모든 답 앞에 찾기를 시킵니다:\n%s", ins)
+	}
+}
+
+func TestSurface_get_기본_보기는_긴_topic과_appliesTo를_자르지_않는다(t *testing.T) {
+	cs, s := connect(t)
+	topic := strings.Repeat("주제", 80) // 160룬
+	scope := worstScope()
+	m, err := s.Save(memory.SaveInput{Kind: "fact", Title: "긴 키", Body: "본문", Scope: scope, Topic: topic,
+		Source: memory.Source{Kind: "file", Ref: "/x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, full := range []bool{false, true} {
+		res := call(t, cs, "memory_get", map[string]any{"ids": []string{m.ID}, "full": full}, nil)
+		if res.IsError {
+			t.Fatal(text(res))
+		}
+		it := itemsOf(t, res)[0]
+		if it["topic"] != m.Topic || it["appliesTo"] != m.AppliesTo {
+			t.Errorf("full=%v topic=%q appliesTo=%q, 원문 %q %q", full, it["topic"], it["appliesTo"], m.Topic, m.AppliesTo)
+		}
+		if runes(m.Topic) <= 120 || runes(m.AppliesTo) <= 100 {
+			t.Fatalf("자료가 짧습니다: %d %d", runes(m.Topic), runes(m.AppliesTo))
+		}
+	}
+}
+
+func TestSurface_get_극단_자료는_topic을_비우고_잘린_topic을_만들지_않는다(t *testing.T) {
+	cs, s := connect(t)
+	id := seedWorst(t, s)
+	res := call(t, cs, "memory_get", map[string]any{"ids": []string{id}}, nil)
+	it := itemsOf(t, res)[0]
+	if got, _ := it["topic"].(string); got != "" {
+		t.Errorf("topic = %q, 빈 값이어야 합니다", got)
+	}
+	if a, _ := it["appliesTo"].(string); strings.HasSuffix(a, "…") || a == "" {
+		t.Errorf("appliesTo가 바뀌었습니다: %q", a)
 	}
 }
