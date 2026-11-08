@@ -133,10 +133,6 @@ func addColumns(db *sql.Tx) error {
 	return err
 }
 
-// migrate creates and upgrades the tables in one immediate transaction. Taking the
-// write lock first lets the busy timeout apply when several processes open a fresh
-// or old DB together; a statement that reads first and then writes would get
-// SQLITE_BUSY at once instead of waiting.
 // labSchema is the harness lab's tables. The lab was removed (2026-11-08, ORBIT-13); the tables
 // stay so the database format does not change (기획 · orbit-mem 원칙 5).
 const labSchema = `
@@ -151,6 +147,10 @@ CREATE TABLE IF NOT EXISTS lab_runs (
   ok INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', PRIMARY KEY(experiment, candidate, round));
 `
 
+// migrate creates and upgrades the tables in one immediate transaction. Taking the
+// write lock first lets the busy timeout apply when several processes open a fresh
+// or old DB together; a statement that reads first and then writes would get
+// SQLITE_BUSY at once instead of waiting.
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
