@@ -281,7 +281,8 @@ func (s *Store) ConfirmByEvidence(id string) (DecideResult, bool, error) {
 	return res, err == nil, err
 }
 
-// ConfirmCandidates confirms every candidate that has evidence and returns how many.
+// ConfirmCandidates confirms every candidate that has evidence and returns how many. A candidate
+// holding the user's words is left for the user, not counted as an error.
 func (s *Store) ConfirmCandidates() (int, error) {
 	cands, err := s.list([]string{StateCandidate})
 	if err != nil {
@@ -291,6 +292,9 @@ func (s *Store) ConfirmCandidates() (int, error) {
 	var errs []error
 	for _, m := range cands {
 		_, ok, err := s.ConfirmByEvidence(m.ID)
+		if errors.Is(err, ErrProtected) { // 사용자 말을 품은 후보는 사람을 기다린다: 실패가 아니다
+			continue
+		}
 		if err != nil {
 			errs = append(errs, err)
 			continue

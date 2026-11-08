@@ -96,3 +96,34 @@ func TestTidy_오래된_세션_묶음을_지운다(t *testing.T) {
 		t.Fatal("30일 안의 묶음이 지워졌다")
 	}
 }
+
+// 실제 PC 첫 정리(2026-11-08)에서 찾음: 증거가 생긴 후보가 사용자 말 출처를 품으면 자동 확정은 보호에 막힌다.
+// 그것은 사람을 기다리는 것이지 정리의 실패가 아니다: 건너뛰고 오류로 세지 않는다(후보 기한 낡음과 같게).
+func TestTidy_사용자_말을_품은_후보의_자동_확정은_오류가_아니다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m, _ := s.Save(SaveInput{Kind: KindLesson, Title: "사용자 말 후보", Source: Source{Kind: SourceSession}})
+	if err := s.AddSource(m.ID, Source{Kind: SourceQuote, Excerpt: "이건 사용자 말"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(m.ID); got.State != StateCandidate {
+		t.Skipf("인용 출처를 더하면 확정되는 판: %s", got.State)
+	}
+	for _, sess := range []string{"a", "b"} { // 증거 ②: 회상돼 따랐고 검증 통과
+		if err := s.RecordUsage(UsageInput{MemoryID: m.ID, Verdict: UsageFollowed, Verified: true, Session: sess}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ev, _ := s.EvidenceFor(m.ID); ev == "" {
+		t.Skip("증거가 생기지 않는 판")
+	}
+	n, err := s.ConfirmCandidates()
+	if err != nil || n != 0 {
+		t.Fatalf("ConfirmCandidates = %d %v", n, err)
+	}
+	if r := s.Tidy(TidyOptions{LedgerWindowDays: 7}); len(r.Errors) != 0 {
+		t.Fatalf("tidy errors = %v", r.Errors)
+	}
+	if got, _ := s.Get(m.ID); got.State != StateCandidate {
+		t.Fatalf("state = %s", got.State)
+	}
+}
