@@ -630,7 +630,12 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 				members = append(members, m)
 			}
 		}
-		sort.Slice(members, func(i, j int) bool { return members[i].UpdatedAt > members[j].UpdatedAt })
+		sort.Slice(members, func(i, j int) bool {
+			if members[i].UpdatedAt != members[j].UpdatedAt {
+				return members[i].UpdatedAt > members[j].UpdatedAt
+			}
+			return members[i].ID < members[j].ID
+		})
 		sec := fmt.Sprintf("[분야 「%s」 신호] 필요한 항목만 memory_get으로 연다.\n", d)
 		if used+utf8.RuneCountInString(sec) > budget {
 			break

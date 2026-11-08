@@ -76,7 +76,10 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
 			return la
 		}
-		return a.m.UpdatedAt > c.m.UpdatedAt
+		if a.m.UpdatedAt != c.m.UpdatedAt {
+			return a.m.UpdatedAt > c.m.UpdatedAt
+		}
+		return a.m.ID < c.m.ID
 	})
 	sessionUsed := toolSessionUsed(s, active, given)
 	callUsed := 0
