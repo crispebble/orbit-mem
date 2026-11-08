@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -69,8 +70,8 @@ func newWorld(t *testing.T, withDB bool) *world {
 	return w
 }
 
-func (w *world) runner(note func(hook.Event, hook.Plan, string) string) hook.Runner {
-	return hook.Runner{Service: w.svc, Note: note, Failed: func(op string, err *host.Error) {
+func (w *world) runner(notes func(hook.Event, hook.Plan) []string) hook.Runner {
+	return hook.Runner{Service: w.svc, Notes: notes, Failed: func(op string, err *host.Error) {
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		w.bad = append(w.bad, op+":"+err.Code)
@@ -125,24 +126,41 @@ func TestRunner_op는_차례대로_돌고_앞_op가_실패해도_다음_op를_�
 	}
 }
 
-func TestRunner_안내_줄은_문맥이_나온_때만_붙고_날_cwd를_받는다(t *testing.T) {
+// 안내 줄은 세션 묶음을 새로 만들 때만 만들어져 묶음과 함께 저장된다(설계 보완 T-20): 만들개는 사건과 훅 입력의
+// 날 cwd를 받고, 같은 세션을 다시 열면(resume) 불리지 않고 바이트 같은 출력이다. reset 뒤에는 다시 불린다.
+func TestRunner_안내_줄은_묶음을_만들_때만_불리고_날_cwd를_받는다(t *testing.T) {
 	w := newWorld(t, true)
 	var out bytes.Buffer
 	var got []string
-	note := func(ev hook.Event, p hook.Plan, text string) string {
+	n := 0
+	notes := func(ev hook.Event, p hook.Plan) []string {
 		got = append(got, string(ev)+" "+p.Cwd)
-		return text + "\n안내"
+		n++
+		return []string{"안내 " + strconv.Itoa(n)}
 	}
-	w.runner(note).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
-	if !strings.HasSuffix(out.String(), "\n안내\n") || !slices.Equal(got, []string{"session-start /raw/cwd"}) {
-		t.Fatalf("output %q notes %v", out.String(), got)
+	open := hook.Plan{Cwd: "/raw/cwd", Steps: []hook.Step{step(host.OpContext, host.Request{Source: host.SourceStartup, Audience: host.AudienceMain})}}
+	w.runner(notes).Run(fake{plan: open}, hook.SessionStart, nil, &out)
+	first := out.String()
+	if !strings.Contains(first, "답은 존댓말") || !strings.HasSuffix(first, "\n안내 1\n") || !slices.Equal(got, []string{"session-start /raw/cwd"}) {
+		t.Fatalf("output %q notes %v", first, got)
 	}
-	// 빈 문맥이어도 계산이 됐으면 안내 줄은 붙는다(판이 다르다는 줄은 기억이 없어도 나간다).
 	out.Reset()
-	got = nil
-	w.runner(note).Run(fake{plan: hook.Plan{Steps: []hook.Step{step(host.OpToolContext, host.Request{Tool: "Bash"})}}}, hook.PreTool, nil, &out)
-	if out.String() != "OUT pre-tool \n안내\n" {
-		t.Fatalf("empty context with a note %q", out.String())
+	resume := open
+	resume.Steps = []hook.Step{step(host.OpContext, host.Request{Source: host.SourceResume, Audience: host.AudienceMain})}
+	w.runner(notes).Run(fake{plan: resume}, hook.SessionStart, nil, &out)
+	if out.String() != first || len(got) != 1 {
+		t.Fatalf("resume %q notes %v", out.String(), got)
+	}
+	out.Reset()
+	w.runner(notes).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out) // reset + compact
+	if !strings.HasSuffix(out.String(), "\n안내 2\n") || strings.Contains(out.String(), "안내 1") || len(got) != 2 {
+		t.Fatalf("after reset %q notes %v", out.String(), got)
+	}
+	// 세션 묶음이 아닌 문맥(도구 훅)에는 안내 줄이 없고 만들개도 불리지 않는다.
+	out.Reset()
+	w.runner(notes).Run(fake{plan: hook.Plan{Steps: []hook.Step{step(host.OpToolContext, host.Request{Tool: "Bash"})}}}, hook.PreTool, nil, &out)
+	if strings.Contains(out.String(), "안내") || len(got) != 2 {
+		t.Fatalf("pre-tool %q notes %v", out.String(), got)
 	}
 }
 
@@ -151,9 +169,9 @@ func TestRunner_DB가_없으면_아무것도_내지_않고_DB를_만들지_않�
 	w := newWorld(t, false)
 	var out bytes.Buffer
 	called := false
-	note := func(hook.Event, hook.Plan, string) string { called = true; return "안내" }
+	notes := func(hook.Event, hook.Plan) []string { called = true; return []string{"안내"} }
 	for _, ev := range hook.Events {
-		w.runner(note).Run(fake{plan: startPlan()}, ev, nil, &out)
+		w.runner(notes).Run(fake{plan: startPlan()}, ev, nil, &out)
 	}
 	if out.Len() != 0 || called {
 		t.Fatalf("output %q note %v", out.String(), called)
@@ -170,7 +188,7 @@ func TestRunner_DB가_없으면_아무것도_내지_않고_DB를_만들지_않�
 func TestRunner_결과가_문맥이_아닌_op는_아무것도_내지_않는다(t *testing.T) {
 	w := newWorld(t, true)
 	var out bytes.Buffer
-	w.runner(func(hook.Event, hook.Plan, string) string { return "안내" }).Run(
+	w.runner(func(hook.Event, hook.Plan) []string { return []string{"안내"} }).Run(
 		fake{plan: hook.Plan{Steps: []hook.Step{step(host.OpSessionEnd, host.Request{})}}}, hook.SessionEnd, nil, &out)
 	if out.Len() != 0 {
 		t.Fatalf("output %q", out.String())
@@ -182,7 +200,7 @@ func TestRunner_시간_한도를_넘기면_빈_출력이고_실패로_알린다(
 	w.cfg.HostTimeouts = map[string]string{"context": "1ns", "reset": "1ns"}
 	var out bytes.Buffer
 	start := time.Now()
-	w.runner(func(hook.Event, hook.Plan, string) string { return "안내" }).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
+	w.runner(func(hook.Event, hook.Plan) []string { return []string{"안내"} }).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
 	if out.Len() != 0 {
 		t.Fatalf("output %q", out.String())
 	}
@@ -206,9 +224,9 @@ func TestRunner_어댑터가_panic해도_아무것도_내지_않고_panic을_넘
 	}
 	// 안내 줄이 panic해도 같다.
 	out.Reset()
-	w.runner(func(hook.Event, hook.Plan, string) string { panic("note") }).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
-	if out.Len() != 0 {
-		t.Fatalf("output after a note panic %q", out.String())
+	w.runner(func(hook.Event, hook.Plan) []string { panic("note") }).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
+	if out.Len() != 0 || !slices.Contains(w.failed(), "context:internal") {
+		t.Fatalf("output after a note panic %q failed %v", out.String(), w.failed())
 	}
 }
 

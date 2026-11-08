@@ -251,7 +251,7 @@ func (c *call) context() (any, *Error) {
 		return out, err
 	}
 	c.locate()
-	inj := inject.SessionBundleWith(c.store, c.cfg, c.where, c.req.Host, c.req.Session, nil)
+	inj := inject.SessionBundleWith(c.store, c.cfg, c.where, c.req.Host, c.req.Session, c.opts.SessionNotes)
 	c.shown(memory.EventInjectSessionStart, inj)
 	c.activity(memory.ActivityStart)
 	if u := c.svc.setup.Upkeep; u != nil {

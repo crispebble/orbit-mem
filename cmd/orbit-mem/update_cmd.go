@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/config"
@@ -129,25 +128,26 @@ func refreshUpdateCache() error {
 // refreshTimeout bounds the detached refresh process.
 const refreshTimeout = 15 * time.Second
 
-// withUpdateNote adds one line at the end of the session-start context when the cached newest
-// version is newer than this orbit-mem. The hook never waits for the network: it reads the
-// cache only, and when that is missing or older than a day (and updateCheck is on) it starts
-// `orbit-mem update --refresh-cache` as its own process. The context is for the AI, so the
-// line is Korean.
-func withUpdateNote(text string, cfg config.Config) string {
+// startUpdateCheck reads the cached newest version for the session-start note (updateNote) and,
+// when the cache is missing or older than a day (and updateCheck is on), starts
+// `orbit-mem update --refresh-cache` as its own process. The hook never waits for the network.
+// It runs at every session start, a resume included; with updateCheck off it reads nothing.
+func startUpdateCheck(cfg config.Config) update.Cache {
 	if !cfg.UpdateCheck {
-		return text
+		return update.Cache{}
 	}
 	c, ok := update.ReadCache(paths().Home)
 	if !ok || time.Since(c.CheckedAt) >= update.CacheTTL || c.CheckedAt.After(time.Now().Add(update.CacheTTL)) {
 		_ = startBackground("update", "--refresh-cache")
 	}
+	return c
+}
+
+// updateNote is the session-start note line when the cached newest version c is newer than this
+// orbit-mem, else "". The context is for the AI, so the line is Korean.
+func updateNote(c update.Cache) string {
 	if c.Latest == "" || update.Compare(c.Latest, version.Version) <= 0 {
-		return text
+		return ""
 	}
-	line := fmt.Sprintf("orbit-mem 새 판(%s)이 나왔습니다(현재 %s): 사용자가 원하면 `orbit-mem update`로 올리세요.", c.Latest, version.Version) // i18n:keep AI가 읽는 세션 문맥
-	if text = strings.TrimRight(text, "\n"); text == "" {
-		return line
-	}
-	return text + "\n" + line
+	return fmt.Sprintf("orbit-mem 새 판(%s)이 나왔습니다(현재 %s): 사용자가 원하면 `orbit-mem update`로 올리세요.", c.Latest, version.Version) // i18n:keep AI가 읽는 세션 문맥
 }

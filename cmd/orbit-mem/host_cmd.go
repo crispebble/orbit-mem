@@ -26,7 +26,7 @@ var hostCreated func(*host.Service)
 // The `host` command and the old names (inject, tool) are a host that came through the contract:
 // who started its session is not known, so its launcher is "host". Only a hook is a person's own
 // session ("human", see hookService).
-func hostService() *host.Service { return hostServiceWith(loadConfig, nil, launcherHost) }
+func hostService() *host.Service { return hostServiceWith(loadConfig, launcherHost) }
 
 // The launchers the assembly points give (the activity log's launcher column).
 const (
@@ -35,22 +35,13 @@ const (
 )
 
 // hostServiceWith is hostService with the settings from load (a hook gives the ones it read once).
-// A non-nil after holds the upkeep until it is closed, at most for the context's time limit: a hook
-// adds its lines to the context first (they start a check of their own, as the hooks always did
-// before the copy and the tidy).
-func hostServiceWith(load func() (config.Config, error), after <-chan struct{}, launcher string) *host.Service {
+// A hook starts its update check before it runs the operations, so the check still comes before
+// the copy and the tidy, as the hooks always did.
+func hostServiceWith(load func() (config.Config, error), launcher string) *host.Service {
 	svc := host.New(host.Setup{
 		DB:         paths().DB(),
 		LoadConfig: load,
 		Upkeep: host.UpkeepFunc(func(s *memory.Store, cfg config.Config) {
-			if after != nil {
-				timer := time.NewTimer(cfg.HostTimeout(host.OpContext))
-				select {
-				case <-after:
-				case <-timer.C:
-				}
-				timer.Stop()
-			}
 			autoBackup(cfg)
 			autoTidy(cfg, s)
 		}),

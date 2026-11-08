@@ -13,9 +13,11 @@ import (
 type Runner struct {
 	Service *host.Service
 	Options host.Options // 활동 시각 등 계약에 없는 선택지
-	// Note may change a hook's context before it is printed (the lines the assembly point adds).
-	// It is called only for a context the last operation gave. nil leaves the context as it is.
-	Note func(ev Event, plan Plan, text string) string
+	// Notes makes the note lines of a session's bundle from the hook's event and plan (its raw cwd
+	// included); the assembly point knows what they say. The Runner hands it to each operation as
+	// host.Options.SessionNotes, so it is called only when a main context builds the bundle anew
+	// (not when the same session resumes) and its lines are saved with the bundle. nil: none.
+	Notes func(ev Event, plan Plan) []string
 	// Failed is told of each operation that ended in an error and of a panic (op ""). nil: nothing.
 	Failed func(op string, err *host.Error)
 }
@@ -34,9 +36,13 @@ func (r Runner) Run(a Adapter, ev Event, input []byte, w io.Writer) {
 		return
 	}
 	plan := a.Plan(ev, input)
+	opts := r.Options
+	if r.Notes != nil {
+		opts.SessionNotes = func() []string { return r.Notes(ev, plan) }
+	}
 	for i, st := range plan.Steps {
 		last := i == len(plan.Steps)-1
-		r.step(st, func(out any) {
+		r.step(st, opts, func(out any) {
 			if !last {
 				return
 			}
@@ -44,11 +50,7 @@ func (r Runner) Run(a Adapter, ev Event, input []byte, w io.Writer) {
 			if !ok || res.Skipped != "" { // 읽지 못하는 DB(없음·새 판·옛 판)나 사람 요청이 아님: 빈 문맥
 				return
 			}
-			text := res.Text
-			if r.Note != nil {
-				text = r.Note(ev, plan, text)
-			}
-			if s := a.Output(ev, text); s != "" {
+			if s := a.Output(ev, res.Text); s != "" {
 				fmt.Fprintln(w, s)
 			}
 		})
@@ -57,8 +59,8 @@ func (r Runner) Run(a Adapter, ev Event, input []byte, w io.Writer) {
 
 // step runs one operation: use gets its result as soon as it is computed; then the records are
 // waited for until the operation's limit, a panic in use included.
-func (r Runner) step(st Step, use func(out any)) {
-	run := r.Service.Start(st.Op, st.Request, r.Options)
+func (r Runner) step(st Step, opts host.Options, use func(out any)) {
+	run := r.Service.Start(st.Op, st.Request, opts)
 	defer run.Finish()
 	out, err := run.Result()
 	if err != nil {

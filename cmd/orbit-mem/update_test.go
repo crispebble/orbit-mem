@@ -203,7 +203,13 @@ func seedUpdateRule(t *testing.T) {
 
 func sessionStart(t *testing.T, extra ...string) string {
 	t.Helper()
-	in := `{"cwd":"/tmp","session_id":"s1","hook_event_name":"SessionStart","source":"startup"}`
+	return sessionStartOf(t, "s1", extra...)
+}
+
+// sessionStartOf is sessionStart of another session: the note lines are in a session's bundle (T-20).
+func sessionStartOf(t *testing.T, session string, extra ...string) string {
+	t.Helper()
+	in := `{"cwd":"/tmp","session_id":"` + session + `","hook_event_name":"SessionStart","source":"startup"}`
 	out, _, code := run(t, in, append([]string{"hook", "session-start", "--host", "claude"}, extra...)...)
 	if code != 0 {
 		t.Fatalf("code %d", code)
@@ -287,7 +293,7 @@ func TestHook_캐시가_없거나_낡으면_갱신_프로세스를_요청한다(
 		t.Fatalf("캐시 없음: calls=%v", *calls)
 	}
 	writeCache(t, h, time.Now().Add(-25*time.Hour), nextVersion())
-	got := sessionStart(t)
+	got := sessionStartOf(t, "s2")
 	if refreshCalls(*calls) != 2 {
 		t.Fatalf("낡은 캐시: calls=%v", *calls)
 	}

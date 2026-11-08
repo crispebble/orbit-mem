@@ -38,6 +38,10 @@ type Setup struct {
 type Options struct {
 	Actor string // call로 쓰는 쪽. 없으면 AI
 	At    int64  // 활동 시각(Unix ms). 0이면 Start 때
+	// SessionNotes gives the note lines of a main session start (설계 보완 T-20). The context op calls it
+	// only when it builds the session's bundle anew, and saves its lines at the end of the bundle, so
+	// a resumed session gets the same bytes. Not called for a subagent or with recall off. nil: none.
+	SessionNotes func() []string
 }
 
 // EventFail is the diagnostic event of an operation that ended in an error or a timeout

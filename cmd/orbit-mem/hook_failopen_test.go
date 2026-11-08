@@ -324,8 +324,8 @@ func TestHook_panic에도_빈_출력으로_성공한다(t *testing.T) {
 	}
 }
 
-// 시작 문맥 뒤의 안내 줄(새 판 확인을 뒤에서 띄움)은 유지보수(사본·정리를 뒤에서 띄움)보다 먼저다: 옛 훅의 차례이고,
-// 둘이 같은 때 돌지 않는다(race 검사기로도 본다).
+// 세션 시작의 새 판 확인 띄우기(cmdHook이 op를 돌리기 전에 한다)는 유지보수(사본·정리를 뒤에서 띄움)보다 먼저다:
+// 옛 훅의 차례이고, 둘이 같은 때 돌지 않는다(race 검사기로도 본다).
 func TestHook_시작_안내_줄이_유지보수보다_먼저다(t *testing.T) {
 	h := failHome(t)
 	writeCache(t, h, time.Now().Add(-25*time.Hour), nextVersion()) // 낡은 캐시: 안내 줄이 갱신을 띄운다

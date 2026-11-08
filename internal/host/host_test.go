@@ -1113,3 +1113,60 @@ func TestRecord_기록은_남은_시간_안에서만_한다(t *testing.T) {
 		t.Fatalf("한도가 지난 뒤 유지보수를 했다: %d", e.upkeep.count())
 	}
 }
+
+// 세션 시작 안내 줄(Options.SessionNotes)은 묶음을 새로 만들 때만 불리고 묶음 글 끝에 함께 저장된다(설계 보완 T-20):
+// resume은 부르지 않고 바이트 같은 묶음, reset(compact·clear) 뒤에는 다시 부른다. subagent·recall off는 부르지 않는다.
+func TestContext_안내_줄은_묶음을_만들_때만_불리고_함께_저장된다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
+	a := e.adapter("n-1")
+	calls := 0
+	a.opts.SessionNotes = func() []string { calls++; return []string{"판 안내", " ", "새 판 안내"} }
+	first := a.recall(host.OpContext, map[string]any{"source": "startup"})
+	if calls != 1 || !strings.Contains(first.Text, "답은 존댓말") || !strings.HasSuffix(first.Text, "\n판 안내\n새 판 안내") {
+		t.Fatalf("calls %d first %q", calls, first.Text)
+	}
+	if text, _, ok := s.SessionBundle("host-x", "n-1"); !ok || text != first.Text {
+		t.Fatalf("saved bundle %v %q", ok, text)
+	}
+	again := a.recall(host.OpContext, map[string]any{"source": "resume"})
+	if calls != 1 || again.Text != first.Text || !slices.Equal(again.MemoryIDs, first.MemoryIDs) {
+		t.Fatalf("resume calls %d %q", calls, again.Text)
+	}
+	if _, err := a.do(host.OpReset, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.opts.SessionNotes = func() []string { calls++; return []string{"다른 판 안내"} }
+	renewed := a.recall(host.OpContext, map[string]any{"source": "compact"})
+	if calls != 2 || !strings.HasSuffix(renewed.Text, "\n다른 판 안내") || strings.Contains(renewed.Text, "새 판 안내") {
+		t.Fatalf("after reset calls %d %q", calls, renewed.Text)
+	}
+	sub := a
+	sub.agent = "ag-1"
+	sub.recall(host.OpContext, map[string]any{"source": "startup", "audience": "subagent"})
+	if calls != 2 {
+		t.Fatalf("subagent called the notes: %d", calls)
+	}
+	e.cfg.Recall = config.RecallOff
+	off := e.adapter("n-2")
+	off.opts.SessionNotes = a.opts.SessionNotes
+	if got := off.recall(host.OpContext, map[string]any{"source": "startup"}); calls != 2 || got.Text != "" {
+		t.Fatalf("recall off calls %d %q", calls, got.Text)
+	}
+}
+
+// 안내 줄 만들개가 panic해도 문맥 op는 internal 오류로 끝나고 묶음을 남기지 않는다(훅은 아무것도 내지 않는다).
+func TestContext_안내_줄이_panic하면_internal이고_묶음을_남기지_않는다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Scope: memory.ScopeGlobal})
+	a := e.adapter("p-1")
+	a.opts.SessionNotes = func() []string { panic("notes") }
+	if out, err := a.do(host.OpContext, map[string]any{"source": "startup"}); err == nil || err.Code != host.CodeInternal || out != nil {
+		t.Fatalf("out %v err %v", out, err)
+	}
+	if _, _, ok := s.SessionBundle("host-x", "p-1"); ok {
+		t.Fatal("a bundle was saved")
+	}
+}

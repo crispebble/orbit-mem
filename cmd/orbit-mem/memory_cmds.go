@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/config"
@@ -21,6 +20,7 @@ import (
 	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
 	"github.com/crispebble/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/update"
 	"github.com/crispebble/orbit-mem/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -152,22 +152,20 @@ func cmdHook(a *app, args []string) error {
 		return nil
 	}
 	timedOut := false
-	noted := make(chan struct{}) // 안내 줄을 다 붙였다: 유지보수가 그 뒤에 돈다(옛 훅의 차례)
-	var noteOnce sync.Once
-	doneNoting := func() { noteOnce.Do(func() { close(noted) }) }
-	defer doneNoting()
+	var check update.Cache
+	if ev == hooks.SessionStart { // 새 판 확인은 세션 시작마다(resume 포함), 유지보수(사본·정리)보다 먼저 띄운다
+		check = startUpdateCheck(cfg)
+	}
 	hooks.Runner{
-		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, noted, launcherHuman),
+		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, launcherHuman),
 		Options: host.Options{At: at},
-		// 시작 문맥 뒤의 판·업데이트·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다).
-		Note: func(ev hooks.Event, plan hooks.Plan, text string) string {
-			defer doneNoting()
+		// 세션 묶음의 판·새 판·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다). 묶음을 새로 만들 때만
+		// 불리고 묶음과 함께 저장된다(설계 보완 T-20).
+		Notes: func(ev hooks.Event, plan hooks.Plan) []string {
 			if ev != hooks.SessionStart {
-				return text
+				return nil
 			}
-			text = withVersionNote(text, *pluginVersion)
-			text = withUpdateNote(text, cfg)
-			return withHostMemoryNote(text, cfg, plan.Cwd)
+			return []string{versionNote(*pluginVersion), updateNote(check), hostMemoryNote(cfg, plan.Cwd)}
 		},
 		Failed: func(op string, e *host.Error) {
 			if e.Code == host.CodeTimeout && !timedOut {
@@ -193,19 +191,14 @@ const parentEnv = "ORBIT_PARENT"
 // (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle.
 func renewsBundle(source string) bool { return source == "compact" || source == "clear" }
 
-// withVersionNote adds one line at the end of the session-start context when the plugin
-// that called the hook is another version than this orbit-mem (the plugin from GitHub and
-// the installed binary can drift apart). The context is for the AI, so it is Korean like
-// the rest of it.
-func withVersionNote(text, pluginVersion string) string {
+// versionNote is the session-start note line when the plugin that called the hook is another
+// version than this orbit-mem (the plugin from GitHub and the installed binary can drift apart),
+// else "". The context is for the AI, so it is Korean like the rest of it.
+func versionNote(pluginVersion string) string {
 	if pluginVersion == "" || pluginVersion == version.Version {
-		return text
+		return ""
 	}
-	line := fmt.Sprintf("orbit-mem 판(%s)과 플러그인 판(%s)이 다릅니다: `orbit-mem install`로 맞추세요.", version.Version, pluginVersion) // i18n:keep AI가 읽는 세션 문맥
-	if text = strings.TrimRight(text, "\n"); text == "" {
-		return line
-	}
-	return text + "\n" + line
+	return fmt.Sprintf("orbit-mem 판(%s)과 플러그인 판(%s)이 다릅니다: `orbit-mem install`로 맞추세요.", version.Version, pluginVersion) // i18n:keep AI가 읽는 세션 문맥
 }
 
 // kindName and stateName are the names a person reads; an unknown code is shown as is.

@@ -362,6 +362,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
+	in = `{"cwd":"/tmp","session_id":"s2","hook_event_name":"SessionStart","source":"startup"}` // 안내 줄은 세션 묶음에 든다(T-20): 새 세션으로 본다
 	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.16.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
