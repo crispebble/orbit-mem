@@ -69,6 +69,7 @@ func commands() []command {
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},
+		{"tidy", "usage.tidy", cmdTidy},
 		{"migrate", "usage.migrate", cmdMigrate},
 		{"stats", "usage.stats", cmdStats},
 		{"ledger", "usage.ledger", cmdLedger},

@@ -393,5 +393,8 @@
   "cli.core.why_violated": "violated %d",
   "cli.core.why_followed": "followed %d",
   "cli.core.why_quote": "user's words",
-  "cli.core.pin_ok": "pinned: %s"
+  "cli.core.pin_ok": "pinned: %s",
+  "usage.tidy": "orbit-mem tidy [--json]   # run the daily model-free tidy now (the session-start hook runs it once a day)",
+  "cli.tidy.done": "Tidied: judged %d, reverted %d harmful automatic changes, confirmed %d, closed %d proposals, marked %d expired and %d unused candidates stale, moved %d to products",
+  "cli.tidy.error": "error: %s"
 }

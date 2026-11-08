@@ -226,6 +226,7 @@ func cmdHook(a *app, args []string) error {
 		}
 		if pos[0] == "session-start" {
 			autoBackup(cfg)
+			autoTidy(cfg, s)
 		}
 	}()
 	select {
@@ -675,6 +676,12 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.AutoBackup = b
+	case "autoTidy":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.bool", key, val)
+		}
+		cfg.AutoTidy = b
 	case "sessionRetro":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
@@ -704,7 +711,7 @@ func cmdConfig(a *app, args []string) error {
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·autoTidy·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

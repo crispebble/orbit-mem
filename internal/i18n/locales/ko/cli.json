@@ -393,5 +393,8 @@
   "cli.core.why_violated": "어김 %d",
   "cli.core.why_followed": "따름 %d",
   "cli.core.why_quote": "사용자 말",
-  "cli.core.pin_ok": "승격: %s"
+  "cli.core.pin_ok": "승격: %s",
+  "usage.tidy": "orbit-mem tidy [--json]   # 모델 없는 하루 정리를 지금 돌린다(세션 시작 훅이 하루 한 번 뒤에서 돌린다)",
+  "cli.tidy.done": "정리했습니다: 판정 %d, 해로운 자동 변경 되돌림 %d, 확정 %d, 제안 닫음 %d, 기한 지난 기억 낡음 %d, 안 쓴 후보 낡음 %d, 제품으로 옮김 %d",
+  "cli.tidy.error": "오류: %s"
 }
