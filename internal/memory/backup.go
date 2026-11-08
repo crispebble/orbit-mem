@@ -22,7 +22,8 @@ import (
 // 백업 API(sqlite3_backup, 사본→살아 있는 DB)를 쓴다: 다른 프로세스(MCP 서버·훅)가 연 DB 파일을 갈아
 // 끼우지 않고 SQLite 잠금 안에서 한 트랜잭션으로 바꾸므로, 열린 연결은 바뀐 내용을 그대로 본다.
 
-// SchemaVersion is the user_version the current schema sets.
+// SchemaVersion is the schema version this binary migrates to: migrate writes it to
+// meta schema.version (and the schema still sets user_version to it for older binaries).
 const SchemaVersion = 4
 
 // Why a daily backup made no copy.
@@ -181,7 +182,8 @@ func expectedShape() (schemaShape, error) {
 
 func readShape(db *sql.DB) (schemaShape, error) {
 	sh := schemaShape{objects: map[string]bool{}, columns: map[string]bool{}}
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&sh.version); err != nil {
+	var err error
+	if sh.version, err = dbVersion(db); err != nil {
 		return sh, err
 	}
 	rows, err := db.Query(`SELECT m.type || ':' || m.name, ifnull(p.name, '') FROM sqlite_master m
@@ -205,34 +207,12 @@ func readShape(db *sql.DB) (schemaShape, error) {
 }
 
 // needsSchemaChange says whether migrate would change an existing DB: it has tables
-// and an older user_version or a missing table, index or column. A new empty file
-// has nothing to keep.
+// and an older schema version (meta schema.version, see dbVersion) or a missing
+// table, index or column. A new empty file has nothing to keep, and a DB a newer
+// orbit-mem made is not migrated at all.
 func needsSchemaChange(db *sql.DB) (bool, error) {
-	want, err := expectedShape()
-	if err != nil {
-		return false, err
-	}
-	have, err := readShape(db)
-	if err != nil {
-		return false, err
-	}
-	if len(have.objects) == 0 {
-		return false, nil
-	}
-	if have.version < want.version {
-		return true, nil
-	}
-	for o := range want.objects {
-		if !have.objects[o] {
-			return true, nil
-		}
-	}
-	for c := range want.columns {
-		if !have.columns[c] {
-			return true, nil
-		}
-	}
-	return false, nil
+	info, err := schemaInfo(db)
+	return info.State == SchemaOlder, err
 }
 
 // schemaBackupDir is where Open keeps the copy before a schema change: the backups

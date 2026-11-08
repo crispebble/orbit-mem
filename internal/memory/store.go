@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -150,35 +151,54 @@ CREATE TABLE IF NOT EXISTS lab_runs (
 // migrate creates and upgrades the tables in one immediate transaction. Taking the
 // write lock first lets the busy timeout apply when several processes open a fresh
 // or old DB together; a statement that reads first and then writes would get
-// SQLITE_BUSY at once instead of waiting.
+// SQLITE_BUSY at once instead of waiting. Under that lock it reads the schema version
+// again: a DB a newer orbit-mem migrated meanwhile is left alone (ErrSchemaNewer), so
+// the meta schema.version it writes never goes down.
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	defer tx.Rollback()
+	v, err := dbVersion(tx)
+	if err != nil {
+		return i18n.Errorf("memory.err.db_open", err)
+	}
+	if v > SchemaVersion {
+		return schemaNewerError(v)
+	}
 	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
 	}
+	if _, err := tx.Exec(`INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		metaSchemaVersion, strconv.Itoa(SchemaVersion)); err != nil {
+		return i18n.Errorf("memory.err.db_upgrade", err)
+	}
 	return tx.Commit()
 }
 
-// Open opens (creating if needed) the memory database at path. The directory is private to the user.
+// Open opens (creating if needed) the memory database at path for writing and
+// migrates it. The directory is private to the user. A DB a newer orbit-mem made is
+// not migrated: Open returns ErrSchemaNewer. Read operations use OpenRead instead.
 func Open(path string) (*Store, error) {
-	db, err := sqlitedb.Open(path, 5*time.Second, "foreign_keys(1)", "synchronous(NORMAL)")
+	db, err := sqlitedb.Open(path, writeBusy, storePragmas...)
 	if err != nil {
 		return nil, i18n.Errorf("memory.err.db_open", err)
 	}
-	// 스키마를 바꾸기 전에는 하루 한 번 규칙과 관계없이 사본을 남긴다(ONID-136). 사본을 못 만들면 바꾸지 않는다.
-	need, err := needsSchemaChange(db)
+	info, err := schemaInfo(db)
 	if err != nil {
 		db.Close()
 		return nil, i18n.Errorf("memory.err.db_open", err)
 	}
-	if need {
+	if info.State == SchemaNewer {
+		db.Close()
+		return nil, schemaNewerError(info.DB)
+	}
+	// 스키마를 바꾸기 전에는 하루 한 번 규칙과 관계없이 사본을 남긴다(ONID-136). 사본을 못 만들면 바꾸지 않는다.
+	if info.State == SchemaOlder {
 		if _, err := snapshot(db, schemaBackupDir(path), "before-schema", time.Now()); err != nil {
 			db.Close()
 			return nil, i18n.Errorf("memory.err.schema_backup", err)
