@@ -2,18 +2,21 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/config"
+	hooks "github.com/crispebble/orbit-mem/internal/hook" // 시험의 hook 도우미와 이름이 겹치지 않게
+	"github.com/crispebble/orbit-mem/internal/hook/claudecode"
+	"github.com/crispebble/orbit-mem/internal/hook/codex"
+	"github.com/crispebble/orbit-mem/internal/host"
 	"github.com/crispebble/orbit-mem/internal/i18n"
-	"github.com/crispebble/orbit-mem/internal/inject"
 	"github.com/crispebble/orbit-mem/internal/mcpserver"
 	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
@@ -63,16 +66,6 @@ func whereOf(p project.Project) string {
 	return p.Scope
 }
 
-// sessionDir is the folder a hook reads the session's place from: the folder the session started in
-// (CLAUDE_PROJECT_DIR, which Claude Code gives hooks and the MCP server alike), else the hook input's cwd
-// (Codex). So recall and memory_find look from the same folder even after the session moves (S3-R1).
-func sessionDir(cwd string) string {
-	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
-		return dir
-	}
-	return cwd
-}
-
 func sessionProject() project.Project {
 	dir := os.Getenv("CLAUDE_PROJECT_DIR")
 	if dir == "" {
@@ -108,157 +101,92 @@ func cmdMCP(a *app, args []string) error {
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
-type hookInput struct {
-	Cwd            string `json:"cwd"`
-	Prompt         string `json:"prompt"`
-	SessionID      string `json:"session_id"`
-	Event          string `json:"hook_event_name"`
-	TranscriptPath string `json:"transcript_path"`
-	Source         string `json:"source"`    // SessionStart: startup·resume·clear·compact·fork
-	ToolName       string `json:"tool_name"` // PreToolUse
-	// AgentID is the subagent a hook fires in (SubagentStart, and tool hooks inside a subagent).
-	AgentID   string `json:"agent_id"`
-	AgentType string `json:"agent_type"`
-}
-
-// sessionKey is the session the injection marks are kept under: a subagent has its own context, so it is
-// told what the main session was told once more (설계 · orbit-mem 2판 6절 「중복 제거」, S3 명세 2.9).
-func (in hookInput) sessionKey() string {
-	if in.AgentID == "" || in.SessionID == "" {
-		return in.SessionID
-	}
-	return in.SessionID + "/" + in.AgentID
-}
-
-// cmdHook never fails the host: any problem, wrong arguments included, prints
-// nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
-// session-start, prompt and pre-tool give the memory context; session-start, prompt
-// and session-end keep the activity log. session-end only ends the activity row.
-func cmdHook(a *app, args []string) error {
-	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
-	fs := a.flags("hook")
-	fs.SetOutput(io.Discard)
-	host := fs.String("host", "claude", "claude | codex")
-	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
-	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "subagent-start", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") {
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
-		return nil
-	}
-	deadline := time.After(hookDeadline)
-	done := make(chan string, 1)
-	finished := make(chan struct{}) // 사건·활동 기록까지 남겼다
-	go func() {
-		defer close(finished)
-		defer func() {
-			if recover() != nil {
-				select {
-				case done <- "":
-				default:
-				}
-			}
-		}()
-		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
-		cfg, err := loadConfig()
-		if err != nil {
-			fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.config_failed", err))
-			done <- ""
-			return
-		}
-		var in hookInput
-		_ = json.Unmarshal(b, &in)
-		if _, err := os.Stat(paths().DB()); err != nil { // 설치 전: 기억 DB를 만들지 않는다
-			done <- ""
-			return
-		}
-		s, err := openStore()
-		if err != nil {
-			done <- ""
-			return
-		}
-		defer s.Close()
-		var p project.Project
-		if dir := sessionDir(in.Cwd); dir != "" {
-			p = project.Resolve(dir)
-		}
-		memoryHook(a, s, done, pos[0], *host, in, p, cfg, *pluginVersion)
-		if pos[0] != "pre-tool" && pos[0] != "subagent-start" { // 도구 호출·서브에이전트 시작은 활동 기록이 아니다
-			recordActivity(s, pos[0], *host, in, p, at)
-		}
-		if pos[0] == "session-start" {
-			autoBackup(cfg)
-			autoTidy(cfg, s)
-		}
-	}()
-	select {
-	case out := <-done:
-		if out != "" {
-			fmt.Fprintln(a.stdout, out)
-		}
-		// 사건·활동 기록은 문맥을 낸 뒤에 쓴다. 시간 안에 끝나지 않으면 프로세스와 함께 사라진다.
-		select {
-		case <-finished:
-		case <-deadline:
-		}
-	case <-deadline:
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+// hookAdapter is the adapter of a hook's --host: how that host's hook input becomes contract
+// requests and how its context is printed (ORBIT-23 D5). nil for a host with no hooks.
+func hookAdapter(name string) hooks.Adapter {
+	switch name {
+	case claudecode.Host:
+		return claudecode.New(os.Getenv)
+	case codex.Host:
+		return codex.New()
 	}
 	return nil
 }
 
-// hookDeadline is how long a hook may take before it gives up without output.
+// cmdHook never fails the host: any problem, wrong arguments, a timeout, a locked or unreadable
+// DB included, prints nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
+// It is the assembly point of the hooks: it picks the host's adapter and runs the hook's contract
+// operations on the host port (session-start → context, compact·clear → reset first, prompt →
+// recall, pre-tool → tool-context, subagent-start → context for a subagent, session-end →
+// session-end). Each operation keeps its own time limit; the context is printed as soon as it is
+// computed and its records follow within that limit.
+func cmdHook(a *app, args []string) error {
+	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
+	fs := a.flags("hook")
+	fs.SetOutput(io.Discard)
+	hostName := fs.String("host", "claude", "claude | codex")
+	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
+	pos, err := parse(fs, args)
+	var ev hooks.Event
+	ok := err == nil && len(pos) == 1
+	if ok {
+		ev, ok = hooks.ParseEvent(pos[0])
+	}
+	adapter := hookAdapter(*hostName)
+	if !ok || adapter == nil {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
+		return nil
+	}
+	defer func() { _ = recover() }() // 어떤 panic도 호스트를 막지 않는다
+	in, err := hooks.ReadInput(a.stdin, 4<<20, hookInputWait)
+	if errors.Is(err, hooks.ErrInputWait) {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.config_failed", err))
+		return nil
+	}
+	timedOut := false
+	noted := make(chan struct{}) // 안내 줄을 다 붙였다: 유지보수가 그 뒤에 돈다(옛 훅의 차례)
+	var noteOnce sync.Once
+	doneNoting := func() { noteOnce.Do(func() { close(noted) }) }
+	defer doneNoting()
+	hooks.Runner{
+		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, noted),
+		Options: host.Options{At: at},
+		// 시작 문맥 뒤의 판·업데이트·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다).
+		Note: func(ev hooks.Event, plan hooks.Plan, text string) string {
+			defer doneNoting()
+			if ev != hooks.SessionStart {
+				return text
+			}
+			text = withVersionNote(text, *pluginVersion)
+			text = withUpdateNote(text, cfg)
+			return withHostMemoryNote(text, cfg, plan.Cwd)
+		},
+		Failed: func(op string, e *host.Error) {
+			if e.Code == host.CodeTimeout && !timedOut {
+				timedOut = true
+				fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+			}
+		},
+	}.Run(adapter, ev, in, a.stdout)
+	return nil
+}
+
+// hookDeadline is how long a hook waits for its input to end before it gives up without output.
 const hookDeadline = 4 * time.Second
+
+// hookInputWait is how long a hook waits for its input to end (tests shorten it).
+var hookInputWait = hookDeadline
 
 // parentEnv names the session that started this one (the activity log's parent).
 const parentEnv = "ORBIT_PARENT"
-
-// recordActivity keeps the session in the activity log (설계 · orbit-code 4차 M5). The hooks
-// run in a person's own host session, so the launcher is human.
-func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, at int64) {
-	if in.SessionID == "" {
-		return
-	}
-	kind := map[string]string{"session-start": memory.ActivityStart, "prompt": memory.ActivityPrompt, "session-end": memory.ActivityEnd}[which]
-	_ = s.RecordActivity(memory.ActivityEvent{Kind: kind, Host: host, Session: in.SessionID, Cwd: in.Cwd, ProjectScope: p.Scope, ProjectLabel: p.Label,
-		Launcher: "human", Parent: os.Getenv(parentEnv), Prompt: in.Prompt, At: at})
-}
-
-// memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, p project.Project, cfg config.Config, pluginVersion string) {
-	scope, where := p.Scope, whereOf(p)
-	if which == "session-end" {
-		done <- ""
-		return
-	}
-	var inj inject.Injection
-	kind := memory.EventInjectSessionStart
-	switch which {
-	case "session-start":
-		if renewsBundle(in.Source) {
-			inject.ResetSession(s, host, in.SessionID)
-		}
-		inj = inject.SessionBundle(s, cfg, where, host, in.SessionID)
-		text := withVersionNote(inj.Text, pluginVersion)
-		text = withUpdateNote(text, cfg)
-		text = withHostMemoryNote(text, cfg, in.Cwd)
-		done <- inject.HookOutput("SessionStart", text)
-	case "pre-tool":
-		kind = memory.EventInjectTool
-		inj = inject.ToolInjection(s, cfg, where, host, in.sessionKey(), in.ToolName)
-		done <- inject.HookOutput("PreToolUse", inj.Text)
-	case "subagent-start":
-		kind = memory.EventInjectSubagent
-		inj = inject.SubagentStart(s, cfg)
-		done <- inject.HookOutput("SubagentStart", inj.Text)
-	default:
-		kind = memory.EventInjectPrompt
-		inj = inject.PromptInjectionFor(s, cfg, where, in.Prompt, host, in.SessionID, inject.Options{})
-		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
-	}
-	// 문맥을 먼저 내보내고 세션 표시와 지표용 사건을 남긴다(설계 「측정」).
-	inject.RecordShown(s, host, in.sessionKey(), inj)
-	recordInjection(s, cfg, kind, host, in.sessionKey(), scope, in.Prompt, inj)
-}
 
 // renewsBundle says whether a session start makes the session's bundle anew: after a
 // compaction or /clear the earlier context is gone, so the cache it kept is too
@@ -278,21 +206,6 @@ func withVersionNote(text, pluginVersion string) string {
 		return line
 	}
 	return text + "\n" + line
-}
-
-// recordInjection counts one injection as a use event. Levels that inject nothing,
-// and empty requests are not use, so they are not counted.
-func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
-	if cfg.Inject == config.InjectOff ||
-		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) ||
-		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) { // 도구 호출·서브에이전트마다 부르므로 넣은 것이 있을 때만 센다
-		return
-	}
-	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
-	if kind == memory.EventInjectSessionStart {
-		data["omitted"] = inj.Omitted
-	}
-	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: session, Scope: scope}, data)
 }
 
 // kindName and stateName are the names a person reads; an unknown code is shown as is.

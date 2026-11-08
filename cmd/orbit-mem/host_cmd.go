@@ -21,11 +21,25 @@ var hostCreated func(*host.Service)
 // path, the settings, the upkeep (the daily copy and tidy, started behind a session's context),
 // the launcher (a person's own session) and the parent session (ORBIT_PARENT). The port reads
 // none of these from the environment itself.
-func hostService() *host.Service {
+func hostService() *host.Service { return hostServiceWith(loadConfig, nil) }
+
+// hostServiceWith is hostService with the settings from load (a hook gives the ones it read once).
+// A non-nil after holds the upkeep until it is closed, at most for the context's time limit: a hook
+// adds its lines to the context first (they start a check of their own, as the hooks always did
+// before the copy and the tidy).
+func hostServiceWith(load func() (config.Config, error), after <-chan struct{}) *host.Service {
 	svc := host.New(host.Setup{
 		DB:         paths().DB(),
-		LoadConfig: loadConfig,
+		LoadConfig: load,
 		Upkeep: host.UpkeepFunc(func(s *memory.Store, cfg config.Config) {
+			if after != nil {
+				timer := time.NewTimer(cfg.HostTimeout(host.OpContext))
+				select {
+				case <-after:
+				case <-timer.C:
+				}
+				timer.Stop()
+			}
 			autoBackup(cfg)
 			autoTidy(cfg, s)
 		}),
