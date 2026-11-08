@@ -61,6 +61,9 @@ type Source struct {
 	Excerpt string `json:"excerpt,omitempty"`
 	Hash    string `json:"hash,omitempty"`
 	At      int64  `json:"at,omitempty"`
+	// Trust is how far the source is believed (owner·agent·untrusted·system, trust.go). Empty on the rows of
+	// older versions and when it is what the kind gives (quote → owner, else agent): SourceTrust reads it.
+	Trust string `json:"trust,omitempty"`
 }
 
 // Memory is one remembered thing.
@@ -92,6 +95,9 @@ type Memory struct {
 	AppliesTo string `json:"appliesTo"`
 	// Pinned is the always-on core (상시 핵심): put into every session start of its layer (설계 · orbit-mem 2판 4.4).
 	Pinned bool `json:"pinned,omitempty"`
+	// Trust is the highest trust of its sources (agent without any), worked out when it is read (trust.go).
+	// It is not part of the snapshot or the export: the sources carry it.
+	Trust string `json:"-"`
 }
 
 // Doc returns the searchable view.

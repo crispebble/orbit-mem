@@ -281,6 +281,10 @@ type SaveInput struct {
 	// Pin puts the memory into the core of its layer (설계 · orbit-mem 2판 4.4). A save that cannot get it
 	// (not confirmed, not a user or product memory, past the limit) is refused before anything is written.
 	Pin bool
+	// TrustLimit is the highest trust the sources of this save may get: the channel it came by, as the
+	// assembly point says (a person's own command owner, an AI host agent). Empty is agent. A source
+	// asks for a lower one with Source.Trust; a quote is always owner (ResolveTrust).
+	TrustLimit string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -353,9 +357,11 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 // SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
 type SaveReport struct {
 	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
-	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말
+	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말(또는 믿을 수 없는 새 판이 둔 owner·agent 기억)
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
+
+	untrusted []string // Conflicts 가운데 새 판의 출처가 믿을 수 없는 것뿐이라 남긴 것
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of
@@ -384,7 +390,11 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 		_, _ = s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who)
 	}
 	for _, id := range rep.Conflicts {
-		_, _ = s.FlagConflict(m.ID, id, "같은 주제의 사용자 말과 어긋남(대체하지 않음)", in.Who)
+		note := "같은 주제의 사용자 말과 어긋남(대체하지 않음)"
+		if slices.Contains(rep.untrusted, id) {
+			note = "믿을 수 없는 출처뿐이라 같은 주제의 기억을 대체하지 않음"
+		}
+		_, _ = s.FlagConflict(m.ID, id, note, in.Who)
 	}
 	if in.noEvidence {
 		return m, rep, nil
@@ -399,6 +409,9 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	var rep SaveReport
 	if err := in.validate(); err != nil {
+		return Memory{}, rep, err
+	}
+	if err := in.resolveSources(); err != nil {
 		return Memory{}, rep, err
 	}
 	now := s.nowMs()
@@ -481,6 +494,14 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			return Memory{}, rep, err
 		}
 	}
+	if state == StateConfirmed {
+		// 출처가 믿을 수 없는 것뿐이면 확정으로 저장하지 않는다(D7, 확정 길 ③). 사용자 말(quote)은 늘 owner다.
+		if t, err := memoryTrustTx(tx, m.ID); err != nil {
+			return Memory{}, rep, err
+		} else if Untrusted(t) {
+			return Memory{}, rep, fmt.Errorf("%w: %s", ErrUntrusted, in.Title)
+		}
+	}
 	if state == StateCandidate {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
 			return Memory{}, rep, err
@@ -552,9 +573,12 @@ func (s *Store) AddSource(id string, src Source) error {
 	if !contains(SourceKinds, src.Kind) {
 		return ErrInvalid
 	}
-	_, err := s.db.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-		NewID("s-"), id, src.Kind, src.Ref, truncateBytes(MaskSecrets(src.Excerpt), 8<<10), src.Hash, s.atOr(src.At))
-	return err
+	t, err := ResolveTrust("", src.Kind, src.Trust) // 통로를 모르는 붙이기는 agent까지
+	if err != nil {
+		return err
+	}
+	src.Trust, src.Excerpt = t, truncateBytes(MaskSecrets(src.Excerpt), 8<<10)
+	return insertSourceTx(s.db, NewID("s-"), id, src, s.atOr(src.At))
 }
 
 func (s *Store) atOr(at int64) int64 {
@@ -564,8 +588,10 @@ func (s *Store) atOr(at int64) int64 {
 	return s.nowMs()
 }
 
+// addSourceTx attaches src to memory id. A source with nothing to point at is left out, unless it carries
+// a trust other than its kind's: dropping a lowered one would make the memory read as trusted.
 func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
-	if src.Ref == "" && src.Excerpt == "" && src.Kind != SourceSession {
+	if src.Ref == "" && src.Excerpt == "" && src.Kind != SourceSession && storedTrust(src) == "" {
 		return nil
 	}
 	at := src.At
@@ -576,9 +602,8 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if len(excerpt) > 8<<10 {
 		excerpt = truncateBytes(excerpt, 8<<10)
 	}
-	_, err := tx.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-		NewID("s-"), id, src.Kind, src.Ref, excerpt, src.Hash, at)
-	return err
+	src.Excerpt = excerpt
+	return insertSourceTx(tx, NewID("s-"), id, src, at)
 }
 
 func truncateBytes(s string, n int) string {
@@ -649,6 +674,10 @@ func getTx(q querier, id string) (Memory, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return m, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if err != nil {
+		return m, err
+	}
+	m.Trust, err = memoryTrustTx(q, id)
 	return m, err
 }
 
@@ -658,14 +687,17 @@ func (s *Store) Get(id string) (Memory, error) {
 	if err != nil {
 		return m, err
 	}
-	rows, err := s.db.Query(`SELECT id,kind,ref,excerpt,hash,at FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	rows, err := s.db.Query(`SELECT id,kind,ref,excerpt,hash,at,trust FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	if noTrustColumn(err) { // 판 4 사본으로 복구된 DB: 등급은 kind로 읽는다
+		rows, err = s.db.Query(`SELECT id,kind,ref,excerpt,hash,at,'' FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	}
 	if err != nil {
 		return m, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var src Source
-		if err := rows.Scan(&src.ID, &src.Kind, &src.Ref, &src.Excerpt, &src.Hash, &src.At); err != nil {
+		if err := rows.Scan(&src.ID, &src.Kind, &src.Ref, &src.Excerpt, &src.Hash, &src.At, &src.Trust); err != nil {
 			return m, err
 		}
 		m.Sources = append(m.Sources, src)
@@ -731,6 +763,11 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	}
 	if !in.Who.human() && in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" {
 		return m, fmt.Errorf("%w: %s", ErrConfirmNeedsWords, in.ID)
+	}
+	// 출처가 믿을 수 없는 것뿐인 기억은 누가 하든 사용자 말 없이 확정하지 않는다(D7, 확정 길 ②·④: 제안 승인도
+	// 이 길이다). 사용자 말이 오면 quote(owner) 출처가 붙어 풀린다.
+	if in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" && Untrusted(m.Trust) {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, in.ID)
 	}
 	if in.ExpectState != "" && m.State != in.ExpectState {
 		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
@@ -839,6 +876,12 @@ func (s *Store) SupersedeAs(oldID, newID, reason string, w Who) (Memory, error) 
 	}
 	if err := guardTx(tx, w, s.nowMs(), oldID); err != nil {
 		return m, err
+	}
+	// 출처가 믿을 수 없는 것뿐인 기억은 사용자 말 없이 owner·agent 기억을 낡게 하지 못한다(D7).
+	if newTrust, err := memoryTrustTx(tx, newID); err != nil {
+		return m, err
+	} else if Untrusted(newTrust) && !Untrusted(m.Trust) && w.quote() == "" {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, newID)
 	}
 	m.State, m.SupersededBy, m.StaleReason = StateStale, newID, reason
 	m.Version++
@@ -1047,7 +1090,11 @@ func (s *Store) list(states []string) ([]Memory, error) {
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(s.db, out, `memory_id IN (SELECT id FROM memories WHERE state IN (`+ph+`))`, args...)
 }
 
 // Count is the number of memories.

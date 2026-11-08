@@ -39,6 +39,11 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		}
 	}
 	userWords := in.Source.Kind == SourceQuote
+	// 출처가 믿을 수 없는 것뿐인 새 판은 owner·agent 기억을 대체하지 않고 어긋남으로 둔다(D7).
+	newTrust, err := memoryTrustTx(tx, m.ID)
+	if err != nil {
+		return rep, err
+	}
 	for _, id := range uniq(targets) {
 		if id == m.ID {
 			continue
@@ -57,6 +62,10 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 			return rep, err
 		} else if p {
 			rep.Conflicts = append(rep.Conflicts, id) // AI·자동화는 사용자 말을 대체하지 않는다
+			continue
+		} else if Untrusted(newTrust) && !Untrusted(old.Trust) {
+			rep.Conflicts = append(rep.Conflicts, id)
+			rep.untrusted = append(rep.untrusted, id)
 			continue
 		}
 		old.State, old.SupersededBy, old.StaleReason = StateStale, m.ID, reason
@@ -117,7 +126,8 @@ func (m Memory) TriggeredBy(tool string) (exact, ok bool) {
 // Triggered lists the live (candidate or confirmed) memories that have tool triggers.
 // The PreToolUse hook runs before every tool call, so it reads only these.
 func (s *Store) Triggered() ([]Memory, error) {
-	rows, err := s.db.Query(`SELECT ` + memoryCols + ` FROM memories WHERE tools NOT IN ('','[]') AND state IN ('candidate','confirmed') ORDER BY updated_at DESC, id`)
+	const live = `tools NOT IN ('','[]') AND state IN ('candidate','confirmed')`
+	rows, err := s.db.Query(`SELECT ` + memoryCols + ` FROM memories WHERE ` + live + ` ORDER BY updated_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +140,11 @@ func (s *Store) Triggered() ([]Memory, error) {
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(s.db, out, `memory_id IN (SELECT id FROM memories WHERE `+live+`)`)
 }
 
 // Session marks: what a session was told once, so the hooks do not say it again.

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -512,6 +513,21 @@ func TestIndex_판4_사본으로_복구된_DB에서도_열려_있던_저장소�
 	}
 	if n, err := a.Reindex(); err == nil {
 		t.Fatalf("reindex without the tables = %d, want an error", n)
+	}
+	// 출처 등급(sources.trust)도 판 4 사본에는 없다: 읽기는 kind로 읽고, 종류가 주는 등급의 저장은 열 없이 넣는다.
+	if got, err := a.Get(m.ID); err != nil || got.Trust != TrustAgent || len(got.Sources) != 1 {
+		t.Fatalf("get after restore: %+v %v", got, err)
+	}
+	if found, err := a.Find(FindInput{Query: "복구 뒤", AllProjects: true}); err != nil || len(found) == 0 || found[0].Trust != TrustAgent {
+		t.Fatalf("find after restore: %+v %v", found, err)
+	}
+	owner, err := a.Save(SaveInput{Kind: KindFact, Title: "복구 뒤 저장", Scope: ScopeGlobal, TrustLimit: TrustOwner, Source: Source{Kind: SourceSession, Ref: "s"}})
+	if err != nil || owner.ID != m.ID || owner.Trust != TrustAgent { // owner를 적을 칸이 없으면 낮춰(종류의 등급으로) 남긴다
+		t.Fatalf("owner save after restore: %+v %v", owner, err)
+	}
+	// 낮춘 등급(믿을 수 없음)은 적을 칸이 없으면 저장하지 않는다: agent로 올려 남기지 않는다.
+	if _, err := a.Save(SaveInput{Kind: KindFact, Title: "복구 뒤 웹 글", Scope: ScopeGlobal, Source: Source{Kind: SourceFile, Ref: "web", Trust: TrustUntrusted}}); !errors.Is(err, ErrTrustNotStored) {
+		t.Fatalf("untrusted save after restore err %v", err)
 	}
 	a.Close()
 	// 다음 쓰기 열기가 이전하고 전부 채운다.
