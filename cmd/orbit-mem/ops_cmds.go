@@ -45,7 +45,10 @@ func cmdMigrate(a *app, args []string) error {
 		return err
 	}
 	if *from == "" {
-		return errUsage
+		if *dry {
+			return errUsage
+		}
+		return migrateSchema(a, *asJSON)
 	}
 	s, err := openStore()
 	if err != nil {
@@ -78,6 +81,25 @@ func cmdMigrate(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.by_state_kind", counts(rep.ByState), counts(rep.ByKind)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.sources", rep.Sources, rep.FilesSame, rep.FilesChanged, rep.FilesUnknown, rep.ToJudge, rep.Absorbed))
+	return nil
+}
+
+// migrateSchema is orbit-mem migrate without --from: the schema migration doctor points to
+// (copy first, then migrate; a DB a newer orbit-mem made is left alone and is an error).
+func migrateSchema(a *app, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	info, err := s.Schema()
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return a.json(info)
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.schema_done", info.DB, info.Binary))
 	return nil
 }
 
@@ -387,22 +409,23 @@ func cmdUninstall(a *app, args []string) error {
 
 // doctorReport is orbit-mem doctor --json. orbit-code's orb doctor reads it: keep the keys.
 type doctorReport struct {
-	Version    string         `json:"version"`
-	Binary     string         `json:"binary"`     // this orbit-mem
-	PathBinary string         `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
-	Home       string         `json:"home"`
-	DB         bool           `json:"db"` // memory.db exists
-	Config     config.Config  `json:"config"`
-	Memories   map[string]int `json:"memories"`
-	Pending    int            `json:"pendingProposals"`
-	Activity   activityStatus `json:"activity"`
-	Tidy       tidyStatus     `json:"tidy"`
-	LastBackup string         `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
-	Backups    backupStatus   `json:"backups"`
-	Claude     claudeStatus   `json:"claude"`
-	Codex      codexStatus    `json:"codex"`
-	Update     updateStatus   `json:"update"`
-	Problems   []problem      `json:"problems"`
+	Version    string             `json:"version"`
+	Binary     string             `json:"binary"`     // this orbit-mem
+	PathBinary string             `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
+	Home       string             `json:"home"`
+	DB         bool               `json:"db"` // memory.db exists
+	Config     config.Config      `json:"config"`
+	Memories   map[string]int     `json:"memories"`
+	Pending    int                `json:"pendingProposals"`
+	Activity   activityStatus     `json:"activity"`
+	Tidy       tidyStatus         `json:"tidy"`
+	LastBackup string             `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
+	Backups    backupStatus       `json:"backups"`
+	Claude     claudeStatus       `json:"claude"`
+	Codex      codexStatus        `json:"codex"`
+	Update     updateStatus       `json:"update"`
+	Schema     *memory.SchemaInfo `json:"schema,omitempty"` // 기억 DB의 판과 이 실행 파일의 판(DB가 없으면 빠진다)
+	Problems   []problem          `json:"problems"`
 }
 
 // updateStatus is the version part of doctor: the newest version is the cached answer of the
@@ -479,11 +502,18 @@ func cmdDoctor(a *app, args []string) error {
 	}
 	if _, err := os.Stat(p.DB()); err == nil { // 설치 전이면 DB를 만들지 않는다
 		rep.DB = true
-		s, err := openStore()
+		s, info, err := memory.OpenReadOnly(p.DB()) // doctor는 DB를 이전하지 않고 판 문제를 보인다
 		if err != nil {
 			return err
 		}
 		defer s.Close()
+		rep.Schema = &info
+		switch info.State {
+		case memory.SchemaNewer:
+			add("binary-older-than-db", "orbit-mem update", info.DB, info.Binary)
+		case memory.SchemaOlder:
+			add("migration-needed", "orbit-mem migrate")
+		}
 		all, _ := s.List()
 		for _, m := range all {
 			rep.Memories[m.State]++
