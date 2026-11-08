@@ -760,22 +760,34 @@ func TestLock_기록이_잠금으로_실패해도_결과는_나온다(t *testing
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		t.Fatal(err)
 	}
+	// 한도는 넉넉히 준다: 결과가 한도에 걸려 나온 것(timeout 오류)이 아니라 기록 실패와 상관없이 나왔음을 본다.
+	// 잠금은 시험이 쥐고 있다가 결과를 받은 뒤에 푼다.
+	e.cfg.HostTimeouts = map[string]string{host.OpContext: "30s", host.OpRecall: "30s"}
+	const bound = 10 * time.Second
 	a := e.adapter("l-1")
-	result := func(op string, fields map[string]any, limit time.Duration) host.Recall {
+	result := func(op string, fields map[string]any) (host.Recall, time.Duration) {
 		t.Helper()
 		start := time.Now()
 		out, err := e.svc.Start(op, a.request(fields), host.Options{}).Result()
-		if took := time.Since(start); err != nil || took > limit {
+		took := time.Since(start)
+		if err != nil {
 			t.Fatalf("%s: %v after %v", op, err, took)
 		}
-		return out.(host.Recall)
+		return out.(host.Recall), took
 	}
-	got := result(host.OpContext, map[string]any{"source": "startup"}, 1500*time.Millisecond)
-	rec := result(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"}, time.Second)
+	got, ctxTook := result(host.OpContext, map[string]any{"source": "startup"})
+	rec, recTook := result(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
+	if ctxTook > bound || recTook > bound {
+		t.Fatalf("결과가 잠금과 상관없이 나와야 한다: context %v recall %v", ctxTook, recTook)
+	}
 	if !slices.Contains(got.MemoryIDs, rule.ID) || rec.Text == "" {
 		t.Fatalf("context %+v recall %+v", got, rec)
 	}
-	e.svc.Wait()
+	waitStart := time.Now()
+	e.svc.Wait() // 기록은 잠금에 막혀 실패한 채로 끝난다(결과 시각과 따로 본다)
+	if waited := time.Since(waitStart); waited > bound {
+		t.Fatalf("기록 대기 %v", waited)
+	}
 	if _, err := conn.ExecContext(ctx, "ROLLBACK"); err != nil {
 		t.Fatal(err)
 	}

@@ -3,11 +3,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"io"
-	"os"
 	"slices"
 	"time"
 
+	hooks "github.com/crispebble/orbit-mem/internal/hook"
 	"github.com/crispebble/orbit-mem/internal/host"
 	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/mcpserver"
@@ -34,15 +33,16 @@ func cmdTool(a *app, args []string) error {
 	if len(pos) != 1 || !slices.Contains(mcpserver.HostTools, pos[0]) || *hostName == "" {
 		return errUsage
 	}
-	in, err := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
+	in, err := readRequest(a.stdin)
+	if errors.Is(err, hooks.ErrInputWait) {
+		return a.toolError(errors.New(inputWaitMessage()))
+	}
 	if err != nil {
 		return err
 	}
 	dir := *cwd
-	if dir == "" { // 세션 폴더: CLAUDE_PROJECT_DIR, 없으면 작업 폴더
-		if dir = os.Getenv("CLAUDE_PROJECT_DIR"); dir == "" {
-			dir, _ = os.Getwd()
-		}
+	if dir == "" { // 세션 폴더: CLAUDE_PROJECT_DIR, 없으면 작업 폴더(sessionProject와 같은 규칙)
+		dir = sessionProject().Dir
 	}
 	res, herr := hostDo(host.OpCall, host.Request{Host: *hostName, Session: *session, Cwd: dir, Name: pos[0], Args: json.RawMessage(in)},
 		host.Options{Actor: actorOf(*actor, memory.ActorAI), At: at})

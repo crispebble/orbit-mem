@@ -84,8 +84,11 @@ func TestHostContractPairs(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// 짝 README의 차례 그대로: 빈 DB는 인자 없는 migrate 한 번(종료 0), 설정은 $ORBIT_HOME/config.json.
 			if p.Setup.DB == "empty" || p.Setup.DB == "memories" {
-				seed(t).Close()
+				if out, errOut, code := run(t, "", "migrate"); code != 0 {
+					t.Fatalf("migrate: code %d out %q err %q", code, out, errOut)
+				}
 			}
 			var outs []any // 앞선 호출의 출력("$calls[N]..." 자리표가 가리킨다)
 			for _, c := range p.Setup.Calls {
@@ -100,16 +103,13 @@ func TestHostContractPairs(t *testing.T) {
 				outs = append(outs, v)
 			}
 			if len(p.Setup.Meta) > 0 {
-				s, err := memory.Open(paths().DB())
-				if err != nil {
-					t.Fatal(err)
-				}
+				// README의 SQL 그대로: DB의 meta(key, value) 표에 직접 쓴다(키가 있으면 값을 바꾼다).
+				db := rawConn(t, paths().DB())
 				for k, v := range p.Setup.Meta {
-					if err := s.SetMeta(k, v); err != nil {
+					if _, err := db.Exec(`INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, k, v); err != nil {
 						t.Fatal(err)
 					}
 				}
-				s.Close()
 			}
 			out, errOut, code := run(t, resolvedStdin(t, p.Input, outs), "host", p.Op)
 			wait()
@@ -171,7 +171,7 @@ func TestHostAlias_inject는_활동을_남기고_tool은_activity_find를_받는
 	runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "pi-9", "--host", "host-x")
 	wait()
 	acts, err := s.Activities(memory.ActivityFilter{})
-	if err != nil || len(acts) != 1 || acts[0].Host != "host-x" || acts[0].Session != "pi-9" || acts[0].Launcher != "human" {
+	if err != nil || len(acts) != 1 || acts[0].Host != "host-x" || acts[0].Session != "pi-9" || acts[0].Launcher != "host" {
 		t.Fatalf("activities = %+v (%v)", acts, err)
 	}
 	out, errOut, code := run(t, `{}`, "tool", "activity_find", "--host", "host-x", "--session", "pi-9")
@@ -241,7 +241,7 @@ func TestHostAssembly_부모와_활동_시각(t *testing.T) {
 				t.Fatalf("activities = %+v (%v)", acts, err)
 			}
 			a := acts[0]
-			if a.Parent != "parent-session-1" || a.Launcher != "human" {
+			if a.Parent != "parent-session-1" || a.Launcher != "host" {
 				t.Errorf("parent %q launcher %q", a.Parent, a.Launcher)
 			}
 			if a.StartedAt < before || a.StartedAt >= before+delay.Milliseconds()-100 {

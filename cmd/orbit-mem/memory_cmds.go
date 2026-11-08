@@ -157,7 +157,7 @@ func cmdHook(a *app, args []string) error {
 	doneNoting := func() { noteOnce.Do(func() { close(noted) }) }
 	defer doneNoting()
 	hooks.Runner{
-		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, noted),
+		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, noted, launcherHuman),
 		Options: host.Options{At: at},
 		// 시작 문맥 뒤의 판·업데이트·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다).
 		Note: func(ev hooks.Event, plan hooks.Plan, text string) string {

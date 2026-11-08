@@ -1,11 +1,13 @@
 package main
 
 import (
-	"io"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	hooks "github.com/crispebble/orbit-mem/internal/hook"
 	"github.com/crispebble/orbit-mem/internal/host"
 	"github.com/crispebble/orbit-mem/internal/i18n"
 )
@@ -57,7 +59,10 @@ func cmdInject(a *app, args []string) error {
 		}
 		res, herr = hostDo(host.OpContext, req, opts)
 	} else {
-		b, _ := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
+		b, err := readRequest(a.stdin)
+		if errors.Is(err, hooks.ErrInputWait) {
+			return errors.New(inputWaitMessage())
+		}
 		req.Prompt = string(b)
 		res, herr = hostDo(host.OpRecall, req, opts)
 	}
@@ -65,11 +70,19 @@ func cmdInject(a *app, args []string) error {
 		return hostFailure(herr)
 	}
 	out := map[string]any{"text": "", "memoryIds": []string{}}
-	// 읽지 못하는 DB(없음·새 판·옛 판)는 `skipped` 칸 대신 지금까지의 빈 문맥이다.
-	if r, ok := res.(host.Recall); ok && r.Skipped == "" {
-		out["text"] = r.Text
-		if r.MemoryIDs != nil {
-			out["memoryIds"] = r.MemoryIDs
+	// 읽지 못하는 DB(없음·새 판·옛 판)는 `skipped` 칸 대신 지금까지의 빈 문맥이다. 판이 맞지 않는 것은 「기억 없음」과
+	// 구분되도록 stderr에 한 줄 남긴다(DB 없음은 기억이 없는 것이니 조용하다).
+	if r, ok := res.(host.Recall); ok {
+		switch r.Skipped {
+		case "":
+			out["text"] = r.Text
+			if r.MemoryIDs != nil {
+				out["memoryIds"] = r.MemoryIDs
+			}
+		case host.CodeSchemaNewer:
+			fmt.Fprintln(a.stderr, "orbit-mem inject: "+i18n.T("cli.inject.schema_newer"))
+		case host.CodeSchemaOlder:
+			fmt.Fprintln(a.stderr, "orbit-mem inject: "+i18n.T("cli.inject.schema_older"))
 		}
 	}
 	return a.json(out)
@@ -89,8 +102,8 @@ func (a *app) injectDelivered(hostName, session, ids string, at int64) error {
 	}
 	_, herr := hostDo(host.OpDelivered, host.Request{Host: hostName, Session: session, MemoryIDs: list}, host.Options{At: at})
 	switch {
-	case herr == nil, herr.Code == host.CodeNoDB: // DB가 아직 없으면 남길 것이 없다
-		return nil
+	case herr == nil, herr.Code == host.CodeNoDB, herr.Code == host.CodeSchemaNewer, herr.Code == host.CodeSchemaOlder:
+		return nil // DB가 아직 없거나 읽지 못하는 판이면 남길 것이 없다(조용히 0)
 	case herr.Code == host.CodeUsage:
 		return errUsage
 	}

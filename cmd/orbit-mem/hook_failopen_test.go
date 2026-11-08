@@ -50,8 +50,10 @@ func (c hookCase) limit() time.Duration {
 	return d
 }
 
-// slack is the time of the process around the operations (flags, the input, printing).
-const slack = 300 * time.Millisecond
+// slack is the time of the process around the operations (flags, the input, printing). It is wide
+// on purpose: a lock the test holds for the whole test is far longer than any limit, so "the hook
+// ends at its limit, long before the lock goes" holds with room for a loaded machine (-race, parallel).
+const slack = time.Second
 
 // failHome is a home with a memory DB that gives every recall hook a context: a pinned user rule.
 func failHome(t *testing.T) string {
