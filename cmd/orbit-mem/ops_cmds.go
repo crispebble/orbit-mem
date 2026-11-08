@@ -617,7 +617,7 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.path_binary", orNone(rep.PathBinary)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.recall", cfg.Inject, cfg.RecallChars, onOff(rep.Tidy.Auto), orNone(rep.Tidy.LastDay)))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.recall", cfg.RecallMode(), cfg.RecallChars, onOff(rep.Tidy.Auto), orNone(rep.Tidy.LastDay)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.update", rep.Update.Current, orNone(rep.Update.Latest), yes(rep.Update.Available), onOff(rep.Update.Enabled)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))

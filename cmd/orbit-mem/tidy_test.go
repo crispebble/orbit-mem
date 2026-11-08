@@ -127,6 +127,14 @@ func TestTidy_inject가_full이_아니면_후보_기한_낡음을_넣지_않는�
 			t.Fatalf("inject %s: ExpireCandidates = %v", inj, got)
 		}
 	}
+	// 새 키 recall도 같은 뜻이다(T-27): auto만 돈다.
+	for recall, want := range map[string]bool{config.RecallAuto: true, config.RecallOnDemand: false, config.RecallOff: false} {
+		cfg := config.Default()
+		cfg.Recall = recall
+		if got := tidyOptions(cfg).ExpireCandidates; got != want {
+			t.Fatalf("recall %s: ExpireCandidates = %v", recall, got)
+		}
+	}
 	cfg := config.Default()
 	cfg.CandidateExpiryDays, cfg.LedgerWindowDays = 10, 3
 	if o := tidyOptions(cfg); o.CandidateExpiryDays != 10 || o.LedgerWindowDays != 3 {

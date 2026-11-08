@@ -79,28 +79,31 @@ func containsID(ids []string, id string) bool {
 	return false
 }
 
-// --rules brief는 짧은 꼴, 비우거나 full이면 전문 꼴이다. 세션 시작은 두 꼴 모두 상시 핵심과 「먼저 찾는 곳」 줄만이고(S3-R6),
-// 짧은 꼴의 그 줄이 더 짧다.
-func TestInject_세션_시작은_두_꼴_모두_핵심과_찾는_곳만이고_짧은_꼴이_더_짧다(t *testing.T) {
+// --rules brief·full은 받기만 하고 효과가 없다(짧은 꼴은 없어졌다, T-27·D3): 세 꼴이 같은 묶음과 같은 회상이고,
+// 세션 시작은 상시 핵심과 「먼저 찾는 곳」 줄만이다(S3-R6). 틀린 값은 지금처럼 사용법 오류다.
+func TestInject_rules_brief는_받기만_하고_같은_글이다(t *testing.T) {
 	home(t)
 	s := seed(t)
 	r, _ := s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말을 쓰지 않는다", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
-	code := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-1", "--host", "host-x", "--rules", "brief")
-	if containsID(code.MemoryIDs, r.ID) || !strings.Contains(code.Text, "일이 닿으면 먼저 memory_find") || strings.Contains(code.Text, "무엇보다 먼저") {
-		t.Errorf("짧은 꼴 묶음 = %+v", code)
-	}
+	brief := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-1", "--host", "host-x", "--rules", "brief")
 	full := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "c-2", "--host", "host-x", "--rules", "full")
-	pi := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "p-1", "--host", "host-x")
-	if !strings.Contains(full.Text, "무엇보다 먼저") || !strings.Contains(pi.Text, "무엇보다 먼저") || len(code.Text) >= len(full.Text) {
-		t.Errorf("전문 꼴 = %q / %q", full.Text, pi.Text)
+	plain := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "p-1", "--host", "host-x")
+	if containsID(brief.MemoryIDs, r.ID) || !strings.Contains(brief.Text, "규칙·결정이 일에 닿으면 memory_find로 먼저 찾는다.") ||
+		brief.Text != full.Text || brief.Text != plain.Text {
+		t.Errorf("묶음 brief %q / full %q / 없음 %q", brief.Text, full.Text, plain.Text)
 	}
-	// 짧은 꼴에서는 요청과 맞는 확정 규칙이 전문과 함께 회상된다.
-	p := runInject(t, "답은 존댓말 반말 쓰면 안돼?", "prompt", "--cwd", "/tmp", "--session", "c-1", "--host", "host-x", "--rules", "brief")
-	if !containsID(p.MemoryIDs, r.ID) || !strings.Contains(p.Text, "반말을 쓰지 않는다") {
-		t.Errorf("짧은 꼴 회상 = %+v", p)
+	// 묶음 밖 확정 규칙은 요청과 맞으면 전문과 함께 회상된다(꼴과 상관없이).
+	for _, rules := range []string{"brief", "full"} {
+		p := runInject(t, "답은 존댓말 반말 쓰면 안돼?", "prompt", "--cwd", "/tmp", "--session", "c-"+rules, "--host", "host-x", "--rules", rules)
+		if !containsID(p.MemoryIDs, r.ID) || !strings.Contains(p.Text, "반말을 쓰지 않는다") {
+			t.Errorf("%s 회상 = %+v", rules, p)
+		}
 	}
 	if _, _, c := run(t, "", "inject", "session-start", "--host", "host-x", "--rules", "tiny"); c != 2 {
 		t.Errorf("틀린 꼴 code %d", c)
+	}
+	if _, _, c := run(t, "", "why", "m-x", "--rules", "tiny"); c != 2 {
+		t.Errorf("why 틀린 꼴 code %d", c)
 	}
 }
 

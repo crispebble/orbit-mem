@@ -36,7 +36,6 @@ type Setup struct {
 
 // Options are the choices of one run that the JSON contract does not carry.
 type Options struct {
-	Brief bool   // 확정 규칙을 짧은 꼴로(inject.Options.Brief)
 	Actor string // call로 쓰는 쪽. 없으면 AI
 	At    int64  // 활동 시각(Unix ms). 0이면 Start 때
 }

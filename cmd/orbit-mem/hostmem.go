@@ -101,7 +101,7 @@ func (a *app) printAskUser(asks []askUser) {
 // memory system overlaps orbit-mem and the user has not chosen to keep it (17.4). The
 // AI reads it and asks the user.
 func withHostMemoryNote(text string, cfg config.Config, cwd string) string {
-	if cfg.Inject == config.InjectOff {
+	if cfg.RecallMode() == config.RecallOff {
 		return text
 	}
 	ov, _ := overlapsToAsk(cfg, cwd)

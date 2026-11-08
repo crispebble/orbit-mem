@@ -183,8 +183,6 @@ func (c *call) openRecall(limit int) (any, *Error, bool) {
 	return nil, err, true
 }
 
-func (c *call) brief() inject.Options { return inject.Options{Brief: c.opts.Brief} }
-
 // shown leaves the marks and the use event of an injection (marks and events under the session key).
 func (c *call) shown(kind string, inj inject.Injection) {
 	c.after = append(c.after, func() {
@@ -196,9 +194,9 @@ func (c *call) shown(kind string, inj inject.Injection) {
 // injected counts one injection as a use event. Levels that inject nothing and empty requests are
 // not use; a tool call or a subagent counts only when something was put in.
 func (c *call) injected(kind string, inj inject.Injection) {
-	cfg := c.cfg
-	if cfg.Inject == config.InjectOff ||
-		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(c.req.Prompt) == "")) ||
+	mode := c.cfg.RecallMode()
+	if mode == config.RecallOff ||
+		(kind == memory.EventInjectPrompt && (mode != config.RecallAuto || strings.TrimSpace(c.req.Prompt) == "")) ||
 		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) {
 		return
 	}
@@ -253,7 +251,7 @@ func (c *call) context() (any, *Error) {
 		return out, err
 	}
 	c.locate()
-	inj := inject.SessionBundleWith(c.store, c.cfg, c.where, c.req.Host, c.req.Session, c.brief())
+	inj := inject.SessionBundleWith(c.store, c.cfg, c.where, c.req.Host, c.req.Session, nil)
 	c.shown(memory.EventInjectSessionStart, inj)
 	c.activity(memory.ActivityStart)
 	if u := c.svc.setup.Upkeep; u != nil {
@@ -272,7 +270,7 @@ func (c *call) recall() (any, *Error) {
 		return out, err
 	}
 	c.locate()
-	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, c.req.Prompt, c.req.Host, c.req.Session, c.brief())
+	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, c.req.Prompt, c.req.Host, c.req.Session, inject.Options{})
 	c.shown(memory.EventInjectPrompt, inj)
 	c.activity(memory.ActivityPrompt)
 	return recallOf(inj, limit), nil

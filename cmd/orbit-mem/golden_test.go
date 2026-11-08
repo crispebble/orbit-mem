@@ -181,7 +181,9 @@ func TestRecallGoldenPromptClaude(t *testing.T) {
 	w.check("hook-prompt-claude-first.golden", w.hook("prompt", "claude", w.hookIn("g2", "", ask, "", "")))
 	w.check("hook-prompt-claude-repeat.golden", w.hook("prompt", "claude", w.hookIn("g2", "", ask, "", "")))
 	w.check("hook-prompt-claude-nomatch.golden", w.hook("prompt", "claude", w.hookIn("g2", "", "안녕", "", "")))
-	// 세션 중 같은 주제의 새 값(정정 줄)과 다른 곳에서 확정된 새 기억(새 기억 줄)
+	// 세션 중 같은 주제의 새 값(정정 줄)과 다른 곳에서 확정된 새 기억(새 기억 줄). 세션 시작에 「최근 결정」 줄이 없으니(T-3)
+	// 옛 값은 요청 회상으로 먼저 세션에 알린다.
+	w.hook("prompt", "claude", w.hookIn("g2", "", "시험은 모의 DB로 돈다 맞나", "", ""))
 	w.later()
 	w.save("replaced", memory.SaveInput{Kind: "decision", Scope: "product:demo", Title: "시험은 실제 DB로 돈다", Body: "모의 대신 실제 DB", Topic: "시험 DB", Source: memory.Source{Kind: "quote", Excerpt: "실제 DB로"}}, false)
 	w.save("fresh", memory.SaveInput{Kind: "rule", Scope: "product:demo", Title: "릴리스 노트는 한국어로", Body: "릴리스 노트 문서는 한국어", Topic: "릴리스 노트", Source: memory.Source{Kind: "quote", Excerpt: "한국어로"}}, false)

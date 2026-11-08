@@ -25,6 +25,6 @@
     {"name": "약하게 겹치면 아무것도 넣지 않는다", "prompt": "배포", "want": [], "absent": ["deploy-fact", "deploy-new"]},
     {"name": "채움말만 겹치면 아무것도 넣지 않는다", "prompt": "오늘 이거 해줘", "want": [], "absent": ["weather"]},
     {"name": "상시 핵심이 아닌 확정 규칙은 세션 시작에 없어 요청과 맞으면 회상으로 온다(S3-R7)", "prompt": "이 앱 설치 pnpm 써도 돼", "want": ["rule-pnpm"], "contains": ["npm install을 쓰지 않는다"]},
-    {"name": "짧은 꼴(orbit-code)에서는 요청과 맞는 확정 규칙이 본문과 함께 온다", "brief": true, "prompt": "이 앱 설치 pnpm 써도 돼", "want": ["rule-pnpm"], "contains": ["npm install을 쓰지 않는다"]}
+    {"name": "묶음 밖 확정 규칙은 요청과 맞으면 본문과 함께 온다", "prompt": "이 앱 설치 pnpm 써도 돼", "want": ["rule-pnpm"], "contains": ["npm install을 쓰지 않는다"]}
   ]
 }

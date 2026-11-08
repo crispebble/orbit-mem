@@ -34,7 +34,6 @@ type recallFixtures struct {
 	Cases []struct {
 		Name     string   `json:"name"`
 		Prompt   string   `json:"prompt"`
-		Brief    bool     `json:"brief"`
 		Want     []string `json:"want"`
 		Absent   []string `json:"absent"`
 		Contains []string `json:"contains"`
@@ -89,7 +88,7 @@ func TestRecallFixtures(t *testing.T) {
 	}
 	for _, c := range fx.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			inj := PromptInjectionWith(s, config.Default(), fx.Scope, c.Prompt, Options{Brief: c.Brief})
+			inj := PromptInjectionWith(s, config.Default(), fx.Scope, c.Prompt, Options{})
 			var got []string
 			for _, id := range inj.MemoryIDs {
 				got = append(got, keyOf[id])

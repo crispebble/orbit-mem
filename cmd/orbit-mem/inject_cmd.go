@@ -41,9 +41,7 @@ func cmdInject(a *app, args []string) error {
 	var opts host.Options
 	opts.At = at
 	switch *rules {
-	case "", "full":
-	case "brief": // 확정 규칙을 짧은 꼴로(규칙마다 한 줄, 전문은 memory_get과 요청 회상)
-		opts.Brief = true
+	case "", "full", "brief": // 짧은 꼴(brief)은 없어졌다(T-27): 옛 호출이 깨지지 않게 받기만 하고 전문 꼴이다
 	default:
 		return errUsage
 	}

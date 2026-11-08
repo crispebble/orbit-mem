@@ -206,7 +206,8 @@ func TestContext_main은_SessionBundle과_같고_시작을_기록한다(t *testi
 	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" {
 		t.Fatalf("context = %+v\nwant %+v", got, want)
 	}
-	if !slices.Contains(got.MemoryIDs, rule.ID) || !strings.Contains(got.Text, dec.Title) || got.Skipped != "" {
+	// 「최근 결정」 줄은 없다(T-3): 핵심 밖 결정은 제목도 들지 않는다.
+	if !slices.Contains(got.MemoryIDs, rule.ID) || strings.Contains(got.Text, dec.Title) || got.Skipped != "" {
 		t.Fatalf("context = %+v", got)
 	}
 	if got.Budget.Chars != want.Chars || got.Budget.Limit != inject.MaxSessionStartRunes {
@@ -238,17 +239,16 @@ func TestContext_main은_SessionBundle과_같고_시작을_기록한다(t *testi
 	}
 }
 
-// --rules brief는 계약 JSON에 없는 Go 쪽 선택지다: inject.Options{Brief: true}와 같은 글.
-func TestContext_brief는_Go_선택지로_받는다(t *testing.T) {
+// 세션 시작은 inject.SessionBundleWith와 같은 글이다(짧은 꼴은 없어졌다, T-27).
+func TestContext_세션_시작은_SessionBundleWith와_같은_글이다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
 	for i, title := range []string{"규칙 하나", "규칙 둘"} {
 		save(t, s, memory.SaveInput{Kind: memory.KindRule, Title: title, Body: strings.Repeat("본문 ", 20+i), Scope: memory.ScopeGlobal})
 	}
 	a := e.adapter("b-1")
-	a.opts.Brief = true
 	got := a.recall(host.OpContext, map[string]any{"source": "startup"})
-	want := inject.SessionBundleWith(s, e.cfg, e.where(), "host-x", "b-2", inject.Options{Brief: true})
+	want := inject.SessionBundleWith(s, e.cfg, e.where(), "host-x", "b-2", nil)
 	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) {
 		t.Fatalf("brief = %q\nwant %q", got.Text, want.Text)
 	}
@@ -361,6 +361,15 @@ func TestInject_수준과_빈_요청은_사건을_남기지_않는다(t *testing
 	a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
 	if evs := events(t, s); len(evs) != 0 {
 		t.Fatalf("rules 수준의 요청 = %v", kinds(evs))
+	}
+	// 새 키 recall도 같은 뜻이다(T-27): on_demand는 요청 회상 사건이 없고, off는 세션 시작 사건도 없다.
+	e.cfg.Inject = config.InjectFull
+	e.cfg.Recall = config.RecallOnDemand
+	a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
+	e.cfg.Recall = config.RecallOff
+	a.recall(host.OpContext, map[string]any{"source": "startup"})
+	if evs := events(t, s); len(evs) != 0 {
+		t.Fatalf("recall on_demand·off = %v", kinds(evs))
 	}
 }
 

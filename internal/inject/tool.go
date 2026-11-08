@@ -38,7 +38,7 @@ const (
 func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
 	var inj Injection
 	var b strings.Builder
-	if cfg.Inject == config.InjectOff || strings.TrimSpace(tool) == "" {
+	if cfg.RecallMode() == config.RecallOff || strings.TrimSpace(tool) == "" {
 		return inj.done(&b)
 	}
 	active, err := s.Triggered()

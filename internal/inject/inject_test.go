@@ -37,7 +37,7 @@ func save(t *testing.T, s *memory.Store, kind, title, body, scope string, quote 
 
 const here = "project:github.com/me/app"
 
-func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안_줄은_없다(t *testing.T) {
+func TestSessionStart_핵심_밖_규칙_전문도_최근_결정_제목도_대기_제안_줄도_없다(t *testing.T) {
 	s := store(t)
 	save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
 	save(t, s, memory.KindRule, "이 앱은 pnpm", "npm을 쓰지 않는다", here, true)
@@ -48,14 +48,14 @@ func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안
 	s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "확정?", MemoryIDs: []string{c.ID}})
 
 	got := SessionStart(s, config.Default(), here)
-	// 상시 핵심 밖 확정 규칙은 넣지 않고 수만 알린다(S3-R6): 전역과 이 앱 규칙 둘, 다른 앱·후보는 세지 않는다.
-	for _, want := range []string{"먼저 찾는 곳", "확정 규칙 2개", "결정 1개", "memory_find", "Orbit 먼저 만든다"} {
+	// 상시 핵심 밖 확정 규칙·결정은 넣지 않고 먼저 찾을 곳만 개수 없이 알린다(S3-R6, 7판 4절·T-3).
+	for _, want := range []string{wantFindLine, "memory_find"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
 	// 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6): 옛 대기 제안이 남아 있어도 줄을 붙이지 않는다.
-	for _, bad := range []string{"답은 한글 존댓말", "이 앱은 pnpm", "다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "제안 1건", "대기"} {
+	for _, bad := range []string{"답은 한글 존댓말", "이 앱은 pnpm", "다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "Orbit 먼저 만든다", "최근 결정", "2개", "제안 1건", "대기"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("must not contain %q", bad)
 		}
@@ -160,9 +160,15 @@ func TestPromptInjection_넣은_기억_id(t *testing.T) {
 
 func TestSessionBundle_같은_세션은_처음_묶음을_그대로_쓴다(t *testing.T) {
 	s := store(t)
-	save(t, s, memory.KindDecision, "첫 결정", "본문", memory.ScopeGlobal, true)
+	pin := func(title string) {
+		m := save(t, s, memory.KindRule, title, "본문", memory.ScopeGlobal, true)
+		if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pin("첫 규칙")
 	first := SessionBundle(s, config.Default(), here, "claude", "s1")
-	save(t, s, memory.KindDecision, "세션 중에 확정된 규칙", "본문", memory.ScopeGlobal, true)
+	pin("세션 중에 확정된 규칙")
 	again := SessionBundle(s, config.Default(), here, "claude", "s1")
 	if again.Text != first.Text || strings.Contains(again.Text, "세션 중에") || strings.Join(again.MemoryIDs, ",") != strings.Join(first.MemoryIDs, ",") {
 		t.Fatalf("bundle changed within the session:\n%s\n---\n%s", first.Text, again.Text)
