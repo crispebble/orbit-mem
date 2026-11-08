@@ -28,6 +28,7 @@ type call struct {
 	store    *memory.Store // 이 실행 파일이 읽는 판(ok)으로 열었을 때만
 	p        project.Project
 	where    string
+	request  string // 사람이 쓴 요청 글(recall 판정 뒤): 사용 사건의 「빈 요청」 판정이 본다
 	after    []func()
 }
 
@@ -196,7 +197,7 @@ func (c *call) shown(kind string, inj inject.Injection) {
 func (c *call) injected(kind string, inj inject.Injection) {
 	mode := c.cfg.RecallMode()
 	if mode == config.RecallOff ||
-		(kind == memory.EventInjectPrompt && (mode != config.RecallAuto || strings.TrimSpace(c.req.Prompt) == "")) ||
+		(kind == memory.EventInjectPrompt && (mode != config.RecallAuto || strings.TrimSpace(c.request) == "")) ||
 		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) {
 		return
 	}
@@ -208,7 +209,7 @@ func (c *call) injected(kind string, inj inject.Injection) {
 }
 
 // activity keeps the session in the activity log (under the session, not the subagent).
-func (c *call) activity(kind string) {
+func (c *call) activity(kind, prompt string) {
 	c.after = append(c.after, func() {
 		if c.req.Session == "" {
 			return
@@ -218,7 +219,7 @@ func (c *call) activity(kind string) {
 			parent = c.svc.setup.Parent
 		}
 		_ = c.store.RecordActivity(memory.ActivityEvent{Kind: kind, Host: c.req.Host, Session: c.req.Session, Cwd: c.req.Cwd,
-			ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: c.req.Prompt, At: c.opts.At})
+			ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: prompt, At: c.opts.At})
 	})
 }
 
@@ -253,7 +254,7 @@ func (c *call) context() (any, *Error) {
 	c.locate()
 	inj := inject.SessionBundleWith(c.store, c.cfg, c.where, c.req.Host, c.req.Session, c.opts.SessionNotes)
 	c.shown(memory.EventInjectSessionStart, inj)
-	c.activity(memory.ActivityStart)
+	c.activity(memory.ActivityStart, "")
 	if u := c.svc.setup.Upkeep; u != nil {
 		cfg := c.cfg
 		c.after = append(c.after, func() { u.AfterSessionStart(c.store, cfg) })
@@ -266,13 +267,23 @@ func (c *call) recall() (any, *Error) {
 	if c.req.Origin != "" && c.req.Origin != OriginUser {
 		return skipped(SkippedOrigin, limit), nil
 	}
+	// 훅 입력에는 출처 칸이 없어 호스트는 prompt 칸을 사람 글 후보로 넘긴다. 사람 요청인지는 여기서 꼴로 판정한다(DB를 열기 전).
+	words, person := inject.PersonWords(c.req.Prompt)
+	if !person {
+		return skipped(SkippedNotPerson, limit), nil
+	}
+	text, trivial := inject.RequestText(words)
+	if !trivial { // 요청 회상이 돌지 않으면 요청 회상 사용도 아니다
+		c.request = text
+	}
 	if out, err, done := c.openRecall(limit); done {
 		return out, err
 	}
 	c.locate()
-	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, c.req.Prompt, c.req.Host, c.req.Session, inject.Options{})
+	// 사소한 요청은 요청 회상만 건너뛰고 세션 중 바뀐 것은 싣는다.
+	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, text, c.req.Host, c.req.Session, inject.Options{NewsOnly: trivial})
 	c.shown(memory.EventInjectPrompt, inj)
-	c.activity(memory.ActivityPrompt)
+	c.activity(memory.ActivityPrompt, words)
 	return recallOf(inj, limit), nil
 }
 
@@ -354,6 +365,6 @@ func (c *call) sessionEnd() (any, *Error) {
 		return nil, err
 	}
 	c.locate()
-	c.activity(memory.ActivityEnd)
+	c.activity(memory.ActivityEnd, "")
 	return OK{OK: true}, nil
 }

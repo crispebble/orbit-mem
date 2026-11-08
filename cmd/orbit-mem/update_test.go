@@ -325,7 +325,7 @@ func TestHook_요청_훅은_갱신을_요청하지_않는다(t *testing.T) {
 	home(t)
 	seedUpdateRule(t)
 	calls := fakeUpdateBG(t)
-	run(t, `{"cwd":"/tmp","session_id":"s1","prompt":"안녕"}`, "hook", "prompt", "--host", "claude")
+	run(t, `{"cwd":"/tmp","session_id":"s1","prompt":"배포 규칙이 뭐였지"}`, "hook", "prompt", "--host", "claude")
 	if refreshCalls(*calls) != 0 {
 		t.Fatalf("%v", *calls)
 	}

@@ -31,7 +31,7 @@ type input struct {
 	SessionID string `json:"session_id"`
 	Cwd       string `json:"cwd"`
 	Prompt    string `json:"prompt"`    // UserPromptSubmit
-	Source    string `json:"source"`    // SessionStart: startup·resume·clear·compact
+	Source    string `json:"source"`    // SessionStart: startup·resume·fork·clear·compact
 	ToolName  string `json:"tool_name"` // PreToolUse
 	AgentID   string `json:"agent_id"`  // SubagentStart, 서브에이전트 안의 훅
 }
@@ -69,7 +69,7 @@ func steps(ev hook.Event, req host.Request, in input) []hook.Step {
 		}
 		return []hook.Step{{Op: host.OpContext, Request: ctx}}
 	case hook.Prompt:
-		req.Prompt, req.Origin = in.Prompt, host.OriginUser // 이 훅은 사람이 낸 요청에만 돈다
+		req.Prompt = in.Prompt // 사람 글 후보는 prompt 칸이다. 이 훅은 예약 작업·서브에이전트 보고·다른 세션 메시지에도 돌고 입력에 출처 칸이 없어, 사람 요청인지는 recall op가 판정한다(origin은 비운다)
 		return []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
 		req.Tool = in.ToolName // 도구 입력은 읽지도 바꾸지도 않는다

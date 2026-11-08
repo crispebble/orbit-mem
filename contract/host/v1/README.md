@@ -62,7 +62,7 @@
 
 | 종료 코드 | 뜻 |
 | --- | --- |
-| `0` | 성공. 회상 op의 빈 결과(`skipped`: `no-db`·`schema-newer`·`schema-older`·`origin`)도 성공이다. |
+| `0` | 성공. 회상 op의 빈 결과(`skipped`: `no-db`·`schema-newer`·`schema-older`·`origin`·`not-person`)도 성공이다. |
 | `1` | 사용법이 아닌 오류: `contract`, `timeout`, `no-db`, `schema-newer`, `schema-older`, `unknown-tool`, `tool`, `internal`. |
 | `2` | 사용법 오류(`usage`): JSON 객체가 아닌 입력, 모르는 op, 모르는 값, 빠진 칸. |
 

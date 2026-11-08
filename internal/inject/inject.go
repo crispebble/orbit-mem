@@ -46,7 +46,11 @@ func inScope(m memory.Memory, pl place.Place) bool { return pl.Sees(m.Scope, m.P
 // Options are the choices of one injection that the settings do not carry. None is left: the brief
 // form of the confirmed rules (Brief) is gone (설계 보완 T-27, 진행 결정 D3), and every host gets the
 // full form. The type stays so the callers keep their shape.
-type Options struct{}
+type Options struct {
+	// NewsOnly leaves the recall for the request out and keeps the session news
+	// (correction and new memory lines): the request is a trivial one.
+	NewsOnly bool
+}
 
 // Not eligible for recall (subject): a volatile
 // memory past its days, or an older value of a topic.
@@ -399,7 +403,7 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host, session string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
-	if cfg.RecallMode() != config.RecallAuto || strings.TrimSpace(prompt) == "" {
+	if cfg.RecallMode() != config.RecallAuto || (strings.TrimSpace(prompt) == "" && !opts.NewsOnly) {
 		return inj.done(&b)
 	}
 	_, bundleIDs, ok := s.SessionBundle(host, session)
@@ -416,8 +420,9 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 		news = sessionNews(s, &inj, host, session, bundleIDs, byID)
 	}
 	b.WriteString(news)
-	recall := recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news))
-	b.WriteString(recall)
+	if !opts.NewsOnly {
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news)))
+	}
 	return inj.done(&b)
 }
 

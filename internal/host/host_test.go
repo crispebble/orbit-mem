@@ -310,6 +310,107 @@ func TestRecall_origin과_세션_키(t *testing.T) {
 	}
 }
 
+// 사람 요청 판정: 틀만 있는 요청은 DB를 열기 전에 not-person으로 건너뛴다(origin이 user여도). 아무것도 남기지 않는다.
+func TestRecall_틀만_있는_요청은_DB를_열지_않고_not_person이다(t *testing.T) {
+	e := newEnv(t) // DB를 만들지 않는다
+	a := e.adapter("s-1")
+	for _, prompt := range []string{
+		"[Subagent hand-back]\nstep done",
+		"<task-notification>\n<status>completed</status>\n</task-notification>",
+		"Another Claude session sent a message:\nplease check the build",
+		"<system-reminder>알림</system-reminder>",
+	} {
+		for _, origin := range []string{"", "user"} {
+			f := map[string]any{"prompt": prompt}
+			if origin != "" {
+				f["origin"] = origin
+			}
+			got := a.recall(host.OpRecall, f)
+			if got.Skipped != host.SkippedNotPerson || got.Text != "" || len(got.MemoryIDs) != 0 {
+				t.Fatalf("%q/%q = %+v", prompt, origin, got)
+			}
+		}
+	}
+	if _, err := os.Stat(e.db); err == nil {
+		t.Fatal("DB를 열지 않아야 한다")
+	}
+	// origin이 agent면 그대로 origin이다.
+	if got := a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포", "origin": "agent"}); got.Skipped != host.SkippedOrigin {
+		t.Fatalf("agent = %+v", got)
+	}
+}
+
+func TestRecall_틀만_있는_요청은_활동도_사용_사건도_남기지_않는다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n금요일 배포 금지\n</task-notification>"})
+	if got.Skipped != host.SkippedNotPerson {
+		t.Fatalf("got %+v", got)
+	}
+	if len(events(t, s)) != 0 || len(activities(t, s)) != 0 {
+		t.Fatal("사람 요청이 아니면 기록하지 않는다")
+	}
+}
+
+// 사람이 틀 글을 붙여 넣고 질문하면 회상한다. 활동 기록에는 사람 글(틀을 걷은 것)이 남는다.
+func TestRecall_붙여_넣고_질문하면_회상하고_사람_글을_기록한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n<status>completed</status>\n</task-notification>\n\n금요일 배포 금지 맞나"})
+	if got.Skipped != "" || !slices.Contains(got.MemoryIDs, dec.ID) {
+		t.Fatalf("got %+v", got)
+	}
+	if acts := activities(t, s); len(acts) != 1 || acts[0].FirstPrompt != "금요일 배포 금지 맞나" {
+		t.Fatalf("activity = %+v", acts)
+	}
+}
+
+// 인자 있는 슬래시 명령은 인자로 회상한다. 인자 없는 슬래시 명령은 사소하다.
+func TestRecall_슬래시_명령은_인자로_회상한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "/review 금요일 배포 금지 맞나"})
+	if !slices.Contains(got.MemoryIDs, dec.ID) {
+		t.Fatalf("got %+v", got)
+	}
+	if got := a.recall(host.OpRecall, map[string]any{"prompt": "/clear"}); got.Text != "" || got.Skipped != "" {
+		t.Fatalf("인자 없는 명령 = %+v", got)
+	}
+}
+
+// 사소한 요청은 요청 회상(B1)만 건너뛴다. 세션 중 다른 곳에서 확정된 새 기억 줄(B3)은 나오고 활동은 남는다.
+func TestRecall_사소한_요청은_B1만_건너뛰고_B3와_활동은_남긴다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	a.recall(host.OpContext, map[string]any{"source": "startup"})
+	time.Sleep(5 * time.Millisecond)
+	fresh := save(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "릴리스 노트는 한국어로", Body: "노트 문서는 한국어", Topic: "릴리스 노트", Scope: memory.ScopeGlobal})
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "ㅇㅇ"})
+	if got.Skipped != "" || !slices.Equal(got.MemoryIDs, []string{fresh.ID}) || !strings.Contains(got.Text, "새 기억") {
+		t.Fatalf("got %+v", got)
+	}
+	if strings.Contains(got.Text, "금요일 배포 금지") {
+		t.Fatalf("B1이 나왔다: %q", got.Text)
+	}
+	acts := activities(t, s)
+	if len(acts) != 1 || acts[0].Prompts != 1 {
+		t.Fatalf("activity = %+v", acts)
+	}
+	for _, ev := range events(t, s) {
+		if ev.Kind == memory.EventInjectPrompt {
+			t.Fatalf("사소한 요청은 요청 회상 사용이 아니다: %v", kinds(events(t, s)))
+		}
+	}
+}
+
 // tool-context는 inject.ToolInjection이고 계산·표시·사건 모두 「세션/agent」 키다. 넣은 것이 없으면 사건이 없다.
 func TestToolContext는_ToolInjection이고_agent_키로_한_번만_준다(t *testing.T) {
 	e := newEnv(t)

@@ -293,3 +293,16 @@ func TestSessionStart_자동_되돌림을_알린다(t *testing.T) {
 		t.Fatalf("알림이 없습니다:\n%s", got)
 	}
 }
+
+// NewsOnly는 요청 회상을 건너뛴다: 요청이 회상에 맞아도 글이 없고, 빈 요청도 새 소식 길은 연다.
+func TestPromptInjection_NewsOnly는_요청_회상을_건너뛴다(t *testing.T) {
+	s := store(t)
+	save(t, s, memory.KindLesson, "codex exec를 백그라운드로 돌릴 때 stdin을 닫는다", "", memory.ScopeGlobal, false)
+	ask := "codex exec를 백그라운드에서 돌렸더니 멈춰요"
+	if inj := PromptInjectionFor(s, config.Default(), here, ask, "claude", "s1", Options{}); inj.Text == "" {
+		t.Fatal("기준: 이 요청은 회상된다")
+	}
+	if inj := PromptInjectionFor(s, config.Default(), here, ask, "claude", "s2", Options{NewsOnly: true}); inj.Text != "" || len(inj.MemoryIDs) != 0 {
+		t.Fatalf("NewsOnly = %+v", inj)
+	}
+}
