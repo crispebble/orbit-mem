@@ -471,7 +471,23 @@ func cmdConfig(a *app, args []string) error {
 		}
 		cfg.Language, val = string(l), string(l)
 	case "inject":
+		// 두 키를 함께 맞춘다(옛 inject 값 full·rules·off는 recall의 auto·on_demand·off와 같은 뜻).
 		cfg.Inject = val
+		switch val {
+		case config.InjectFull:
+			cfg.Recall = config.RecallAuto
+		case config.InjectRules:
+			cfg.Recall = config.RecallOnDemand
+		case config.InjectOff:
+			cfg.Recall = config.RecallOff
+		}
+	case "recall":
+		switch val {
+		case config.RecallAuto, config.RecallOnDemand, config.RecallOff:
+			cfg.Recall, cfg.Inject = val, config.InjectOfRecall(val)
+		default:
+			return i18n.Errorf("config.err.recall", val)
+		}
 	case "recentDecisions":
 		if _, err := fmt.Sscanf(val, "%d", &cfg.RecentDecisions); err != nil {
 			return err
@@ -509,7 +525,7 @@ func cmdConfig(a *app, args []string) error {
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
