@@ -1,0 +1,43 @@
+{
+  "name": "call-memory_update",
+  "op": "call",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "session": "s-1",
+          "cwd": "/tmp/orbit-contract",
+          "name": "memory_save",
+          "args": {
+            "kind": "lesson",
+            "title": "계약 시험의 교훈",
+            "source": {
+              "kind": "session",
+              "ref": "test:s-1"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_update",
+    "args": {
+      "id": "$calls[0].result.memory.id",
+      "title": "바뀐 제목"
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_update",
+    "result": "$any"
+  }
+}

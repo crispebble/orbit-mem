@@ -1,0 +1,44 @@
+{
+  "name": "call-memory_get",
+  "op": "call",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "session": "s-1",
+          "cwd": "/tmp/orbit-contract",
+          "name": "memory_save",
+          "args": {
+            "kind": "lesson",
+            "title": "계약 시험의 교훈",
+            "source": {
+              "kind": "session",
+              "ref": "test:s-1"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_get",
+    "args": {
+      "ids": [
+        "$calls[0].result.memory.id"
+      ]
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_get",
+    "result": "$any"
+  }
+}

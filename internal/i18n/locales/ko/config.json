@@ -7,5 +7,6 @@
   "config.err.recall_chars": "recallChars는 100-%d입니다: %d",
   "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
   "config.err.host_memory": "hostMemory는 ask 또는 keep입니다: %q",
-  "config.err.ledger_window": "ledgerWindowDays는 1~90입니다"
+  "config.err.ledger_window": "ledgerWindowDays는 1~90입니다",
+  "config.err.host_timeout": "hostTimeouts.%s는 \"1.5s\" 같은 양의 Go 기간입니다: %q"
 }

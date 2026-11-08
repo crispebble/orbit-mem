@@ -1,0 +1,11 @@
+{
+  "name": "usage-broken-json",
+  "op": "version",
+  "setup": {},
+  "input": "{not json",
+  "exit": 2,
+  "output": {
+    "error": "$string",
+    "code": "usage"
+  }
+}

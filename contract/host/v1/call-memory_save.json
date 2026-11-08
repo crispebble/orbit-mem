@@ -1,0 +1,29 @@
+{
+  "name": "call-memory_save",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_save",
+    "args": {
+      "kind": "rule",
+      "appliesTo": "user",
+      "title": "보고는 한국어로",
+      "topic": "보고 언어",
+      "source": {
+        "kind": "quote",
+        "excerpt": "보고는 한국어로 해"
+      }
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_save",
+    "result": "$any"
+  }
+}

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/place"
@@ -55,6 +56,42 @@ type Config struct {
 	// 제품 지도(설계 · orbit-mem 2판 4.1, S3 명세 2.2): 제품 이름 → 그 제품의 저장소 원격 키·폴더(글롭 가능)와 요청 글에서
 	// 그 제품을 가리키는 말. 제품 범위 기억(product:<이름>)이 어느 폴더에서 보이는지를 정한다. 비어 있으면 제품이 없다.
 	Products place.Map `json:"products,omitempty"`
+	// host 계약의 시간 한도(설계 · 지연 회상·호스트 계약 10.1): op 이름 → Go 기간 글(예 "1.5s"). 빠진 op는 기본값이다.
+	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
+	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
+}
+
+// defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
+// Its keys are the operations whose hostTimeouts value is checked; other keys are ignored.
+var defaultHostTimeouts = map[string]time.Duration{
+	"version":      500 * time.Millisecond,
+	"context":      1500 * time.Millisecond,
+	"recall":       time.Second,
+	"tool-context": 500 * time.Millisecond,
+	"call":         5 * time.Second,
+	"delivered":    500 * time.Millisecond,
+	"reset":        500 * time.Millisecond,
+	"session-end":  500 * time.Millisecond,
+}
+
+// DefaultHostTimeouts is a copy of the default time limit of each host contract operation.
+func DefaultHostTimeouts() map[string]time.Duration {
+	out := make(map[string]time.Duration, len(defaultHostTimeouts))
+	for op, d := range defaultHostTimeouts {
+		out[op] = d
+	}
+	return out
+}
+
+// HostTimeout is the time limit of a host contract operation: hostTimeouts, else the
+// default. An operation with no default and no valid setting gets 0.
+func (c Config) HostTimeout(op string) time.Duration {
+	if v, ok := c.HostTimeouts[op]; ok {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultHostTimeouts[op]
 }
 
 // HostMemory values.
@@ -96,6 +133,14 @@ func (c Config) Validate() error {
 	}
 	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
 		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)
+	}
+	for op, v := range c.HostTimeouts {
+		if _, ok := defaultHostTimeouts[op]; !ok {
+			continue // 뒤 판의 op: 이 판은 쓰지 않으니 거절하지 않는다(옛 실행 파일이 새 설정 파일을 읽는다)
+		}
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return i18n.Errorf("config.err.host_timeout", op, v)
+		}
 	}
 	if err := c.Products.Validate(); err != nil {
 		return err

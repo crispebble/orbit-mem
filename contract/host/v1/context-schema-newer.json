@@ -1,0 +1,27 @@
+{
+  "name": "context-schema-newer",
+  "op": "context",
+  "setup": {
+    "db": "empty",
+    "meta": {
+      "schema.version": "99"
+    }
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "source": "startup"
+  },
+  "exit": 0,
+  "output": {
+    "text": "",
+    "memoryIds": [],
+    "budget": {
+      "chars": 0,
+      "limit": "$number"
+    },
+    "skipped": "schema-newer"
+  }
+}

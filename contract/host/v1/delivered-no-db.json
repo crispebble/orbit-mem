@@ -1,0 +1,21 @@
+{
+  "name": "delivered-no-db",
+  "op": "delivered",
+  "setup": {
+    "db": "none"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "memoryIds": [
+      "m-000000000000"
+    ]
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "no-db"
+  }
+}

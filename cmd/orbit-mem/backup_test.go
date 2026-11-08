@@ -37,12 +37,20 @@ func fakeBackground(t *testing.T, fail error) *[][]string {
 	return calls
 }
 
+// dailyCopy makes a copy whose file time is age ago. A copy under 24 hours old is
+// today's copy, so its name carries today's date even just after midnight (when
+// age ago was yesterday); an older copy is named for the day it was made.
 func dailyCopy(t *testing.T, h string, age time.Duration) string {
 	t.Helper()
 	dir := filepath.Join(h, "backups")
 	os.MkdirAll(dir, 0o700)
-	at := time.Now().Add(-age)
-	p := filepath.Join(dir, "memory-"+at.Format("20060102")+".sqlite")
+	now := time.Now()
+	at := now.Add(-age)
+	named := at
+	if age < 24*time.Hour {
+		named = now
+	}
+	p := filepath.Join(dir, "memory-"+named.Local().Format("20060102")+".sqlite")
 	os.WriteFile(p, []byte("x"), 0o600)
 	os.Chtimes(p, at, at)
 	return p

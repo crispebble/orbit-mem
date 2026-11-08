@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHome_ORBIT_HOME가_우선(t *testing.T) {
@@ -228,5 +229,86 @@ func TestUpdateCheck_기본은_켜짐이고_옛_설정도_켜짐이다(t *testin
 	}
 	if !knownKeys()["updateCheck"] {
 		t.Fatal("knownKeys에 updateCheck가 없음")
+	}
+}
+
+// host 계약 v1(ORBIT-23 a3, 설계 10.1): op마다 시간 한도가 있고 hostTimeouts(op → Go 기간 글)로 바꾼다.
+// 비어 있으면 설계 표의 기본값이고, 저장할 때 기본값을 파일에 쓰지 않는다.
+func TestHostTimeout_기본값과_설정값(t *testing.T) {
+	want := map[string]time.Duration{"version": 500 * time.Millisecond, "context": 1500 * time.Millisecond, "recall": time.Second,
+		"tool-context": 500 * time.Millisecond, "call": 5 * time.Second, "delivered": 500 * time.Millisecond, "reset": 500 * time.Millisecond, "session-end": 500 * time.Millisecond}
+	c := Default()
+	for op, d := range want {
+		if got := c.HostTimeout(op); got != d {
+			t.Errorf("%s = %v, want %v", op, got, d)
+		}
+	}
+	if got := DefaultHostTimeouts(); len(got) != len(want) {
+		t.Errorf("DefaultHostTimeouts = %v", got)
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"inject":"full","recallChars":1000,"ledgerWindowDays":7,"recentDecisions":5,"backupKeep":14,"confirmSeenDays":2,"confirmFollowedVerified":2,"correctionRepeatSessions":3,"hostTimeouts":{"recall":"2s","context":"1ns"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HostTimeout("recall") != 2*time.Second || got.HostTimeout("context") != time.Nanosecond || got.HostTimeout("call") != 5*time.Second {
+		t.Fatalf("loaded = %v", got.HostTimeouts)
+	}
+	q := filepath.Join(t.TempDir(), "config.json")
+	if err := Save(q, Default()); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(q); strings.Contains(string(b), "hostTimeouts") {
+		t.Fatalf("기본값을 파일에 썼다: %s", b)
+	}
+}
+
+// 모르는 op 키는 거절하지 않고 무시한다(검토 M1): 뒤 판에서 op가 늘어 새 설정 파일에 그 op가 있어도 옛 실행 파일이
+// 설정을 읽는다. 아는 op의 잘못된 기간(파싱 실패·0 이하)만 거절한다.
+func TestValidate_hostTimeouts는_아는_op의_잘못된_기간만_거절하고_모르는_op는_무시한다(t *testing.T) {
+	for _, bad := range []map[string]string{
+		{"recall": "soon"},
+		{"recall": "0s"},
+		{"recall": "-1s"},
+		{"recall": ""},
+		{"ingest-session": "1s", "call": "never"},
+	} {
+		c := Default()
+		c.HostTimeouts = bad
+		if c.Validate() == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+	for _, good := range []map[string]string{
+		{"call": "10s", "context": "1ns"},
+		{"memory_search": "1s"},
+		{"ingest-session": "soon", "ctx": ""},
+	} {
+		c := Default()
+		c.HostTimeouts = good
+		if err := c.Validate(); err != nil {
+			t.Errorf("%v: %v", good, err)
+		}
+	}
+	// 새 판이 쓴 설정 파일: 모르는 op가 있어도 읽히고, 아는 op의 값은 쓰이고, 저장해도 모르는 op 키가 남는다.
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"hostTimeouts":{"ingest-session":"2s","recall":"3s"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HostTimeout("recall") != 3*time.Second || c.HostTimeout("call") != 5*time.Second {
+		t.Fatalf("loaded = %v", c.HostTimeouts)
+	}
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"ingest-session": "2s"`) {
+		t.Fatalf("모르는 op 키를 잃었다: %s", b)
 	}
 }

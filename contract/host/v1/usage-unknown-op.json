@@ -1,0 +1,14 @@
+{
+  "name": "usage-unknown-op",
+  "op": "bogus",
+  "setup": {},
+  "input": {
+    "contract": 1,
+    "host": "test"
+  },
+  "exit": 2,
+  "output": {
+    "error": "$string",
+    "code": "usage"
+  }
+}

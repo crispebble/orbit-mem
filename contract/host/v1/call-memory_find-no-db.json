@@ -1,0 +1,23 @@
+{
+  "name": "call-memory_find-no-db",
+  "op": "call",
+  "setup": {
+    "db": "none"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_find",
+    "args": {
+      "query": "x"
+    }
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "no-db",
+    "name": "memory_find"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "call-memory_save-timeout",
+  "op": "call",
+  "setup": {
+    "db": "empty",
+    "config": {
+      "hostTimeouts": {
+        "call": "1ns"
+      }
+    }
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_save",
+    "args": {
+      "kind": "lesson",
+      "title": "한도를 넘긴 저장",
+      "source": {
+        "kind": "session",
+        "ref": "test:s-1"
+      }
+    }
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "timeout",
+    "mayHaveApplied": true
+  }
+}

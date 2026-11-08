@@ -1,0 +1,45 @@
+{
+  "name": "context-main-memories",
+  "op": "context",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "name": "memory_save",
+          "args": {
+            "kind": "rule",
+            "appliesTo": "user",
+            "title": "보고는 한국어로",
+            "topic": "보고 언어",
+            "source": {
+              "kind": "quote",
+              "excerpt": "보고는 한국어로 해"
+            },
+            "pin": true
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "source": "startup",
+    "audience": "main"
+  },
+  "exit": 0,
+  "output": {
+    "text": "$nonEmptyString",
+    "memoryIds": "$nonEmptyArray",
+    "budget": {
+      "chars": "$number",
+      "limit": "$number"
+    }
+  }
+}

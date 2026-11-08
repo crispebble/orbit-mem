@@ -229,7 +229,8 @@ func TestDailyBackup_동시에_불러도_사본은_하나만_만든다(t *testin
 
 // --- 스키마 이전 전 사본 ---
 
-// oldSchema makes path look like a memory DB an older orbit-mem left: user_version 3 and no audit tables.
+// oldSchema makes path look like a memory DB an older orbit-mem left: no meta schema.version,
+// user_version 3 and no audit tables.
 func oldSchema(t *testing.T, path string, titlesToKeep ...string) {
 	t.Helper()
 	s, err := Open(path)
@@ -239,7 +240,7 @@ func oldSchema(t *testing.T, path string, titlesToKeep ...string) {
 	for _, ti := range titlesToKeep {
 		saveFact(t, s, ti)
 	}
-	if _, err := s.DB().Exec(`DROP TABLE audit_acks; DROP TABLE audit_flags; PRAGMA user_version=3`); err != nil {
+	if _, err := s.DB().Exec(`DROP TABLE audit_acks; DROP TABLE audit_flags; DELETE FROM meta WHERE key='schema.version'; PRAGMA user_version=3`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

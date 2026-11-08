@@ -66,6 +66,8 @@
   "memory.err.review_days": "%w: the review cadence is 1 to %d days",
   "memory.err.review_live_only": "%w: only a live memory (candidate or confirmed) is reviewed: %s %s",
   "memory.err.schema_backup": "the memory DB needs a schema change but the copy before it failed, nothing was changed: %w",
+  "memory.err.schema_newer": "this orbit-mem is older than the memory DB; update it with orbit-mem update",
+  "memory.err.schema_newer_at": "%w (DB schema %d, this binary %d)",
   "memory.err.scope_form": "%w: the scope is global, project:<key>, product:<name> or product:?",
   "memory.err.scope_is": "%w: the scope is global or project:<key>",
   "memory.err.source_kind": "%w: the source kind is one of %s",
