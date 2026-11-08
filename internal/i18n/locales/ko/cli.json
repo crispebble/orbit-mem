@@ -100,7 +100,7 @@
   "cli.ledger.observation": "관찰: 전 나쁜 신호 %d·상관없음 %d·세션 %d → 후 %d·%d·%d",
   "cli.ledger.revert_of": "되돌린 원장",
   "cli.ledger.reverted_by": "되돌림",
-  "cli.memory.link": "연결 %s %s",
+  "cli.memory.link": "연결 %s",
   "cli.memory.none_found": "찾은 기억이 없습니다.",
   "cli.memory.source": "출처 %s %s %s",
   "cli.memory.tags": "태그: %s",

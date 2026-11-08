@@ -48,7 +48,7 @@ func TestPlacePlan_미리_보고_적용한다(t *testing.T) {
 	}
 	out, _, code = run(t, "", "show", m.ID, "--json")
 	var got struct{ Items []memory.Memory }
-	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || len(got.Items) != 1 || got.Items[0].Scope != "product:atlas" || got.Items[0].Topic != "atlas 댓글 표시" {
+	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || len(got.Items) != 1 || got.Items[0].AppliesTo != "product:atlas" || got.Items[0].Topic != "atlas 댓글 표시" {
 		t.Fatalf("show: %d %s", code, out)
 	}
 }
