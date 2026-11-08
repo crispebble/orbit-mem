@@ -41,8 +41,14 @@ func dailyCopy(t *testing.T, h string, age time.Duration) string {
 	t.Helper()
 	dir := filepath.Join(h, "backups")
 	os.MkdirAll(dir, 0o700)
-	at := time.Now().Add(-age)
-	p := filepath.Join(dir, "memory-"+at.Format("20060102")+".sqlite")
+	now := time.Now()
+	at := now.Add(-age)
+	// 24시간 안의 사본은 오늘 날짜 이름이다(제품이 오늘 이름으로 만든다). 자정 직후에 시각만 빼면 어제 이름이 되어 시험이 시각에 따라 깨진다. mtime만 age를 따른다.
+	name := at
+	if age < 24*time.Hour {
+		name = now
+	}
+	p := filepath.Join(dir, "memory-"+name.Format("20060102")+".sqlite")
 	os.WriteFile(p, []byte("x"), 0o600)
 	os.Chtimes(p, at, at)
 	return p
