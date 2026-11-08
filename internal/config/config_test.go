@@ -20,7 +20,7 @@ func TestLoad_파일이_없으면_기본값(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.RetroHost != "claude" || c.RetroHour != 4 || c.Inject != InjectFull || c.BackupKeep != 14 {
+	if c.Inject != InjectFull || c.BackupKeep != 14 || !c.AutoBackup || !c.AutoTidy {
 		t.Fatalf("defaults = %+v", c)
 	}
 }
@@ -28,26 +28,21 @@ func TestLoad_파일이_없으면_기본값(t *testing.T) {
 func TestSave_다시_읽으면_같다(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	c := Default()
-	c.RetroHost, c.RetroModel, c.Inject = "codex", "gpt-x", InjectRules
+	c.Inject, c.AutoTidy = InjectRules, false
 	if err := Save(p, c); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load(p)
-	if err != nil || got.RetroHost != "codex" || got.RetroModel != "gpt-x" || got.Inject != InjectRules {
+	if err != nil || got.Inject != InjectRules || got.AutoTidy {
 		t.Fatalf("got %+v %v", got, err)
 	}
 }
 
 func TestValidate_잘못된_값은_거절(t *testing.T) {
 	c := Default()
-	c.RetroHost = "gemini"
+	c.Inject = "some"
 	if c.Validate() == nil {
-		t.Fatal("bad host accepted")
-	}
-	c = Default()
-	c.RetroHour = 24
-	if c.Validate() == nil {
-		t.Fatal("bad hour accepted")
+		t.Fatal("bad inject accepted")
 	}
 }
 
@@ -55,9 +50,9 @@ func TestValidate_잘못된_값은_거절(t *testing.T) {
 // 실패 없이 읽고, 다시 저장해도 그 키는 그대로 남는다.
 func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존한다(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(p, []byte(`{"retroHost":"codex","work":"bogus","workStaleAfter":"x","workTestCommands":["make t"]}`), 0o600)
+	os.WriteFile(p, []byte(`{"inject":"rules","work":"bogus","workStaleAfter":"x","workTestCommands":["make t"]}`), 0o600)
 	c, err := Load(p)
-	if err != nil || c.RetroHost != "codex" {
+	if err != nil || c.Inject != InjectRules {
 		t.Fatalf("%+v %v", c, err)
 	}
 	if err := Save(p, c); err != nil {
@@ -71,7 +66,7 @@ func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존�
 
 func TestDefault_2차_설정_기본값(t *testing.T) {
 	c := Default()
-	if !c.SessionRetro || c.SessionRetroModel != "" || c.SessionRetroDailyMax != 0 || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+	if c.RecallChars != 1000 || c.LedgerWindowDays != 7 || c.CandidateExpiryDays != 28 {
 		t.Fatalf("defaults = %+v", c)
 	}
 }
@@ -82,7 +77,7 @@ func TestLoad_옛_설정_파일에는_2차_기본값이_채워진다(t *testing.
 		t.Fatal(err)
 	}
 	c, err := Load(p)
-	if err != nil || !c.SessionRetro || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+	if err != nil || !c.AutoTidy || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
 		t.Fatalf("got %+v %v", c, err)
 	}
 }
@@ -92,7 +87,7 @@ func TestValidate_2차_설정_범위(t *testing.T) {
 		func(c *Config) { c.RecallChars = 99 },
 		func(c *Config) { c.RecallChars = 9001 },
 		func(c *Config) { c.LedgerWindowDays = 0 },
-		func(c *Config) { c.SessionRetroDailyMax = -1 },
+		func(c *Config) { c.LedgerWindowDays = 91 },
 	} {
 		c := Default()
 		f(&c)
@@ -102,31 +97,40 @@ func TestValidate_2차_설정_범위(t *testing.T) {
 	}
 }
 
-// 기억 그래프 정리 기본값: 회당 클러스터 기억 40·태그 없는 기억 20을 보고 제안 20건까지(2026-10-30 사용자 결정).
-func TestDefault_그래프_정리(t *testing.T) {
-	c := Default()
-	if c.GraphTidyMemories != 40 || c.GraphTidyUntagged != 20 || c.GraphTidyProposals != 20 {
-		t.Fatalf("기본값: %+v", c)
+// 기획 · orbit-mem R5: 회고 설정 키(retroHost·retroHour·sessionRetro·graphTidy*·legacy*·claudePath·applyTargets·
+// pluginSource·retiredNames…)는 걷어냈다. 옛 config.json에 남은 키는 값이 무엇이든(범위 밖이어도) 읽기를 막지 않고,
+// 다시 저장해도 파일에 그대로 남는다(orbit-code 하네스가 pluginSource를 읽을 수 있다).
+func TestLoad_옛_회고_키는_무시하고_저장할_때_보존한다(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"language":"en","retroHost":"gemini","retroModel":"x","retroHour":99,"sessionRetro":true,"sessionRetroModel":"haiku",
+"sessionRetroDailyMax":-1,"graphTidyMemories":999,"graphTidyUntagged":20,"graphTidyProposals":50,"legacyMemories":0,"legacyBatches":99,
+"claudePath":"/x/claude","codexPath":"/x/codex","applyTargets":["/a"],"pluginSource":"/p/source","retiredNames":["old"]}`
+	if err := os.WriteFile(p, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	c.GraphTidyProposals = 21
-	if c.Validate() == nil {
-		t.Error("정리 제안 상한은 회고 제출 상한(20)을 넘지 않는다")
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("옛 키가 읽기를 막았다: %v", err)
 	}
-}
-
-// 옛 기억 정리 기본값: 한 묶음 30개, 예약 회고는 하루 1묶음(2026-10-30 사용자 결정). 범위 밖 값은 거절한다.
-func TestDefault_옛_기억_정리(t *testing.T) {
-	c := Default()
-	if c.LegacyMemories != 30 || c.LegacyBatches != 1 || len(c.RetiredNames) != 0 {
-		t.Fatalf("기본값: %+v", c)
+	c.Inject = InjectRules
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
 	}
-	for _, bad := range []func(*Config){func(c *Config) { c.LegacyMemories = 0 }, func(c *Config) { c.LegacyMemories = 101 },
-		func(c *Config) { c.LegacyBatches = -1 }, func(c *Config) { c.LegacyBatches = 21 }} {
-		c := Default()
-		bad(&c)
-		if c.Validate() == nil {
-			t.Errorf("받으면 안 됩니다: %+v", c)
+	b, _ := os.ReadFile(p)
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"retroHost", "retroHour", "sessionRetro", "graphTidyProposals", "legacyBatches", "claudePath", "applyTargets", "pluginSource", "retiredNames"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("%s가 사라졌다: %s", k, b)
 		}
+	}
+	if got["inject"] != InjectRules || got["pluginSource"] != "/p/source" {
+		t.Fatalf("저장 = %s", b)
+	}
+	if knownKeys()["retroHost"] || knownKeys()["pluginSource"] {
+		t.Fatal("회고 키가 아직 아는 키다")
 	}
 }
 
@@ -155,9 +159,9 @@ func TestLanguage_검증에_실패한_설정에서도_언어를_읽는다(t *tes
 	if Language(path) != "" {
 		t.Fatal("no file")
 	}
-	os.WriteFile(path, []byte(`{"language":"ko","retroHour":99}`), 0o600)
+	os.WriteFile(path, []byte(`{"language":"ko","recallChars":1}`), 0o600)
 	if _, err := Load(path); err == nil {
-		t.Fatal("retroHour 99 should fail")
+		t.Fatal("recallChars 1 should fail")
 	}
 	if Language(path) != "ko" {
 		t.Fatalf("%q", Language(path))
@@ -175,7 +179,7 @@ func TestLanguage_손으로_쓴_언어도_읽고_맞춰_둔다(t *testing.T) {
 
 func TestSave_모르는_키는_보존(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	raw := `{"language":"en","work":"off","workStaleAfter":"72h","workTestCommands":{"go":"go test ./..."},"claudePath":"/x/claude"}`
+	raw := `{"language":"en","work":"off","workStaleAfter":"72h","workTestCommands":{"go":"go test ./..."},"hostMemory":"keep"}`
 	if err := os.WriteFile(p, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +187,7 @@ func TestSave_모르는_키는_보존(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Language, c.ClaudePath = "ko", ""
+	c.Language, c.HostMemory = "ko", ""
 	if err := Save(p, c); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +202,7 @@ func TestSave_모르는_키는_보존(t *testing.T) {
 	if got["language"] != "ko" {
 		t.Fatalf("아는 키는 덮어씁니다: %s", b)
 	}
-	if _, ok := got["claudePath"]; ok {
+	if _, ok := got["hostMemory"]; ok {
 		t.Fatalf("비운 아는 키는 지웁니다: %s", b)
 	}
 }
@@ -209,7 +213,7 @@ func TestUpdateCheck_기본은_켜짐이고_옛_설정도_켜짐이다(t *testin
 		t.Fatal("기본이 꺼짐")
 	}
 	p := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(p, []byte(`{"retroHost":"codex"}`), 0o600)
+	os.WriteFile(p, []byte(`{"inject":"rules"}`), 0o600)
 	c, err := Load(p)
 	if err != nil || !c.UpdateCheck {
 		t.Fatalf("옛 설정 %+v %v", c, err)

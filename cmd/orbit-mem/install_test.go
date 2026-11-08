@@ -71,7 +71,7 @@ func (f *fakePC) localPlugin() string { return filepath.Join(f.home, "plugins", 
 func TestInstall_local_plugin_끝까지(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
 	dest := t.TempDir()
-	out, errOut, code := run(t, "", "install", "--local-plugin", "--no-schedule", "--bin-dir", dest)
+	out, errOut, code := run(t, "", "install", "--local-plugin", "--bin-dir", dest)
 	if code != 0 {
 		t.Fatalf("%d %s %s", code, out, errOut)
 	}
@@ -98,15 +98,14 @@ func TestInstall_local_plugin_끝까지(t *testing.T) {
 	if !strings.Contains(out, "/hooks") || strings.Contains(out, "orb install") || strings.Contains(out+errOut, "%!") {
 		t.Fatalf("출력: %s", out)
 	}
-	cfg, _ := config.Load(filepath.Join(f.home, "config.json"))
-	if cfg.ClaudePath != filepath.Join(f.bin, "claude") || cfg.CodexPath != filepath.Join(f.bin, "codex") {
-		t.Fatalf("config %+v", cfg)
+	if _, err := config.Load(filepath.Join(f.home, "config.json")); err != nil {
+		t.Fatalf("config %v", err)
 	}
 	// 다시 해도 된다: 같은 폴더 마켓은 update, 깔린 플러그인은 update
 	os.WriteFile(filepath.Join(f.state, "markets.json"), []byte(`[{"name":"orbit-mem","source":"directory","path":"`+dir+`"}]`), 0o644)
 	os.WriteFile(filepath.Join(f.state, "plugins.json"), []byte(`[{"id":"orbit-mem@orbit-mem","version":"0.4.0","enabled":true}]`), 0o644)
 	os.Remove(f.log)
-	if _, errOut, code := run(t, "", "install", "--local-plugin", "--no-schedule", "--bin-dir", dest); code != 0 {
+	if _, errOut, code := run(t, "", "install", "--local-plugin", "--bin-dir", dest); code != 0 {
 		t.Fatalf("다시 %d %s", code, errOut)
 	}
 	if got := f.writes(t); !slices.Equal(got, []string{"claude plugin marketplace update orbit-mem", "claude plugin update orbit-mem@orbit-mem", want[2], want[3]}) {
@@ -118,7 +117,7 @@ func TestInstall_local_plugin_끝까지(t *testing.T) {
 // 호스트가 하나뿐이면 그 호스트만.
 func TestInstall_기본은_GitHub_마켓(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
-	if out, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir()); code != 0 {
+	if out, errOut, code := run(t, "", "install", "--bin-dir", t.TempDir()); code != 0 {
 		t.Fatalf("%d %s %s", code, out, errOut)
 	}
 	want := []string{
@@ -132,7 +131,7 @@ func TestInstall_기본은_GitHub_마켓(t *testing.T) {
 	}
 
 	f = newFakePC(t, "claude")
-	if _, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir()); code != 0 {
+	if _, errOut, code := run(t, "", "install", "--bin-dir", t.TempDir()); code != 0 {
 		t.Fatal(errOut)
 	}
 	if got := f.writes(t); !slices.Equal(got, want[:2]) {
@@ -148,7 +147,7 @@ func TestInstall_기본은_GitHub_마켓(t *testing.T) {
 func TestInstall_no_hosts와_dry_run(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
 	dest := t.TempDir()
-	out, errOut, code := run(t, "", "install", "--no-hosts", "--no-schedule", "--bin-dir", dest)
+	out, errOut, code := run(t, "", "install", "--no-hosts", "--bin-dir", dest)
 	if code != 0 {
 		t.Fatalf("%d %s %s", code, out, errOut)
 	}
@@ -188,7 +187,7 @@ func TestInstall_no_hosts와_dry_run(t *testing.T) {
 // 기억 DB와 로컬 플러그인 폴더는 남긴다.
 func TestUninstall_호스트에서_뺀다(t *testing.T) {
 	f := newFakePC(t, "claude", "codex")
-	if _, errOut, code := run(t, "", "install", "--local-plugin", "--no-schedule", "--bin-dir", t.TempDir()); code != 0 {
+	if _, errOut, code := run(t, "", "install", "--local-plugin", "--bin-dir", t.TempDir()); code != 0 {
 		t.Fatal(errOut)
 	}
 	os.WriteFile(filepath.Join(f.state, "markets.json"), []byte(`[{"name":"orbit-mem","source":"directory","path":"/x"}]`), 0o644)
@@ -229,9 +228,14 @@ func TestDoctor_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, k := range []string{"version", "binary", "pathBinary", "home", "db", "config", "memories", "pendingProposals", "sessionQueue", "activity", "lastRetros", "claude", "codex", "problems"} {
+	for _, k := range []string{"version", "binary", "pathBinary", "home", "db", "config", "memories", "pendingProposals", "tidy", "activity", "claude", "codex", "problems"} {
 		if _, ok := raw[k]; !ok {
 			t.Errorf("키 %s가 없습니다", k)
+		}
+	}
+	for _, k := range []string{"sessionQueue", "lastRetros"} { // 회고는 걷어냈다(ORBIT-13)
+		if _, ok := raw[k]; ok {
+			t.Errorf("키 %s가 남았습니다", k)
 		}
 	}
 	var rep struct {
@@ -376,7 +380,7 @@ func TestConfig_set과_install은_모르는_키를_지우지_않는다(t *testin
 		t.Fatalf("%d %s", code, errOut)
 	}
 	has("config set")
-	if _, errOut, code := run(t, "", "install", "--no-schedule", "--bin-dir", t.TempDir()); code != 0 {
+	if _, errOut, code := run(t, "", "install", "--bin-dir", t.TempDir()); code != 0 {
 		t.Fatalf("%d %s", code, errOut)
 	}
 	has("install")

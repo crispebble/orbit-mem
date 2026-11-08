@@ -34,7 +34,7 @@ func connectWith(t *testing.T, o Options) (*mcp.ClientSession, *memory.Store) {
 // 끝 기준(M4): activity_find는 기본으로 이 프로젝트, project=all이면 전부, 질의·호스트·since·limit로 거른다.
 // 출처(source)를 붙여 최신순으로 준다. 서버 instructions는 작업 기록 도구가 아니라 활동 기록을 말한다.
 func TestActivityFind(t *testing.T) {
-	cs, s := connectWith(t, Options{Project: "project:a", ProjectLabel: "a", Version: "t", WorkDB: filepath.Join(t.TempDir(), "work.db")})
+	cs, s := connectWith(t, Options{Project: "project:a", ProjectLabel: "a", Version: "t"})
 	for i, e := range []memory.ActivityEvent{
 		{Kind: memory.ActivityPrompt, Host: "claude", Session: "S1", ProjectScope: "project:a", ProjectLabel: "a", Prompt: "로그인 고치기", At: 1000},
 		{Kind: memory.ActivityPrompt, Host: "codex", Session: "S2", ProjectScope: "project:b", ProjectLabel: "b", Prompt: "문서", At: 2000},

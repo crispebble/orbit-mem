@@ -69,6 +69,10 @@ type DiagnoseInput struct {
 // Diagnose walks one memory through the six stages for a request (prompt)
 // and, when given, a host session. Without a prompt the selection is unknown;
 // without a session delivery and use are unknown.
+// hookHosts are the hosts that take the hook context into the request as it is (Claude Code, Codex).
+// Any other host calls orbit-mem inject and reports what it put in with inject delivered.
+var hookHosts = []string{"claude", "codex"}
+
 func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis) {
 	d = Diagnosis{MemoryID: in.ID, Path: "recall"}
 	add := func(name, status, code string, args ...string) {
@@ -187,8 +191,9 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 	}
 	if delivered := sessionEvents(s, in.Session, in.Host, m.ID, memory.EventInjectDelivered); len(delivered) > 0 {
 		add(StageDelivered, Yes, "delivered", stamp(delivered[len(delivered)-1].at))
-	} else if len(observed) > 0 && observed[0].host != "orbit-code" {
-		// Claude Code·Codex 훅은 돌려준 문맥을 호스트가 그대로 요청에 넣는다.
+	} else if len(observed) > 0 && slices.Contains(hookHosts, observed[0].host) {
+		// Claude Code·Codex 훅은 돌려준 문맥을 호스트가 그대로 요청에 넣는다. 다른 호스트(orbit-mem inject를
+		// 부르는 쪽)는 넣었음을 inject delivered로 알려야 한다(기획 · orbit-mem M-4).
 		add(StageDelivered, Yes, "hook_returned", observed[0].host)
 	} else if len(observed) > 0 {
 		add(StageDelivered, No, "not_delivered")

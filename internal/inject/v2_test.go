@@ -12,6 +12,7 @@ import (
 
 	"github.com/onidot-labs/orbit-mem/internal/config"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/onidot-labs/orbit-mem/internal/place"
 )
 
 // thousand fills a store with 1,000 memories shaped like this PC's DB (2026-11-03): many
@@ -75,7 +76,7 @@ func TestAC5_세션_시작에_못_들어간_확정_규칙은_요청_회상_후�
 		t.Fatal(err)
 	}
 	bundle := SessionBundle(s, config.Default(), here, "claude", "s1")
-	byID, why, err := CandidatesFor(s, here, Options{}, bundle.MemoryIDs)
+	byID, why, err := CandidatesAt(s, place.Place{Scope: here}, Options{}, bundle.MemoryIDs)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,6 @@ const (
 	EventProposalDecided    = "proposal.decided"
 	EventCorrection         = "correction"
 	EventMemoryUsed         = "memory.used"   // 세션 끝 회고가 넣은 기억마다 낸 사용 판정
-	EventRetroRun           = "retro.run"     // 회고 실행 하나의 비용·토큰
 	EventSourceCheck        = "source.check"  // 근거 파일이 바뀐 기억의 판정(제안하지 않은 것 포함)
 	EventLegacyJudged       = "legacy.judged" // 옮겨 온 옛 기억 하나의 판정(그대로 둠 포함, 설계 · Orbit 3차 O3-3)
 )
@@ -101,36 +100,6 @@ func (s *Store) Events(f EventFilter) ([]Event, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
-}
-
-// InjectedIn says whether a hook put the memory into the session (injected),
-// and whether the session's injections are on record at all (known).
-func (s *Store) InjectedIn(session, memoryID string) (injected, known bool) {
-	if session == "" {
-		return false, false
-	}
-	rows, err := s.db.Query(`SELECT data FROM events WHERE session=? AND kind IN (?,?)`, session, EventInjectSessionStart, EventInjectPrompt)
-	if err != nil {
-		return false, false
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var data string
-		if rows.Scan(&data) != nil {
-			continue
-		}
-		known = true
-		var d struct {
-			MemoryIDs []string `json:"memoryIds"`
-		}
-		_ = json.Unmarshal([]byte(data), &d)
-		for _, id := range d.MemoryIDs {
-			if id == memoryID {
-				injected = true
-			}
-		}
-	}
-	return injected, known
 }
 
 // ClipRunes cuts s to n characters with an ellipsis.

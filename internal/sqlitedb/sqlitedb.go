@@ -1,4 +1,4 @@
-// Package sqlitedb opens this PC's SQLite files (memory.db, work.db) the same way.
+// Package sqlitedb opens this PC's SQLite files (memory.db) the same way.
 package sqlitedb
 
 import (
@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -72,36 +71,4 @@ func wal(db *sql.DB, busy time.Duration) error {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-}
-
-// BackupDaily copies the database at src into dir as <prefix>-YYYYMMDD.sqlite and keeps the
-// newest keep daily copies of that prefix (only that exact name: backup.Prune). src is opened
-// read only (VACUUM INTO writes only the copy); a missing src is skipped. The copy is written
-// to a temporary name first, so a failed copy never replaces the day's earlier one.
-func BackupDaily(src, dir, prefix string, keep int, now time.Time) (string, error) {
-	if _, err := os.Stat(src); err != nil {
-		return "", nil
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	db, err := sql.Open("sqlite", FileURI(src)+"?mode=ro&_pragma=busy_timeout(5000)")
-	if err != nil {
-		return "", err
-	}
-	defer db.Close()
-	dst := filepath.Join(dir, prefix+"-"+now.Local().Format("20060102")+".sqlite")
-	tmp := dst + ".tmp"
-	_ = os.Remove(tmp)
-	if _, err := db.Exec(`VACUUM INTO ?`, tmp); err != nil {
-		_ = os.Remove(tmp)
-		return "", err
-	}
-	_ = os.Chmod(tmp, 0o600)
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
-		return "", err
-	}
-	_, err = backup.Prune(dir, prefix, keep)
-	return dst, err
 }

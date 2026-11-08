@@ -23,16 +23,12 @@ func (s *Store) SessionBundle(host, session string) (string, []string, bool) {
 	return text, out, true
 }
 
-// PruneSessionState drops session bundles and handled session-end queue rows
-// older than days. Claude Code keeps conversation logs 30 days by default
-// (cleanupPeriodDays), so an older session is not resumed. Queue rows still
-// waiting stay; the read spans (retro_coverage) stay too, as they keep turns
-// from being read twice.
+// PruneSessionState drops the session bundles older than days. Claude Code keeps
+// conversation logs 30 days by default (cleanupPeriodDays), so an older session is
+// not resumed. The old retrospective tables (session_ends, retro_coverage) are no
+// longer written and stay as they are.
 func (s *Store) PruneSessionState(days int) error {
 	cutoff := s.Now().AddDate(0, 0, -days).UnixMilli()
-	if _, err := s.db.Exec(`DELETE FROM session_bundles WHERE at<?`, cutoff); err != nil {
-		return err
-	}
-	_, err := s.db.Exec(`DELETE FROM session_ends WHERE retro_id<>'' AND ended_at<?`, cutoff)
+	_, err := s.db.Exec(`DELETE FROM session_bundles WHERE at<?`, cutoff)
 	return err
 }

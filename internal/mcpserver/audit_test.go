@@ -128,18 +128,17 @@ func TestAC7_memory_save의_conflictsWith는_어긋남을_표시한다(t *testin
 
 func TestResolveActor_서버_옵션과_환경(t *testing.T) {
 	cases := []struct {
-		flag, env, retro, want string
+		flag, env, want string
 	}{
-		{"", "", "", memory.ActorAI},
-		{"user", "", "", memory.ActorUser},
-		{"", "automation", "", memory.ActorAutomation},
-		{"", "", "r-1", memory.ActorAutomation},
-		{"user", "", "r-1", memory.ActorAutomation}, // 회고 실행 안에서는 언제나 자동화
-		{"", "bogus", "", memory.ActorAI},
+		{"", "", memory.ActorAI},
+		{"user", "", memory.ActorUser},
+		{"", "automation", memory.ActorAutomation},
+		{"user", "automation", memory.ActorUser}, // 플래그가 앞선다
+		{"", "bogus", memory.ActorAI},
 	}
 	for _, c := range cases {
-		if got := ResolveActor(c.flag, c.env, c.retro, memory.ActorAI); got != c.want {
-			t.Errorf("ResolveActor(%q,%q,%q) = %q, want %q", c.flag, c.env, c.retro, got, c.want)
+		if got := ResolveActor(c.flag, c.env, memory.ActorAI); got != c.want {
+			t.Errorf("ResolveActor(%q,%q) = %q, want %q", c.flag, c.env, got, c.want)
 		}
 	}
 }

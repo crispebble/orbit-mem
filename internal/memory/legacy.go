@@ -87,17 +87,3 @@ func (s *Store) LegacyBaseline() (LegacyBaseline, bool) {
 	}
 	return b, true
 }
-
-// KeepLegacyBaseline keeps the counts by state now, once: later calls leave
-// the first one.
-func (s *Store) KeepLegacyBaseline() error {
-	if _, ok := s.LegacyBaseline(); ok {
-		return nil
-	}
-	states, err := s.StateCounts()
-	if err != nil {
-		return err
-	}
-	b, _ := json.Marshal(LegacyBaseline{Day: Day(s.Now()), States: states})
-	return s.SetMeta(legacyBaselineMeta, string(b))
-}

@@ -9,8 +9,8 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
-// Orbit Code는 MCP 대신 `orbit-mem tool <이름>`으로 같은 기억 도구를 부른다(입력·출력은 MCP 도구와 같은 JSON).
-func TestTool_Orbit_Code가_기억_도구를_CLI로_부른다(t *testing.T) {
+// MCP 없는 호스트는 `orbit-mem tool <이름> --host H`로 같은 기억 도구를 부른다(입력·출력은 MCP 도구와 같은 JSON).
+func TestTool_MCP_없는_호스트가_기억_도구를_CLI로_부른다(t *testing.T) {
 	home(t)
 	s := seed(t)
 	args := []string{"--cwd", "/tmp", "--host", "orbit-code", "--session", "c-1"}

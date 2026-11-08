@@ -137,6 +137,20 @@ func addColumns(db *sql.Tx) error {
 // write lock first lets the busy timeout apply when several processes open a fresh
 // or old DB together; a statement that reads first and then writes would get
 // SQLITE_BUSY at once instead of waiting.
+// labSchema is the harness lab's tables. The lab was removed (2026-11-08, ORBIT-13); the tables
+// stay so the database format does not change (기획 · orbit-mem 원칙 5).
+const labSchema = `
+CREATE TABLE IF NOT EXISTS lab_experiments (
+  id TEXT PRIMARY KEY, task_id TEXT NOT NULL, status TEXT NOT NULL, verdict TEXT NOT NULL DEFAULT '',
+  runs INTEGER NOT NULL, files TEXT NOT NULL DEFAULT '[]', hashes TEXT NOT NULL DEFAULT '{}', picks TEXT NOT NULL DEFAULT '[]',
+  cost_usd REAL NOT NULL DEFAULT 0, ledger_id TEXT NOT NULL DEFAULT '', proposal_ids TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, finished_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS lab_runs (
+  experiment TEXT NOT NULL, candidate TEXT NOT NULL, round INTEGER NOT NULL, cost_usd REAL NOT NULL DEFAULT 0,
+  input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0,
+  ok INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', PRIMARY KEY(experiment, candidate, round));
+`
+
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -496,29 +510,6 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	m.Version++
 	m.UpdatedAt = now
 	return writeTx(tx, m, action, "다시 나옴: "+day, now)
-}
-
-// Seen records that memory id came up again on day (YYYY-MM-DD) with src.
-func (s *Store) Seen(id string, src Source, day string) (Memory, error) {
-	if !contains(SourceKinds, src.Kind) {
-		return Memory{}, ErrInvalid
-	}
-	if day == "" {
-		day = Day(s.Now())
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return Memory{}, err
-	}
-	defer tx.Rollback()
-	if err := sightTx(tx, id, src, day, s.nowMs()); err != nil {
-		return Memory{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Memory{}, err
-	}
-	_, _, _ = s.ConfirmByEvidence(id)
-	return s.Get(id)
 }
 
 // AddSource attaches another source to an existing memory without a new version.

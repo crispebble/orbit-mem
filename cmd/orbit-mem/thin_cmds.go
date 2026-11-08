@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/activity"
 	"github.com/onidot-labs/orbit-mem/internal/i18n"
 	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
 	"github.com/onidot-labs/orbit-mem/internal/memory"
@@ -27,7 +26,7 @@ func tools() (mcpserver.Tools, *memory.Store, error) {
 		return mcpserver.Tools{}, nil, err
 	}
 	p := sessionProject()
-	return mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, WorkDB: paths().WorkDB(), Actor: actorOf("", memory.ActorUser), Products: productsOf()}), s, nil
+	return mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Actor: actorOf("", memory.ActorUser), Products: productsOf()}), s, nil
 }
 
 func (a *app) printSummaries(items []mcpserver.Summary) {
@@ -463,22 +462,11 @@ func cmdActivity(a *app, args []string) error {
 		return a.json(out)
 	}
 	for _, r := range out.Items {
-		what := r.FirstPrompt
-		if len(r.Works) > 0 {
-			what = strings.Join(r.Works, " · ")
-		}
-		src := ""
-		if r.Source == activity.SourceWorkDB {
-			src = " [work.db]"
-		}
-		fmt.Fprintf(a.stdout, "%s  %-6s %-8s %s  %s  %s%s\n", time.UnixMilli(r.LastAt).Format("2006-01-02 15:04"), r.Host, r.Launcher, r.Session,
-			oneLine(r.Project, 40), oneLine(what, 80), src)
+		fmt.Fprintf(a.stdout, "%s  %-6s %-8s %s  %s  %s\n", time.UnixMilli(r.LastAt).Format("2006-01-02 15:04"), r.Host, r.Launcher, r.Session,
+			oneLine(r.Project, 40), oneLine(r.FirstPrompt, 80))
 	}
 	if len(out.Items) == 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.activity.none"))
-	}
-	if out.LegacyError != "" {
-		fmt.Fprintln(a.stderr, i18n.T("cli.activity.legacy_error", out.LegacyError))
 	}
 	return nil
 }

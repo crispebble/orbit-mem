@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,10 +43,9 @@ func policyOf(cfg config.Config) memory.Policy {
 	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
 }
 
-// actorOf is who writes through a command: inside a retrospective run always
-// automation, else the flag, else ORBIT_ACTOR, else def.
+// actorOf is who writes through a command: the flag, else ORBIT_ACTOR, else def.
 func actorOf(flag, def string) string {
-	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), os.Getenv("ORBIT_RETRO_ID"), def)
+	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), def)
 }
 
 func cmdVersion(a *app, args []string) error {
@@ -85,19 +83,12 @@ func sessionProject() project.Project {
 
 func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
-	retroID := fs.String("retro", "", i18n.T("flag.mcp.retro"))
-	reader := fs.Bool("reader", false, i18n.T("flag.mcp.reader"))
 	actor := fs.String("actor", "", i18n.T("flag.mcp.actor"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
 	// MCP 응답 글은 AI가 읽는다(ONID-61 대상 아님). 공유 오류(기억·제안)도 언어 설정과 무관하게 한국어로 낸다.
 	i18n.Set(i18n.KO)
-	if *reader { // 기억 그래프만(Orbit Studio 같은 앱)
-		ctx, cancel := signalContext()
-		defer cancel()
-		return mcpserver.NewReader(paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
-	}
 	if _, err := loadConfig(); err != nil {
 		return err
 	}
@@ -109,16 +100,11 @@ func cmdMCP(a *app, args []string) error {
 	defer s.Close()
 	ctx, cancel := signalContext()
 	defer cancel()
-	var srv *mcp.Server
-	if *retroID != "" {
-		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
-	} else {
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version, WorkDB: paths().WorkDB(),
-			Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
-				cfg, err := loadConfig()
-				return cfg.Products, err
-			}})
-	}
+	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version,
+		Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
+			cfg, err := loadConfig()
+			return cfg.Products, err
+		}})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -147,39 +133,18 @@ func (in hookInput) sessionKey() string {
 // cmdHook never fails the host: any problem, wrong arguments included, prints
 // nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
 // session-start, prompt and pre-tool give the memory context; session-start, prompt
-// and session-end keep the activity log. session-end only ends the activity row: the
-// retrospectives (and their session-end queue) are orbit-code's.
+// and session-end keep the activity log. session-end only ends the activity row.
 func cmdHook(a *app, args []string) error {
 	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
 	fs := a.flags("hook")
 	fs.SetOutput(io.Discard)
 	host := fs.String("host", "claude", "claude | codex")
-	fs.Bool("skip-lists", false, "") // 옛 작업 기록 훅의 인자: 받고 버린다
-	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
-	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
 	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
-	// AU-7: 지시에 단계 회상이 이미 든 실행(orbit-pi claude 엔진)의 요청 훅. 활동만 남기고
-	// 기억을 찾지도, 「넣음」 사건(inject.prompt)을 남기지도 않는다.
-	recordOnly := fs.Bool("record-only", false, i18n.T("flag.hook.record_only"))
 	pos, err := parse(fs, args)
-	if err == nil && len(pos) == 1 && pos[0] == "work" {
-		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 orbit-code로 옮겼다: 입력을 버리고 끝낸다.
-		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
-		return nil
-	}
-	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "subagent-start", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") ||
-		(*runtime != "" && *runtime != runtimeOrbitPi) || (*recordOnly && pos[0] != "prompt") {
+	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "subagent-start", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") {
 		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
 		return nil
 	}
-	// 설계 · Studio 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션에서는 기억 주입·활동 기록을
-	// orbit-pi가 맡는다. 플러그인 훅(--runtime 없음)은 아무것도 하지 않고,
-	// orbit-pi가 같은 입력으로 --runtime orbit-pi를 붙여 부른 훅만 기록한다.
-	if *runtime == "" && os.Getenv(runtimeEnv) == runtimeOrbitPi {
-		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
-		return nil
-	}
-	who := launcherOf(*runtime, *launcher)
 	deadline := time.After(hookDeadline)
 	done := make(chan string, 1)
 	finished := make(chan struct{}) // 사건·활동 기록까지 남겼다
@@ -216,13 +181,9 @@ func cmdHook(a *app, args []string) error {
 		if dir := sessionDir(in.Cwd); dir != "" {
 			p = project.Resolve(dir)
 		}
-		if *recordOnly {
-			done <- ""
-		} else {
-			memoryHook(a, s, done, pos[0], *host, in, p, cfg, *pluginVersion, who)
-		}
+		memoryHook(a, s, done, pos[0], *host, in, p, cfg, *pluginVersion)
 		if pos[0] != "pre-tool" && pos[0] != "subagent-start" { // 도구 호출·서브에이전트 시작은 활동 기록이 아니다
-			recordActivity(s, pos[0], *host, in, p, who, at)
+			recordActivity(s, pos[0], *host, in, p, at)
 		}
 		if pos[0] == "session-start" {
 			autoBackup(cfg)
@@ -248,58 +209,22 @@ func cmdHook(a *app, args []string) error {
 // hookDeadline is how long a hook may take before it gives up without output.
 const hookDeadline = 4 * time.Second
 
-// Runtime marks (설계 · Studio 4차 「Claude 엔진 중복 규칙」). orbit-pi puts
-// ORBIT_RUNTIME=orbit-pi into the claude it starts and calls the hooks itself
-// with --runtime orbit-pi and --launcher (ORBIT_LAUNCHER) for the activity log.
-const (
-	runtimeEnv     = "ORBIT_RUNTIME"
-	runtimeOrbitPi = "orbit-pi"
-	launcherEnv    = "ORBIT_LAUNCHER"
-	parentEnv      = "ORBIT_PARENT" // 이 세션을 띄운 세션(활동 기록의 parent)
-)
+// parentEnv names the session that started this one (the activity log's parent).
+const parentEnv = "ORBIT_PARENT"
 
-// hookCaller is who called a hook: a person's own session or orbit-pi.
-type hookCaller struct {
-	launcher string
-	runtime  bool
-}
-
-// askable says whether a person is in the session to answer a question: their own session,
-// or one orbit-pi started for Studio or Telegram (not a workflow, not an unknown launcher).
-func (c hookCaller) askable() bool {
-	return c.launcher == "human" || c.launcher == "studio" || c.launcher == "telegram"
-}
-
-// launcherOf is the activity log's launcher: human for a person's own session; for
-// orbit-pi the launcher it names (studio·telegram·workflow…), else orbit-pi.
-func launcherOf(runtime, launcher string) hookCaller {
-	if runtime == "" {
-		return hookCaller{launcher: "human"}
-	}
-	if launcher == "" {
-		launcher = os.Getenv(launcherEnv)
-	}
-	switch launcher {
-	case "studio", "telegram", "workflow":
-	default:
-		launcher = runtimeOrbitPi // 모르는 값은 짐작하지 않는다
-	}
-	return hookCaller{launcher: launcher, runtime: true}
-}
-
-// recordActivity keeps the session in the activity log (설계 · orbit-code 4차 M5). Sessions
-// inside a retrospective run are not activity.
-func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, who hookCaller, at int64) {
-	if os.Getenv("ORBIT_RETRO_ID") != "" || in.SessionID == "" {
+// recordActivity keeps the session in the activity log (설계 · orbit-code 4차 M5). The hooks
+// run in a person's own host session, so the launcher is human.
+func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, at int64) {
+	if in.SessionID == "" {
 		return
 	}
 	kind := map[string]string{"session-start": memory.ActivityStart, "prompt": memory.ActivityPrompt, "session-end": memory.ActivityEnd}[which]
 	_ = s.RecordActivity(memory.ActivityEvent{Kind: kind, Host: host, Session: in.SessionID, Cwd: in.Cwd, ProjectScope: p.Scope, ProjectLabel: p.Label,
-		Launcher: who.launcher, Parent: os.Getenv(parentEnv), Prompt: in.Prompt, At: at})
+		Launcher: "human", Parent: os.Getenv(parentEnv), Prompt: in.Prompt, At: at})
 }
 
 // memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, p project.Project, cfg config.Config, pluginVersion string, who hookCaller) {
+func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, p project.Project, cfg config.Config, pluginVersion string) {
 	scope, where := p.Scope, whereOf(p)
 	if which == "session-end" {
 		done <- ""
@@ -315,9 +240,7 @@ func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string,
 		inj = inject.SessionBundle(s, cfg, where, host, in.SessionID)
 		text := withVersionNote(inj.Text, pluginVersion)
 		text = withUpdateNote(text, cfg)
-		if who.askable() {
-			text = withHostMemoryNote(text, cfg, in.Cwd)
-		}
+		text = withHostMemoryNote(text, cfg, in.Cwd)
 		done <- inject.HookOutput("SessionStart", text)
 	case "pre-tool":
 		kind = memory.EventInjectTool
@@ -358,9 +281,9 @@ func withVersionNote(text, pluginVersion string) string {
 }
 
 // recordInjection counts one injection as a use event. Levels that inject nothing,
-// empty requests and hooks inside a retrospective run are not use, so they are not counted.
+// and empty requests are not use, so they are not counted.
 func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
-	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
+	if cfg.Inject == config.InjectOff ||
 		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) ||
 		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) { // 도구 호출·서브에이전트마다 부르므로 넣은 것이 있을 때만 센다
 		return
@@ -634,15 +557,6 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("config.err.language", val)
 		}
 		cfg.Language, val = string(l), string(l)
-	case "retroHost":
-		cfg.RetroHost = val
-	case "retroModel":
-		cfg.RetroModel = val
-	case "retroHour":
-		_, err := fmt.Sscanf(val, "%d", &cfg.RetroHour)
-		if err != nil {
-			return err
-		}
 	case "inject":
 		cfg.Inject = val
 	case "recentDecisions":
@@ -652,17 +566,6 @@ func cmdConfig(a *app, args []string) error {
 	case "backupKeep":
 		if _, err := fmt.Sscanf(val, "%d", &cfg.BackupKeep); err != nil {
 			return err
-		}
-	case "applyTargets":
-		cfg.ApplyTargets = nil
-		for _, p := range strings.Split(val, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return err
-				}
-				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
-			}
 		}
 	case "updateCheck":
 		b, err := strconv.ParseBool(val)
@@ -682,36 +585,18 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.AutoTidy = b
-	case "sessionRetro":
-		b, err := strconv.ParseBool(val)
-		if err != nil {
-			return i18n.Errorf("cli.config.err.bool", key, val)
-		}
-		cfg.SessionRetro = b
-	case "sessionRetroModel":
-		cfg.SessionRetroModel = val
 	case "hostMemory":
 		cfg.HostMemory = val
-	case "retiredNames":
-		cfg.RetiredNames = nil
-		for _, n := range strings.Split(val, ",") {
-			if n = strings.TrimSpace(n); n != "" {
-				cfg.RetiredNames = append(cfg.RetiredNames, n)
-			}
-		}
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches",
-		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays":
+	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
-		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
-			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
-			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches,
+		*map[string]*int{"recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·autoTidy·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
@@ -719,10 +604,6 @@ func cmdConfig(a *app, args []string) error {
 	if key == "language" {
 		i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), cfg.Language))
 	}
-	fmt.Fprint(a.stdout, i18n.T("cli.config.saved", key, val))
-	if key == "retroHour" {
-		fmt.Fprint(a.stdout, " "+i18n.T("cli.config.retro_hour_note"))
-	}
-	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, i18n.T("cli.config.saved", key, val))
 	return nil
 }

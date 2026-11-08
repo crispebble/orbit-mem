@@ -13,21 +13,21 @@ import (
 	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
-// cmdTool runs one memory tool for a host without an MCP client (Orbit Code):
+// cmdTool runs one memory tool for a host without an MCP client (--host names it, required):
 // the MCP input as JSON on stdin, the MCP output as JSON on stdout. A tool
 // error is {"error": "..."} with exit 1. The writer is the host's AI unless
 // --actor says otherwise, and the call is recorded as that host's tool use.
 func cmdTool(a *app, args []string) error {
 	fs := a.flags("tool")
 	cwd := fs.String("cwd", "", i18n.T("flag.inject.cwd"))
-	host := fs.String("host", hostOrbitCode, i18n.T("flag.inject.host"))
+	host := fs.String("host", "", i18n.T("flag.inject.host"))
 	session := fs.String("session", "", i18n.T("flag.inject.session"))
 	actor := fs.String("actor", "", i18n.T("flag.mcp.actor"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if len(pos) != 1 || !slices.Contains(mcpserver.HostTools, pos[0]) {
+	if len(pos) != 1 || !slices.Contains(mcpserver.HostTools, pos[0]) || *host == "" {
 		return errUsage
 	}
 	in, err := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
@@ -46,7 +46,7 @@ func cmdTool(a *app, args []string) error {
 	if *cwd != "" {
 		p = project.Resolve(*cwd)
 	}
-	t := mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, WorkDB: paths().WorkDB(), Actor: actorOf(*actor, memory.ActorAI), Products: productsOf()})
+	t := mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Actor: actorOf(*actor, memory.ActorAI), Products: productsOf()})
 	out, err := t.Call(pos[0], in, *host, *session)
 	if err != nil {
 		return a.toolError(err)

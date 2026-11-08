@@ -1,15 +1,11 @@
 {
   "config.err.candidate_expiry": "candidateExpiryDays is 0 (off) to 365 days: %d",
   "config.err.evidence": "check confirmSeenDays, confirmFollowedVerified and correctionRepeatSessions (1-30)",
-  "config.err.graph_tidy": "check graphTidyMemories and graphTidyUntagged (0-200) and graphTidyProposals (0-20)",
   "config.err.inject": "inject is full|rules|off: %q",
   "config.err.language": "language is en or ko: %q",
-  "config.err.ledger_session": "check ledgerWindowDays (1-90) and sessionRetroDailyMax (0 or more)",
-  "config.err.legacy": "check legacyMemories (1-100) and legacyBatches (0-20)",
   "config.err.read": "cannot read the settings file (%s): %w",
   "config.err.recall_chars": "recallChars is 100-%d: %d",
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
-  "config.err.retro_host": "retroHost is claude or codex: %q",
-  "config.err.retro_hour": "retroHour is 0-23: %d",
-  "config.err.host_memory": "hostMemory is ask or keep: %q"
+  "config.err.host_memory": "hostMemory is ask or keep: %q",
+  "config.err.ledger_window": "ledgerWindowDays is 1-90"
 }

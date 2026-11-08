@@ -188,19 +188,6 @@ func TestBackup_사본을_만들고_오래된_것은_지운다(t *testing.T) {
 	}
 }
 
-func TestSeen_다른_날_다시_나오면_확정되고_출처가_붙는다(t *testing.T) {
-	s, _ := newTestStore(t)
-	m, _ := s.Save(SaveInput{Kind: KindLesson, Title: "교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Day: "2026-10-25"})
-	same, err := s.Seen(m.ID, Source{Kind: SourceSession, Ref: "codex:x"}, "2026-10-25")
-	if err != nil || same.State != StateCandidate {
-		t.Fatalf("same day: %+v %v", same, err)
-	}
-	got, err := s.Seen(m.ID, Source{Kind: SourceSession, Ref: "claude:y"}, "2026-10-26")
-	if err != nil || got.State != StateConfirmed || len(got.Sources) != 3 {
-		t.Fatalf("next day: %+v %v", got, err)
-	}
-}
-
 func TestSnapshot_이름을_정한_사본은_순환에서_빠진다(t *testing.T) {
 	s, _ := newTestStore(t)
 	dir := t.TempDir()
@@ -240,16 +227,6 @@ func TestSave_두_연결이_동시에_써도_잠금_오류가_없다(t *testing.
 		if err := <-errs; err != nil {
 			t.Fatalf("concurrent save: %v", err)
 		}
-	}
-}
-
-func TestSeen_인용은_숨김이나_낡음을_되살리지_않는다(t *testing.T) {
-	s, _ := newTestStore(t)
-	m, _ := s.Save(SaveInput{Kind: KindFact, Title: "x", Source: Source{Kind: SourceSession}})
-	s.SetState(m.ID, StateHidden, "거절")
-	got, _ := s.Seen(m.ID, Source{Kind: SourceQuote, Excerpt: "x"}, "2026-10-28")
-	if got.State != StateHidden {
-		t.Fatalf("state = %s", got.State)
 	}
 }
 

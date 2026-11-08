@@ -1,7 +1,6 @@
 // Package install puts orbit-mem on this PC: the binary and orbit-mem's own plugin in the
 // hosts (hosts.go: Claude Code and Codex plugin commands, Codex's config.toml). It schedules
-// nothing: the retrospectives and their schedule are orbit-code's (orb install); it only
-// takes out the retrospective schedule orbit-mem itself registered before (legacy.go).
+// nothing.
 package install
 
 import (

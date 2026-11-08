@@ -74,69 +74,23 @@ func TestHook_활동_기록_세_훅(t *testing.T) {
 	}
 }
 
-// 끝 기준: 회고 실행 안(ORBIT_RETRO_ID)의 세션은 활동 기록에 남지 않는다.
-func TestHook_회고_실행은_활동_기록에_남기지_않는다(t *testing.T) {
-	home(t)
-	seed(t)
-	t.Setenv("ORBIT_RETRO_ID", "r-1")
-	hook(t, hookIn("S1", "/tmp", "회고"), "session-start", "--host", "claude")
-	hook(t, hookIn("S1", "/tmp", "회고"), "prompt", "--host", "claude")
-	hook(t, hookIn("S1", "/tmp", ""), "session-end", "--host", "claude")
-	if as := activities(t); len(as) != 0 {
-		t.Fatalf("회고 세션이 남았습니다: %+v", as)
-	}
-}
-
-// 설계 「Claude 엔진 중복 규칙」: ORBIT_RUNTIME=orbit-pi 세션에서 플러그인 훅은 아무것도 하지 않고,
-// orbit-pi가 --runtime orbit-pi --launcher X로 부른 훅만 기록한다.
-func TestHook_orbit_pi_세션은_runtime_훅만_기록한다(t *testing.T) {
-	home(t)
-	pinSave(t, seed(t), memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
-	t.Setenv("ORBIT_RUNTIME", "orbit-pi")
-	if out := hook(t, hookIn("R1", "/tmp", ""), "session-start", "--host", "claude"); strings.TrimSpace(out) != "" {
-		t.Fatalf("플러그인 훅의 주입: %q", out)
-	}
-	hook(t, hookIn("R1", "/tmp", "요청"), "prompt", "--host", "claude")
-	if as := activities(t); len(as) != 0 {
-		t.Fatalf("플러그인 훅이 기록했습니다: %+v", as)
-	}
-	if out := hook(t, hookIn("R1", "/tmp", ""), "session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "studio"); !strings.Contains(out, "답은 존댓말") {
-		t.Fatalf("runtime 훅은 주입한다: %q", out)
-	}
-	hook(t, hookIn("R1", "/tmp", "요청"), "prompt", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "studio")
-	as := activities(t)
-	if len(as) != 1 || as[0].Launcher != "studio" || as[0].Prompts != 1 {
-		t.Fatalf("runtime 기록 %+v", as)
-	}
-	// 모르는 launcher는 짐작하지 않고 orbit-pi로 둔다
-	hook(t, hookIn("R2", "/tmp", ""), "session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "bogus")
-	for _, a := range activities(t) {
-		if a.Session == "R2" && a.Launcher != "orbit-pi" {
-			t.Fatalf("모르는 launcher %+v", a)
-		}
-	}
-	// 모르는 runtime 값은 인자 오류로 아무것도 하지 않는다(종료 0)
-	_, errOut, code := run(t, hookIn("R3", "/tmp", ""), "hook", "session-start", "--host", "claude", "--runtime", "other")
-	if code != 0 || !strings.Contains(errOut, "orbit-mem hook") {
-		t.Fatalf("모르는 runtime: %d %q", code, errOut)
-	}
-}
-
-// 끝 기준: hook work(옛 플러그인·옛 런타임이 부른다)는 입력을 버리고 아무것도 하지 않고 종료 0이다.
-func TestHook_work는_아무것도_하지_않는다(t *testing.T) {
+// 기획 · orbit-mem X6: 옛 hook work와 orbit-pi 전용 인자(--runtime·--launcher·--record-only)는 걷어냈다.
+// 옛 쪽이 불러도 인자 오류로 아무것도 하지 않고 종료 0이다(호스트를 막지 않는다).
+func TestHook_옛_work와_runtime_인자는_아무것도_하지_않는다(t *testing.T) {
 	h := home(t)
 	seed(t)
-	for _, args := range [][]string{{"work", "--host", "claude"}, {"work", "--host", "codex", "--skip-lists"}, {"work", "--host", "claude", "--runtime", "orbit-pi"}} {
-		out, errOut, code := run(t, `{"hook_event_name":"PostToolUse","session_id":"W1","cwd":"/tmp","tool_name":"TaskCreate"}`, append([]string{"hook"}, args...)...)
-		if code != 0 || out != "" || errOut != "" {
-			t.Fatalf("%v: %d %q %q", args, code, out, errOut)
+	for _, args := range [][]string{{"work", "--host", "claude"}, {"session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "studio"},
+		{"prompt", "--host", "claude", "--record-only"}} {
+		out, _, code := run(t, `{"hook_event_name":"PostToolUse","session_id":"W1","cwd":"/tmp","prompt":"x"}`, append([]string{"hook"}, args...)...)
+		if code != 0 || out != "" {
+			t.Fatalf("%v: %d %q", args, code, out)
 		}
 	}
 	if as := activities(t); len(as) != 0 {
-		t.Fatalf("hook work가 기록했습니다: %+v", as)
+		t.Fatalf("기록했습니다: %+v", as)
 	}
 	if lexists(h + "/work.db") {
-		t.Fatal("hook work가 work.db를 만들었습니다")
+		t.Fatal("work.db를 만들었습니다")
 	}
 }
 
@@ -147,48 +101,6 @@ func TestHook_세션_시작에_작업_문맥이_없다(t *testing.T) {
 	out := hook(t, hookIn("S9", "/tmp", ""), "session-start", "--host", "claude")
 	if !strings.Contains(out, "답은 존댓말") || strings.Contains(out, "work_title") || strings.Contains(out, "열린 작업") {
 		t.Fatalf("주입 %q", out)
-	}
-}
-
-// AU-7 L7: 단계 회상이 지시에 기억을 이미 붙인 실행(orbit-pi claude 엔진)은 요청 훅을 --record-only로 부른다.
-// 활동만 남고, 기억 문맥도 「넣음」 사건(inject.prompt)도 없다. 넣지 않은 기억이 넣음으로 세지지 않게.
-func TestHook_record_only_요청은_활동만_남기고_넣음_사건이_없다(t *testing.T) {
-	home(t)
-	s := seed(t)
-	if _, err := s.Save(memory.SaveInput{Kind: "lesson", Title: "format.mjs에 export를 더하면 index.mjs도 고친다", Body: "slugify를 format.mjs에 더하면 index.mjs 공개 목록에도 더한다", Source: memory.Source{Kind: "session", Ref: "s-1"}}); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ORBIT_RUNTIME", "orbit-pi")
-	out := hook(t, hookIn("R9", "/tmp", "format.mjs에 slugify export를 더해"), "prompt", "--host", "claude", "--runtime", "orbit-pi", "--record-only")
-	if strings.TrimSpace(out) != "" {
-		t.Fatalf("--record-only는 문맥을 내지 않는다: %q", out)
-	}
-	evs, err := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range evs {
-		if e.Kind == memory.EventInjectPrompt {
-			t.Fatalf("넣지 않았는데 넣음 사건: %+v %s", e, e.Data)
-		}
-	}
-	as := activities(t)
-	if len(as) != 1 || as[0].Session != "R9" || as[0].Prompts != 1 {
-		t.Fatalf("활동은 남긴다: %+v", as)
-	}
-	// 같은 요청을 인자 없이 부르면 지금처럼 넣고 센다
-	if out := hook(t, hookIn("R9", "/tmp", "format.mjs에 slugify export를 더해"), "prompt", "--host", "claude", "--runtime", "orbit-pi"); !strings.Contains(out, "index.mjs") {
-		t.Fatalf("인자 없는 요청 훅: %q", out)
-	}
-	evs, _ = s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
-	n := 0
-	for _, e := range evs {
-		if e.Kind == memory.EventInjectPrompt {
-			n++
-		}
-	}
-	if n != 1 {
-		t.Fatalf("inject.prompt %d건, 1건이어야", n)
 	}
 }
 

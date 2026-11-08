@@ -33,27 +33,24 @@ const (
 
 // BackupOptions are the inputs of a daily backup.
 type BackupOptions struct {
-	Dir    string        // 백업 폴더
-	WorkDB string        // 옛 작업 기록 DB(있으면 함께 복사한다)
-	Keep   int           // 남길 하루 사본 수
-	Force  bool          // 24시간 규칙과 관계없이 만든다
-	Wait   time.Duration // 다른 프로세스가 잠금을 쥐고 있으면 기다리는 시간(0이면 바로 건너뛴다)
+	Dir   string        // 백업 폴더
+	Keep  int           // 남길 하루 사본 수
+	Force bool          // 24시간 규칙과 관계없이 만든다
+	Wait  time.Duration // 다른 프로세스가 잠금을 쥐고 있으면 기다리는 시간(0이면 바로 건너뛴다)
 }
 
-// BackupResult is what a daily backup did. Memory and Work are the copies made, or
-// the newest existing ones when it was skipped.
+// BackupResult is what a daily backup did. Memory is the copy made, or the newest
+// existing one when it was skipped.
 type BackupResult struct {
 	Memory  string
-	Work    string
 	Made    bool
 	Skipped string
 	Removed []string // 보관 개수를 넘어 지운 하루 사본
-	WorkErr error    // 옛 작업 기록 사본 실패: 기억 사본은 남는다
 }
 
-// DailyBackup makes the daily copies under the backups folder's lock: the memory DB
-// (a failure is the error) and the old work DB (a failure is only WorkErr). Without
-// Force it does nothing while the last memory copy is less than 24 hours old.
+// DailyBackup makes the daily copy of the memory DB under the backups folder's lock.
+// Without Force it does nothing while the last memory copy is less than 24 hours old.
+// The old work log (work.db) is no longer copied (2026-11-08, ORBIT-13).
 func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	var r BackupResult
 	unlock, ok, err := backup.Lock(o.Dir, o.Wait)
@@ -62,14 +59,14 @@ func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	}
 	if !ok {
 		r.Skipped = SkipBusy
-		r.Memory, r.Work = lastCopies(o.Dir)
+		r.Memory = lastCopy(o.Dir)
 		return r, nil
 	}
 	defer unlock()
 	// 잠금을 잡은 뒤에 다시 본다: 기다리는 동안 앞 프로세스가 만들었으면 건너뛴다.
 	if !o.Force && !backup.Due(o.Dir, s.Now()) {
 		r.Skipped = SkipFresh
-		r.Memory, r.Work = lastCopies(o.Dir)
+		r.Memory = lastCopy(o.Dir)
 		return r, nil
 	}
 	if r.Memory, err = s.copyDaily(o.Dir); err != nil {
@@ -78,20 +75,14 @@ func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	r.Made = true
 	removed, _ := backup.Prune(o.Dir, backup.PrefixMemory, o.Keep)
 	r.Removed = append(r.Removed, removed...)
-	if o.WorkDB != "" {
-		r.Work, r.WorkErr = sqlitedb.BackupDaily(o.WorkDB, o.Dir, backup.PrefixWork, o.Keep, s.Now())
-	}
 	return r, nil
 }
 
-func lastCopies(dir string) (memoryPath, workPath string) {
+func lastCopy(dir string) string {
 	if c, ok := backup.Last(dir, backup.PrefixMemory); ok {
-		memoryPath = c.Path
+		return c.Path
 	}
-	if c, ok := backup.Last(dir, backup.PrefixWork); ok {
-		workPath = c.Path
-	}
-	return memoryPath, workPath
+	return ""
 }
 
 // Backup writes a consistent copy into dir (memory-YYYYMMDD.sqlite, one per day; a

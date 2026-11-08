@@ -61,7 +61,7 @@ func TestJudgment_거절은_기억없이_사유와_남고_최근_거절로_읽�
 	if _, err := s.RecordJudgment(Judgment{RetroID: "r-1", MemoryID: m.ID, Kind: m.Kind, Title: m.Title, Verdict: VerdictKeep}); err != nil {
 		t.Fatal(err)
 	}
-	rej, err := s.RecentRejections(10)
+	rej, err := recentRejections(s, 10)
 	if err != nil || len(rej) != 1 || rej[0].Title != "일회성 경로" || rej[0].Reason != "그 사안에만 맞는 사실" {
 		t.Fatalf("rejections = %+v %v", rej, err)
 	}
@@ -85,15 +85,15 @@ func TestJudgment_사용자가_거절하거나_고쳐서_승인하면_같은_기
 	if _, err := s.Decide(DecideInput{ID: pb.ID, Decision: "approve", Title: &title, Note: "제목이 모호"}); err != nil {
 		t.Fatal(err)
 	}
-	ja, _ := s.JudgmentsFor(a.ID)
+	ja, _ := judgmentsFor(s, a.ID)
 	if len(ja) != 1 || ja[0].UserDecision != "reject" || ja[0].UserNote != "이건 사실이 아니다" || ja[0].ProposalID != pa.ID || ja[0].Verdict != VerdictKeep {
 		t.Fatalf("a = %+v", ja)
 	}
-	jb, _ := s.JudgmentsFor(b.ID)
+	jb, _ := judgmentsFor(s, b.ID)
 	if len(jb) != 1 || jb[0].UserDecision != "edit" || jb[0].UserNote != "제목이 모호" {
 		t.Fatalf("b = %+v", jb)
 	}
-	rej, _ := s.RecentRejections(10)
+	rej, _ := recentRejections(s, 10)
 	if len(rej) != 2 {
 		t.Fatalf("recent rejections = %+v", rej)
 	}
@@ -102,7 +102,7 @@ func TestJudgment_사용자가_거절하거나_고쳐서_승인하면_같은_기
 	if _, err := s.Decide(DecideInput{ID: pd.ID, Decision: "reject", Note: "지금은 아님"}); err != nil {
 		t.Fatal(err)
 	}
-	rej, _ = s.RecentRejections(10)
+	rej, _ = recentRejections(s, 10)
 	if len(rej) != 3 || rej[0].ProposalID != pd.ID || rej[0].UserNote != "지금은 아님" || rej[0].Kind != ProposalDirection {
 		t.Fatalf("direction rejection = %+v", rej)
 	}
@@ -371,31 +371,6 @@ func TestLedger_되돌리기는_기억과_파일을_바꾸기_전으로(t *testi
 	}
 }
 
-func TestLedger_교훈은_증거_있는_판정에만_잇는다(t *testing.T) {
-	s, clk := newTestStore(t)
-	m := candidate(t, s, "대상")
-	start := clk.t
-	injectAt(t, s, "s1", start.Add(-time.Hour), m.ID)
-	signal(t, s, EventCorrection, "s1", m.ID, "", start.Add(-time.Minute))
-	id := approveEdit(t, s, m.ID, "고침")
-	empty := approveEdit(t, s, candidate(t, s, "조용한 것").ID, "고침2")
-	clk.t = start.Add(8 * 24 * time.Hour)
-	s.JudgeLedger(7)
-	lesson := candidate(t, s, "교훈")
-	if err := s.SetLedgerLesson(empty, lesson.ID); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("lesson without evidence: %v", err)
-	}
-	if err := s.SetLedgerLesson(id, lesson.ID); err != nil {
-		t.Fatal(err)
-	}
-	if e, _ := s.LedgerEntry(id); e.LessonID != lesson.ID {
-		t.Fatalf("entry = %+v", e)
-	}
-	if err := s.SetLedgerLesson(id, lesson.ID); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("second lesson: %v", err)
-	}
-}
-
 func TestSessionBundle_처음_만든_묶음을_그대로_돌려준다(t *testing.T) {
 	s, _ := newTestStore(t)
 	if _, _, ok := s.SessionBundle("claude", "s1"); ok {
@@ -554,7 +529,8 @@ func TestProposal_고쳐서_승인할_때_빈_본문은_그대로_둔다(t *test
 	}
 }
 
-func TestPruneSessionState_오래된_묶음과_처리한_대기열을_지운다(t *testing.T) {
+// 기획 · orbit-mem H1 ⑥: 30일 지난 세션 묶음만 지운다. 옛 회고 표(session_ends)는 더 쓰지 않으니 건드리지 않는다.
+func TestPruneSessionState_오래된_묶음만_지우고_옛_회고_표는_그대로다(t *testing.T) {
 	s, clk := newTestStore(t)
 	s.SaveSessionBundle("claude", "old", "옛 묶음", nil)
 	s.DB().Exec(`INSERT INTO session_ends(host,session,ended_at,retro_id) VALUES('claude','old-done',?,'r-1'),('claude','old-wait',?,'')`,
@@ -572,8 +548,8 @@ func TestPruneSessionState_오래된_묶음과_처리한_대기열을_지운다(
 	}
 	var n int
 	s.DB().QueryRow(`SELECT COUNT(*) FROM session_ends`).Scan(&n)
-	if n != 1 {
-		t.Fatalf("session_ends = %d (waiting one must stay)", n)
+	if n != 2 {
+		t.Fatalf("session_ends = %d (옛 표는 그대로)", n)
 	}
 }
 
@@ -595,4 +571,15 @@ func TestLedger_같은_세션의_교정과_어김은_나쁜_신호_한_번이다
 	if e.Observation.Before.Bad != 1 || e.Observation.After.Bad != 1 || e.Verdict != VerdictNoEffect {
 		t.Fatalf("entry = %+v", e)
 	}
+}
+
+// judgmentsFor lists a memory's judgments, oldest first (the retrospectives read them; the tests still do).
+func judgmentsFor(s *Store, memoryID string) ([]Judgment, error) {
+	return s.judgments(`WHERE memory_id=? ORDER BY at, rowid`, memoryID)
+}
+
+// recentRejections lists the newest n rejections — by a retrospective, or by the user rejecting or
+// editing a proposal — newest first.
+func recentRejections(s *Store, n int) ([]Judgment, error) {
+	return s.judgments(`WHERE verdict='reject' OR user_decision IN ('reject','edit') ORDER BY MAX(at, decided_at) DESC, rowid DESC LIMIT ?`, n)
 }

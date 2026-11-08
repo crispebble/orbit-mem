@@ -291,19 +291,11 @@ func moduleRoot(t *testing.T) string {
 }
 
 // aiFacing are files whose Korean text is written for the AI (MCP tool
-// descriptions and results, retrospective prompts and material, injected
-// context) or is data, not text orb shows a person. They are not translated.
+// descriptions and results, injected context) or is data, not text orbit-mem
+// shows a person. They are not translated.
 var aiFacing = []string{
 	"internal/mcpserver/",
 	"internal/inject/",
-	"internal/contractkit/",
-	"internal/transcript/",
-	"internal/retro/submit.go",
-	"internal/retro/material.go",
-	"internal/retro/prompt.go",
-	"internal/work/read.go",
-	"internal/work/query.go",
-	"internal/work/spool.go",
 }
 
 // Errors a person can read are in the catalog: no errors.New or fmt.Errorf with

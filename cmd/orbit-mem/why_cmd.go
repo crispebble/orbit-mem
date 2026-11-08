@@ -28,11 +28,9 @@ func cmdWhy(a *app, args []string) error {
 	}
 	var opts inject.Options
 	switch *rules {
-	case "":
-		opts.Brief = *host == hostOrbitCode
-	case "brief":
+	case "", "full":
+	case "brief": // 확정 규칙을 짧은 꼴로(규칙마다 한 줄, 전문은 memory_get과 요청 회상)
 		opts.Brief = true
-	case "full":
 	default:
 		return errUsage
 	}

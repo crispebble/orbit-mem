@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -157,5 +158,45 @@ func TestTidy_auto는_설치_전에는_DB를_만들지_않는다(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(h, "memory.db")); err == nil {
 		t.Fatal("DB를 만들었다")
+	}
+}
+
+// 끝난 기준 5(기획 · orbit-mem R5): 옛 회고 키가 남은 config.json으로 doctor 문제가 0이다. 키는 그대로 남고,
+// 범위 밖이던 옛 값(retroHour 99 같은)도 읽기를 막지 않는다.
+func TestDoctor_옛_회고_키가_남은_설정으로_문제가_없다(t *testing.T) {
+	f := newFakePC(t) // claude·codex가 PATH에 없다
+	os.WriteFile(filepath.Join(f.bin, "orbit-mem"), []byte("#!/bin/sh\n"), 0o755)
+	seed(t)
+	old := `{"language":"en","inject":"full","retroHost":"claude","retroModel":"","retroHour":99,"sessionRetro":true,"sessionRetroModel":"haiku",
+"sessionRetroDailyMax":3,"graphTidyMemories":40,"graphTidyUntagged":20,"graphTidyProposals":20,"legacyMemories":30,"legacyBatches":1,
+"claudePath":"/usr/local/bin/claude","codexPath":"","applyTargets":["/x/source"],"pluginSource":"/x/source","retiredNames":["old"],
+"work":"on","workStaleAfter":"72h"}`
+	cfgPath := filepath.Join(f.home, "config.json")
+	if err := os.WriteFile(cfgPath, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "doctor", "--json")
+	if code != 0 {
+		t.Fatalf("doctor %d %s", code, errOut)
+	}
+	var rep struct {
+		Problems []problem  `json:"problems"`
+		Tidy     tidyStatus `json:"tidy"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(rep.Problems) != 0 || !rep.Tidy.Auto {
+		t.Fatalf("problems = %+v tidy = %+v", rep.Problems, rep.Tidy)
+	}
+	// 설정을 바꿔 저장해도 옛 키는 지우지 않는다.
+	if _, _, code := run(t, "", "config", "set", "autoTidy", "false"); code != 0 {
+		t.Fatal(code)
+	}
+	b, _ := os.ReadFile(cfgPath)
+	for _, k := range []string{`"retroHost"`, `"pluginSource"`, `"work"`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("%s가 사라졌다: %s", k, b)
+		}
 	}
 }

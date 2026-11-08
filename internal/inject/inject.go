@@ -151,7 +151,7 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 
 // SessionStart is the session-start context: confirmed rules of the global
 // scope and this project in full, the titles of recent decisions, and one line
-// about retrospectives and waiting proposals.
+// about harmful automatic changes undone lately.
 func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 	return SessionStartInjection(s, cfg, scope).Text
 }
@@ -163,7 +163,7 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 
 // SessionStartInjectionWith is SessionStartInjection in the given form (S3-R6): the core layers, one
 // line on where to look first (how many confirmed rules and decisions this folder sees, memory_find
-// first), the titles of recent decisions and the retrospective line, within MaxSessionStartRunes. The
+// first), the titles of recent decisions and the automatic-revert line, within MaxSessionStartRunes. The
 // other memories come through the request recall, the tool recall and memory_find (S3-R7). Only
 // inject=rules, which has no request recall, fills the rest with confirmed rules as before.
 func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, opts Options) Injection {
@@ -289,14 +289,14 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 		runes(core.String())+runes(find)+runes(footer) > MaxSessionStartRunes-sessionNoteRunes {
 		find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
 	}
-	// 꼬리(결정 제목·회고 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
+	// 꼬리(결정 제목·자동 되돌림 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
 	var tail strings.Builder
 	room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(find) - runes(footer)
-	retro := retroLine(s)
-	if retro != "" && runes(retro)+1 <= room {
-		room -= runes(retro) + 1
+	reverts := revertLine(s)
+	if reverts != "" && runes(reverts)+1 <= room {
+		room -= runes(reverts) + 1
 	} else {
-		retro = ""
+		reverts = ""
 	}
 	if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
 		line := "[최근 결정] "
@@ -317,8 +317,8 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 			inj.MemoryIDs = append(inj.MemoryIDs, ids...)
 		}
 	}
-	if retro != "" {
-		tail.WriteString(retro + "\n")
+	if reverts != "" {
+		tail.WriteString(reverts + "\n")
 	}
 	b.WriteString(find)
 	b.WriteString(tail.String())
@@ -330,26 +330,15 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 
 func runes(s string) int { return utf8.RuneCountInString(s) }
 
-// retroLine says whether a recent retrospective left results and how many
-// harmful automatic changes were undone lately. Nothing waits for the person,
-// so it does not count proposals (설계 · orbit-mem 2판 18.6).
-func retroLine(s *memory.Store) string {
-	var parts []string
-	var period, journal string
+// revertLine says how many harmful automatic changes the daily tidy undid lately (효과 원장이
+// 해로움으로 판정해 스스로 되돌림, A2). Nothing waits for the person, so it does not count
+// proposals (설계 · orbit-mem 2판 18.6, 기획 · orbit-mem H4).
+func revertLine(s *memory.Store) string {
 	since := s.Now().Add(-72 * time.Hour).UnixMilli()
-	_ = s.DB().QueryRow(`SELECT period, journal_id FROM retros WHERE status='done' AND finished_at>=? ORDER BY finished_at DESC LIMIT 1`, since).Scan(&period, &journal)
-	if period != "" {
-		p := "회고 결과 있음(" + period
-		if journal != "" {
-			p += " 일지 " + journal
-		}
-		parts = append(parts, p+")")
-	}
-	// 효과 원장이 해로움으로 판정해 스스로 되돌린 자동 변경을 알린다(A2).
 	if n := s.RecentAutoReverts(since); n > 0 {
-		parts = append(parts, fmt.Sprintf("해로움 판정으로 자동 변경 %d건을 되돌림 — 감사 목록(proposals status=audit)에서 확인", n))
+		return fmt.Sprintf("해로움 판정으로 자동 변경 %d건을 되돌림 — 감사 목록(proposals status=audit)에서 확인", n)
 	}
-	return strings.Join(parts, " · ")
+	return ""
 }
 
 // Prompt is the per-request context: the memories that match the request
@@ -374,20 +363,6 @@ const recallBodyRunes = 200
 // not fit ends the list.
 func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) Injection {
 	return PromptInjectionWith(s, cfg, scope, prompt, Options{})
-}
-
-// Candidates are the live memories the work recall looks at for scope, and
-// why the rest of the live ones in scope are left out (memory id → reason). The
-// confirmed rules the session start would carry now are left out
-// ("session_rule"); the ones it leaves out for length stay candidates.
-func Candidates(s *memory.Store, cfg config.Config, scope string, opts Options) (map[string]memory.Memory, map[string]string, error) {
-	return CandidatesAt(s, at(cfg, scope), opts, SessionStartInjectionWith(s, cfg, scope, opts).MemoryIDs)
-}
-
-// CandidatesFor is Candidates for a session whose bundle named bundle: a confirmed
-// rule is left out of the work recall only when the bundle carries its full text.
-func CandidatesFor(s *memory.Store, scope string, opts Options, bundle []string) (map[string]memory.Memory, map[string]string, error) {
-	return CandidatesAt(s, place.Place{Scope: scope}, opts, bundle)
 }
 
 // CandidatesAt is CandidatesFor at a place resolved by the product map. A memory of the session's core

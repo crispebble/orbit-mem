@@ -58,11 +58,6 @@ type Window struct {
 	Bad        int `json:"bad"`        // 그 기억을 가리킨 교정 + 어김 판정
 	Irrelevant int `json:"irrelevant"` // 상관없음 판정
 	Sessions   int `json:"sessions"`   // 그 기억을 넣은 세션
-	// AU-7: 그 기억이 붙은 orbit-code 작업(끝난 시각으로 나눔)과 그 지표
-	Works       int `json:"works,omitempty"`
-	Trouble     int `json:"trouble,omitempty"`     // 작업 문제 수 합(질문·뒤집힌 가정·교정·같은 실패 반복·재계획)
-	FirstPassed int `json:"firstPassed,omitempty"` // 첫 시도에 검증을 통과한 단계
-	FirstSteps  int `json:"firstSteps,omitempty"`  // 실행이 있었던 단계
 }
 
 // Observation compares the period before a change with the period after.
@@ -188,10 +183,14 @@ type LedgerSummary struct {
 	Evidence int            `json:"evidence"`
 }
 
+// LedgerKindLab marks a ledger line the harness lab wrote (removed 2026-11-08, ORBIT-13). Old lines
+// stay in the database; they are not approved changes, so the ledger summary and judging skip them.
+const LedgerKindLab = "lab"
+
 // SummarizeLedger is the ledger part of the metrics.
 func (s *Store) SummarizeLedger(fromMs, toMs int64) (LedgerSummary, error) {
 	sum := LedgerSummary{Judged: map[string]int{}}
-	// 실험 줄(lab)은 승인한 변경이 아니다. 실험실 지표가 따로 센다.
+	// 옛 실험 줄(lab)은 승인한 변경이 아니다.
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ledger WHERE at>=? AND at<? AND proposal_kind<>?`, fromMs, toMs, LedgerKindLab).Scan(&sum.Changes); err != nil {
 		return sum, err
 	}
@@ -526,20 +525,6 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 	return nil
 }
 
-// SetLedgerLesson links the lesson a retrospective drew from a judged change.
-// Only a change with evidence that it helped or harmed gets one, and only one.
-func (s *Store) SetLedgerLesson(id, lessonID string) error {
-	e, err := s.LedgerEntry(id)
-	if err != nil {
-		return err
-	}
-	if !e.Evidence || (e.Verdict != VerdictHelped && e.Verdict != VerdictHarmful) || e.LessonID != "" {
-		return i18n.Errorf("memory.err.lesson_verdict", ErrInvalid)
-	}
-	_, err = s.db.Exec(`UPDATE ledger SET lesson_id=? WHERE id=? AND lesson_id=''`, lessonID, id)
-	return err
-}
-
 func subset(a, b []string) bool {
 	set := map[string]bool{}
 	for _, x := range b {
@@ -597,13 +582,10 @@ func (s *Store) JudgeLedger(windowDays int) (int, error) {
 			if err := s.observe(&obs, e.Observe); err != nil {
 				return n, err
 			}
-			if err := s.observeWorks(&obs, e.Observe); err != nil {
-				return n, err
-			}
 			// 이 변경이 만든 기억만 보면 변경 전에는 넣을 수 없었다: 비교할 전이 없다.
 			comparable := !subset(e.Observe, e.Before.Created)
 			signals := obs.Before.Bad+obs.After.Bad+obs.Before.Irrelevant+obs.After.Irrelevant > 0
-			evidence = comparable && (signals || worksBothSides(obs))
+			evidence = comparable && signals
 		}
 		if len(obs.MixedWith) == 0 {
 			verdict = judge(obs, evidence)
@@ -638,31 +620,13 @@ func compareRate(before, after, sb, sa int) int {
 	return 0
 }
 
-// MinWorksPerSide is how many orbit-code works with the memory must have ended on each side of a
-// change before their metrics count as evidence. One work against one says more about the two
-// tasks than about the change, and an automatic change judged harmful is reverted by itself (A2);
-// two is the same bar as evidence ② (confirmFollowedVerified, E2).
-const MinWorksPerSide = 2
-
-// worksBothSides says whether enough orbit-code works with the memory ended before and after the change.
-func worksBothSides(obs Observation) bool {
-	return obs.Before.Works >= MinWorksPerSide && obs.After.Works >= MinWorksPerSide
-}
-
-// judge reads the signals in order (AU-7): corrections and violations, then the works' trouble
-// per work, then their first-attempt verification rate, then irrelevant verdicts.
+// judge reads the signals in order: corrections and violations, then irrelevant verdicts.
 func judge(obs Observation, evidence bool) string {
 	if !evidence {
 		return VerdictNoEffect
 	}
 	b, a := obs.Before, obs.After
 	c := compareRate(b.Bad, a.Bad, b.Sessions, a.Sessions)
-	if c == 0 && worksBothSides(obs) {
-		c = compareRate(b.Trouble, a.Trouble, b.Works, a.Works)
-		if c == 0 && b.FirstSteps > 0 && a.FirstSteps > 0 {
-			c = -compareRate(b.FirstPassed, a.FirstPassed, b.FirstSteps, a.FirstSteps) // 많을수록 낫다
-		}
-	}
 	if c == 0 {
 		c = compareRate(b.Irrelevant, a.Irrelevant, b.Sessions, a.Sessions)
 	}

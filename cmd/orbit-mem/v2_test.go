@@ -41,9 +41,9 @@ func TestHook_세션_시작_문맥은_판_안내까지_6000자_이하다(t *test
 		t.Fatalf("session start %d chars:\n%s", n, ctx)
 	}
 	var res struct{ Text string }
-	io, _, _ := run(t, "", "inject", "session-start", "--session", "o1", "--host", "orbit-code")
+	io, _, _ := run(t, "", "inject", "session-start", "--session", "o1", "--host", "host-x", "--rules", "brief")
 	if err := json.Unmarshal([]byte(io), &res); err != nil || utf8.RuneCountInString(res.Text) > 6000 {
-		t.Fatalf("orbit-code brief %d: %v", utf8.RuneCountInString(res.Text), err)
+		t.Fatalf("brief %d: %v", utf8.RuneCountInString(res.Text), err)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestAC8_다른_세션의_저장이_요청과_PreToolUse_훅에_들어간다
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"A","source":"startup"}`, "hook", "session-start", "--host", "claude")
 	out, errOut, code := run(t, `{"kind":"rule","appliesTo":"user","title":"Orbit 문서는 Orbit Space에 쓴다","body":"onidot Space에 쓰지 않는다","topic":"atlas 문서 위치",`+
-		`"tools":["mcp__atlas__write_page"],"source":{"kind":"quote","excerpt":"Orbit 문서는 Orbit Space에"}}`, "tool", "memory_save", "--session", "B", "--cwd", "/tmp")
+		`"tools":["mcp__atlas__write_page"],"source":{"kind":"quote","excerpt":"Orbit 문서는 Orbit Space에"}}`, "tool", "memory_save", "--session", "B", "--cwd", "/tmp", "--host", "host-x")
 	if code != 0 {
 		t.Fatalf("save: %s %s", out, errOut)
 	}

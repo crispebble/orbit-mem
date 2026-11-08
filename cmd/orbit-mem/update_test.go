@@ -315,13 +315,11 @@ func TestHook_신선한_캐시나_updateCheck_끔이면_갱신을_요청하지_�
 	}
 }
 
-func TestHook_요청_훅과_회고_실행은_갱신을_요청하지_않는다(t *testing.T) {
+func TestHook_요청_훅은_갱신을_요청하지_않는다(t *testing.T) {
 	home(t)
 	seedUpdateRule(t)
 	calls := fakeUpdateBG(t)
 	run(t, `{"cwd":"/tmp","session_id":"s1","prompt":"안녕"}`, "hook", "prompt", "--host", "claude")
-	t.Setenv("ORBIT_RETRO_ID", "r1")
-	sessionStart(t)
 	if refreshCalls(*calls) != 0 {
 		t.Fatalf("%v", *calls)
 	}

@@ -304,10 +304,6 @@ func TestAC3_반복_교정이_기준을_넘으면_표시되고_스킬은_하네�
 	if r := byTarget["orbit:tdd"]; r.Sessions != 3 || !r.Harness || r.TargetKind != TargetKindSkill {
 		t.Fatalf("skill = %+v", r)
 	}
-	hc, err := s.HarnessCandidates()
-	if err != nil || len(hc) != 1 || hc[0].Target != "orbit:tdd" || len(hc[0].Quotes) == 0 {
-		t.Fatalf("harness = %+v %v", hc, err)
-	}
 	// 확인함을 누르면 그 뒤 교정만 다시 센다.
 	if err := s.Acknowledge(byTarget[m.ID].Key, Who{}); err != nil {
 		t.Fatal(err)

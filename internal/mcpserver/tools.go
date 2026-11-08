@@ -51,7 +51,7 @@ func (h handlers) activity(_ context.Context, _ *mcp.CallToolRequest, in Activit
 		r, _ := toolError(err)
 		return r, activity.Result{}, nil
 	}
-	res, err := activity.Find(h.s, h.o.WorkDB, q)
+	res, err := activity.Find(h.s, q)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, activity.Result{}, nil

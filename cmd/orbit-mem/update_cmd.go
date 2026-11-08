@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -136,7 +135,7 @@ const refreshTimeout = 15 * time.Second
 // `orbit-mem update --refresh-cache` as its own process. The context is for the AI, so the
 // line is Korean.
 func withUpdateNote(text string, cfg config.Config) string {
-	if !cfg.UpdateCheck || os.Getenv("ORBIT_RETRO_ID") != "" {
+	if !cfg.UpdateCheck {
 		return text
 	}
 	c, ok := update.ReadCache(paths().Home)

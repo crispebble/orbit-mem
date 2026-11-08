@@ -35,61 +35,6 @@ func TestTagKey_표기만_다른_태그는_같은_열쇠(t *testing.T) {
 	}
 }
 
-// 끝 기준 1: 표기만 다른 태그가 memory_graph 묶음에서 한 태그로 보인다. 저장값은 그대로다.
-func TestGraph_표기만_다른_태그는_한_묶음이고_저장값은_그대로(t *testing.T) {
-	s, _ := newTestStore(t)
-	a := taggedMemory(t, s, "A 기억", "UI", "claude_code")
-	b := taggedMemory(t, s, "B 기억", "ui", "Claude-Code")
-	c := taggedMemory(t, s, "C 기억", "ui")
-	g, err := s.Graph(GraphInput{Relations: []string{RelTag}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	groups := map[string]GraphGroup{}
-	for _, x := range g.Groups {
-		groups[x.Key] = x
-	}
-	if len(g.Groups) != 2 {
-		t.Fatalf("묶음은 ui·claude-code 둘이어야 합니다: %+v", g.Groups)
-	}
-	ui := groups["ui"]
-	if len(ui.Members) != 3 || ui.Label != "ui" {
-		t.Errorf("ui 묶음(라벨은 많이 쓴 표기): %+v", ui)
-	}
-	cc := groups["claude-code"]
-	if len(cc.Members) != 2 || cc.Label != "Claude-Code" && cc.Label != "claude_code" {
-		t.Errorf("claude-code 묶음: %+v", cc)
-	}
-	if got, _ := s.Get(a.ID); !reflect.DeepEqual(got.Tags, []string{"UI", "claude_code"}) {
-		t.Errorf("저장값이 바뀌었습니다: %v", got.Tags)
-	}
-	for _, n := range g.Nodes {
-		if n.ID == b.ID && !reflect.DeepEqual(n.Tags, []string{"ui", "Claude-Code"}) {
-			t.Errorf("노드 태그는 저장값 그대로: %v", n.Tags)
-		}
-	}
-	_ = c
-}
-
-// 끝 기준 1: memory_graph tags 거르기도 표기 차이를 무시한다.
-func TestGraph_태그_거르기는_표기_차이를_무시한다(t *testing.T) {
-	s, _ := newTestStore(t)
-	a := taggedMemory(t, s, "A 기억", "claude_code")
-	b := taggedMemory(t, s, "B 기억", "Claude-Code")
-	taggedMemory(t, s, "C 기억", "codex")
-	g, err := s.Graph(GraphInput{Tags: []string{" CLAUDE-code "}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := map[string]bool{}
-	for _, n := range g.Nodes {
-		ids[n.ID] = true
-	}
-	if len(ids) != 2 || !ids[a.ID] || !ids[b.ID] {
-		t.Errorf("거른 기억: %v", ids)
-	}
-}
-
 // 끝 기준 1: memory_find 태그 거르기도 표기 차이를 무시한다.
 func TestFind_태그_거르기는_표기_차이를_무시한다(t *testing.T) {
 	s, _ := newTestStore(t)

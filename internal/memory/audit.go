@@ -163,6 +163,8 @@ type CorrectionInput struct {
 
 // RecordCorrection keeps a correction as an event. Its target (a memory, a
 // skill or a role) is what repeated corrections are counted by.
+// No orbit-mem path writes it since the retrospectives were removed (2026-11-08, ORBIT-13);
+// it keeps the event format the readers count, for old events and for tests.
 func (s *Store) RecordCorrection(in CorrectionInput) error {
 	q := strings.Join(strings.Fields(in.Quote), " ")
 	if q == "" {
@@ -202,6 +204,8 @@ type UsageInput struct {
 
 // RecordUsage keeps a usage verdict as an event and, when it is evidence ②,
 // checks whether the candidate is now confirmed.
+// No orbit-mem path writes it since the retrospectives were removed (2026-11-08, ORBIT-13);
+// it keeps the event format the readers count, for old events and for tests.
 func (s *Store) RecordUsage(in UsageInput) error {
 	if !slices.Contains(UsageVerdicts, in.Verdict) || in.MemoryID == "" {
 		return i18n.Errorf("memory.err.usage_verdict", ErrInvalid, strings.Join(UsageVerdicts, "·"))
@@ -341,22 +345,6 @@ func (s *Store) RepeatedCorrections(all bool) ([]RepeatedCorrection, error) {
 		out = append(out, r)
 	}
 	return sortRepeated(out), nil
-}
-
-// HarnessCandidates are the skills and roles corrected over the threshold and
-// the procedures that came out of that many works: the harness improvement
-// candidates the orbit-code lab reads (it only reads).
-func (s *Store) HarnessCandidates() ([]RepeatedCorrection, error) {
-	over, err := s.RepeatedCorrections(false)
-	if err != nil {
-		return nil, err
-	}
-	over = slices.DeleteFunc(over, func(r RepeatedCorrection) bool { return !r.Harness })
-	procs, err := s.RepeatedProcedures(false)
-	if err != nil {
-		return nil, err
-	}
-	return sortRepeated(append(over, procs...)), nil
 }
 
 func sortRepeated(out []RepeatedCorrection) []RepeatedCorrection {

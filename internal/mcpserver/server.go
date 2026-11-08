@@ -24,10 +24,9 @@ type Options struct {
 	Project      string // 이 세션의 프로젝트 범위("project:<키>")
 	ProjectLabel string
 	Version      string
-	WorkDB       string // 옛 작업 기록 work.db(activity_find가 읽기 전용으로 읽는다)
 	// Actor is who writes through this server (A2): ai for a host's AI (the
-	// default), user for a person's app (Orbit Studio), automation inside a
-	// retrospective. A tool argument never changes it.
+	// default), user for a person at a terminal, automation for a job. A tool
+	// argument never changes it.
 	Actor string
 	// Dir is the session folder (a real slash path), whose parents' memories the session sees (S3-R2),
 	// Git says it is in a git checkout and Temp under a temporary folder: they pick the default appliesTo
@@ -56,13 +55,9 @@ func (o Options) here() place.Place {
 	return place.At(o.Project, o.Dir, m)
 }
 
-// ResolveActor picks the writer of a server or command: inside a
-// retrospective run (ORBIT_RETRO_ID) always automation, else the flag, else
+// ResolveActor picks the writer of a server or command: the flag, else
 // ORBIT_ACTOR, else def. Unknown values fall back.
-func ResolveActor(flag, env, retroID, def string) string {
-	if retroID != "" {
-		return memory.ActorAutomation
-	}
+func ResolveActor(flag, env, def string) string {
 	for _, v := range []string{flag, env} {
 		if slices.Contains(memory.Actors, v) {
 			return v
@@ -158,7 +153,6 @@ type handlers struct {
 }
 
 // track records each call of a tool as a "tool.<name>" event (설계 「측정」).
-// The retrospective's own server does not use it: its calls are not use.
 func track[In, Out any](h handlers, name string, f mcp.ToolHandlerFor[In, Out], data func(In, Out) map[string]any) mcp.ToolHandlerFor[In, Out] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		res, out, err := f(ctx, req, in)

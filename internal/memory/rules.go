@@ -13,13 +13,13 @@ import (
 // 확정 규칙(A2, 설계 · orbit-code 자율 완수와 학습 「확정 규칙」, 계획 · AU-6). 규칙은 이 저장 계층에 있다:
 // 회고든 다른 자동화든 이 API를 거치면 같은 규칙을 지킨다.
 
-// Who writes: the person (CLI, Orbit Studio), the AI in a host conversation,
-// or an automation such as a retrospective. A tool argument never sets it; the
+// Who writes: the person (CLI), the AI in a host conversation,
+// or an automation such as the daily tidy. A tool argument never sets it; the
 // server option or the process environment does.
 const (
-	ActorUser       = "user"       // 사람: CLI, Orbit Studio 화면
+	ActorUser       = "user"       // 사람: CLI
 	ActorAI         = "ai"         // 호스트 대화 중의 AI
-	ActorAutomation = "automation" // 회고·정리 같은 자동화
+	ActorAutomation = "automation" // 하루 정리 같은 자동화(옛 회고도)
 )
 
 // Actors are the writers the store knows.

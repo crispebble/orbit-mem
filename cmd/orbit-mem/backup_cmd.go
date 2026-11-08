@@ -41,7 +41,7 @@ func cmdBackup(a *app, args []string) error {
 	return errUsage
 }
 
-// backupNow copies the memory DB (and the old work DB) now, whatever the time of the last copy.
+// backupNow copies the memory DB now, whatever the time of the last copy.
 func backupNow(a *app, args []string) error {
 	fs := a.flags("backup")
 	if pos, err := parse(fs, args); err != nil || len(pos) != 0 {
@@ -56,7 +56,7 @@ func backupNow(a *app, args []string) error {
 		return err
 	}
 	defer s.Close()
-	r, err := s.DailyBackup(memory.BackupOptions{Dir: paths().Backups(), WorkDB: paths().WorkDB(), Keep: cfg.BackupKeep, Force: true, Wait: manualWait})
+	r, err := s.DailyBackup(memory.BackupOptions{Dir: paths().Backups(), Keep: cfg.BackupKeep, Force: true, Wait: manualWait})
 	if err != nil {
 		return err
 	}
@@ -64,12 +64,6 @@ func backupNow(a *app, args []string) error {
 		return i18n.Errorf("cli.backup.busy")
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", r.Memory))
-	if r.WorkErr != nil {
-		return r.WorkErr
-	}
-	if r.Work != "" {
-		fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", r.Work))
-	}
 	return nil
 }
 
@@ -277,23 +271,17 @@ func backupAuto(a *app, args []string) error {
 		return nil
 	}
 	defer s.Close()
-	r, err := s.DailyBackup(memory.BackupOptions{Dir: p.Backups(), WorkDB: p.WorkDB(), Keep: cfg.BackupKeep})
+	r, err := s.DailyBackup(memory.BackupOptions{Dir: p.Backups(), Keep: cfg.BackupKeep})
 	if err != nil {
 		backupLog(p, "error: "+err.Error())
 		return nil
 	}
 	if r.Made {
 		line := "made " + r.Memory
-		if r.Work != "" {
-			line += " " + r.Work
-		}
 		if len(r.Removed) > 0 {
 			line += " removed " + strings.Join(r.Removed, ",")
 		}
 		backupLog(p, line)
-	}
-	if r.WorkErr != nil {
-		backupLog(p, "error: work: "+r.WorkErr.Error())
 	}
 	return nil
 }
@@ -314,7 +302,7 @@ func backupLog(p config.Paths, line string) {
 // `orbit-mem backup auto` as its own process and does not wait for it. Checking costs
 // one folder read; nothing here can fail the hook.
 func autoBackup(cfg config.Config) {
-	if !cfg.AutoBackup || os.Getenv("ORBIT_RETRO_ID") != "" {
+	if !cfg.AutoBackup {
 		return
 	}
 	if !backup.Due(paths().Backups(), time.Now()) {

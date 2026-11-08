@@ -194,9 +194,6 @@ func TestHook_주입을_사건으로_남긴다(t *testing.T) {
 	if evs[1].Kind != memory.EventInjectPrompt || !strings.Contains(string(evs[1].Data), `"memoryIds":[]`) {
 		t.Errorf("prompt = %+v %s", evs[1], evs[1].Data)
 	}
-	if injected, known := s.InjectedIn("sess-1", r.ID); !injected || !known {
-		t.Errorf("injected=%v known=%v", injected, known)
-	}
 }
 
 func TestStats_기간_지표를_보여_준다(t *testing.T) {
@@ -225,13 +222,10 @@ func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
 	s := seed(t)
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"s","prompt":""}`, "hook", "prompt", "--host", "claude") // 빈 요청
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"rules","recentDecisions":5,"backupKeep":14}`), 0o600)
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"inject":"rules","recentDecisions":5,"backupKeep":14}`), 0o600)
 	run(t, `{"cwd":"/tmp","session_id":"s","prompt":"존댓말"}`, "hook", "prompt", "--host", "claude") // 요청마다 넣지 않는 수준
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"off","recentDecisions":5,"backupKeep":14}`), 0o600)
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"inject":"off","recentDecisions":5,"backupKeep":14}`), 0o600)
 	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "claude")
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14}`), 0o600)
-	t.Setenv("ORBIT_RETRO_ID", "r-1") // 회고 실행 안의 훅
-	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "codex")
 	evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
 	if len(evs) != 0 {
 		t.Fatalf("events = %+v", evs)
@@ -261,21 +255,25 @@ func TestHook_세션_끝은_활동_기록만_남긴다(t *testing.T) {
 	}
 }
 
-// K1: retro 명령은 없다(회고는 orbit-code의 orb retro).
+// 기획 · orbit-mem R1~R3: 회고 명령(retro·retro-store)과 회고 MCP(mcp --retro), 그래프 읽기 서버(mcp --reader)는 없다.
 func TestRetro_명령은_없다(t *testing.T) {
 	home(t)
-	_, errOut, code := run(t, "", "retro", "run")
-	if code != 2 || !strings.Contains(strings.ToLower(errOut), "unknown command") {
-		t.Fatalf("code=%d err=%q", code, errOut)
+	for _, args := range [][]string{{"retro", "run"}, {"retro-store", "queue", "list"}} {
+		_, errOut, code := run(t, "", args...)
+		if code != 2 || !strings.Contains(strings.ToLower(errOut), "unknown command") {
+			t.Fatalf("%v: code=%d err=%q", args, code, errOut)
+		}
+	}
+	for _, flag := range []string{"--retro=r-1", "--reader"} {
+		if _, _, code := run(t, "", "mcp", flag); code == 0 {
+			t.Fatalf("mcp %s: code=%d", flag, code)
+		}
 	}
 	_, help, _ := run(t, "", "help")
 	for _, line := range strings.Split(help, "\n") {
-		if f := strings.Fields(line); len(f) > 1 && f[0] == "orbit-mem" && f[1] == "retro" {
-			t.Fatalf("help lists retro: %q", line)
+		if f := strings.Fields(line); len(f) > 1 && f[0] == "orbit-mem" && strings.HasPrefix(f[1], "retro") {
+			t.Fatalf("help lists %q", line)
 		}
-	}
-	if !strings.Contains(help, "orbit-mem retro-store") {
-		t.Fatalf("help has no retro-store:\n%s", help)
 	}
 }
 
@@ -317,13 +315,13 @@ func TestLedger_승인한_변경을_보여_준다(t *testing.T) {
 
 func TestConfig_2차_키를_설정한다(t *testing.T) {
 	home(t)
-	for _, kv := range [][2]string{{"sessionRetro", "false"}, {"sessionRetroModel", "sonnet"}, {"sessionRetroDailyMax", "12"}, {"recallChars", "1500"}, {"ledgerWindowDays", "14"}} {
+	for _, kv := range [][2]string{{"recallChars", "1500"}, {"ledgerWindowDays", "14"}, {"autoTidy", "false"}} {
 		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
 			t.Fatalf("%s: %s", kv[0], errOut)
 		}
 	}
 	cfg, err := loadConfig()
-	if err != nil || cfg.SessionRetro || cfg.SessionRetroModel != "sonnet" || cfg.SessionRetroDailyMax != 12 || cfg.RecallChars != 1500 || cfg.LedgerWindowDays != 14 {
+	if err != nil || cfg.AutoTidy || cfg.RecallChars != 1500 || cfg.LedgerWindowDays != 14 {
 		t.Fatalf("cfg = %+v %v", cfg, err)
 	}
 	if _, _, code := run(t, "", "config", "set", "recallChars", "50"); code != 1 {
@@ -375,26 +373,6 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	}
 	if out, _, code := run(t, in, "hook", "session-start", "--plugin-version"); code != 0 || out != "" {
 		t.Fatalf("값 없는 플래그 %d %q", code, out)
-	}
-}
-
-// AU-7: 판정한 줄에 작업 지표가 있으면 관찰 아래 작업 줄을 보인다.
-func TestLedger_판정에_든_작업_지표를_보여_준다(t *testing.T) {
-	home(t)
-	s := seed(t)
-	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "교훈", Source: memory.Source{Kind: "session"}})
-	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "고치기", MemoryIDs: []string{m.ID}, Payload: memory.Payload{Title: "고친 교훈"}})
-	res, err := s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	obs := `{"before":{"bad":0,"irrelevant":0,"sessions":0,"works":2,"trouble":3,"firstPassed":1,"firstSteps":4},"after":{"bad":0,"irrelevant":0,"sessions":0,"works":1,"trouble":0,"firstPassed":2,"firstSteps":2}}`
-	if _, err := s.DB().Exec(`UPDATE ledger SET verdict='helped', evidence=1, observation=? WHERE id=?`, obs, res.LedgerID); err != nil {
-		t.Fatal(err)
-	}
-	out, _, code := run(t, "", "ledger")
-	if code != 0 || !strings.Contains(out, "Works: before 2 (trouble 3 · first-try verified 1/4) → after 1 (trouble 0 · 2/2)") {
-		t.Fatalf("ledger: %s", out)
 	}
 }
 

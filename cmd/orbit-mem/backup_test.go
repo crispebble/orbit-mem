@@ -368,25 +368,6 @@ func TestBackup_복구는_깨진_사본과_없는_사본을_받지_않는다(t *
 	}
 }
 
-// 끝난 기준: orb retro 앞의 백업(retro-store backup)도 24시간 안이면 건너뛴다. 결과 꼴(errors·memory·work)은 그대로다.
-func TestRetroStore_backup은_24시간_안이면_새로_만들지_않는다(t *testing.T) {
-	h, _ := storeHome(t)
-	fresh := dailyCopy(t, h, time.Hour)
-	b := storeJSON(t, "", "backup")
-	if keys(b) != "errors,memory,work" || b["memory"] != fresh {
-		t.Fatalf("backup = %v", b)
-	}
-	if st, _ := os.Stat(fresh); st.Size() != 1 {
-		t.Fatal("the fresh copy was rewritten")
-	}
-	os.Remove(fresh)
-	dailyCopy(t, h, 25*time.Hour)
-	b = storeJSON(t, "", "backup")
-	if err := memory.CheckCopy(b["memory"].(string)); err != nil {
-		t.Fatalf("after 24h: %v (%v)", err, b)
-	}
-}
-
 // 끝난 기준: 들여오기·옮기기 전에는 하루 한 번 규칙과 관계없이 사본을 만든다.
 func TestImport와_Migrate는_하루_사본이_있어도_사본을_만든다(t *testing.T) {
 	h := home(t)

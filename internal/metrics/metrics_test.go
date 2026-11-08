@@ -69,12 +69,6 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	s.DB().Exec(`UPDATE memories SET id='m-r' WHERE id=?`, r.ID)
 	m, _ := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "대기 후보", Source: memory.Source{Kind: memory.SourceSession}})
 	s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "대기", MemoryIDs: []string{m.ID}})
-	// 회고: 완료 2(60초, 120초), 빈 1, 실패 1
-	day := func(d string, h int) int64 { at(s, d, h); return s.Now().UnixMilli() }
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r1','daily','2026-10-21','done',?,?)`, day("2026-10-22", 4), day("2026-10-22", 4)+60000)
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r2','daily','2026-10-22','done',?,?)`, day("2026-10-23", 4), day("2026-10-23", 4)+120000)
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('r3','daily','2026-10-23','empty',?,?)`, day("2026-10-24", 4), day("2026-10-24", 4))
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at,error) VALUES('r4','daily','2026-10-24','failed',?,?,'x')`, day("2026-10-25", 4), day("2026-10-25", 4))
 	at(s, "2026-10-27", 12)
 
 	rep, err := Compute(s, "2026-10-21", "2026-10-27")
@@ -104,15 +98,12 @@ func TestCompute_기간의_지표를_계산한다(t *testing.T) {
 	if p.Approved != 1 || p.Edited != 1 || p.Rejected != 1 || p.Pending != 1 || p.OldestPendingDays != 7 {
 		t.Errorf("proposals = %+v", p)
 	}
-	if rep.Retros.Runs != 4 || rep.Retros.Done != 2 || rep.Retros.Empty != 1 || rep.Retros.Failed != 1 || rep.Retros.AvgSeconds != 90 {
-		t.Errorf("retros = %+v", rep.Retros)
-	}
 	if rep.Tools["memory_find"] != 3 || rep.Tools["memory_save"] != 3 {
 		t.Errorf("tools = %+v", rep.Tools)
 	}
 
 	text := Render(rep)
-	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "Repeated corrections: 3", "injected but violated 1", "답은 존댓말 (m-r) 2 times", "Empty searches 2/3", "배포 순서", "failed 1"} {
+	for _, want := range []string{"2026-10-21 ~ 2026-10-27", "Repeated corrections: 3", "injected but violated 1", "답은 존댓말 (m-r) 2 times", "Empty searches 2/3", "배포 순서"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
@@ -150,12 +141,6 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{a.ID}, "chars": 600})
 	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{}, "chars": 0})
 	rec("2026-10-22", memory.Event{Kind: memory.EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{b.ID}, "chars": 200})
-	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "session", "costKnown": true, "costUsd": 0.25, "inputTokens": 1000, "outputTokens": 100})
-	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "daily", "costKnown": true, "costUsd": 0.5, "inputTokens": 2000, "outputTokens": 200})
-	rec("2026-10-23", memory.Event{Kind: memory.EventRetroRun}, map[string]any{"retroKind": "session", "costKnown": false})
-	day := func(d string, h int) int64 { at(s, d, h); return s.Now().UnixMilli() }
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('s1','session','2026-10-23','done',?,?)`, day("2026-10-23", 9), day("2026-10-23", 9)+1000)
-	s.DB().Exec(`INSERT INTO retros(id,kind,period,status,started_at,finished_at) VALUES('s2','session','2026-10-23','empty',?,?)`, day("2026-10-23", 10), day("2026-10-23", 10))
 	at(s, "2026-10-23", 11)
 	s.RecordJudgment(memory.Judgment{Kind: "fact", Title: "가", Verdict: memory.VerdictKeep})
 	s.RecordJudgment(memory.Judgment{Kind: "fact", Title: "나", Verdict: memory.VerdictHold})
@@ -185,15 +170,9 @@ func TestCompute_사용_판정_원장_쓰기_판정_회상_글자수_회고_비�
 	if w.Keep != 1 || w.Hold != 1 || w.Reject != 1 || w.UserRejected != 1 || w.UserEdited != 0 {
 		t.Errorf("writes = %+v", w)
 	}
-	if k := rep.Retros.Kinds["session"]; k.Runs != 2 || k.Done != 1 || k.Empty != 1 {
-		t.Errorf("session retros = %+v", rep.Retros.Kinds)
-	}
-	if c := rep.Retros.Cost; c.USD != 0.75 || c.Known != 2 || c.Unknown != 1 || c.InputTokens != 3000 || c.OutputTokens != 300 || c.SessionUSD != 0.25 {
-		t.Errorf("cost = %+v", c)
-	}
 	text := Render(rep)
 	for _, want := range []string{"Usage verdicts: followed 2 · violated 2 · irrelevant 1", "고친 교훈", "Effect ledger: 1 changes", "observing now 1", "Write verdicts: keep 1 · hold 1 · reject 1", "rejected by user 1",
-		"average injected prompt 400 chars", "session end ×2", "$0.7500", "cost unknown 1"} {
+		"average injected prompt 400 chars"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("render missing %q:\n%s", want, text)
 		}
@@ -281,7 +260,8 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.KeepLegacyBaseline(); err != nil {
+	// 옛 기억 정리를 시작하기 전 수(옛 회고가 meta에 남겼다)
+	if err := s.SetMeta("legacy_baseline", `{"day":"2026-10-31","states":{"candidate":4}}`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SetState(b.ID, memory.StateStale, "제안 승인"); err != nil {
@@ -302,29 +282,6 @@ func TestCompute_옛_기억_정리_지표(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("%q가 없습니다:\n%s", want, out)
 		}
-	}
-}
-
-// 명세 · O3-5 「기록」: 기간 안 하네스 실험 수·판정·비용을 보인다.
-func TestCompute_하네스_실험실_지표(t *testing.T) {
-	s := store(t, time.Date(2026, 10, 31, 12, 0, 0, 0, time.Local))
-	at := s.Now().UnixMilli()
-	for i, x := range []memory.LabExperiment{{ID: "x-1", Status: memory.LabDone, Verdict: memory.VerdictHelped, CostUSD: 1.5},
-		{ID: "x-2", Status: memory.LabFailed, CostUSD: 0.5}} {
-		x.TaskID, x.Runs, x.CreatedAt = "t-1", 3, at-int64(i)
-		if err := s.SaveLabExperiment(x); err != nil {
-			t.Fatal(err)
-		}
-	}
-	rep, err := Compute(s, "2026-10-25", "2026-10-31")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.Lab.Experiments != 2 || rep.Lab.Verdicts["helped"] != 1 || rep.Lab.Verdicts["failed"] != 1 {
-		t.Fatalf("실험실 지표 %+v", rep.Lab)
-	}
-	if out := Render(rep); !strings.Contains(out, "Harness lab: 2 experiments (helped 1 · harmful 0 · no effect 0 · failed 1), cost $2.0000") {
-		t.Fatal(out)
 	}
 }
 
