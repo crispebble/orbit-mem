@@ -18,8 +18,14 @@ func TestLinks_저장_고치기_읽기(t *testing.T) {
 	}
 	var got GetOut
 	call(t, cs, "memory_get", map[string]any{"ids": []string{a.Memory.ID}}, &got)
-	if len(got.Items[0].Links) != 1 || got.Items[0].Links[0].MemoryID != b.Memory.ID || got.Items[0].Links[0].Note != "같은 결정의 측정 근거" {
+	if want := "같은 태그를 쌍으로 이으면 선이 수만 개 — " + b.Memory.ID; len(got.Items[0].Links) != 1 || got.Items[0].Links[0] != want {
 		t.Fatalf("반대쪽에서 본 연결: %+v", got.Items[0].Links)
+	}
+	// 연결 이유는 full일 때 줄 끝에 붙는다
+	var whole GetOut
+	call(t, cs, "memory_get", map[string]any{"ids": []string{a.Memory.ID}, "full": true}, &whole)
+	if want := "같은 태그를 쌍으로 이으면 선이 수만 개 — " + b.Memory.ID + " · 같은 결정의 측정 근거"; len(whole.Items[0].Links) != 1 || whole.Items[0].Links[0] != want {
+		t.Fatalf("full로 본 연결: %+v", whole.Items[0].Links)
 	}
 
 	// 같은 제목으로 다시 저장하면 있던 기억에 합쳐지고, 그 기억에 잇는다

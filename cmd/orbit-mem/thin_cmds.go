@@ -29,7 +29,7 @@ func tools() (mcpserver.Tools, *memory.Store, error) {
 	return mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Actor: actorOf("", memory.ActorUser), Products: productsOf()}), s, nil
 }
 
-func (a *app) printSummaries(items []mcpserver.Summary) {
+func (a *app) printSummaries(items []mcpserver.FindItem) {
 	for _, m := range items {
 		fmt.Fprintf(a.stdout, "%s  %s·%s  %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
 	}
@@ -116,7 +116,7 @@ func cmdShow(a *app, args []string) error {
 		return err
 	}
 	defer s.Close()
-	out, err := t.Get(mcpserver.GetIn{IDs: pos, History: *history})
+	out, err := t.Get(mcpserver.GetIn{IDs: pos, History: *history, Full: true})
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func cmdShow(a *app, args []string) error {
 		return a.json(out)
 	}
 	m := out.Items[0]
-	fmt.Fprintf(a.stdout, "%s · %s · %s · %s · v%d\n%s\n\n%s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Scope, m.Version, m.Title, m.Body)
+	fmt.Fprintf(a.stdout, "%s · %s · %s · %s · v%d\n%s\n\n%s\n", m.ID, kindName(m.Kind), stateName(m.State), m.AppliesTo, m.Version, m.Title, m.Body)
 	if len(m.Tags) > 0 {
 		fmt.Fprintln(a.stdout, "\n"+i18n.T("cli.memory.tags", strings.Join(m.Tags, ", ")))
 	}
@@ -132,7 +132,7 @@ func cmdShow(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.memory.source", src.Kind, src.Ref, oneLine(src.Excerpt, 80)))
 	}
 	for _, l := range m.Links {
-		fmt.Fprintln(a.stdout, i18n.T("cli.memory.link", l.MemoryID, oneLine(l.Note, 80)))
+		fmt.Fprintln(a.stdout, i18n.T("cli.memory.link", l))
 	}
 	for _, v := range out.History[m.ID] {
 		fmt.Fprintf(a.stdout, "v%d %s %s %s\n", v.Version, time.UnixMilli(v.At).Format("2006-01-02 15:04"), v.Action, v.Reason)

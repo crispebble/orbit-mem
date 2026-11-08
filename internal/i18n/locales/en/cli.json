@@ -98,7 +98,7 @@
   "cli.ledger.observation": "Observed: before bad signals %d · irrelevant %d · sessions %d → after %d · %d · %d",
   "cli.ledger.revert_of": "Reverts ledger",
   "cli.ledger.reverted_by": "Reverted by",
-  "cli.memory.link": "Link %s %s",
+  "cli.memory.link": "Link %s",
   "cli.memory.none_found": "No memories found.",
   "cli.memory.source": "Source %s %s %s",
   "cli.memory.tags": "Tags: %s",
