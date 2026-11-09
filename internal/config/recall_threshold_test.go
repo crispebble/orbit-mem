@@ -73,8 +73,8 @@ func TestPromptRecallChars는_recallChars와_500자_중_작은_값이다(t *test
 }
 
 // 맞은 낱말이 하나뿐인 기억의 맞은 비율 문턱 recallMinCoverageOneWord(설계 보완, 1-6 b6 R1)와 위임 회상의 세 문턱
-// taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative(T1). 비율·점수는 0 < x ≤ 1, 낱말 수는 1~40(요청 낱말 상한)만
-// 받고, 키가 없는 옛 파일은 기본값으로 읽는다.
+// taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative(T1). 비율·점수는 0 < x ≤ 1, 낱말 수는 2~40(요청 회상이 요구하는 낱말 수 2 ~ 요청
+// 낱말 상한)만 받고, 키가 없는 옛 파일은 기본값으로 읽는다.
 func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범위(t *testing.T) {
 	d := Default()
 	if d.RecallMinCoverageOneWord != DefaultRecallMinCoverageOneWord || d.TaskRecallMinScore != DefaultTaskRecallMinScore ||
@@ -110,7 +110,7 @@ func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범
 			t.Errorf("%s 1: %v", key, err)
 		}
 	}
-	for _, bad := range []int{0, -1, 41} {
+	for _, bad := range []int{0, -1, 1, 41} { // 1은 받지 않는다: 위임 글도 낱말 둘 이상이어야 회상한다(inject minRecallWords)
 		c := Default()
 		c.TaskRecallMinWords = bad
 		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "taskRecallMinWords") {

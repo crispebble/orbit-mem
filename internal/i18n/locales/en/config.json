@@ -15,7 +15,7 @@
   "config.err.recall_min_relative": "recallMinRelative is a number above 0 and at most 1 (the share of the best find score a memory needs to stay in the request recall): %v",
   "config.err.recall_min_coverage_one_word": "recallMinCoverageOneWord is a number above 0 and at most 1 (the share of the request's meaningful words a memory needs to enter the request recall when only one of them matched it): %v",
   "config.err.task_recall_min_score": "taskRecallMinScore is a number above 0 and at most 1 (the find score a memory needs to enter the recall of a delegated task): %v",
-  "config.err.task_recall_min_words": "taskRecallMinWords is a whole number from 1 to %d (how many content words of a delegated task, less imperative endings, heading words and item numbers, a memory must match to enter its recall): %v",
+  "config.err.task_recall_min_words": "taskRecallMinWords is a whole number from %d to %d (how many content words of a delegated task, less imperative endings, heading words and item numbers, a memory must match to enter its recall): %v",
   "config.err.task_recall_min_relative": "taskRecallMinRelative is a number above 0 and at most 1 (the share of the best find score a memory needs to stay in the recall of a delegated task): %v",
   "config.err.task_recall_min_title_share": "taskRecallMinTitleShare is a number above 0 and at most 1 (the rare words' worth, per content word of a delegated task, that a memory's title and topic must hold to be recalled for the task): %v",
   "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q"

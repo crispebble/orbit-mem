@@ -113,3 +113,19 @@ func TestSubagentStart_위임_회상은_제목과_주제의_드문_낱말_몫으
 		t.Fatalf("어느 기억도 문턱을 넘지 못하면 위임 회상은 비어야 함:\n%s", inj.Text)
 	}
 }
+
+// 설정이 받는 taskRecallMinWords의 가장 작은 값은 회상이 요구하는 낱말 수(minRecallWords)보다 작지 않다: 받은 값이 그대로
+// 동작한다(1-6 b10 7번: 1을 받고 짧은 위임에서 2처럼 동작하던 어긋남).
+func TestT1_위임_낱말_수_설정의_하한은_회상의_낱말_수_하한과_같다(t *testing.T) {
+	if config.MinTaskRecallMinWords != minRecallWords {
+		t.Fatalf("config %d, inject %d", config.MinTaskRecallMinWords, minRecallWords)
+	}
+	c := config.Default()
+	c.TaskRecallMinWords = minRecallWords
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if th := taskThresholds(c); max(minRecallWords, th.minWords) != th.minWords {
+		t.Fatalf("받은 값 %d이 그대로 동작하지 않는다", th.minWords)
+	}
+}

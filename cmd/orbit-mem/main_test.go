@@ -461,7 +461,7 @@ func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *tes
 	}
 	for key, bads := range map[string][]string{
 		"recallMinCoverageOneWord": {"0", "1.5", "abc", "NaN"}, "taskRecallMinScore": {"0", "1.5", "NaN"},
-		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "41", "2.5", "abc"}, "taskRecallMinTitleShare": {"0", "1.5", "NaN", "abc"},
+		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "1", "41", "2.5", "abc"}, "taskRecallMinTitleShare": {"0", "1.5", "NaN", "abc"},
 	} {
 		for _, bad := range bads {
 			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {

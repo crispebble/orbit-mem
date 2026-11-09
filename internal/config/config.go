@@ -117,7 +117,7 @@ type Config struct {
 	// 위임 회상의 문턱(설계 보완, 계획 1-6 b6 T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 위임 글의 내용 낱말
 	// (명령형 어미·위임 머리 낱말·항목 번호를 뺀 것, memory.TaskWords) 가운데 taskRecallMinWords개 이상이 맞고, 찾기 점수가
 	// taskRecallMinScore 이상이며, 1위 점수의 taskRecallMinRelative배 이상인 기억만 넣는다. 점수·배는 0 < x ≤ 1, 낱말 수는
-	// 1~40이다. 이 키가 없는 옛 파일은 기본값이다.
+	// 2~40이다(MinTaskRecallMinWords). 이 키가 없는 옛 파일은 기본값이다.
 	TaskRecallMinScore    float64 `json:"taskRecallMinScore"`
 	TaskRecallMinWords    int     `json:"taskRecallMinWords"`
 	TaskRecallMinRelative float64 `json:"taskRecallMinRelative"`
@@ -151,8 +151,13 @@ const (
 	DefaultTaskRecallMinTitleShare  = 0.05
 )
 
-// MaxTaskRecallMinWords is the largest taskRecallMinWords: a request has at most 40 meaningful words.
-const MaxTaskRecallMinWords = 40
+// MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
+// request, needs two words or more for any recall (one word scores every memory that has it alike), so 1 would
+// act as 2 for a one-word task and as 1 for a longer one. The most is 40: a request has at most 40 meaningful words.
+const (
+	MinTaskRecallMinWords = 2
+	MaxTaskRecallMinWords = 40
+)
 
 // MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
 const MaxPromptRecallChars = 500
@@ -263,8 +268,8 @@ func (c Config) Validate() error {
 	if !(c.TaskRecallMinScore > 0 && c.TaskRecallMinScore <= 1) {
 		return i18n.Errorf("config.err.task_recall_min_score", c.TaskRecallMinScore)
 	}
-	if c.TaskRecallMinWords < 1 || c.TaskRecallMinWords > MaxTaskRecallMinWords {
-		return i18n.Errorf("config.err.task_recall_min_words", MaxTaskRecallMinWords, c.TaskRecallMinWords)
+	if c.TaskRecallMinWords < MinTaskRecallMinWords || c.TaskRecallMinWords > MaxTaskRecallMinWords {
+		return i18n.Errorf("config.err.task_recall_min_words", MinTaskRecallMinWords, MaxTaskRecallMinWords, c.TaskRecallMinWords)
 	}
 	if !(c.TaskRecallMinRelative > 0 && c.TaskRecallMinRelative <= 1) {
 		return i18n.Errorf("config.err.task_recall_min_relative", c.TaskRecallMinRelative)
