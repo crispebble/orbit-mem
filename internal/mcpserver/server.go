@@ -28,6 +28,10 @@ type Options struct {
 	// default), user for a person at a terminal, automation for a job. A tool
 	// argument never changes it.
 	Actor string
+	// TrustLimit is the highest trust a source saved through this connection may get (the channel it came
+	// by): the assembly point sets it, never the actor or a tool argument. Empty is agent; the thin CLI of
+	// a person sets owner.
+	TrustLimit string
 	// Dir is the session folder (a real slash path), whose parents' memories the session sees (S3-R2),
 	// Git says it is in a git checkout and Temp under a temporary folder: they pick the default appliesTo
 	// (S3-R1·R4). Empty, the folder of a folder scope is used.
@@ -284,6 +288,7 @@ type SourceIn struct {
 	Kind    string `json:"kind" jsonschema:"quote(사용자 말)·file·command·session·host_memory·verification·work"`
 	Ref     string `json:"ref,omitempty" jsonschema:"절대경로·명령·세션 id"`
 	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 사용자 말 그대로"`
+	Trust   string `json:"trust,omitempty" jsonschema:"untrusted(웹·도구 출력)·system으로만 낮춤"`
 }
 
 // SaveIn is memory_save's input.
@@ -552,7 +557,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		return r, MemoryOut{}, nil
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
-		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
+		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
 		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {

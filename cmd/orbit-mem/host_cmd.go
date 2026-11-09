@@ -88,7 +88,7 @@ func cmdHost(a *app, args []string) error {
 		return a.hostError(herr)
 	}
 	svc := hostService()
-	run := svc.Start(pos[0], req, host.Options{Actor: actorOf(*actor, memory.ActorAI), At: at})
+	run := svc.Start(pos[0], req, host.Options{Actor: actorOf(*actor, memory.ActorAI), TrustLimit: hostTrustLimit, At: at})
 	out, herr := run.Result()
 	if herr != nil {
 		err = a.hostError(herr)

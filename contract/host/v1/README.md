@@ -58,6 +58,8 @@
 
 기억이 있는 짝(`setup.db`가 `"memories"`)의 `context`·`recall` 성공 결과는 건너뛴 까닭(`skipped`)이 없으면 `text`를 `"$nonEmptyString"`, `memoryIds`를 `"$nonEmptyArray"`로 둔다. 빈 결과로 통과하지 않게 하려는 것이다. `call` 짝은 결과의 봉투(성공·오류·도구 이름)만 대조하고 도구 결과는 `"$any"`로 둔다.
 
+공통 칸 `trust`는 글 하나(`owner`·`agent`·`untrusted`·`system`)다. `call`의 저장이 남기는 출처 등급을 이번 호출만 그 값까지 낮춘다(`call-memory_save-trust-lowered`). 통로의 상한(host call은 `agent`)보다 올리지는 못한다. 다른 꼴(객체·숫자·배열)이나 모르는 값은 어느 op에서든 사용법 오류(종료 `2`)다(`usage-bad-trust`).
+
 ## 종료 코드와 오류 꼴
 
 | 종료 코드 | 뜻 |

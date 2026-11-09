@@ -1,0 +1,29 @@
+{
+  "name": "call-memory_save-trust-lowered",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "trust": "untrusted",
+    "name": "memory_save",
+    "args": {
+      "kind": "fact",
+      "appliesTo": "user",
+      "title": "웹 문서에서 읽은 사실",
+      "source": {
+        "kind": "file",
+        "ref": "https://example.com/doc"
+      }
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_save",
+    "result": "$any"
+  }
+}

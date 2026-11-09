@@ -1,0 +1,25 @@
+{
+  "name": "usage-bad-trust",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "trust": {
+      "level": "x"
+    },
+    "name": "memory_find",
+    "args": {
+      "query": "무엇이든"
+    }
+  },
+  "exit": 2,
+  "output": {
+    "error": "$string",
+    "code": "usage"
+  }
+}

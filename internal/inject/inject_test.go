@@ -287,3 +287,29 @@ func TestSessionStart_자동_되돌림을_알린다(t *testing.T) {
 		t.Fatalf("알림이 없습니다:\n%s", got)
 	}
 }
+
+// 출처가 믿을 수 없는 것뿐인 기억은 회상 줄에 「믿을 수 없음」이 붙는다(D7). 회상 글은 고정 한국어라 언어 설정과 무관하다.
+func TestPrompt_믿을_수_없는_기억은_회상_줄에_표시가_붙는다(t *testing.T) {
+	s := store(t)
+	ok := save(t, s, memory.KindLesson, "stdin을 닫고 codex exec를 백그라운드로 돌린다", "본문", memory.ScopeGlobal, false)
+	web, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "codex exec 백그라운드 실행은 stdin을 닫으면 된다는 웹 글", Body: "본문", Scope: memory.ScopeGlobal,
+		Source: memory.Source{Kind: memory.SourceFile, Ref: "web", Trust: memory.TrustUntrusted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Prompt(s, config.Default(), here, "codex exec를 백그라운드에서 stdin 닫기")
+	lineOf := func(id string) string {
+		for _, l := range strings.Split(got, "\n") {
+			if strings.Contains(l, id) {
+				return l
+			}
+		}
+		return ""
+	}
+	if l := lineOf(web.ID); !strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("웹 글 줄에 표시가 없다: %q\n%s", l, got)
+	}
+	if l := lineOf(ok.ID); l == "" || strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("믿을 만한 기억 줄: %q", l)
+	}
+}

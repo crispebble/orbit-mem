@@ -801,19 +801,31 @@ func TestLock_기록이_잠금으로_실패해도_결과는_나온다(t *testing
 }
 
 // 계약 입력: contract가 없으면 1, 1이 아니면 contract 오류(종료 1). 깨진 JSON·모르는 op·틀린 값은 usage(종료 2).
-// profile·trust·readScope·sandboxed·task·requestId·idempotencyKey는 받기만 한다.
+// profile·readScope·sandboxed·task·requestId·idempotencyKey는 받기만 한다. trust는 글 하나(owner·agent·untrusted·system)만 받는다.
 func TestDecode_계약과_사용법(t *testing.T) {
 	e := newEnv(t)
 	e.store()
 	if _, err := host.Decode([]byte(`not json`)); err == nil || err.Code != host.CodeUsage || err.Exit() != 2 {
 		t.Fatalf("broken = %v", err)
 	}
-	req, err := host.Decode([]byte(`{"host":"h","session":"s","profile":"p","trust":{"level":"x"},"readScope":["a"],"sandboxed":true,"task":"t","requestId":"r"}`))
+	req, err := host.Decode([]byte(`{"host":"h","session":"s","profile":"p","trust":"agent","readScope":["a"],"sandboxed":true,"task":"t","requestId":"r"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.svc.Do(host.OpContext, req, host.Options{}); err != nil {
 		t.Fatalf("contract 없음 = %v", err)
+	}
+	for _, bad := range []string{`{"level":"x"}`, `"boss"`, `7`, `["owner"]`, `""`} {
+		r, derr := host.Decode([]byte(`{"session":"s","trust":` + bad + `}`))
+		if derr != nil {
+			t.Fatal(derr)
+		}
+		for _, op := range []string{host.OpContext, host.OpCall} {
+			_, err := e.svc.Do(op, r, host.Options{})
+			if err == nil || err.Code != host.CodeUsage || err.Exit() != 2 || err.Detail == nil || err.Detail.Reason != host.DetailBadValue || err.Detail.Args[0] != "trust" {
+				t.Errorf("trust %s %s = %+v", bad, op, err)
+			}
+		}
 	}
 	two, _ := host.Decode([]byte(`{"contract":2,"session":"s"}`))
 	if _, err := e.svc.Do(host.OpContext, two, host.Options{}); err == nil || err.Code != host.CodeContract || err.Exit() != 1 {
@@ -1102,5 +1114,47 @@ func TestRecord_기록은_남은_시간_안에서만_한다(t *testing.T) {
 	e.svc.Wait()
 	if e.upkeep.count() != 1 {
 		t.Fatalf("한도가 지난 뒤 유지보수를 했다: %d", e.upkeep.count())
+	}
+}
+
+// 통로 상한(조립 지점이 Options로 넣는다)은 agent다. 공통 칸 trust는 이번 호출의 상한을 낮추기만 한다.
+func TestCall_trust는_이번_호출의_상한을_낮추기만_한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	save := func(limit, trust, title string) string {
+		t.Helper()
+		args, _ := json.Marshal(map[string]any{"kind": "fact", "appliesTo": "user", "title": title, "body": "본문 " + title, "source": map[string]any{"kind": "session", "ref": "x:s"}})
+		fields := map[string]any{"name": "memory_save", "args": json.RawMessage(args)}
+		if trust != "" {
+			fields["trust"] = trust
+		}
+		b, _ := json.Marshal(fields)
+		req, derr := host.Decode(b)
+		if derr != nil {
+			t.Fatal(derr)
+		}
+		out, err := e.svc.Do(host.OpCall, req, host.Options{TrustLimit: limit})
+		if err != nil {
+			t.Fatalf("%s: %v", title, err)
+		}
+		id := out.(host.CallOut).Result.(mcpserver.MemoryOut).Memory.ID
+		m, gerr := s.Get(id)
+		if gerr != nil {
+			t.Fatal(gerr)
+		}
+		return m.Trust
+	}
+	for _, c := range []struct{ limit, trust, want string }{
+		{memory.TrustAgent, "", memory.TrustAgent},
+		{"", "", memory.TrustAgent},
+		{memory.TrustAgent, memory.TrustUntrusted, memory.TrustUntrusted},
+		{memory.TrustAgent, memory.TrustSystem, memory.TrustSystem},
+		{memory.TrustAgent, memory.TrustOwner, memory.TrustAgent}, // 올리지 못한다
+		{memory.TrustOwner, memory.TrustUntrusted, memory.TrustUntrusted},
+		{memory.TrustOwner, memory.TrustAgent, memory.TrustAgent},
+	} {
+		if got := save(c.limit, c.trust, "상한 "+c.limit+" 요청 "+c.trust); got != c.want {
+			t.Errorf("limit %q trust %q = %q, want %q", c.limit, c.trust, got, c.want)
+		}
 	}
 }

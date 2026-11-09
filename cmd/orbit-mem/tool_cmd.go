@@ -45,7 +45,7 @@ func cmdTool(a *app, args []string) error {
 		dir = sessionProject().Dir
 	}
 	res, herr := hostDo(host.OpCall, host.Request{Host: *hostName, Session: *session, Cwd: dir, Name: pos[0], Args: json.RawMessage(in)},
-		host.Options{Actor: actorOf(*actor, memory.ActorAI), At: at})
+		host.Options{Actor: actorOf(*actor, memory.ActorAI), TrustLimit: hostTrustLimit, At: at})
 	if herr != nil {
 		return a.toolError(errors.New(toolMessage(herr)))
 	}

@@ -116,11 +116,15 @@ func higherTrust(a, b string) string {
 
 // TrustNote is the mark a recall line of m carries when m is not to be believed (its sources are all
 // untrusted or system), or "".
-func TrustNote(m Memory) string {
+func TrustNote(m Memory) string { return TrustNoteIn(i18n.Current(), m) }
+
+// TrustNoteIn is TrustNote in the language lang, for a text that is written in one language whatever the
+// setting is (the recall text).
+func TrustNoteIn(lang i18n.Lang, m Memory) string {
 	if !Untrusted(m.Trust) {
 		return ""
 	}
-	return i18n.T("memory.trust.note")
+	return i18n.TIn(lang, "memory.trust.note")
 }
 
 // noTrustColumn says whether err is SQLite's missing sources.trust column: a DB a schema 4 copy was

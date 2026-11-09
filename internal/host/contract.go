@@ -11,7 +11,10 @@ package host
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
+
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // Contract is the contract version this package speaks.
@@ -55,7 +58,7 @@ const (
 )
 
 // Request is one contract request: the common fields and those of every operation (an operation
-// reads its own). Profile, Trust, ReadScope, Sandboxed, Task, RequestID and IdempotencyKey are taken
+// reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed, Task, RequestID and IdempotencyKey are taken
 // and not used yet.
 type Request struct {
 	Contract  int             `json:"contract,omitempty"` // 없으면 1
@@ -65,7 +68,7 @@ type Request struct {
 	Cwd       string          `json:"cwd,omitempty"`   // 세션 폴더
 	Parent    string          `json:"parent,omitempty"`
 	Profile   string          `json:"profile,omitempty"`
-	Trust     json.RawMessage `json:"trust,omitempty"`
+	Trust     json.RawMessage `json:"trust,omitempty"` // 글 하나(owner·agent·untrusted·system), 이번 호출의 상한을 낮춘다
 	ReadScope json.RawMessage `json:"readScope,omitempty"`
 	Sandboxed *bool           `json:"sandboxed,omitempty"`
 
@@ -92,6 +95,20 @@ func Decode(b []byte) (Request, *Error) {
 		return r, &Error{Code: CodeUsage, Message: err.Error(), Detail: &Detail{Reason: DetailInput}}
 	}
 	return r, nil
+}
+
+// trustLevel is the trust the request lowers its call to: "" when the field is absent or null, else the
+// one word of memory.Trusts. Another shape or an unknown word is a usage error.
+func (r Request) trustLevel() (string, *Error) {
+	raw := strings.TrimSpace(string(r.Trust))
+	if raw == "" || raw == "null" {
+		return "", nil
+	}
+	var v string
+	if err := json.Unmarshal(r.Trust, &v); err != nil || !slices.Contains(memory.Trusts, v) {
+		return "", usageError(DetailBadValue, "trust", raw)
+	}
+	return v, nil
 }
 
 // key is the session the marks and events of a request are kept under: a subagent has its own
