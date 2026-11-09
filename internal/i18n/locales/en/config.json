@@ -8,5 +8,6 @@
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
   "config.err.host_memory": "hostMemory is ask or keep: %q",
   "config.err.ledger_window": "ledgerWindowDays is 1-90",
+  "config.err.save_similar_min": "saveSimilarMin is a number above 0 and at most 1 (the save similarity score a memory needs to count as similar when saving): %v",
   "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q"
 }

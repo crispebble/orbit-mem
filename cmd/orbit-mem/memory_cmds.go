@@ -46,6 +46,14 @@ func policyOf(cfg config.Config) memory.Policy {
 	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
 }
 
+// 통로마다 출처 등급의 상한(결정 D6): 조립 지점이 값으로 넣는다. 도메인은 호스트 이름을 모르고, 상한은
+// actor(ORBIT_ACTOR·--actor)에서 끌어내지 않는다.
+const (
+	mcpTrustLimit   = memory.TrustAgent // MCP 서버: 호스트 AI
+	hostTrustLimit  = memory.TrustAgent // host call·tool 별칭: 호스트 AI
+	humanTrustLimit = memory.TrustOwner // 사람이 터미널에서 부르는 thin CLI
+)
+
 // actorOf is who writes through a command: the flag, else ORBIT_ACTOR, else def.
 func actorOf(flag, def string) string {
 	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), def)
@@ -94,10 +102,10 @@ func cmdMCP(a *app, args []string) error {
 	ctx, cancel := signalContext()
 	defer cancel()
 	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version,
-		Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
+		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err
-		}})
+		}, LoadSaveSimilarMin: saveSimilarMinOf})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -508,8 +516,14 @@ func cmdConfig(a *app, args []string) error {
 		*map[string]*int{"recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
+	case "saveSimilarMin":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

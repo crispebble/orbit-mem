@@ -114,6 +114,47 @@ func (s *Store) RecordActivity(e ActivityEvent) error {
 	return tx.Commit()
 }
 
+// EndActivity closes the row of a session that has one: as RecordActivity of an end, but the
+// project fields stay as they are (the row already has them), so the caller need not work out
+// the project. found is false when the session has no row (its start was missed); then nothing
+// is written and the caller records the end with its project (RecordActivity).
+func (s *Store) EndActivity(e ActivityEvent) (found bool, err error) {
+	if e.Host == "" || e.Session == "" {
+		return false, ErrInvalid
+	}
+	if e.Launcher == "" {
+		e.Launcher = "human"
+	}
+	if e.At == 0 {
+		e.At = s.nowMs()
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE activity SET
+		  cwd=CASE WHEN ?<>'' THEN ? ELSE cwd END,
+		  launcher=?,
+		  parent=CASE WHEN ?<>'' THEN ? ELSE parent END,
+		  started_at=MIN(started_at, ?),
+		  last_at=MAX(last_at, ?),
+		  ended_at=?
+		WHERE host=? AND session=?`,
+		e.Cwd, e.Cwd, e.Launcher, e.Parent, e.Parent, e.At, e.At, e.At, e.Host, e.Session)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		return false, nil
+	}
+	return true, tx.Commit()
+}
+
 // ActivityFilter narrows the log. An empty field does not narrow.
 type ActivityFilter struct {
 	Query        string // 프로젝트·경로·세션·요청 글에 든 말

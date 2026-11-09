@@ -144,6 +144,12 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // conflict mark, the person put it back to candidate (hold), or the person
 // undid an automatic confirmation of it before.
 func (s *Store) confirmBlocked(id string) (string, error) {
+	// 출처가 믿을 수 없는 것뿐이면 증거가 쌓여도 스스로 확정하지 않는다(D7, 확정 길 ①).
+	if t, err := memoryTrustTx(s.db, id); err != nil {
+		return "", err
+	} else if Untrusted(t) {
+		return "untrusted", nil
+	}
 	var kind string
 	err := s.db.QueryRow(`SELECT kind FROM audit_flags WHERE memory_id=? AND resolved_at=0 LIMIT 1`, id).Scan(&kind)
 	if err == nil {

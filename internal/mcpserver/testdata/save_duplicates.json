@@ -1,0 +1,70 @@
+{
+  "about": "L-16(설계 6.1) 중복 사례 묶음: 원래 기억을 저장한 뒤 같은 내용을 다르게 다시 저장한다. 개인 내용 없음. 평가 묶음(internal/bench)이 생기면 그쪽으로 옮긴다. 변형은 모두 잡혀야 한다: 못 잡는 변형이 생기면 빼지 않고 판정을 고친다.",
+  "others": [
+    {"kind": "fact", "title": "배포 뒤에는 스모크 시험을 돌린다", "body": "배포 직후 스모크 시험으로 첫 화면과 로그인이 되는지 확인한다"},
+    {"kind": "fact", "title": "커밋 메시지는 한글로 쓴다", "body": "커밋 제목과 본문은 한글로 쓰고 영어 낱말은 그대로 둔다"},
+    {"kind": "lesson", "title": "사용자에게 묻기 전에 먼저 찾아본다", "body": "사용자에게 확인을 묻기 전에 저장소와 문서에서 답을 먼저 찾아본다"},
+    {"kind": "fact", "title": "Check the deploy logs after a release", "body": "After each release, read the deploy logs for errors and warnings before closing the ticket"},
+    {"kind": "lesson", "title": "Never commit to the main branch", "body": "Create a feature branch first; commits go to main only through a reviewed pull request"},
+    {"kind": "fact", "title": "시험 DB는 컨테이너로 띄운다", "body": "통합 시험의 데이터베이스는 Docker 컨테이너로 띄우고 시험이 끝나면 내린다"},
+    {"kind": "fact", "title": "Use Homebrew for command line tools", "body": "Command line tools on this machine come from Homebrew, not from curl scripts"},
+    {"kind": "lesson", "title": "느린 시험은 원인을 먼저 찾는다", "body": "간헐적으로 느린 시험은 타임아웃을 늘리지 말고 기다릴 조건을 먼저 찾는다"}
+  ],
+  "cases": [
+    {
+      "name": "ko 배포 드라이런",
+      "original": {"kind": "lesson", "title": "배포 스크립트는 드라이런을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다"},
+      "variants": [
+        {"how": "그대로", "kind": "lesson", "title": "배포 스크립트는 드라이런을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다"},
+        {"how": "조사·어순", "kind": "lesson", "title": "드라이런을 먼저 돌린다, 배포 스크립트는", "body": "실제로 돌리기 전에 드라이런으로 바뀔 것을 먼저 본다, 운영 배포 스크립트를 처음 돌릴 때는"},
+        {"how": "낱말 바꿈", "kind": "lesson", "title": "배포 스크립트는 시험 실행을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 시험 실행으로 바뀔 것을 먼저 확인하고 나서 실제로 돌린다"},
+        {"how": "짧은 제목", "kind": "lesson", "title": "배포 전 드라이런", "body": "운영 배포 스크립트는 처음 돌릴 때 드라이런으로 바뀌는 것을 먼저 본 뒤에 실제로 돌린다"}
+      ]
+    },
+    {
+      "name": "ko 존댓말 규칙",
+      "original": {"kind": "rule", "appliesTo": "user", "topic": "답하는 말투", "title": "사용자에게는 늘 존댓말로 답한다", "body": "사용자가 반말로 말해도 짧은 확인이나 오류 보고에서도 존댓말 어미를 생략하지 않는다"},
+      "variants": [
+        {"how": "다른 주제 키·조사", "kind": "rule", "appliesTo": "user", "topic": "존댓말", "title": "사용자에게 항상 존댓말로 답한다", "body": "사용자가 반말을 써도 짧은 확인·오류 보고에서 존댓말 어미를 빼지 않는다"},
+        {"how": "다른 종류·짧은 제목", "kind": "lesson", "appliesTo": "user", "title": "존댓말로 답하기", "body": "사용자가 반말로 말해도 짧은 확인이나 오류 보고에서 존댓말 어미를 생략하지 않는다"},
+        {"how": "같은 주제 키", "kind": "rule", "appliesTo": "user", "topic": "답하는 말투", "title": "늘 존댓말로 답한다", "body": "반말을 들어도 짧은 확인이나 오류 보고까지 존댓말 어미를 붙인다"}
+      ]
+    },
+    {
+      "name": "ko 시험 컨테이너",
+      "original": {"kind": "fact", "title": "통합 시험은 임시 컨테이너 DB를 쓴다", "body": "통합 시험은 실제 데이터베이스 대신 시험마다 새로 띄운 임시 컨테이너 데이터베이스에 붙는다"},
+      "variants": [
+        {"how": "어순", "kind": "fact", "title": "임시 컨테이너 DB를 통합 시험이 쓴다", "body": "시험마다 새로 띄운 임시 컨테이너 데이터베이스에 통합 시험이 붙는다, 실제 데이터베이스 대신"},
+        {"how": "낱말 하나", "kind": "fact", "title": "통합 시험은 임시 컨테이너 데이터베이스를 쓴다", "body": "통합 시험은 실제 데이터베이스 대신 시험마다 새로 띄우는 임시 컨테이너 데이터베이스에 붙는다"},
+        {"how": "짧은 제목", "kind": "fact", "title": "시험용 임시 컨테이너 DB", "body": "통합 시험은 실제 데이터베이스가 아니라 시험마다 새로 띄운 임시 컨테이너 데이터베이스에 붙는다"}
+      ]
+    },
+    {
+      "name": "en dry-run",
+      "original": {"kind": "lesson", "title": "Run the deploy script with dry-run first", "body": "When running the production deploy script for the first time, run it with dry-run to see what changes before the real run"},
+      "variants": [
+        {"how": "same", "kind": "lesson", "title": "Run the deploy script with dry-run first", "body": "When running the production deploy script for the first time, run it with dry-run to see what changes before the real run"},
+        {"how": "reword", "kind": "lesson", "title": "Run the deploy script in dry-run mode first", "body": "When you run the production deploy script the first time, use dry-run to see what changes before the real run"},
+        {"how": "order", "kind": "lesson", "title": "Dry-run first when you run the deploy script", "body": "Before the real run, see what changes with dry-run when running the production deploy script for the first time"},
+        {"how": "short title", "kind": "lesson", "title": "Deploy dry-run first", "body": "Run the production deploy script with dry-run the first time to see what changes before the real run"}
+      ]
+    },
+    {
+      "name": "en commit language",
+      "original": {"kind": "fact", "title": "Write commit messages in English", "body": "Commit message subjects and bodies are written in English, in the imperative mood"},
+      "variants": [
+        {"how": "case and space", "kind": "fact", "title": "write  commit messages in english", "body": "Commit message subjects and bodies are written in English, in the imperative mood"},
+        {"how": "reword", "kind": "fact", "title": "Commit messages are written in English", "body": "Write commit message subjects and bodies in English, using the imperative mood"},
+        {"how": "short title", "kind": "fact", "title": "English commit messages", "body": "Commit subjects and bodies are in English, imperative mood"}
+      ]
+    },
+    {
+      "name": "en docker databases",
+      "original": {"kind": "fact", "title": "Use Docker for databases", "body": ""},
+      "variants": [
+        {"how": "one word", "kind": "fact", "title": "Use Docker for the database", "body": ""},
+        {"how": "body added", "kind": "fact", "title": "Databases run in Docker", "body": "Use Docker for databases on this machine"}
+      ]
+    }
+  ]
+}

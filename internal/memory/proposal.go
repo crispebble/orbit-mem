@@ -528,8 +528,16 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 				}
 			}
 		}
+		// 합친 기억은 합친 기억들 가운데 가장 높은 등급이다: 믿을 수 없는 것뿐이면 그 등급으로 후보에 둔다(D7, 확정 길 ⑤).
+		trust, err := trustOfAll(s.db, p.MemoryIDs)
+		if err != nil {
+			return err
+		}
+		if Untrusted(trust) {
+			state = StateCandidate
+		}
 		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: state,
-			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}, noEvidence: true})
+			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦", Trust: trust}, noEvidence: true})
 		if err != nil {
 			return err
 		}

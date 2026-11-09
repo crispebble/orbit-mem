@@ -239,6 +239,18 @@ func backupRestore(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.done", src, r.Info.Memories, r.Before))
+	// 복구는 이전하지 않는다: 같은 프로세스에서 다시 열어 판을 올리고(판 4 사본이면 판 5로) 색인을 다 채운다.
+	s.Close()
+	w, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	if n, err := w.FillIndex(0); err != nil {
+		return err
+	} else if n > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.migrate.index_filled", n))
+	}
 	return nil
 }
 

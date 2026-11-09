@@ -24,7 +24,7 @@ import (
 
 // SchemaVersion is the schema version this binary migrates to: migrate writes it to
 // meta schema.version (and the schema still sets user_version to it for older binaries).
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // Why a daily backup made no copy.
 const (
@@ -272,7 +272,10 @@ func ReadCopyInfo(path string) (CopyInfo, error) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&info.Memories); err != nil {
 		return info, i18n.Errorf("memory.err.copy_check", path, err)
 	}
-	_ = db.QueryRow(`PRAGMA user_version`).Scan(&info.SchemaVersion)
+	// 판의 정본은 meta schema.version이다(옛 실행 파일은 user_version을 자기 판으로 되돌린다).
+	if info.SchemaVersion, err = dbVersion(db); err != nil {
+		return info, i18n.Errorf("memory.err.copy_check", path, err)
+	}
 	return info, nil
 }
 

@@ -4,6 +4,9 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -13,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/crispebble/orbit-mem/internal/activity"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
 	"github.com/crispebble/orbit-mem/internal/project"
@@ -28,6 +32,10 @@ type Options struct {
 	// default), user for a person at a terminal, automation for a job. A tool
 	// argument never changes it.
 	Actor string
+	// TrustLimit is the highest trust a source saved through this connection may get (the channel it came
+	// by): the assembly point sets it, never the actor or a tool argument. Empty is agent; the thin CLI of
+	// a person sets owner.
+	TrustLimit string
 	// Dir is the session folder (a real slash path), whose parents' memories the session sees (S3-R2),
 	// Git says it is in a git checkout and Temp under a temporary folder: they pick the default appliesTo
 	// (S3-R1·R4). Empty, the folder of a folder scope is used.
@@ -39,6 +47,20 @@ type Options struct {
 	// LoadProducts, when set, reads the product map on every call instead of Products: a long-lived server
 	// follows a config.json changed after it started, like the hooks do.
 	LoadProducts func() (place.Map, error)
+	// SaveSimilarMin is the similarity score (0~1, two-way token cover between the two memories) a memory of the same scope needs for memory_save to show it as
+	// similar and save nothing until the caller picks (config saveSimilarMin, 설계 6.1). 0 or less is
+	// memory.DefaultSimilarMin. LoadSaveSimilarMin, when set, reads it on every save instead (a long-lived
+	// server follows config.json like LoadProducts).
+	SaveSimilarMin     float64
+	LoadSaveSimilarMin func() float64
+}
+
+// similarMin is the threshold of memory_save's similar memories now.
+func (o Options) similarMin() float64 {
+	if o.LoadSaveSimilarMin != nil {
+		return o.LoadSaveSimilarMin()
+	}
+	return o.SaveSimilarMin
 }
 
 // products is the product map now, and why it could not be read.
@@ -103,9 +125,9 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다.", Annotations: writeHints(false, false)},
-		track(h, "memory_save", h.save, func(in SaveIn, out MemoryOut) map[string]any {
-			return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID}
+	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다.", Annotations: writeHints(false, false)},
+		track(h, "memory_save", h.save, func(in SaveIn, out SaveOut) map[string]any {
+			return saveData(in, out)
 		}))
 	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 사용자 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
@@ -284,6 +306,7 @@ type SourceIn struct {
 	Kind    string `json:"kind" jsonschema:"quote(사용자 말)·file·command·session·host_memory·verification·work"`
 	Ref     string `json:"ref,omitempty" jsonschema:"절대경로·명령·세션 id"`
 	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 사용자 말 그대로"`
+	Trust   string `json:"trust,omitempty" jsonschema:"untrusted(웹·도구 출력)·system으로만 낮춤"`
 }
 
 // SaveIn is memory_save's input.
@@ -310,6 +333,9 @@ type SaveIn struct {
 	// Supersedes and Tools are 설계 · orbit-mem 2판 4.2·6절.
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"대체하는 옛 기억 id(주제가 달라도)"`
 	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두"`
+	// Resolve and IdempotencyKey are the save-time tidy of 설계 6.1 (handlers.tidy).
+	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:<id>·supersede:<id>·skip"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키로 다시 불러도 한 번만 적용"`
 }
 
 // LinkIn links to another memory.
@@ -365,7 +391,7 @@ func (h handlers) applyLinks(id string, link []LinkIn, unlink []UnlinkIn) (memor
 
 // MemoryOut is a single memory result.
 type MemoryOut struct {
-	Memory memory.Memory `json:"memory"`
+	Memory memory.Memory `json:"memory,omitzero"` // memory_save가 고르기를 돌려줄 때만 없다
 	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24").
 	Rewrites []string `json:"rewrites,omitempty"`
 	// Superseded and Conflicts are what memory_save replaced and the user's words it left alone.
@@ -517,42 +543,42 @@ func (h handlers) checkRuleApplies(in SaveIn) error {
 		memory.ErrInvalid, folderOf(here), products)
 }
 
-func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, MemoryOut, error) {
+func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*mcp.CallToolResult, SaveOut, error) {
 	if in.Source.Kind == memory.SourceLegacy {
 		r, _ := toolError(fmt.Errorf("legacy 출처는 orbit-mem migrate만 씁니다"))
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if err := h.checkRuleApplies(in); err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	scope, label, warns, err := h.appliesTo(strings.TrimSpace(in.AppliesTo), in.Scope, in.Project, true, in.Title+"\n"+in.Body)
 	if err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if in.Source.Kind == memory.SourceQuote && strings.TrimSpace(in.Source.Excerpt) == "" {
 		r, _ := toolError(fmt.Errorf("quote 출처에는 사용자 말 그대로(excerpt)가 필요합니다"))
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if err := h.checkLinks("", linkIDs(in.Links)...); err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if err := h.checkLinks("", in.ConflictsWith...); err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if err := h.checkClaim(in.Kind, in.Body); err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	if err := h.checkTopic(in, scope); err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
-		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt}, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
+		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
 		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
@@ -564,23 +590,254 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	rewrites, err := memory.Screen(&si, h.s.Now())
 	if err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
-	m, rep, err := h.s.SaveWith(si)
+	out, err := h.tidy(in, si)
 	if err != nil {
 		r, _ := toolError(err)
-		return r, MemoryOut{}, nil
+		return r, SaveOut{}, nil
 	}
-	if len(in.Links) > 0 {
-		if m, err = h.applyLinks(m.ID, in.Links, nil); err != nil {
-			r, _ := toolError(err)
-			return r, MemoryOut{}, nil
+	out.Rewrites, out.Warnings = rewrites, append(warns, out.Warnings...)
+	return nil, out, nil
+}
+
+// 저장 때 정리(설계 6.1, ORBIT-25 G10, 계획 D8·D9·M7). memory_save(MCP·host call·tool이 모두 이 처리기를 지난다)는
+// 저장하기 전에 도메인 판정(memory.Store.SaveCheck)을 본다: 같은 제목·같은 주제면 지금처럼 저장하고(단축·대체),
+// 같은 범위에 비슷한 기억만 있으면 저장하지 않고 고르기를 돌려준다. 부르는 쪽이 resolve로 고르면 그대로 적용한다.
+// idempotencyKey가 있으면 인자 해시와 함께 도메인에 넘겨 적용된 쓰기를 한 번만 하고, 같은 키가 다시 오면 기록한
+// 기억을 지금 상태로 다시 그려 돌려준다(링크는 멱등으로 다시 건다). 내부 Save는 이 판정을 하지 않는다.
+
+// The choices of resolve.
+const (
+	resolveAdd       = "add"
+	resolveUpdate    = "update"
+	resolveSupersede = "supersede"
+	resolveSkip      = "skip"
+)
+
+// SaveOut is memory_save's result. Saved is always there: true when the memory was saved, updated or
+// superseded (Memory), false when nothing was written — similar memories to pick from (Similar, Choices),
+// or the caller picked skip (Resolve, Memory the one kept).
+type SaveOut struct {
+	Saved bool `json:"saved"`
+	MemoryOut
+	Resolve string       `json:"resolve,omitempty"`
+	Similar []SimilarOut `json:"similar,omitempty"`
+	Choices []string     `json:"choices,omitempty"`
+}
+
+// SimilarOut is a memory like the one about to be saved. Its score stays inside (M5).
+type SimilarOut struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary,omitempty"` // 본문 한 줄, 200자 이하
+	Topic   string `json:"topic,omitempty"`
+	Trust   string `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
+}
+
+// saveData is the use event data of a memory_save call.
+func saveData(in SaveIn, out SaveOut) map[string]any {
+	action, _, _ := parseResolve(in.Resolve)
+	return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID,
+		"saved": out.Saved, "similar": len(out.Similar), "resolve": action}
+}
+
+// parseResolve splits resolve into its choice and the memory it names: add, update:<id>, supersede:<id>,
+// skip or skip:<id>. Empty is no choice yet.
+func parseResolve(r string) (string, string, error) {
+	r = strings.TrimSpace(r)
+	if r == "" {
+		return "", "", nil
+	}
+	choice, id, named := strings.Cut(r, ":")
+	choice, id = strings.TrimSpace(choice), strings.TrimSpace(id)
+	switch {
+	case choice == resolveAdd && !named,
+		choice == resolveSkip && (!named || id != ""),
+		(choice == resolveUpdate || choice == resolveSupersede) && id != "":
+		return choice, id, nil
+	}
+	return "", "", i18n.Errorf("memory.save.resolve", memory.ErrInvalid, r)
+}
+
+// saveHash is the hash of a memory_save call's arguments for its idempotency key: the decoded input
+// written again as JSON (so key order and spacing do not matter), resolve in, the key itself out. The
+// host and session are not in it: a key is not bound to the caller (M7).
+func saveHash(in SaveIn) string {
+	in.IdempotencyKey, in.Resolve = "", strings.TrimSpace(in.Resolve)
+	b, _ := json.Marshal(in)
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// tidy saves si (the checked input of in) by the save-time tidy.
+func (h handlers) tidy(in SaveIn, si memory.SaveInput) (SaveOut, error) {
+	choice, target, err := parseResolve(in.Resolve)
+	if err != nil {
+		return SaveOut{}, err
+	}
+	if key := in.IdempotencyKey; key != "" {
+		si.Idem = &memory.Idem{Key: key, Hash: saveHash(in)}
+		// 같은 키의 재시도는 고르기를 다시 받지 않는다. 실제 적용은 도메인이 쓰기 트랜잭션 안에서 다시 확인한다.
+		r, ok, err := h.s.SaveRequest(key)
+		if err != nil {
+			return SaveOut{}, err
+		}
+		if ok {
+			if r.Hash != si.Idem.Hash {
+				return SaveOut{}, memory.ErrIdempotencyConflict
+			}
+			return h.replay(r, in.Links)
 		}
 	}
-	if rep.Unpinned != "" {
-		warns = append(warns, fmt.Sprintf("상시 핵심에서 빠짐: 대체한 %s는 핵심이었으나 새 판이 한도를 넘어 핵심에 들지 못했습니다. 핵심을 줄이고 memory_update action=pin으로 승격하세요", rep.Unpinned))
+	switch choice {
+	case "":
+		chk, err := h.s.SaveCheck(si, h.o.similarMin())
+		if err != nil {
+			return SaveOut{}, err
+		}
+		if chk.Verdict == memory.CheckSimilar {
+			return similarOut(chk.Similar), nil
+		}
+	case resolveUpdate:
+		return h.saveAsUpdate(target, in, si)
+	case resolveSupersede:
+		si.Replaces = target
+	case resolveSkip:
+		return h.skip(target, si)
 	}
-	return nil, MemoryOut{Memory: m, Rewrites: rewrites, Superseded: rep.Superseded, Conflicts: rep.Conflicts, Warnings: warns}, nil
+	return h.saveNow(si, in.Links)
+}
+
+// similarOut is the answer that saves nothing: the similar memories and the choices of resolve.
+func similarOut(sim []memory.Similar) SaveOut {
+	out := SaveOut{Choices: []string{resolveAdd}}
+	for _, m := range sim {
+		out.Similar = append(out.Similar, SimilarOut{ID: m.ID, Title: m.Title, Summary: m.Summary, Topic: m.Topic, Trust: untrustedOf(memory.Memory{Trust: m.Trust})})
+		out.Choices = append(out.Choices, resolveUpdate+":"+m.ID)
+	}
+	for _, m := range sim {
+		out.Choices = append(out.Choices, resolveSupersede+":"+m.ID)
+	}
+	out.Choices = append(out.Choices, resolveSkip)
+	return out
+}
+
+// replay draws again, as it is now, the memory an earlier call with the same key applied to, with the
+// links of this call (linking is idempotent, so the result never comes without them).
+func (h handlers) replay(r memory.SaveRequest, links []LinkIn) (SaveOut, error) {
+	if r.Action == memory.ApplySkip {
+		m, err := h.s.Get(r.MemoryID)
+		return SaveOut{Resolve: resolveSkip, MemoryOut: MemoryOut{Memory: m}}, err
+	}
+	m, err := h.applyLinks(r.MemoryID, links, nil)
+	return SaveOut{Saved: true, MemoryOut: MemoryOut{Memory: m}}, err
+}
+
+// saveNow saves si (with its idempotency key and the memory it replaces, if any) and links the result.
+func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) {
+	m, rep, err := h.s.SaveWith(si)
+	if err != nil {
+		return SaveOut{}, err
+	}
+	if len(links) > 0 || rep.Replayed != nil {
+		if m, err = h.applyLinks(m.ID, links, nil); err != nil {
+			return SaveOut{}, err
+		}
+	}
+	out := SaveOut{Saved: true, MemoryOut: MemoryOut{Memory: m, Superseded: rep.Superseded, Conflicts: rep.Conflicts}}
+	if rep.Unpinned != "" {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("상시 핵심에서 빠짐: 대체한 %s는 핵심이었으나 새 판이 한도를 넘어 핵심에 들지 못했습니다. 핵심을 줄이고 memory_update action=pin으로 승격하세요", rep.Unpinned))
+	}
+	if si.Replaces != "" && rep.Replayed == nil && !slices.Contains(rep.Superseded, si.Replaces) {
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.not_replaced", si.Replaces))
+	}
+	return out, nil
+}
+
+// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic and tools of
+// the save (what the save leaves empty stays) by the Update path, so the user's words are kept by the same
+// guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
+// the userQuote of the change (D1).
+func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveOut, error) {
+	if !slices.Contains(memory.SourceKinds, si.Source.Kind) { // 일반 저장과 같은 안내
+		return SaveOut{}, i18n.Errorf("memory.err.source_kind", memory.ErrInvalid, strings.Join(memory.SourceKinds, "|"))
+	}
+	cur, err := h.s.Get(id)
+	if err != nil {
+		return SaveOut{}, err
+	}
+	quote := ""
+	if si.Source.Kind == memory.SourceQuote {
+		quote = si.Source.Excerpt
+	}
+	who := h.o.who(quote, "")
+	title, body := si.Title, cur.Body
+	// 저장의 출처는 고침과 같은 트랜잭션에 근거로 붙는다: 등급은 통로 상한 아래에서 정하고, 믿을 수 없는 출처뿐이면
+	// 도메인이 owner·agent 기억의 고침을 거절한다(D7).
+	u := memory.UpdateInput{ID: id, Title: &title, Reason: "memory_save resolve update", Who: who, Idem: si.Idem,
+		Sources: []memory.Source{si.Source}, TrustLimit: h.o.TrustLimit}
+	if si.Body != "" {
+		body = si.Body
+		u.Body = &body
+	}
+	if si.Tags != nil {
+		u.Tags = &si.Tags
+	}
+	if si.Tools != nil {
+		u.Tools = &si.Tools
+	}
+	if si.Topic != "" {
+		u.Topic = &si.Topic
+	}
+	if err := h.checkClaim(cur.Kind, body); err != nil {
+		return SaveOut{}, err
+	}
+	m, replay, err := h.s.UpdateWith(u)
+	if err != nil {
+		return SaveOut{}, err
+	}
+	var warns []string
+	if replay == nil && in.Pin && !m.Pinned { // 고침은 이미 적용·기록됐다: 승격하지 못한 것은 오류가 아니라 알림이다
+		if _, err := h.s.Pin(id, who); err != nil {
+			warns = append(warns, i18n.T("memory.save.not_pinned", id, err))
+		}
+	}
+	if m, err = h.applyLinks(id, in.Links, nil); err != nil {
+		return SaveOut{}, err
+	}
+	return SaveOut{Saved: true, MemoryOut: MemoryOut{Memory: m, Warnings: warns}}, nil
+}
+
+// skip applies resolve skip: nothing is written and the memory kept comes back. Plain skip keeps the most
+// similar memory (or the one of the same title or topic); skip:<id> names it. With a key the choice is
+// recorded so the same call comes back the same.
+func (h handlers) skip(id string, si memory.SaveInput) (SaveOut, error) {
+	if id == "" {
+		chk, err := h.s.SaveCheck(si, h.o.similarMin())
+		if err != nil {
+			return SaveOut{}, err
+		}
+		switch {
+		case len(chk.Similar) > 0:
+			id = chk.Similar[0].ID
+		case len(chk.Existing) > 0:
+			id = chk.Existing[0]
+		default:
+			return SaveOut{Resolve: resolveSkip}, nil // 남겨 둘 비슷한 기억이 이제 없다: 쓰지 않는다
+		}
+	}
+	var m memory.Memory
+	var err error
+	if si.Idem != nil {
+		m, _, err = h.s.RecordSkip(*si.Idem, id)
+	} else {
+		m, err = h.s.Get(id)
+	}
+	if err != nil {
+		return SaveOut{}, err
+	}
+	return SaveOut{Resolve: resolveSkip, MemoryOut: MemoryOut{Memory: m}}, nil
 }
 
 // maxClaimRunes bounds the body of a rule or decision: one memory holds one claim, so a

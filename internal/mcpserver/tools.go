@@ -72,6 +72,17 @@ func NewTools(s *memory.Store, o Options) Tools {
 	return Tools{handlers{s: s, o: o}}
 }
 
+// Lower gives the tools with the trust limit of a call lowered to trust at most: min(the limit now, trust).
+// It never raises it. An unknown trust is an error (memory.ErrInvalid).
+func (t Tools) Lower(trust string) (Tools, error) {
+	limit, err := memory.ResolveTrust(t.h.o.TrustLimit, "", trust)
+	if err != nil {
+		return t, err
+	}
+	t.h.o.TrustLimit = limit
+	return t, nil
+}
+
 // asError turns a tool error result into an error.
 func asError(res *mcp.CallToolResult) error {
 	if res == nil || !res.IsError {
@@ -148,9 +159,9 @@ func (t Tools) Call(name string, input []byte, host, session string) (any, error
 	case "memory_save":
 		var in SaveIn
 		if err = decode(input, &in); err == nil {
-			var r MemoryOut
+			var r SaveOut
 			if r, err = t.Save(in); err == nil {
-				out, data = r, map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": r.Memory.State, "memoryId": r.Memory.ID}
+				out, data = r, saveData(in, r)
 			}
 		}
 	case "memory_update":
@@ -199,7 +210,7 @@ func decode(b []byte, v any) error {
 	return nil
 }
 
-func (t Tools) Save(in SaveIn) (MemoryOut, error) {
+func (t Tools) Save(in SaveIn) (SaveOut, error) {
 	res, out, _ := t.h.save(context.Background(), nil, in)
 	return out, asError(res)
 }

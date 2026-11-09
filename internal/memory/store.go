@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -115,6 +116,8 @@ func addColumns(db *sql.Tx) error {
 		{"memories", "pinned", "INTEGER NOT NULL DEFAULT 0"},
 		// 활동 기록의 하루 요약(S4-8: 일지 기억을 옮겨 온 것). 옛 판 훅은 이 열을 모르고 넣으므로 그 줄은 빈 요약이다.
 		{"activity", "summary", "TEXT NOT NULL DEFAULT ''"},
+		// 출처 등급(판 5, 설계 9절). 옛 판은 이 열을 모르고 넣으므로 그 줄은 빈 등급이고, 읽을 때 kind로 정한다.
+		{"sources", "trust", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -167,11 +170,20 @@ func migrate(db *sql.DB) error {
 	if v > SchemaVersion {
 		return schemaNewerError(v)
 	}
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema); err != nil {
+	var indexed int // 색인 표가 이미 있으면 채우지 않는다: 열기는 늦은 줄을 채우지 않는다(채우기는 쓰기 트랜잭션 끝에서)
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_index'`).Scan(&indexed); err != nil {
+		return i18n.Errorf("memory.err.db_open", err)
+	}
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
+	}
+	if indexed == 0 { // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
+		if _, err := fillStaleTx(tx, 0); err != nil {
+			return i18n.Errorf("memory.err.db_upgrade", err)
+		}
 	}
 	if _, err := tx.Exec(`INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		metaSchemaVersion, strconv.Itoa(SchemaVersion)); err != nil {
@@ -269,6 +281,17 @@ type SaveInput struct {
 	// Pin puts the memory into the core of its layer (설계 · orbit-mem 2판 4.4). A save that cannot get it
 	// (not confirmed, not a user or product memory, past the limit) is refused before anything is written.
 	Pin bool
+	// TrustLimit is the highest trust the sources of this save may get: the channel it came by, as the
+	// assembly point says (a person's own command owner, an AI host agent). Empty is agent. A source
+	// asks for a lower one with Source.Trust; a quote is always owner (ResolveTrust).
+	TrustLimit string
+	// Idem makes the save idempotent: a key already applied with the same argument hash returns the memory it
+	// recorded without writing; the same key with another hash is ErrIdempotencyConflict (idem.go).
+	Idem *Idem
+	// Replaces is an older memory the save puts out of date by the rules of SupersedeAs, in the same
+	// transaction: the save is refused whole when the writer may not change it (the user's words without a
+	// quote) or when the new sources are all untrusted and the old ones are not.
+	Replaces string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -323,6 +346,9 @@ func (in *SaveInput) validate() error {
 		return err
 	}
 	in.Tools = tools
+	if err := in.Idem.validate(); err != nil {
+		return err
+	}
 	return in.validateLifecycle()
 }
 
@@ -341,9 +367,14 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 // SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
 type SaveReport struct {
 	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
-	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말
+	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말(또는 믿을 수 없는 새 판이 둔 owner·agent 기억)
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
+
+	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
+	Replayed *SaveRequest `json:"-"`
+
+	untrusted []string // Conflicts 가운데 새 판의 출처가 믿을 수 없는 것뿐이라 남긴 것
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of
@@ -354,7 +385,7 @@ type SaveReport struct {
 // memory (the user said it is for now) does not replace its topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
-	if err != nil {
+	if err != nil || rep.Replayed != nil { // 다시 온 키: 이번에는 아무것도 쓰지 않았다
 		return m, rep, err
 	}
 	for _, id := range rep.Superseded {
@@ -372,7 +403,11 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 		_, _ = s.FlagConflict(m.ID, rule, "사용자 규칙과 어긋남", in.Who)
 	}
 	for _, id := range rep.Conflicts {
-		_, _ = s.FlagConflict(m.ID, id, "같은 주제의 사용자 말과 어긋남(대체하지 않음)", in.Who)
+		note := "같은 주제의 사용자 말과 어긋남(대체하지 않음)"
+		if slices.Contains(rep.untrusted, id) {
+			note = i18n.TIn(i18n.KO, "memory.conflict.untrusted_topic")
+		}
+		_, _ = s.FlagConflict(m.ID, id, note, in.Who)
 	}
 	if in.noEvidence {
 		return m, rep, nil
@@ -389,6 +424,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if err := in.validate(); err != nil {
 		return Memory{}, rep, err
 	}
+	if err := in.resolveSources(); err != nil {
+		return Memory{}, rep, err
+	}
 	now := s.nowMs()
 	at := in.At
 	if at == 0 {
@@ -403,8 +441,33 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		return Memory{}, rep, err
 	}
 	defer tx.Rollback()
-	for _, id := range in.Supersedes { // 없는 기억을 지목하면 아무것도 쓰지 않는다
+	action := ApplySave
+	if in.Replaces != "" {
+		action = ApplySupersede
+	}
+	// 멱등 키: 같은 트랜잭션에서 먼저 본다. 적용된 키면 쓰지 않고 기록한 기억을 지금 상태로 돌려준다.
+	if rep.Replayed, err = replayTx(tx, in.Idem, action); err != nil {
+		return Memory{}, rep, err
+	}
+	if rep.Replayed != nil {
+		if err := tx.Commit(); err != nil {
+			return Memory{}, rep, err
+		}
+		m, err := s.Get(rep.Replayed.MemoryID)
+		return m, rep, err
+	}
+	for _, id := range append(slices.Clone(in.Supersedes), in.Replaces) { // 없는 기억을 지목하면 아무것도 쓰지 않는다
+		if id == "" {
+			continue
+		}
 		if _, err := getTx(tx, id); err != nil {
+			return Memory{}, rep, err
+		}
+	}
+	// Replaces는 SupersedeAs의 보호를 거친다: 사람이 아니면 사용자 말 기억은 사용자 말(userQuote)이 있어야 낡게 한다.
+	// 새 출처가 사용자 말이면 그 말이 근거다(D1, supersedeTx와 같다).
+	if in.Replaces != "" && in.Source.Kind != SourceQuote {
+		if err := guardTx(tx, in.Who, now, in.Replaces); err != nil {
 			return Memory{}, rep, err
 		}
 	}
@@ -429,6 +492,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			}
 		}
 		if err := savePinTx(tx, in, existingID, now); err != nil {
+			return Memory{}, rep, err
+		}
+		if err := recordTx(tx, in.Idem, existingID, action, now); err != nil {
 			return Memory{}, rep, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -469,6 +535,14 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			return Memory{}, rep, err
 		}
 	}
+	if state == StateConfirmed {
+		// 출처가 믿을 수 없는 것뿐이면 확정으로 저장하지 않는다(D7, 확정 길 ③). 사용자 말(quote)은 늘 owner다.
+		if t, err := memoryTrustTx(tx, m.ID); err != nil {
+			return Memory{}, rep, err
+		} else if Untrusted(t) {
+			return Memory{}, rep, fmt.Errorf("%w: %s", ErrUntrusted, in.Title)
+		}
+	}
 	if state == StateCandidate {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
 			return Memory{}, rep, err
@@ -477,10 +551,16 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if err := versionTx(tx, m, "create", "", now); err != nil {
 		return Memory{}, rep, err
 	}
+	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 새 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
+		return Memory{}, rep, err
+	}
 	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := savePinTx(tx, in, m.ID, now); err != nil {
+		return Memory{}, rep, err
+	}
+	if err := recordTx(tx, in.Idem, m.ID, action, now); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -537,9 +617,12 @@ func (s *Store) AddSource(id string, src Source) error {
 	if !contains(SourceKinds, src.Kind) {
 		return ErrInvalid
 	}
-	_, err := s.db.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-		NewID("s-"), id, src.Kind, src.Ref, truncateBytes(MaskSecrets(src.Excerpt), 8<<10), src.Hash, s.atOr(src.At))
-	return err
+	t, err := ResolveTrust("", src.Kind, src.Trust) // 통로를 모르는 붙이기는 agent까지
+	if err != nil {
+		return err
+	}
+	src.Trust, src.Excerpt = t, truncateBytes(MaskSecrets(src.Excerpt), 8<<10)
+	return insertSourceTx(s.db, NewID("s-"), id, src, s.atOr(src.At))
 }
 
 func (s *Store) atOr(at int64) int64 {
@@ -549,8 +632,10 @@ func (s *Store) atOr(at int64) int64 {
 	return s.nowMs()
 }
 
+// addSourceTx attaches src to memory id. A source with nothing to point at is left out, unless it carries
+// a trust other than its kind's: dropping a lowered one would make the memory read as trusted.
 func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
-	if src.Ref == "" && src.Excerpt == "" && src.Kind != SourceSession {
+	if src.Ref == "" && src.Excerpt == "" && src.Kind != SourceSession && storedTrust(src) == "" {
 		return nil
 	}
 	at := src.At
@@ -561,9 +646,8 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if len(excerpt) > 8<<10 {
 		excerpt = truncateBytes(excerpt, 8<<10)
 	}
-	_, err := tx.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-		NewID("s-"), id, src.Kind, src.Ref, excerpt, src.Hash, at)
-	return err
+	src.Excerpt = excerpt
+	return insertSourceTx(tx, NewID("s-"), id, src, at)
 }
 
 func truncateBytes(s string, n int) string {
@@ -587,6 +671,9 @@ func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,pinned=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
 		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.Pinned, m.ID); err != nil {
+		return err
+	}
+	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 고친 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
 		return err
 	}
 	return versionTx(tx, m, action, reason, now)
@@ -631,6 +718,10 @@ func getTx(q querier, id string) (Memory, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return m, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
+	if err != nil {
+		return m, err
+	}
+	m.Trust, err = memoryTrustTx(q, id)
 	return m, err
 }
 
@@ -640,14 +731,17 @@ func (s *Store) Get(id string) (Memory, error) {
 	if err != nil {
 		return m, err
 	}
-	rows, err := s.db.Query(`SELECT id,kind,ref,excerpt,hash,at FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	rows, err := s.db.Query(`SELECT id,kind,ref,excerpt,hash,at,trust FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	if noTrustColumn(err) { // 판 4 사본으로 복구된 DB: 등급은 kind로 읽는다
+		rows, err = s.db.Query(`SELECT id,kind,ref,excerpt,hash,at,'' FROM sources WHERE memory_id=? ORDER BY at, id`, id)
+	}
 	if err != nil {
 		return m, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var src Source
-		if err := rows.Scan(&src.ID, &src.Kind, &src.Ref, &src.Excerpt, &src.Hash, &src.At); err != nil {
+		if err := rows.Scan(&src.ID, &src.Kind, &src.Ref, &src.Excerpt, &src.Hash, &src.At, &src.Trust); err != nil {
 			return m, err
 		}
 		m.Sources = append(m.Sources, src)
@@ -692,6 +786,11 @@ type UpdateInput struct {
 	Action          string
 	Who             Who    // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
 	ExpectState     string // 비우지 않으면 지금 상태가 이것일 때만 고친다(자동 확정이 겹치지 않게)
+	Idem            *Idem  // 멱등 키: 같은 키·같은 해시로 다시 오면 쓰지 않고 지금 기억을 돌려준다(idem.go)
+	// Sources are new grounds of the change, attached in its transaction. Their trust is set under
+	// TrustLimit (the channel's highest, empty is agent) as a save's is.
+	Sources    []Source
+	TrustLimit string
 }
 
 // Update edits a memory and records a new version. A writer other than the
@@ -699,11 +798,41 @@ type UpdateInput struct {
 // and confirms a candidate only with them (automatic confirmation goes through
 // ConfirmByEvidence).
 func (s *Store) Update(in UpdateInput) (Memory, error) {
+	m, _, err := s.UpdateWith(in)
+	return m, err
+}
+
+// UpdateWith is Update that also says, for an idempotency key that came before (in.Idem), the earlier
+// application: then nothing was written and the memory comes back as it is now. The key is checked
+// before anything else (a stale ExpectedVersion of the retried call does not matter) and recorded in
+// the update's transaction.
+func (s *Store) UpdateWith(in UpdateInput) (Memory, *SaveRequest, error) {
+	if err := in.Idem.validate(); err != nil {
+		return Memory{}, nil, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return Memory{}, err
+		return Memory{}, nil, err
 	}
 	defer tx.Rollback()
+	replay, err := replayTx(tx, in.Idem, ApplyUpdate)
+	if err != nil {
+		return Memory{}, nil, err
+	}
+	if replay != nil {
+		if err := tx.Commit(); err != nil {
+			return Memory{}, nil, err
+		}
+		m, err := s.Get(replay.MemoryID)
+		return m, replay, err
+	}
+	m, err := s.update(tx, in)
+	return m, nil, err
+}
+
+// update is the body of Update in its transaction tx, which it commits.
+
+func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	m, err := getTx(tx, in.ID)
 	if err != nil {
 		return m, err
@@ -714,12 +843,31 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	if !in.Who.human() && in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" {
 		return m, fmt.Errorf("%w: %s", ErrConfirmNeedsWords, in.ID)
 	}
+	// 출처가 믿을 수 없는 것뿐인 기억은 누가 하든 사용자 말 없이 확정하지 않는다(D7, 확정 길 ②·④: 제안 승인도
+	// 이 길이다). 사용자 말이 오면 quote(owner) 출처가 붙어 풀린다.
+	if in.State != nil && *in.State == StateConfirmed && m.State != StateConfirmed && in.Who.quote() == "" && Untrusted(m.Trust) {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, in.ID)
+	}
 	if in.ExpectState != "" && m.State != in.ExpectState {
 		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
 	}
 	prevState := m.State
+	// 고침의 새 출처: 출처가 믿을 수 없는 것뿐인 고침은 사용자 말 없이 owner·agent 기억을 고쳐 쓰지 못한다(D7,
+	// 대체와 같은 규칙). 출처는 고침과 같은 트랜잭션에 붙어, 붙이지 못하면 고침도 남지 않는다.
+	srcs, srcTrust, err := resolveTrusts(in.TrustLimit, in.Sources)
+	if err != nil {
+		return m, err
+	}
+	if len(srcs) > 0 && !mayOverride(srcTrust, m.Trust, in.Who.quote()) {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, in.ID)
+	}
 	if err := guardTx(tx, in.Who, s.nowMs(), in.ID); err != nil {
 		return m, err
+	}
+	for _, src := range srcs {
+		if err := addSourceTx(tx, m.ID, src, s.nowMs()); err != nil {
+			return m, err
+		}
 	}
 	if in.Kind != nil {
 		if !validKind(*in.Kind) {
@@ -779,6 +927,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 	if err := writeTx(tx, m, action, in.Reason, m.UpdatedAt); err != nil {
 		return m, err
 	}
+	if err := recordTx(tx, in.Idem, m.ID, ApplyUpdate, m.UpdatedAt); err != nil {
+		return m, err
+	}
 	if err := tx.Commit(); err != nil {
 		return m, err
 	}
@@ -821,6 +972,12 @@ func (s *Store) SupersedeAs(oldID, newID, reason string, w Who) (Memory, error) 
 	}
 	if err := guardTx(tx, w, s.nowMs(), oldID); err != nil {
 		return m, err
+	}
+	// 출처가 믿을 수 없는 것뿐인 기억은 사용자 말 없이 owner·agent 기억을 낡게 하지 못한다(D7).
+	if newTrust, err := memoryTrustTx(tx, newID); err != nil {
+		return m, err
+	} else if !mayOverride(newTrust, m.Trust, w.quote()) {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, newID)
 	}
 	m.State, m.SupersededBy, m.StaleReason = StateStale, newID, reason
 	m.Version++
@@ -868,11 +1025,35 @@ type FindInput struct {
 	AllProjects bool
 	GlobalOnly  bool
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
+	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
 }
 
-// Find returns matching memories ranked by relevance, then recency.
+// Hit is a found memory with its score for the query: 0~1 for each query on its own (rank.go), 1 for an
+// empty query.
+type Hit struct {
+	Memory Memory
+	Score  float64
+}
+
+// Find returns matching memories ranked by score, then confirmed before candidate, then the memories of
+// here (not global) before the rest, then newest. An empty query lists them confirmed first, then newest.
 func (s *Store) Find(in FindInput) ([]Memory, error) {
+	hits, err := s.FindScored(in)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Memory, len(hits))
+	for i, h := range hits {
+		out[i] = h.Memory
+	}
+	return out, nil
+}
+
+// FindScored is Find with each memory's score. The search index finds the candidates; late memories (not
+// indexed or indexed before their last change) are read by scanning, and every candidate gets the same
+// score function. It only reads, so it works on a read-only store.
+func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	states := in.States
 	if len(states) == 0 {
 		states = []string{StateCandidate, StateConfirmed}
@@ -881,9 +1062,20 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 빈 질의(공백뿐)는 색인을 거치지 않고 모두 1점이다. 토큰이 없는 질의(기호뿐)는 아무것도 맞지 않는다.
+	empty := strings.TrimSpace(in.Query) == ""
+	var scores map[string]float64
+	if !empty {
+		if qs := scoreTokens(in.Query); len(qs) > 0 {
+			if scores, err = s.queryScores(qs); err != nil {
+				return nil, err
+			}
+		}
+	}
 	type ranked struct {
-		m Memory
-		r Rank
+		Hit
+		key  float64 // 비교용으로 반올림한 점수: 같은 값의 부동소수점 오차가 순위를 가르지 않게
+		here bool
 	}
 	var tags []string
 	for _, t := range in.Tags {
@@ -896,56 +1088,75 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 		if len(in.Kinds) > 0 && !contains(in.Kinds, m.Kind) {
 			continue
 		}
+		if in.Scope != "" && m.Scope != in.Scope {
+			continue
+		}
 		if len(tags) > 0 && !slices.ContainsFunc(tags, func(k string) bool { return hasTagKey(m.Tags, k) }) {
 			continue
 		}
-		switch {
-		case in.AllProjects:
-		case in.GlobalOnly || (in.Project == "" && in.Place == nil):
-			if m.Scope != ScopeGlobal {
-				continue
-			}
-		case in.Place != nil:
-			if !in.Place.Sees(m.Scope, m.Project) {
-				continue
-			}
-		default:
-			if !(place.Place{Scope: in.Project}).Sees(m.Scope, m.Project) {
-				continue
-			}
-		}
-		r := Relevance(m.Doc(), in.Query)
-		if r.Score <= 0 {
+		if !in.sees(m) {
 			continue
 		}
-		hits = append(hits, ranked{m, r})
+		score := 1.0
+		if !empty {
+			if score = scores[m.ID]; score <= 0 {
+				continue
+			}
+		}
+		hits = append(hits, ranked{Hit{m, score}, math.Round(score * 1e9), !empty && in.here(m)})
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, b := hits[i], hits[j]
-		if a.r.Score != b.r.Score {
-			return a.r.Score > b.r.Score
+		if a.key != b.key {
+			return a.key > b.key
 		}
 		// 후보는 회상에 쓰되 확정보다 뒤에 둔다(A2).
-		if ca, cb := a.m.State == StateConfirmed, b.m.State == StateConfirmed; ca != cb {
+		if ca, cb := a.Memory.State == StateConfirmed, b.Memory.State == StateConfirmed; ca != cb {
 			return ca
 		}
-		if a.r.Title != b.r.Title {
-			return a.r.Title > b.r.Title
+		if a.here != b.here {
+			return a.here
 		}
-		if a.m.UpdatedAt != b.m.UpdatedAt {
-			return a.m.UpdatedAt > b.m.UpdatedAt
+		if a.Memory.UpdatedAt != b.Memory.UpdatedAt {
+			return a.Memory.UpdatedAt > b.Memory.UpdatedAt
 		}
-		return a.m.ID < b.m.ID
+		return a.Memory.ID < b.Memory.ID
 	})
 	limit := in.Limit
 	if limit <= 0 {
 		limit = 20
 	}
-	var out []Memory
+	var out []Hit
 	for i := 0; i < len(hits) && i < limit; i++ {
-		out = append(out, hits[i].m)
+		out = append(out, hits[i].Hit)
 	}
 	return out, nil
+}
+
+// sees says whether the find's place sees m. A given Scope alone decides (FindScored checks it).
+func (in FindInput) sees(m Memory) bool {
+	switch {
+	case in.AllProjects, in.Scope != "":
+		return true
+	case in.GlobalOnly || (in.Project == "" && in.Place == nil):
+		return m.Scope == ScopeGlobal
+	case in.Place != nil:
+		return in.Place.Sees(m.Scope, m.Project)
+	}
+	return (place.Place{Scope: in.Project}).Sees(m.Scope, m.Project)
+}
+
+// here says whether m belongs to the find's place itself (its product, repository or folder), not global.
+func (in FindInput) here(m Memory) bool {
+	switch {
+	case m.Scope == ScopeGlobal:
+		return false
+	case in.Place != nil:
+		return in.Place.Sees(m.Scope, m.Project)
+	case in.Project != "":
+		return (place.Place{Scope: in.Project}).Sees(m.Scope, m.Project)
+	}
+	return false
 }
 
 // List returns memories in the given states (all states when empty), newest first.
@@ -975,7 +1186,11 @@ func (s *Store) list(states []string) ([]Memory, error) {
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(s.db, out, `memory_id IN (SELECT id FROM memories WHERE state IN (`+ph+`))`, args...)
 }
 
 // Count is the number of memories.

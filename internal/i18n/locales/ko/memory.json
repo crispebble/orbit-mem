@@ -89,5 +89,15 @@
   "memory.settled.already_retagged": "이미 태그가 바뀜",
   "memory.settled.merge_gone": "합칠 기억이 이미 정리됨",
   "memory.err.pin_layer": "%w: 상시 핵심은 user·product:<이름> 기억만 됩니다(이 기억은 %s). 적용 대상을 옮긴 뒤 승격하세요",
-  "memory.err.pin_state": "%w: 상시 핵심은 확정된 기억만 됩니다(이 기억은 %s). 확정된 뒤 승격하세요"
+  "memory.err.pin_state": "%w: 상시 핵심은 확정된 기억만 됩니다(이 기억은 %s). 확정된 뒤 승격하세요",
+  "memory.err.trust_value": "%w: 출처 등급은 %s 가운데 하나입니다",
+  "memory.err.untrusted": "출처가 믿을 수 없는 것(untrusted·system)뿐인 기억이라 확정·핵심 승격·owner·agent 기억 대체·고쳐 쓰기를 하지 않습니다. 사용자가 맞다고 한 말(userQuote)을 함께 주면 됩니다",
+  "memory.err.trust_not_stored": "이 기억 DB에는 출처 등급 칸이 없어(판 4 사본으로 복구됨) 믿을 수 없는 출처를 저장하지 않았습니다. 기억 DB를 다시 열면(이전) 저장됩니다",
+  "memory.conflict.untrusted_topic": "믿을 수 없는 출처뿐이라 같은 주제의 기억을 대체하지 않음",
+  "memory.trust.note": "믿을 수 없음",
+  "memory.err.idempotency_conflict": "이 idempotencyKey는 이미 다른 인자의 쓰기에 썼습니다. 새 요청에는 새 키를 주세요",
+  "memory.err.idempotency_key": "%w: idempotencyKey는 비우지 않고(%d바이트 이하) 인자 해시와 함께 줍니다",
+  "memory.save.resolve": "%w: resolve는 add·update:<id>·supersede:<id>·skip 가운데 하나입니다(memory_save가 준 choices): %q",
+  "memory.save.not_replaced": "supersede:%s는 아무것도 대체하지 않았습니다: 그 기억은 이미 낡았거나 거절된 판이거나, 같은 제목이라 새 출처를 그 기억에 더했습니다",
+  "memory.save.not_pinned": "update:%s는 적용했으나 상시 핵심에 올리지 못했습니다: %v"
 }

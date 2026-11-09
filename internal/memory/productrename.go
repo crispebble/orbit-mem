@@ -84,6 +84,9 @@ func (s *Store) RenameProduct(from, to string, dry bool, between func() error) (
 		if _, err := tx.Exec(`UPDATE memories SET scope=?, version=?, updated_at=? WHERE id=?`, m.Scope, m.Version, m.UpdatedAt, m.ID); err != nil {
 			return res, err
 		}
+		if err := indexTx(tx, m.ID); err != nil { // updated_at이 바뀌었으니 색인 줄도 맞춘다
+			return res, err
+		}
 		if err := versionTx(tx, m, "rename", reason, now); err != nil {
 			return res, err
 		}

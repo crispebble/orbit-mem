@@ -71,13 +71,19 @@ func NormalizeRemote(u string) string {
 }
 
 func git(dir string, args ...string) string {
+	out, _ := gitRun(dir, args...)
+	return out
+}
+
+// gitRun runs git in dir. ok says it ran and ended 0 (not a repository, a missing git and a timeout are not ok).
+func gitRun(dir string, args ...string) (out string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+	b, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
 	if err != nil {
-		return ""
+		return "", false
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(b)), true
 }
 
 // Resolve finds the project of cwd. An empty cwd has no project.
@@ -90,6 +96,11 @@ func Resolve(cwd string) Project {
 	}
 	dir := realSlash(cwd)
 	p := Project{Dir: dir, Temp: IsTemp(dir)}
+	// 없는 폴더에서는 git -C가 늘 실패한다: 부르지 않고 그 경로를 키로 쓴다(훅 한도 안 시간을 아낀다).
+	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+		p.Scope, p.Label = "project:"+dir, dir
+		return p
+	}
 	if remote := git(cwd, "config", "--get", "remote.origin.url"); remote != "" {
 		key := NormalizeRemote(remote)
 		p.Scope, p.Label, p.Git = "project:"+key, key, true
@@ -97,17 +108,19 @@ func Resolve(cwd string) Project {
 	}
 	// 원격이 없는 저장소는 그 checkout의 최상위가 키다. 연결된 worktree(git 디렉터리와 공용 디렉터리가 다름)만
 	// 주 저장소 경로를 써서 같은 키를 쓴다(S3-R4). 서브모듈·--separate-git-dir은 최상위 그대로다. git 한 번에 묻는다.
+	// --path-format을 모르는 git(2.31 전)은 그 옵션을 글 그대로 되돌리고 0으로 끝난다(줄 수가 어긋난다): 그때만
+	// --show-toplevel로 다시 묻는다. 실패(저장소 아님 등)는 다시 물어도 같아 묻지 않는다.
 	root := ""
-	if out := git(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel"); out != "" {
+	if out, ok := gitRun(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel"); ok {
 		if l := strings.Split(out, "\n"); len(l) == 3 {
 			gitDir, common, top := l[0], l[1], l[2]
 			p.Git, root = true, top
 			if gitDir != common && filepath.Base(common) == ".git" {
 				root = filepath.Dir(common)
 			}
+		} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" { // git 2.31 전
+			p.Git, root = true, top
 		}
-	} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" { // git 2.31 전
-		p.Git, root = true, top
 	}
 	// 홈 자체가 저장소(dotfiles)면 홈 아래 폴더는 git 밖 폴더로 본다(S3-R1).
 	if home, err := os.UserHomeDir(); err == nil && root != "" && realSlash(root) == realSlash(home) {

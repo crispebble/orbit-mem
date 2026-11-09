@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
 )
@@ -610,6 +611,9 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		if m.Freshness(now) == memory.FreshReviewDue {
 			state += " · 재검토일 지남"
 		}
+		if note := memory.TrustNoteIn(i18n.KO, m); note != "" { // 출처가 믿을 수 없는 것뿐인 기억(D7)
+			state += " · " + note
+		}
 		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
 		body := ""
 		clip := recallBodyRunes
@@ -737,6 +741,9 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		state := "확정"
 		if m.State == memory.StateCandidate {
 			state = "후보"
+		}
+		if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
+			state += " · " + note
 		}
 		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
 		if used+runes(line) > MaxToolRunes {

@@ -26,7 +26,7 @@ func tools() (mcpserver.Tools, *memory.Store, error) {
 		return mcpserver.Tools{}, nil, err
 	}
 	p := sessionProject()
-	return mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Actor: actorOf("", memory.ActorUser), Products: productsOf()}), s, nil
+	return mcpserver.NewTools(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Actor: actorOf("", memory.ActorUser), TrustLimit: humanTrustLimit, Products: productsOf(), SaveSimilarMin: saveSimilarMinOf()}), s, nil
 }
 
 func (a *app) printSummaries(items []mcpserver.FindItem) {

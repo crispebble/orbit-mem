@@ -40,9 +40,16 @@ func cmdMigrate(a *app, args []string) error {
 	fs := a.flags("migrate")
 	from := fs.String("from", "", i18n.T("flag.migrate.from"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.migrate.dry_run"))
+	reindex := fs.Bool("reindex", false, i18n.T("flag.migrate.reindex"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	if _, err := parse(fs, args); err != nil {
 		return err
+	}
+	if *reindex {
+		if *from != "" || *dry {
+			return errUsage
+		}
+		return migrateReindex(a, *asJSON)
 	}
 	if *from == "" {
 		if *dry {
@@ -96,10 +103,41 @@ func migrateSchema(a *app, asJSON bool) error {
 	if err != nil {
 		return err
 	}
+	filled, err := s.FillIndex(0) // 열기가 이전하며 채운 뒤에도 남은 늦은 줄(옛 실행 파일이 쓴 기억)을 다 채운다
+	if err != nil {
+		return err
+	}
 	if asJSON {
-		return a.json(info)
+		return a.json(struct {
+			memory.SchemaInfo
+			IndexFilled int `json:"indexFilled"`
+		}{info, filled})
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.schema_done", info.DB, info.Binary))
+	if filled > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.migrate.index_filled", filled))
+	}
+	return nil
+}
+
+// migrateReindex is orbit-mem migrate --reindex: it opens the DB for writing (which migrates it) and builds
+// the search index again from every memory. Running it again gives the same index.
+func migrateReindex(a *app, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	n, err := s.Reindex()
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return a.json(struct {
+			Reindexed int `json:"reindexed"`
+		}{n})
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.reindexed", n))
 	return nil
 }
 
@@ -285,8 +323,12 @@ func cmdInstall(a *app, args []string) (err error) {
 	if err := config.Save(p.Config(), cfg); err != nil {
 		return err
 	}
-	s, err := openStore()
+	s, err := openStore() // 열기가 판을 올리고 색인을 채운다
 	if err != nil {
+		return err
+	}
+	if _, err := s.FillIndex(0); err != nil { // 옛 실행 파일이 남긴 늦은 줄
+		s.Close()
 		return err
 	}
 	s.Close()
@@ -513,6 +555,10 @@ func cmdDoctor(a *app, args []string) error {
 			add("binary-older-than-db", "orbit-mem update", info.DB, info.Binary)
 		case memory.SchemaOlder:
 			add("migration-needed", "orbit-mem migrate")
+		case memory.SchemaOK:
+			if n, err := s.StaleIndexCount(); err == nil && n > 0 { // 늦은 줄은 migrate가 채운다(--reindex는 색인이 깨졌을 때)
+				add("index-stale", "orbit-mem migrate", n)
+			}
 		}
 		all, _ := s.List()
 		for _, m := range all {

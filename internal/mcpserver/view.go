@@ -110,6 +110,7 @@ type FindItem struct {
 	Summary   string   `json:"summary,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	Pinned    bool     `json:"pinned,omitempty"`
+	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
 }
 
 // findDetail checks the detail argument of memory_find.
@@ -138,7 +139,7 @@ func findLimit(n int) int {
 // whatever the characters are: the title is cut first, then the applies-to.
 func findItem(m memory.Memory, detail string) FindItem {
 	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State,
-		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes)}
+		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
 		it.Summary = clip(oneLine(m.Body), findSummaryRunes)
 		it.Tags = m.Tags
@@ -192,6 +193,15 @@ type MemoryView struct {
 	// Links are lines "〈상대 제목〉 — 〈상대 id〉" (full: with " · 〈note〉"). By default at most
 	// 5 lines, then "외 N개".
 	Links []string `json:"links,omitempty"`
+	Trust string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
+}
+
+// untrustedOf is the trust of m when it is not to be believed, else "": the views carry it only then.
+func untrustedOf(m memory.Memory) string {
+	if memory.Untrusted(m.Trust) {
+		return m.Trust
+	}
+	return ""
 }
 
 // linkTitles gives the title of the memory at the other end of each link; "" when it is gone.
@@ -236,7 +246,7 @@ func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string 
 func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
 	v := MemoryView{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
-		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason}
+		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {
 		v.Tags = []string{}
 	}
