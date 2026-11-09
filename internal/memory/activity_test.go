@@ -73,3 +73,40 @@ func TestEndActivity_줄이_없으면_없음을_알린다(t *testing.T) {
 		t.Fatalf("세션 없는 끝 = %v", err)
 	}
 }
+
+// 세션 안의 op가 git 없이 다시 쓰는 프로젝트(0.17 r0): 열린 줄의 폴더·키·라벨이다. 끝난 줄은 끝이 폴더만 고쳤을 수 있어
+// (EndActivity는 프로젝트를 그대로 둔다) 폴더와 키가 한 판정에서 온 짝이 아닐 수 있다: 주지 않는다. 키 없는 줄도 주지 않는다.
+func TestSessionProject_열린_줄의_폴더와_프로젝트(t *testing.T) {
+	s := activityStore(t)
+	if _, ok := s.SessionProject("claude", "S1"); ok {
+		t.Fatal("줄이 없는데 줬다")
+	}
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S1", Cwd: "/w/a", ProjectScope: "project:/w/a", ProjectLabel: "/w/a", At: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S1"); !ok || a.Cwd != "/w/a" || a.ProjectScope != "project:/w/a" || a.ProjectLabel != "/w/a" {
+		t.Fatalf("%+v %v", a, ok)
+	}
+	if _, ok := s.SessionProject("codex", "S1"); ok {
+		t.Fatal("다른 호스트의 줄을 줬다")
+	}
+	if _, err := s.EndActivity(ActivityEvent{Kind: ActivityEnd, Host: "claude", Session: "S1", Cwd: "/w/b", At: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S1"); ok {
+		t.Fatalf("끝난 줄을 줬다 %+v", a)
+	}
+	// 재개(시작)는 줄을 다시 연다
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S1", Cwd: "/w/b", ProjectScope: "project:/w/b", ProjectLabel: "/w/b", At: 3000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S1"); !ok || a.Cwd != "/w/b" || a.ProjectScope != "project:/w/b" {
+		t.Fatalf("%+v %v", a, ok)
+	}
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S2", At: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S2"); ok {
+		t.Fatalf("키 없는 줄을 줬다 %+v", a)
+	}
+}

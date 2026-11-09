@@ -155,6 +155,20 @@ func (s *Store) EndActivity(e ActivityEvent) (found bool, err error) {
 	return true, tx.Commit()
 }
 
+// SessionProject is the folder and project of a session's open row, as the call that wrote them
+// resolved them together; a host operation of the session reuses them for the same folder instead
+// of asking git again. A row that ended is not given: its end may have changed the folder alone
+// (EndActivity leaves the project). Nor is a row without a project, or a missing one (ok false).
+func (s *Store) SessionProject(host, session string) (a Activity, ok bool) {
+	err := s.db.QueryRow(`SELECT cwd, project_scope, project_label FROM activity
+		WHERE host=? AND session=? AND ended_at=0 AND project_scope<>''`, host, session).Scan(&a.Cwd, &a.ProjectScope, &a.ProjectLabel)
+	if err != nil {
+		return Activity{}, false
+	}
+	a.Host, a.Session = host, session
+	return a, true
+}
+
 // ActivityFilter narrows the log. An empty field does not narrow.
 type ActivityFilter struct {
 	Query        string // 프로젝트·경로·세션·요청 글에 든 말

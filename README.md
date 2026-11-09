@@ -202,7 +202,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 설계 · orbit-mem 2판 4.1·4.4, S3 명세(Atlas 명세 · orbit-mem 2판 S3).
 
 - 적용 대상(`appliesTo`): `user`(모든 일), `product:<이름>`(한 제품), `product:?`(폴더에 묶음: 그 폴더와 그 아래에서 회상), `repo:<키>`(한 저장소). DB의 `scope` 열은 그대로 `global`(= user)·`project:<키>`(= repo)이고 `product:<이름>`·`product:?`가 더해졌다(`product:?`의 폴더는 `project` 열). 도구의 기억 JSON에는 `appliesTo`가 붙는다.
-- 기준 폴더는 세션을 시작한 폴더다(훅 입력 `cwd`, MCP 서버 폴더). 범위 키는 원격이 있으면 원격 키, 원격이 없는 저장소는 주 저장소 경로(worktree가 함께 쓴다), git 밖이면 그 폴더다.
+- 기준 폴더는 세션을 시작한 폴더다(훅 입력 `cwd`, MCP 서버 폴더). 범위 키는 원격이 있으면 원격 키, 원격이 없는 저장소는 주 저장소 경로(worktree가 함께 쓴다), git 밖이면 그 폴더다. 폴더와 그 위에 `.git`도 `HEAD`도 없고 `GIT_DIR`·`GIT_CONFIG_*` 같은 git 위치·설정 환경 변수도 없으면 git을 부르지 않고 그 폴더를 키로 쓴다. 한 세션의 요청·도구·서브에이전트 훅과 `host call`은 같은 폴더면 세션 시작이 판정한 키(활동 줄)를 git 없이 다시 쓴다(세션 중 `git init`·원격 추가는 다음 세션 시작부터 반영된다).
 - 규칙(`kind=rule`)은 `appliesTo`가 있어야 저장한다(사람의 일하는 방식은 대개 `user`). 그 밖에는 `appliesTo`를 비우면 그 폴더의 제품 → 여러 제품 폴더면 제목·본문에 이름이 하나 나온 제품 → 그 저장소 → git 밖이면 그 폴더(`product:?`, `warnings`에 「폴더에 묶음」) 순이다. 임시 폴더(`/tmp`·`$TMPDIR` 아래)는 `product:?`와 「임시 폴더」 경고다. `user`면 「모든 일에 적용」 경고와 지금 user 핵심 길이를, 제품 지도에 없는 제품이면 그 경고를 싣는다. 옛 입력 `scope`(`global`·`project`)는 0.14.x 동안 별칭으로 받고 경고한다(`appliesTo`와 다르면 거절).
 - 제품 지도: `config.json`의 `products`(손으로 고친다).
 

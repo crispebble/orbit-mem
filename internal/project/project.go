@@ -4,6 +4,8 @@ package project
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,33 +88,100 @@ func gitRun(dir string, args ...string) (out string, ok bool) {
 	return strings.TrimSpace(string(b)), true
 }
 
-// Resolve finds the project of cwd. An empty cwd has no project.
-func Resolve(cwd string) Project {
-	if cwd == "" {
-		return Project{}
+// gitEnv are the environment variables that let git find a repository or a remote.origin.url
+// without a .git or a HEAD above the folder (git(1) ENVIRONMENT, git-config(1) ENVIRONMENT). With one
+// of them set the folder's project is always asked of git. GIT_CEILING_DIRECTORIES and
+// GIT_DISCOVERY_ACROSS_FILESYSTEM are not here: they only narrow or widen the search for those entries.
+var gitEnv = []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR",
+	"GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+
+func gitEnvSet() bool {
+	for _, k := range gitEnv {
+		if _, ok := os.LookupEnv(k); ok {
+			return true
+		}
 	}
-	if abs, err := filepath.Abs(cwd); err == nil {
-		cwd = abs
+	return false
+}
+
+// mayBeRepo says whether git could find a repository from a folder: one of the paths or a folder
+// above it has a .git (a folder or a gitdir file) or a HEAD (a bare repository or a git folder),
+// or an entry there cannot be looked at. Both the path as given and its real path are walked: git
+// searches from the real one, and a link may also sit on the way.
+func mayBeRepo(paths ...string) bool {
+	for _, start := range paths {
+		for d := start; ; {
+			for _, name := range []string{".git", "HEAD"} {
+				if _, err := os.Lstat(filepath.Join(d, name)); err == nil || !errors.Is(err, fs.ErrNotExist) {
+					return true
+				}
+			}
+			up := filepath.Dir(d)
+			if up == d {
+				break
+			}
+			d = up
+		}
+	}
+	return false
+}
+
+// base is what Resolve knows without git: the project of an empty, missing or never-git folder
+// (done), else the folder as an absolute path and the project with its folder fields.
+func base(cwd string) (p Project, abs string, done bool) {
+	if cwd == "" {
+		return Project{}, "", true
+	}
+	if a, err := filepath.Abs(cwd); err == nil {
+		cwd = a
 	}
 	dir := realSlash(cwd)
-	p := Project{Dir: dir, Temp: IsTemp(dir)}
-	// 없는 폴더에서는 git -C가 늘 실패한다: 부르지 않고 그 경로를 키로 쓴다(훅 한도 안 시간을 아낀다).
-	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+	p = Project{Dir: dir, Temp: IsTemp(dir)}
+	// 없는 폴더에서는 git -C가 늘 실패하고, .git도 HEAD도 없는 폴더는 git이 저장소를 찾지 못한다: 부르지 않고
+	// 그 경로를 키로 쓴다(git이 저장소가 아니라고 할 때와 같은 값, 훅 한도 안 시간을 아낀다). 환경이 git 위치를 바꾸면 묻는다.
+	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() || (!gitEnvSet() && !mayBeRepo(cwd, filepath.FromSlash(dir))) {
 		p.Scope, p.Label = "project:"+dir, dir
+		return p, cwd, true
+	}
+	return p, cwd, false
+}
+
+// Resolve finds the project of cwd. An empty cwd has no project.
+func Resolve(cwd string) Project {
+	p, cwd, done := base(cwd)
+	if done {
 		return p
 	}
-	if remote := git(cwd, "config", "--get", "remote.origin.url"); remote != "" {
+	return resolveGit(p, cwd)
+}
+
+// resolveGit asks git for the project of cwd, an existing absolute folder git may see as a repository.
+// The remote and the repository questions go to git at once: the time is the longer of the two, not
+// their sum (a hook's time limit holds the first resolving of a session's folder).
+func resolveGit(p Project, cwd string) Project {
+	type answer struct {
+		out string
+		ok  bool
+	}
+	asked := make(chan answer, 1)
+	go func() {
+		out, ok := gitRun(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel")
+		asked <- answer{out, ok}
+	}()
+	remote := git(cwd, "config", "--get", "remote.origin.url")
+	repo := <-asked
+	if remote != "" {
 		key := NormalizeRemote(remote)
 		p.Scope, p.Label, p.Git = "project:"+key, key, true
 		return p
 	}
 	// 원격이 없는 저장소는 그 checkout의 최상위가 키다. 연결된 worktree(git 디렉터리와 공용 디렉터리가 다름)만
-	// 주 저장소 경로를 써서 같은 키를 쓴다(S3-R4). 서브모듈·--separate-git-dir은 최상위 그대로다. git 한 번에 묻는다.
+	// 주 저장소 경로를 써서 같은 키를 쓴다(S3-R4). 서브모듈·--separate-git-dir은 최상위 그대로다. git 한 번에 묻는다(위에서 띄운 것).
 	// --path-format을 모르는 git(2.31 전)은 그 옵션을 글 그대로 되돌리고 0으로 끝난다(줄 수가 어긋난다): 그때만
 	// --show-toplevel로 다시 묻는다. 실패(저장소 아님 등)는 다시 물어도 같아 묻지 않는다.
 	root := ""
-	if out, ok := gitRun(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel"); ok {
-		if l := strings.Split(out, "\n"); len(l) == 3 {
+	if repo.ok {
+		if l := strings.Split(repo.out, "\n"); len(l) == 3 {
 			gitDir, common, top := l[0], l[1], l[2]
 			p.Git, root = true, top
 			if gitDir != common && filepath.Base(common) == ".git" {
@@ -132,4 +201,42 @@ func Resolve(cwd string) Project {
 	root = realSlash(root)
 	p.Scope, p.Label = "project:"+root, root
 	return p
+}
+
+// Earlier is what an earlier Resolve of a folder gave in the same session: the folder as it was
+// asked (Cwd) and the project's Scope and Label.
+type Earlier struct{ Cwd, Scope, Label string }
+
+// Again is Resolve for a folder a session resolved before. When earlier (asked only for a folder
+// git may see as a repository) is of the same absolute folder and has a project key, it is used
+// as it is, without git; otherwise the folder is resolved with git. A folder that cannot be a
+// repository is a folder key as Resolve gives, whatever earlier says.
+//
+// gitKnown is false only when the project came from earlier and Git could not be told from it: a
+// key that is the folder itself is both a repository's top without a remote and a folder git
+// refused. Git is then a guess (the folder has a .git and is not the home folder); a caller that
+// depends on Git resolves again.
+func Again(cwd string, earlier func() (Earlier, bool)) (p Project, gitKnown bool) {
+	p, abs, done := base(cwd)
+	if done {
+		return p, true
+	}
+	// 상대 경로는 프로세스 폴더마다 뜻이 다르고, git 위치·설정 환경은 프로세스마다 다를 수 있다: 다시 쓰지 않는다.
+	if gitEnvSet() || !filepath.IsAbs(cwd) {
+		return resolveGit(p, abs), true
+	}
+	e, ok := earlier()
+	if !ok || e.Cwd != cwd || e.Label == "" || e.Scope != "project:"+e.Label {
+		return resolveGit(p, abs), true
+	}
+	p.Scope, p.Label = e.Scope, e.Label
+	// 폴더 밖 판정(git 밖, 홈 아래, git이 거절)의 키는 늘 그 폴더다: 키가 폴더와 다르면 저장소다.
+	if p.Label != p.Dir {
+		p.Git = true
+		return p, true
+	}
+	_, err := os.Lstat(filepath.Join(abs, ".git"))
+	home, herr := os.UserHomeDir()
+	p.Git = err == nil && (herr != nil || realSlash(home) != p.Dir)
+	return p, false
 }

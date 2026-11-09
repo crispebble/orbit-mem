@@ -117,11 +117,18 @@ func TestHook_활동_기록_세_훅(t *testing.T) {
 
 // 간헐 실패 a8b: 세션 끝 훅의 한도(0.5초) 안에서 git이 돌아 부하 때 끝 기록이 버려졌다. 시작 훅이 줄을 만든 세션의
 // 끝은 그 줄의 끝 시각만 고치고 프로젝트를 다시 판정하지 않는다(git 0번). 시작이 빠진 세션의 끝만 판정해 새 줄을 만든다.
+// 저장소일 수 없는 폴더는 시작도 git을 부르지 않으므로(0.17 r0) 시작이 git을 부르는 저장소 폴더에서 본다.
 func TestHook_세션_끝은_시작된_세션에서_git을_부르지_않는다(t *testing.T) {
 	home(t)
 	seed(t)
-	runs := countingGit(t)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
 	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	runs := countingGit(t)
 	hook(t, hookIn("S1", dir, ""), "session-start", "--host", "claude")
 	if runs() == 0 {
 		t.Fatal("가짜 git이 불리지 않았다: 시험이 git 실행을 세지 못한다")
@@ -147,6 +154,53 @@ func TestHook_세션_끝은_시작된_세션에서_git을_부르지_않는다(t 
 	}
 	if got == nil || got.EndedAt == 0 || got.StartedAt == 0 || got.Cwd != other || got.ProjectScope == "" || got.ProjectLabel == "" || got.Launcher != "human" {
 		t.Fatalf("시작 없는 끝 %+v", as)
+	}
+}
+
+// 간헐 실패(0.17 r0): 요청·도구·서브에이전트 훅이 한도(도구 0.5초) 안에서 git을 띄워 부하 때 문맥이 비었다.
+// 저장소 폴더는 시작 훅의 판정을 그 세션의 훅이 git 없이 다시 쓰고, 저장소일 수 없는 폴더는 어느 훅도 git을 부르지 않는다.
+func TestHook_세션의_훅은_시작의_판정을_다시_써서_git을_부르지_않는다(t *testing.T) {
+	home(t)
+	seed(t)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	plain := t.TempDir()
+	runs := countingGit(t)
+	in := func(session, cwd string, more map[string]string) string {
+		m := map[string]string{"session_id": session, "cwd": cwd, "hook_event_name": "x"}
+		for k, v := range more {
+			m[k] = v
+		}
+		b, _ := json.Marshal(m)
+		return string(b)
+	}
+	for _, c := range []struct {
+		session, cwd string
+		startGit     bool
+	}{{"G1", repo, true}, {"P1", plain, false}} {
+		before := runs()
+		hook(t, in(c.session, c.cwd, map[string]string{"source": "startup"}), "session-start", "--host", "claude")
+		if started := runs() - before; (started > 0) != c.startGit {
+			t.Fatalf("%s 시작 git 실행 %d번", c.cwd, started)
+		}
+		before = runs()
+		hook(t, in(c.session, c.cwd, map[string]string{"prompt": "답은 존댓말로 해 줘"}), "prompt", "--host", "claude")
+		hook(t, in(c.session, c.cwd, map[string]string{"tool_name": "Bash"}), "pre-tool", "--host", "claude")
+		hook(t, in(c.session, c.cwd, map[string]string{"agent_id": "a1", "agent_type": "worker"}), "subagent-start", "--host", "claude")
+		hook(t, in(c.session, c.cwd, nil), "session-end", "--host", "claude")
+		if n := runs() - before; n != 0 {
+			t.Fatalf("%s 시작 뒤 훅 git 실행 %d번, 0번이어야 한다", c.cwd, n)
+		}
+	}
+	for _, a := range activities(t) {
+		if a.Prompts != 1 || a.EndedAt == 0 || a.ProjectScope == "" {
+			t.Fatalf("활동 %+v", a)
+		}
 	}
 }
 

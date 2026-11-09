@@ -146,10 +146,38 @@ func (c *call) inTime() *Error {
 	return nil
 }
 
-// locate resolves the session folder to the place the recall reads.
+// locate resolves the session folder afresh to the place the recall reads: the session's start (its
+// activity row keeps the result for the session's later operations) and an end whose start was missed.
 func (c *call) locate() {
+	c.at(project.Resolve)
+}
+
+// relocate is locate for an operation inside a session: a folder the session's open activity row was
+// resolved for is taken from that row without git (the hook time limits leave git no room under load).
+// gitNeeded asks git again when the row cannot tell whether the folder is in git (a key that is the
+// folder itself): the writing tools pick their default scope by it.
+func (c *call) relocate(gitNeeded bool) {
+	c.at(func(cwd string) project.Project {
+		p, gitKnown := project.Again(cwd, c.earlier)
+		if !gitKnown && gitNeeded {
+			return project.Resolve(cwd)
+		}
+		return p
+	})
+}
+
+// earlier is the folder and project the session's open activity row keeps.
+func (c *call) earlier() (project.Earlier, bool) {
+	if c.req.Session == "" || c.store == nil {
+		return project.Earlier{}, false
+	}
+	a, ok := c.store.SessionProject(c.req.Host, c.req.Session)
+	return project.Earlier{Cwd: a.Cwd, Scope: a.ProjectScope, Label: a.ProjectLabel}, ok
+}
+
+func (c *call) at(resolve func(cwd string) project.Project) {
 	if c.req.Cwd != "" {
-		c.p = project.Resolve(c.req.Cwd)
+		c.p = resolve(c.req.Cwd)
 	}
 	place.Known(c.p)
 	c.where = c.p.Dir
@@ -266,7 +294,7 @@ func (c *call) context() (any, *Error) {
 		if out, err, done := c.openRecall(limit); done {
 			return out, err
 		}
-		c.locate()
+		c.relocate(false)
 		inj := inject.SubagentStart(c.store, c.cfg, c.where, c.subagentTask())
 		c.shown(memory.EventInjectSubagent, inj)
 		return recallOf(inj, limit), nil
@@ -303,7 +331,7 @@ func (c *call) recall() (any, *Error) {
 	if out, err, done := c.openRecall(limit); done {
 		return out, err
 	}
-	c.locate()
+	c.relocate(false)
 	// 사소한 요청은 요청 회상만 건너뛰고 세션 중 바뀐 것은 싣는다.
 	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, text, c.req.Host, c.req.Session, inject.Options{NewsOnly: trivial})
 	c.shown(memory.EventInjectPrompt, inj)
@@ -317,7 +345,7 @@ func (c *call) toolContext() (any, *Error) {
 		return out, err
 	}
 	c.delegate()
-	c.locate()
+	c.relocate(false)
 	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool)
 	c.shown(memory.EventInjectTool, inj)
 	return recallOf(inj, limit), nil
@@ -350,7 +378,7 @@ func (c *call) tool() (any, *Error) {
 		}
 		return nil, err
 	}
-	c.locate()
+	c.relocate(true)
 	actor := c.opts.Actor
 	if actor == "" {
 		actor = memory.ActorAI
