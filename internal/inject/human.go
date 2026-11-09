@@ -14,8 +14,8 @@ import (
 // Keeping the host's message shapes here, in the domain, is where issue ORBIT-26
 // put them: when the host adds a shape, this one file is all that changes.
 
-// hostHeaders are plain-text openers with no closing mark: a message that
-// starts with one is entirely the host's own.
+// hostHeaders are plain-text openers with no closing mark. They are peeled off;
+// what follows must be a host tag block, or the whole message is the host's own.
 var hostHeaders = []string{
 	"Another Claude session sent a message:",
 	"[Subagent hand-back]",
@@ -32,6 +32,11 @@ var hostTags = []string{
 	"ci-monitor-event",
 	"scheduled-task",
 }
+
+// hostNoticePrefix opens the paragraph the host adds after a forwarded message
+// block (for example "This came from another Claude session - ..."). It is the
+// host's own text and is removed together with the block it follows.
+const hostNoticePrefix = "This came from another Claude session"
 
 // reminderBlock is a system notice the host appends to a prompt.
 var reminderBlock = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
@@ -54,7 +59,9 @@ const maxTrivialDigits = 3
 // only an image) is a person's. System notices are removed first; what is left
 // is host-made when it starts with a host shape that has nothing after it. A
 // pasted host message followed by a question is a person's, and the words are
-// what follows the pasted blocks. A host shape that is not at the very start
+// what follows the pasted blocks (a header line and the host's notice paragraph
+// after a block are part of the paste). A header followed by plain text is the
+// host's own. A host shape that is not at the very start
 // (text before it, or inside pasted content) does not make the prompt the host's.
 // A host tag that is never closed is a person's cut paste, and the words are the
 // rest from that tag on: the host always closes its blocks (some 2,500 prompts of
@@ -64,14 +71,28 @@ func PersonWords(prompt string) (words string, ok bool) {
 		return "", true
 	}
 	rest := strings.TrimSpace(reminderBlock.ReplaceAllString(prompt, ""))
+	afterBlock := false
 	for {
 		if rest == "" {
 			return "", false
 		}
 		for _, h := range hostHeaders {
 			if strings.HasPrefix(rest, h) {
-				return "", false
+				rest = strings.TrimSpace(rest[len(h):])
+				if openingTag(rest) == "" { // header with no block behind it: all the host's
+					return "", false
+				}
+				break
 			}
+		}
+		if afterBlock && strings.HasPrefix(rest, hostNoticePrefix) {
+			if i := strings.Index(rest, "\n\n"); i >= 0 {
+				rest = strings.TrimSpace(rest[i:])
+			} else {
+				rest = ""
+			}
+			afterBlock = false
+			continue
 		}
 		name := openingTag(rest)
 		if name == "" {
@@ -82,6 +103,7 @@ func PersonWords(prompt string) (words string, ok bool) {
 			return rest, true
 		}
 		rest = strings.TrimSpace(reminderBlock.ReplaceAllString(rest[end+len("</"+name+">"):], ""))
+		afterBlock = true
 	}
 }
 
