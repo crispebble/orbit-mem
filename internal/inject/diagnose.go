@@ -149,9 +149,9 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		}
 	} else if strings.TrimSpace(in.Prompt) == "" {
 		add(StageSelected, Unknown, "no_prompt")
-	} else if score, cover, matched := recallMeasures(s, m, in.Prompt); !passes(cfg, in.Prompt, score, cover, matched) {
+	} else if words, score, cover, matched := recallMeasures(s, m, in.Prompt); !passes(cfg, words, score, cover, matched) {
 		th := requestThresholds(cfg)
-		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(memory.MeaningfulWords(in.Prompt), " "),
+		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(words, " "),
 			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", th.score), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", th.coverFor(len(matched))))
 	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID, idSet(bundle)); score < floor {
 		add(StageSelected, No, "below_top", fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", floor), fmt.Sprintf("%.2f", recallRelative(cfg)))
@@ -266,21 +266,23 @@ func sessionEvents(s *memory.Store, session, host, id, kind string) []sessionEve
 	return out
 }
 
-// recallMeasures are m's find score and share of the request's meaningful words (설계 5.1 4단계), and those words.
-func recallMeasures(s *memory.Store, m memory.Memory, prompt string) (score, cover float64, matched []string) {
-	cover, matched = memory.Coverage(m, memory.MeaningfulWords(prompt))
+// recallMeasures are the words the recall of the request matches (thresholds.words), m's find score and
+// share of them (설계 5.1 4단계), and the words m has.
+func recallMeasures(s *memory.Store, m memory.Memory, prompt string) (words []string, score, cover float64, matched []string) {
+	words = thresholds{}.words(s, prompt) // 요청 회상의 낱말(위임이 아님): 문턱 값과 무관하다
+	cover, matched = memory.Coverage(m, words)
 	hits, _ := s.RecallHits(prompt)
 	for _, h := range hits {
 		if h.Memory.ID == m.ID {
 			score = h.Score
 		}
 	}
-	return score, cover, matched
+	return words, score, cover, matched
 }
 
 // passes says whether the measures pass the gate of the work recall of a request (thresholds.pass).
-func passes(cfg config.Config, prompt string, score, cover float64, matched []string) bool {
-	return len(memory.MeaningfulWords(prompt)) >= minRecallWords &&
+func passes(cfg config.Config, words []string, score, cover float64, matched []string) bool {
+	return len(words) >= minRecallWords &&
 		requestThresholds(cfg).pass(memory.RecallHit{Score: score, Coverage: cover, Matched: matched})
 }
 

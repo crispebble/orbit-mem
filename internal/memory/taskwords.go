@@ -34,6 +34,13 @@ func TaskWords(task string) []string { return taskWords(task, false) }
 // digit words, in order.
 func TaskQuery(task string) string { return strings.Join(taskWords(task, true), " ") }
 
+// TaskRecallWords are the words the recall of a delegated task matches (TaskRecallHitsIn): its content words,
+// with each X의 the store knows as X taken off as RecallWords does.
+func (s *Store) TaskRecallWords(task string) ([]string, error) {
+	words, _, err := s.resolvedWords(taskWords(task, false), taskWords(task, true))
+	return words, err
+}
+
 func taskWords(task string, withShort bool) []string {
 	var out []string
 	for _, w := range requestWords(withoutItemNumbers(task), withShort) {
@@ -86,11 +93,14 @@ func imperative(w string) bool {
 }
 
 // TaskRecallHitsIn is RecallHitsIn for a delegated task: the find score of its content words (TaskQuery), the
-// share of its content words (TaskWords) and the title share (titleShares). A task without content words
-// matches nothing.
+// share of its content words and the title share (titleShares), with the X의 the store knows as X taken off
+// (TaskRecallWords). A task without content words matches nothing.
 func (s *Store) TaskRecallHitsIn(task string, states ...string) ([]RecallHit, error) {
-	words := TaskWords(task)
-	hits, err := s.recallHitsOf(words, TaskQuery(task), states)
+	words, query, err := s.resolvedWords(taskWords(task, false), taskWords(task, true))
+	if err != nil {
+		return nil, err
+	}
+	hits, err := s.recallHitsOf(words, strings.Join(query, " "), states)
 	if err != nil || len(hits) == 0 {
 		return hits, err
 	}

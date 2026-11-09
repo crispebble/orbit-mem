@@ -694,12 +694,22 @@ func (th thresholds) coverFor(n int) float64 {
 	return th.cover
 }
 
-// words are the words of text the recall matches: a request's meaningful words, a task's content words.
-func (th thresholds) words(text string) []string {
+// words are the words of text the recall matches, as s's recall takes them (memory.Store.RecallWords): a
+// request's meaningful words, a task's content words. When the store cannot be read they are the words
+// without it (the recall fails then anyway).
+func (th thresholds) words(s *memory.Store, text string) []string {
+	var words []string
+	var err error
 	if th.task {
-		return memory.TaskWords(text)
+		if words, err = s.TaskRecallWords(text); err != nil {
+			return memory.TaskWords(text)
+		}
+		return words
 	}
-	return memory.MeaningfulWords(text)
+	if words, err = s.RecallWords(text); err != nil {
+		return memory.MeaningfulWords(text)
+	}
+	return words
 }
 
 // hits are the memories in states that text matches, measured as this recall measures them.
@@ -754,7 +764,7 @@ func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]
 // found are the live memories prompt matches, as this recall measures them: none when prompt has fewer words
 // than the recall needs or the find fails. One find serves the recall and its old-version count (oldVersions).
 func (th thresholds) found(s *memory.Store, prompt string) []memory.RecallHit {
-	if len(th.words(prompt)) < max(minRecallWords, th.minWords) {
+	if len(th.words(s, prompt)) < max(minRecallWords, th.minWords) {
 		return nil
 	}
 	found, err := th.hits(s, prompt)
