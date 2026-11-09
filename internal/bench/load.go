@@ -61,6 +61,10 @@ func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	} else if p.template, err = p.seed(set, dir); err != nil {
 		return nil, err
 	}
+	// 틀은 이 실행이 만든 사본이다: 표지를 남겨 재생 사례의 Rewind가 그 사본(Copy)만 고쳐 쓰게 한다.
+	if err = memory.MarkThrowawayCopy(p.template); err != nil {
+		return nil, err
+	}
 	if p.Set, err = p.resolve(set); err != nil {
 		return nil, err
 	}

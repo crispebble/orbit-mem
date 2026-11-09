@@ -264,6 +264,28 @@ func (h *History) rowAt(m *memHistory, v int) []any {
 	return row
 }
 
+// 임시 사본 표지(1-6 b6d 2차): Rewind는 기억·출처·연결·사건 줄을 지우고 다시 넣는다. 사용자의 기억 DB에서 돌면 기억을
+// 잃으므로, 사본을 만든 쪽(bench의 틀)이 meta에 표지를 남긴 DB만 연다. 표지는 사본을 만든 뒤 그 사본에만 쓴다: 사본의
+// 원본(사용자 DB)은 열지 않으므로 표지가 생기지 않는다.
+
+// metaThrowawayCopy is the meta key that marks a DB as a private throwaway copy.
+const metaThrowawayCopy = "copy.throwaway"
+
+// ErrNotThrowawayCopy is Rewind's refusal of a DB without the throwaway copy mark.
+var ErrNotThrowawayCopy = errors.New("rewind: the DB is not marked as a throwaway copy")
+
+// MarkThrowawayCopy marks the existing DB at path as a private throwaway copy that Rewind may rewrite. Call it
+// only on a copy this process made and deletes after the run.
+func MarkThrowawayCopy(path string) error {
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Busy: writeBusy, Pragmas: storePragmas, Existing: true})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO meta(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`, metaThrowawayCopy)
+	return err
+}
+
 // Rewinder puts one DB copy at the state of a time.
 type Rewinder struct {
 	db     *sql.DB
@@ -274,11 +296,21 @@ type Rewinder struct {
 }
 
 // Rewind opens a writer on the DB copy at path, which must hold what the history was read from (its rows
-// may have been changed since by the recall paths only in the tables the history does not keep).
+// may have been changed since by the recall paths only in the tables the history does not keep) and carry
+// the throwaway copy mark (MarkThrowawayCopy). A DB without the mark is refused with ErrNotThrowawayCopy
+// before anything is written.
 func (h *History) Rewind(path string) (*Rewinder, error) {
 	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Busy: writeBusy, Pragmas: storePragmas, Existing: true})
 	if err != nil {
 		return nil, err
+	}
+	var mark string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key=?`, metaThrowawayCopy).Scan(&mark); err != nil || mark != "1" {
+		db.Close()
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %v", ErrNotThrowawayCopy, err)
+		}
+		return nil, ErrNotThrowawayCopy
 	}
 	r := &Rewinder{db: db, h: h, mems: map[string]memPhase{}, links: make([]int8, len(h.links)), events: make([]bool, len(h.events))}
 	for id, m := range h.mems {

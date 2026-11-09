@@ -2,7 +2,9 @@ package memory
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -68,6 +70,9 @@ func rewound(t *testing.T, path string) (*History, *Rewinder) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := MarkThrowawayCopy(path); err != nil {
+		t.Fatal(err)
+	}
 	r, err := h.Rewind(path)
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +134,41 @@ func TestRewind_사례_시각의_기억만_그_시각의_판으로_있다(t *tes
 	}
 	if d := dump(t, path); len(d["memories"])+len(d["sources"])+len(d["memory_versions"]) != 0 {
 		t.Fatalf("rows before everything: %v", d)
+	}
+}
+
+// Rewind는 기억·출처·연결을 지우고 다시 넣는다: 임시 사본 표지(MarkThrowawayCopy)가 없는 DB(사용자의 기억 DB)는
+// 열지 않고 거절하고 아무 줄도 바꾸지 않는다(1-6 b6d 2차, 재검토 지적).
+func TestRewind_임시_사본_표지가_없는_DB는_거절하고_아무것도_바꾸지_않는다(t *testing.T) {
+	path, _, _, at := historyFixture(t)
+	want := dump(t, path)
+	h, err := ReadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := h.Rewind(path); err == nil {
+		r.To(at[0] - 1)
+		r.Close()
+		t.Fatal("Rewind opened a DB without the throwaway copy mark")
+	} else if !errors.Is(err, ErrNotThrowawayCopy) {
+		t.Fatalf("err = %v, want ErrNotThrowawayCopy", err)
+	}
+	got := dump(t, path)
+	for table := range historyTables {
+		if !slices.Equal(got[table], want[table]) {
+			t.Fatalf("%s changed by a refused Rewind", table)
+		}
+	}
+	if err := MarkThrowawayCopy(path); err != nil {
+		t.Fatal(err)
+	}
+	r, err := h.Rewind(path)
+	if err != nil {
+		t.Fatalf("marked copy: %v", err)
+	}
+	r.Close()
+	if err := MarkThrowawayCopy(filepath.Join(t.TempDir(), "none.db")); err == nil {
+		t.Fatal("marked a DB that does not exist")
 	}
 }
 
