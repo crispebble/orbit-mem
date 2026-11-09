@@ -656,7 +656,12 @@ func recallRelative(cfg config.Config) float64 {
 // then find score, share of the request's words, this place's own before the user's (S3 명세 2.8), age
 // (newer first), net usage (followed − irrelevant) over the ledger window, last edit, id.
 func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
-	hits, floor := recallFloor(s, th, prompt, byID)
+	return recallHitsOf(s, cfg, th, pl, prompt, th.found(s, prompt), byID, told)
+}
+
+// recallHitsOf is recallHits over found, the live memories prompt matched (thresholds.found).
+func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, found []memory.RecallHit, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
+	hits, floor := floorOf(th, found, byID)
 	kept := hits[:0]
 	for _, h := range hits {
 		if !told[h.Memory.ID] && h.Score >= floor {
@@ -671,13 +676,24 @@ func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Plac
 // the session was already told: a memory weak next to the best match of the request stays out when that one
 // was told before (L-2: the same request again is 0 characters).
 func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
+	return floorOf(th, th.found(s, prompt), byID)
+}
+
+// found are the live memories prompt matches, as this recall measures them: none when prompt has fewer words
+// than the recall needs or the find fails. One find serves the recall and its old-version count (oldVersions).
+func (th thresholds) found(s *memory.Store, prompt string) []memory.RecallHit {
 	if len(th.words(prompt)) < max(minRecallWords, th.minWords) {
-		return nil, 0
+		return nil
 	}
 	found, err := th.hits(s, prompt)
 	if err != nil {
-		return nil, 0
+		return nil
 	}
+	return found
+}
+
+// floorOf is recallFloor over found (thresholds.found).
+func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
 	var hits []memory.RecallHit
 	top := 0.0
 	for _, h := range found {

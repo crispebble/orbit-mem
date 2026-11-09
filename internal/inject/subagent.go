@@ -115,7 +115,9 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	if err != nil {
 		return ""
 	}
-	hits := recallHits(s, cfg, taskThresholds(cfg), pl, task, byID, nil)
+	th := taskThresholds(cfg)
+	found := th.found(s, task) // 위임 회상과 옛 판 셈이 같이 쓴다(같은 찾기를 두 번 돌리지 않는다)
+	hits := recallHitsOf(s, cfg, th, pl, task, found, byID, nil)
 	if len(hits) > maxTaskRecall {
 		hits = hits[:maxTaskRecall]
 	}
@@ -125,7 +127,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	now := s.Now()
 	head := taskRecallHead + "\n"
 	oldLine := ""
-	if n := oldVersions(s, cfg, pl, task, now); n > 0 {
+	if n := oldVersions(s, th, pl, task, found, now); n > 0 {
 		oldLine = fmt.Sprintf("- 옛 판 %d개 뺌 — 낡거나 대체된 판이라 따르지 않는다\n", n)
 	}
 	type entry struct {
@@ -178,9 +180,9 @@ func reasonLine(h memory.RecallHit) string {
 }
 
 // oldVersions counts the old versions in reach that a task matches by the task gate (taskThresholds.pass):
-// stale memories, and live ones recall leaves out as an older value of their topic or past their days.
-func oldVersions(s *memory.Store, cfg config.Config, pl place.Place, task string, now time.Time) int {
-	th := taskThresholds(cfg)
+// stale memories, and live ones recall leaves out as an older value of their topic or past their days. live
+// are the live memories the task matched (thresholds.found), so only the stale ones are looked up here.
+func oldVersions(s *memory.Store, th thresholds, pl place.Place, task string, live []memory.RecallHit, now time.Time) int {
 	heads, _ := s.TopicHeads()
 	n := 0
 	count := func(found []memory.RecallHit, stale bool) {
@@ -194,9 +196,7 @@ func oldVersions(s *memory.Store, cfg config.Config, pl place.Place, task string
 			}
 		}
 	}
-	if live, err := th.hits(s, task); err == nil {
-		count(live, false)
-	}
+	count(live, false)
 	if old, err := th.hits(s, task, memory.StateStale); err == nil {
 		count(old, true)
 	}
