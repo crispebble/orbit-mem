@@ -11,16 +11,18 @@ import (
 )
 
 // Lengths of the tool recall (B2, 설계 · orbit-mem 5.2절·11절 L-4). A memory line is its "- " title
-// line with the body line under it. Only memory lines count toward the call and session sums; the head
-// line and the "N개 더" line do not, and MaxToolRunes bounds the whole hook text.
+// line with a short body line under it (the title first; memory_get has the body, 1-6 b6r). Only memory
+// lines count toward the call and session sums; the head line and the pointer line do not, and
+// MaxToolRunes bounds the whole hook text.
 const (
 	// MaxToolRunes bounds the whole text a tool hook adds (L-4).
 	MaxToolRunes = 2500
 	// MaxToolMemories and MaxToolCallRunes bound the memory lines of one call.
 	MaxToolMemories  = 2
 	MaxToolCallRunes = 800
-	// MaxToolMemoryRunes bounds one memory line; the body is cut to fit.
-	MaxToolMemoryRunes = 400
+	// MaxToolMemoryRunes bounds one memory line; the body is cut to fit. It is short so the session sum holds
+	// more memories (1-6 b6r): the line says what the memory is, memory_get gives the rest.
+	MaxToolMemoryRunes = 160
 	// MaxToolSessionRunes bounds the memory lines one session key gets from tool calls.
 	MaxToolSessionRunes = 2000
 	// maxToolNameRunes is how much of the tool name the head line shows, so a very long name
@@ -28,10 +30,18 @@ const (
 	maxToolNameRunes = 200
 	// minToolBodyRunes is the least body worth a line.
 	minToolBodyRunes = 20
+	// maxToolPointers, maxToolPointerRunes and toolPointerTitleRunes bound the pointer line: the memories a
+	// call could not bring, by title and id, so the model can memory_get them (1-6 b6r).
+	maxToolPointers       = 5
+	maxToolPointerRunes   = 400
+	toolPointerTitleRunes = 40
 )
 
-// markToolMore marks, per session key, the tool memories the "N개 더" line has counted: the session is
-// told about the same memories once (설계 · orbit-mem 5.2절, 원칙 3). They stay candidates: a later call
+// toolPointerHead starts the pointer line.
+const toolPointerHead = "- 이 도구에 걸린 기억 더 — "
+
+// markToolMore marks, per session key, the tool memories the pointer line has pointed at or counted: the
+// session is told about the same memories once (설계 · orbit-mem 5.2절, 원칙 3). They stay candidates: a later call
 // within the call limits, or one after a reset once the session sum is full, can still bring them.
 // ResetSession drops these marks with the others.
 const markToolMore = "tool.more"
@@ -42,7 +52,9 @@ const markToolMore = "tool.more"
 // brings at most MaxToolMemories memory lines within MaxToolCallRunes, and the session key stops at
 // MaxToolSessionRunes, counted over the memories it was given, drawn as they are now. Memories it
 // could not bring stay candidates for a later call; the ones the session has not been told about are
-// counted in one line, once (markToolMore). With nothing to bring and nothing new to count it adds nothing.
+// pointed at by title and id on one line, maxToolPointers at most and the rest counted, once
+// (markToolMore). MemoryIDs are the memories brought, then the ones pointed at. With nothing to bring and
+// nothing new to point at it adds nothing.
 func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -91,10 +103,10 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		return a.m.ID < c.m.ID
 	})
 	sessionUsed := toolSessionUsed(s, active, given)
-	callUsed := 0
+	callUsed, brought := 0, 0
 	var entries strings.Builder
 	for _, h := range hits {
-		if len(inj.MemoryIDs) == MaxToolMemories {
+		if brought == MaxToolMemories {
 			break
 		}
 		line := toolLine(h.m)
@@ -106,25 +118,58 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		entries.WriteString(line)
 		callUsed += n
 		sessionUsed += n
+		brought++
 		inj.MemoryIDs = append(inj.MemoryIDs, h.m.ID)
 		inj.mark(memory.MarkTool, h.m.ID)
 	}
-	left := 0
-	for _, h := range hits[len(inj.MemoryIDs):] { // 넣은 것은 hits 앞에서부터다
+	var rest []memory.Memory
+	for _, h := range hits[brought:] { // 넣은 것은 hits 앞에서부터다
 		if !told[h.m.ID] {
-			left++
+			rest = append(rest, h.m)
 			inj.mark(markToolMore, h.m.ID)
 		}
 	}
-	if len(inj.MemoryIDs) == 0 && left == 0 {
+	if brought == 0 && len(rest) == 0 {
 		return inj.done(&b)
 	}
-	b.WriteString(fmt.Sprintf("["+Label+" 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다.\n", memory.ClipRunes(tool, maxToolNameRunes)))
+	b.WriteString(fmt.Sprintf("["+Label+" 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다. 본문은 memory_get\n", memory.ClipRunes(tool, maxToolNameRunes)))
 	b.WriteString(entries.String())
-	if left > 0 {
-		b.WriteString(fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find\n", left))
+	if len(rest) > 0 {
+		line, pointed := toolPointerLine(rest)
+		b.WriteString(line + "\n")
+		inj.MemoryIDs = append(inj.MemoryIDs, pointed...)
 	}
 	return inj.done(&b)
+}
+
+// toolPointerLine points at the memories a call could not bring: title (cut to toolPointerTitleRunes) and
+// id, maxToolPointers at most within maxToolPointerRunes, then how many more. It gives the ids it named.
+func toolPointerLine(rest []memory.Memory) (string, []string) {
+	line := toolPointerHead
+	var ids []string
+	for i, m := range rest {
+		entry := fmt.Sprintf("%s(%s)", clipTitle(m.Title, toolPointerTitleRunes), m.ID)
+		if i > 0 {
+			entry = " · " + entry
+		}
+		more := ""
+		if left := len(rest) - i - 1; left > 0 {
+			more = fmt.Sprintf(" 외 %d개 — memory_find", left)
+		}
+		// 이 항목과(남는 것이 있으면) 「외 N개」 꼬리까지 400자 안에 들 때만 넣는다.
+		if i == maxToolPointers || runes(line)+runes(entry)+runes(more) > maxToolPointerRunes {
+			break
+		}
+		line += entry
+		ids = append(ids, m.ID)
+	}
+	if left := len(rest) - len(ids); left > 0 {
+		if len(ids) == 0 {
+			return fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find", left), nil
+		}
+		line += fmt.Sprintf(" 외 %d개 — memory_find", left)
+	}
+	return line, ids
 }
 
 // toolLine is how a tool call shows one memory: its title line and, under it, as much of the body as

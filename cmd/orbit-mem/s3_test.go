@@ -110,11 +110,12 @@ func TestPlace_지금_폴더의_제품을_보인다(t *testing.T) {
 }
 
 // 설계 · orbit-mem 5.2절·L-4: 한 접두에 기억이 많아도 도구 훅 글은 2,500자 이하이고, 같은 세션의 기억 줄 합은
-// 2,000자에서 멈춘 뒤 「N개 더」 줄만 온다. 도구 이름이 아주 길어도 넘지 않는다.
+// 2,000자에서 멈춘다. 넣지 못한 기억은 첫 호출에 제목·id로 가리킨다(5개까지, 나머지는 「외 N개」, 1-6 b6r).
+// 도구 이름이 아주 길어도 넘지 않는다.
 func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에서_멈춘다(t *testing.T) {
 	home(t)
 	s := seed(t)
-	const n = 10
+	const n = 20
 	for i := 0; i < n; i++ {
 		title := fmt.Sprintf("문서 도구 규칙 %d", i)
 		if _, err := s.Save(memory.SaveInput{Kind: "rule", Title: title, Body: strings.Repeat("길다 ", 300), Topic: title, Scope: memory.ScopeGlobal,
@@ -135,7 +136,7 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		return ctx
 	}
 	total, shown, empty := 0, 0, 0
-	for call := 0; call < 6; call++ {
+	for call := 0; call < 12; call++ {
 		ctx := pre("S", "mcp__docs__write_page")
 		if ctx == "" {
 			empty++
@@ -144,7 +145,7 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		var more string
 		for _, line := range strings.Split(ctx, "\n")[1:] {
 			switch {
-			case strings.HasPrefix(line, "- 이 도구에 걸린 기억 "):
+			case strings.HasPrefix(line, "- 이 도구에 걸린 기억 더 — "):
 				more = line
 			case strings.HasPrefix(line, "- "):
 				shown++
@@ -156,19 +157,15 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		if total > 2000 {
 			t.Fatalf("call %d: session memory lines %d runes", call, total)
 		}
-		// 같은 기억들은 세션에 한 번 알린다: 첫 호출만 남은 수를 센다.
-		want := ""
-		if call == 0 {
-			want = fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find", n-shown)
-		}
-		if more != want {
-			t.Fatalf("call %d: more %q, want %q\n%s", call, more, want, ctx)
+		// 같은 기억들은 세션에 한 번 가리킨다: 첫 호출만 가리키기 줄이 있다.
+		if (call == 0) != (more != "") || (call == 0 && (strings.Count(more, "(m-") != 5 || !strings.Contains(more, fmt.Sprintf("외 %d개 — memory_find", n-shown-5)))) {
+			t.Fatalf("call %d: pointer %q\n%s", call, more, ctx)
 		}
 	}
-	if shown >= n || total+400 <= 2000 || empty < 2 {
+	if shown >= n || total+160 <= 2000 || empty < 2 {
 		t.Fatalf("did not stop at the session sum once told: shown=%d total=%d empty=%d", shown, total, empty)
 	}
-	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "기억 8개 더") {
+	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "외 13개 — memory_find") {
 		t.Fatalf("long tool name:\n%.300s", ctx)
 	}
 }

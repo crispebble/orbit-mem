@@ -50,8 +50,9 @@ func TestToolInjection_같은_시각의_기억은_id_순으로_들어간다(t *t
 	slices.Sort(all)
 	for i := 0; i < 20; i++ {
 		inj := ToolInjection(s, config.Default(), here, "h", fmt.Sprintf("s%d", i), docsTool)
-		if !slices.Equal(inj.MemoryIDs, all[:MaxToolMemories]) {
-			t.Fatalf("%d번째: %v, 기대 %v", i, inj.MemoryIDs, all[:MaxToolMemories])
+		// 줄로 넣는 2개, 그 뒤 가리키는 나머지도 id 순이다(1-6 b6r).
+		if !slices.Equal(inj.MemoryIDs, all) {
+			t.Fatalf("%d번째: %v, 기대 %v", i, inj.MemoryIDs, all)
 		}
 	}
 }

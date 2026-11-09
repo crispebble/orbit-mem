@@ -198,7 +198,8 @@ func TestToolInjection_접두_트리거와_개수_글자_한도(t *testing.T) {
 		}
 	}
 	got := ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlas__write_page")
-	if len(got.MemoryIDs) == 0 || len(got.MemoryIDs) > MaxToolMemories || got.Chars > MaxToolRunes {
+	// 줄은 2개까지, 나머지 셋은 가리키기 줄로(1-6 b6r).
+	if len(got.MemoryIDs) != 5 || strings.Count(got.Text, "\n  길다") != MaxToolMemories || got.Chars > MaxToolRunes {
 		t.Fatalf("ids=%d chars=%d:\n%s", len(got.MemoryIDs), got.Chars, got.Text)
 	}
 	if ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlassian__x").Text != "" {
