@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"math"
 	"regexp"
 	"strings"
 )
@@ -84,8 +85,64 @@ func imperative(w string) bool {
 	return false
 }
 
-// TaskRecallHitsIn is RecallHitsIn for a delegated task: the find score of its content words (TaskQuery) and
-// the share of its content words (TaskWords). A task without content words matches nothing.
+// TaskRecallHitsIn is RecallHitsIn for a delegated task: the find score of its content words (TaskQuery), the
+// share of its content words (TaskWords) and the title share (titleShares). A task without content words
+// matches nothing.
 func (s *Store) TaskRecallHitsIn(task string, states ...string) ([]RecallHit, error) {
-	return s.recallHitsOf(TaskWords(task), TaskQuery(task), states)
+	words := TaskWords(task)
+	hits, err := s.recallHitsOf(words, TaskQuery(task), states)
+	if err != nil || len(hits) == 0 {
+		return hits, err
+	}
+	if len(states) == 0 {
+		states = []string{StateCandidate, StateConfirmed}
+	}
+	var n int
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	args := make([]any, len(states))
+	for i, st := range states {
+		args[i] = st
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM memories WHERE state IN (`+ph+`)`, args...).Scan(&n); err != nil {
+		return nil, err
+	}
+	titleShares(hits, len(words), n)
+	return hits, nil
+}
+
+// 위임 회상의 제목 몫(설계 보완, 계획 1-6 b7f). 위임 글은 길어서(재생 묶음 중앙 약 3,900자) 내용 낱말 40개 가운데 아무 기억에나
+// 낱말 서넛은 맞는다: 기억 1,326개 저장소에서 맞은 낱말 수·찾기 점수 문턱으로 고른 위임 회상은 틀린 회상이 92%였다. 맞은 낱말이
+// 그 기억이 무엇인지를 말하는 자리(제목·주제)에 있고 저장소에서 드문 낱말일 때만 그 기억에 대한 일이다. 그래서 내용 낱말 가운데
+// 기억의 제목·주제에 나온 낱말마다 저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눠 더하고(「드문 낱말 몇 개 몫」), 내용 낱말
+// 수로 나눈다:
+//
+//	idf(w) = ln(1 + (N − n(w) + 0.5) / (n(w) + 0.5)),  제목 몫 = Σ_{w ∈ 제목·주제} idf(w) / idf(1) / (내용 낱말 수)
+//
+// N은 그 상태(기본: 후보와 확정)의 기억 수, n(w)는 w가 어느 칸에든 나온 기억 수(맞은 낱말 셈과 같은 일치, Coverage)다. 한
+// 기억에만 있는 낱말은 1, 흔한 낱말은 0에 가까워 저장소 크기가 달라도 같은 뜻이다. 내용 낱말 수로 나누는 것은 우연히 맞는
+// 낱말이 위임 글의 낱말 수에 비례해 늘기 때문이다: 낱말 7개 위임에서 제목의 드문 낱말 하나는 그 기억을 가리키지만, 40개
+// 위임에서는 아무 기억에나 있다. 값은 0~1이다. n(w)는 이번 찾기의 기억에서 센다: w가 나온 기억은 w의 토큰으로 찾기에
+// 걸리므로 모두 그 안에 있다.
+
+// titleShares sets the title share of every hit (see above) for a task of words content words, from the hits
+// themselves and n live memories.
+func titleShares(hits []RecallHit, words, n int) {
+	df := map[string]int{}
+	for _, h := range hits {
+		for _, w := range h.Matched {
+			df[w]++
+		}
+	}
+	idf := func(k int) float64 { return math.Log(1 + (float64(n-k)+0.5)/(float64(k)+0.5)) }
+	unit := idf(1)
+	for i := range hits {
+		_, head := Coverage(Memory{Title: hits[i].Memory.Title, Topic: hits[i].Memory.Topic}, hits[i].Matched)
+		w := 0.0
+		for _, x := range head {
+			w += idf(df[x])
+		}
+		if unit > 0 && words > 0 {
+			hits[i].TitleShare = w / unit / float64(words)
+		}
+	}
 }

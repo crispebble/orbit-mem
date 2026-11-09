@@ -78,7 +78,8 @@ func TestPromptRecallChars는_recallChars와_500자_중_작은_값이다(t *test
 func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범위(t *testing.T) {
 	d := Default()
 	if d.RecallMinCoverageOneWord != DefaultRecallMinCoverageOneWord || d.TaskRecallMinScore != DefaultTaskRecallMinScore ||
-		d.TaskRecallMinWords != DefaultTaskRecallMinWords || d.TaskRecallMinRelative != DefaultTaskRecallMinRelative {
+		d.TaskRecallMinWords != DefaultTaskRecallMinWords || d.TaskRecallMinRelative != DefaultTaskRecallMinRelative ||
+		d.TaskRecallMinTitleShare != DefaultTaskRecallMinTitleShare {
 		t.Fatalf("default = %+v", d)
 	}
 	p := filepath.Join(t.TempDir(), "config.json")
@@ -86,7 +87,8 @@ func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범
 		t.Fatal(err)
 	}
 	if c, err := Load(p); err != nil || c.RecallMinCoverageOneWord != DefaultRecallMinCoverageOneWord || c.TaskRecallMinWords != DefaultTaskRecallMinWords ||
-		c.TaskRecallMinScore != DefaultTaskRecallMinScore || c.TaskRecallMinRelative != DefaultTaskRecallMinRelative {
+		c.TaskRecallMinScore != DefaultTaskRecallMinScore || c.TaskRecallMinRelative != DefaultTaskRecallMinRelative ||
+		c.TaskRecallMinTitleShare != DefaultTaskRecallMinTitleShare {
 		t.Fatalf("old file = %+v %v", c, err)
 	}
 	floats := map[string]func(*Config) *float64{
@@ -115,10 +117,26 @@ func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범
 			t.Errorf("taskRecallMinWords %d accepted or unclear: %v", bad, err)
 		}
 	}
-	if err := os.WriteFile(p, []byte(`{"recallMinCoverageOneWord":0.5,"taskRecallMinScore":0.2,"taskRecallMinWords":4,"taskRecallMinRelative":0.6}`), 0o600); err != nil {
+	// 제목 몫(1-6 b7f)은 0 < x ≤ 1이다.
+	for _, bad := range []float64{0, -1, 1.01, math.NaN()} {
+		c := Default()
+		c.TaskRecallMinTitleShare = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "taskRecallMinTitleShare") {
+			t.Errorf("taskRecallMinTitleShare %v accepted or unclear: %v", bad, err)
+		}
+	}
+	for _, ok := range []float64{0.5, 1} {
+		c := Default()
+		c.TaskRecallMinTitleShare = ok
+		if err := c.Validate(); err != nil {
+			t.Errorf("taskRecallMinTitleShare %v: %v", ok, err)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"recallMinCoverageOneWord":0.5,"taskRecallMinScore":0.2,"taskRecallMinWords":4,"taskRecallMinRelative":0.6,"taskRecallMinTitleShare":0.1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if c, err := Load(p); err != nil || c.RecallMinCoverageOneWord != 0.5 || c.TaskRecallMinScore != 0.2 || c.TaskRecallMinWords != 4 || c.TaskRecallMinRelative != 0.6 {
+	if c, err := Load(p); err != nil || c.RecallMinCoverageOneWord != 0.5 || c.TaskRecallMinScore != 0.2 || c.TaskRecallMinWords != 4 || c.TaskRecallMinRelative != 0.6 ||
+		c.TaskRecallMinTitleShare != 0.1 {
 		t.Fatalf("file = %+v %v", c, err)
 	}
 }

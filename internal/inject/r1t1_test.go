@@ -1,6 +1,7 @@
 package inject
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -66,7 +67,8 @@ func TestSubagentStart_위임_회상은_내용_낱말_수로_문을_연다(t *te
 		t.Fatalf("taskRecallMinWords 4면 빠져야 함:\n%s", inj.Text)
 	}
 	cfg = config.Default()
-	cfg.TaskRecallMinWords, cfg.TaskRecallMinRelative = 2, 0.01
+	// 낱말 수 문턱만 본다: 상대 문턱과 제목 몫 문턱(1-6 b7f)은 연다.
+	cfg.TaskRecallMinWords, cfg.TaskRecallMinRelative, cfg.TaskRecallMinTitleShare = 2, 0.01, 0.0001
 	if inj := SubagentStart(s, cfg, memory.ScopeGlobal, task); !slices.Contains(inj.MemoryIDs, twoPlus.ID) {
 		t.Fatalf("taskRecallMinWords 2면 결제·문서 두 낱말로 들어야 함:\n%s", inj.Text)
 	}
@@ -74,5 +76,40 @@ func TestSubagentStart_위임_회상은_내용_낱말_수로_문을_연다(t *te
 	cfg.TaskRecallMinScore = 1
 	if inj := SubagentStart(s, cfg, memory.ScopeGlobal, task); slices.Contains(inj.MemoryIDs, three.ID) {
 		t.Fatalf("taskRecallMinScore 1이면 빠져야 함:\n%s", inj.Text)
+	}
+}
+
+// 위임 회상의 제목 몫 문(설계 보완, 1-6 b7f): 내용 낱말이 셋 넘게 맞고 점수가 높아도, 맞은 낱말이 본문에만 있거나 제목·주제의
+// 낱말이 저장소에 흔하면(제목 몫 < taskRecallMinTitleShare) 넣지 않는다. 틀리게 넣느니 넣지 않는다.
+func TestSubagentStart_위임_회상은_제목과_주제의_드문_낱말_몫으로_문을_연다(t *testing.T) {
+	s := store(t)
+	for i := 0; i < 8; i++ {
+		subSave(t, s, memory.SaveInput{Kind: memory.KindFact, Title: fmt.Sprintf("로그 화면 정리 %d", i), Body: fmt.Sprintf("채움 %d", i)})
+	}
+	target := subSave(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "결제 모듈 경합은 실제로 일으킨다", Topic: "결제 경합"})
+	bodyOnly := subSave(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "로그 화면 순서", Body: "동시성 고루틴 잠금 시험은 따로 둔다", Topic: "화면 순서"})
+	task := "계획: p 항목: m2. 결제 모듈 경합을 조사하라. 동시성 고루틴 잠금 로그 화면도 확인하라."
+	hits, err := s.TaskRecallHitsIn(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hits {
+		if h.Memory.ID == bodyOnly.ID && (len(h.Matched) < config.DefaultTaskRecallMinWords || h.TitleShare >= config.DefaultTaskRecallMinTitleShare) {
+			t.Fatalf("재료: 본문으로 낱말 셋 넘게 맞고 제목 무게는 문턱 아래여야 함 %v %v", h.Matched, h.TitleShare)
+		}
+	}
+	cfg := config.Default()
+	inj := SubagentStart(s, cfg, memory.ScopeGlobal, task)
+	if !slices.Contains(inj.MemoryIDs, target.ID) || slices.Contains(inj.MemoryIDs, bodyOnly.ID) {
+		t.Fatalf("제목에 드문 낱말이 맞은 기억만 들어야 함: %v\n%s", inj.MemoryIDs, inj.Text)
+	}
+	cfg.TaskRecallMinTitleShare = 0.0001
+	if inj := SubagentStart(s, cfg, memory.ScopeGlobal, task); !slices.Contains(inj.MemoryIDs, bodyOnly.ID) {
+		t.Fatalf("taskRecallMinTitleShare를 낮추면 들어야 함:\n%s", inj.Text)
+	}
+	cfg = config.Default()
+	cfg.TaskRecallMinTitleShare = 1
+	if inj := SubagentStart(s, cfg, memory.ScopeGlobal, task); strings.Contains(inj.Text, "맡은 일 관련") {
+		t.Fatalf("어느 기억도 문턱을 넘지 못하면 위임 회상은 비어야 함:\n%s", inj.Text)
 	}
 }

@@ -76,3 +76,55 @@ func scoreOfSkip(t *testing.T, s *Store, query, id string) float64 {
 	}
 	return 0
 }
+
+// 위임 회상의 제목 몫(설계 보완, 1-6 b7f): 위임 글의 내용 낱말 가운데 그 기억의 제목·주제에 나온 낱말의 IDF 합을, 한
+// 기억에만 있는 낱말의 IDF와 내용 낱말 수로 나눈 값이다. 저장소의 기억 수(N)와 낱말마다 그 낱말이 나온 기억 수(n)로
+// idf = ln(1 + (N − n + 0.5)/(n + 0.5))이고, 한 기억에만 있는 낱말은 1이다. 본문에만 나온 낱말은 세지 않는다.
+func TestTaskRecallHits_제목_몫은_제목과_주제에_나온_내용_낱말의_드묾을_낱말_수로_나눈_값이다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := saveDoc(t, s, "결제 모듈 경합은 실제로 일으킨다", "로그 화면도 본다", "결제 경합")
+	saveDoc(t, s, "결제 화면 문구", "다른 일", "")
+	saveDoc(t, s, "결제 영수증", "다른 일", "")
+	for i := 0; i < 5; i++ {
+		filler(t, s, i)
+	}
+	// 결제는 기억 3개, 모듈·경합은 a에만, 로그는 a의 본문에만 있다.
+	task := "결제 모듈 경합 로그를 조사하라"
+	if w := TaskWords(task); !slices.Equal(w, []string{"결제", "모듈", "경합", "로그"}) {
+		t.Fatalf("재료: 내용 낱말 %v", w)
+	}
+	hits, err := s.TaskRecallHitsIn(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ha *RecallHit
+	for i := range hits {
+		if hits[i].Memory.ID == a.ID {
+			ha = &hits[i]
+		}
+	}
+	if ha == nil {
+		t.Fatal("결제 기억이 없습니다")
+	}
+	n := 8.0
+	idf := func(df float64) float64 { return math.Log(1 + (n-df+0.5)/(df+0.5)) }
+	want := (idf(3) + 2*idf(1)) / idf(1) / 4
+	if math.Abs(ha.TitleShare-want) > 1e-9 {
+		t.Fatalf("제목 몫 %v, 기대 %v (맞은 낱말 %v)", ha.TitleShare, want, ha.Matched)
+	}
+	for _, h := range hits {
+		if h.Memory.ID != a.ID && math.Abs(h.TitleShare-idf(3)/idf(1)/4) > 1e-9 {
+			t.Errorf("결제만 제목에 있는 기억 %q의 제목 몫 %v", h.Memory.Title, h.TitleShare)
+		}
+	}
+	// 요청 회상은 제목 몫을 재지 않는다(문에 쓰지 않는다).
+	req, err := s.RecallHitsIn("결제 모듈 경합 로그")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range req {
+		if h.TitleShare != 0 {
+			t.Errorf("요청 회상의 제목 몫 %v", h.TitleShare)
+		}
+	}
+}

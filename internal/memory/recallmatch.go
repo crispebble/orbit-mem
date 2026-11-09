@@ -30,6 +30,8 @@ type RecallHit struct {
 	Score    float64  // 찾기 점수(0~1)
 	Coverage float64  // 뜻 있는 낱말 중 맞은 비율(0~1)
 	Matched  []string // 맞은 낱말(요청 순서)
+	// TitleShare is set by the recall of a delegated task only (TaskRecallHitsIn, else 0): see titleShares.
+	TitleShare float64
 }
 
 // Coverage is the share of words that appear in m (title, topic, tags or body), and those words in order.

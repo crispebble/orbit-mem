@@ -121,6 +121,10 @@ type Config struct {
 	TaskRecallMinScore    float64 `json:"taskRecallMinScore"`
 	TaskRecallMinWords    int     `json:"taskRecallMinWords"`
 	TaskRecallMinRelative float64 `json:"taskRecallMinRelative"`
+	// 위임 회상의 제목 몫 문턱(설계 보완, 계획 1-6 b7f): 위의 세 문턱을 넘어도, 내용 낱말 가운데 그 기억의 제목·주제에 나온
+	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
+	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
@@ -132,6 +136,10 @@ type Config struct {
 //   - recallMinRelative 0.9: 0.85와 같은 결과다.
 //   - 위임 taskRecallMinWords 3: 2면 틀린 회상 35%, 4면 적중 1/21. taskRecallMinScore 0.1(0.05~0.15 같음)·
 //     taskRecallMinRelative 0.3(0.25~0.35 같음).
+//   - 위임 taskRecallMinTitleShare 0.05(계획 1-6 b7f): 위 세 문턱은 기억 207개짜리 공개 묶음에서 골라, 기억 1,326개 저장소의
+//     긴 위임 글(내용 낱말 36~40개)에서는 아무 기억이나 통과했다. 재생 묶음 학습용(사람 미검토 정답표 초안)에서 위임 회상
+//     맞음 24·틀림 309/334 → 맞음 17·틀림 4/25(적중 5/43 → 2/43, 넣지 않음 0/24 → 22/24). 0.045면 틀림 8/34, 0.055면 맞음
+//     14. 학습용을 세션 반반으로 나눠도 두 쪽 모두 틀림이 줄었다(194 → 0, 109 → 4). 공개 묶음 전체는 결과가 같다.
 const (
 	DefaultRecallMinScore           = 0.3
 	DefaultRecallMinCoverage        = 0.25
@@ -140,6 +148,7 @@ const (
 	DefaultTaskRecallMinScore       = 0.1
 	DefaultTaskRecallMinWords       = 3
 	DefaultTaskRecallMinRelative    = 0.3
+	DefaultTaskRecallMinTitleShare  = 0.05
 )
 
 // MaxTaskRecallMinWords is the largest taskRecallMinWords: a request has at most 40 meaningful words.
@@ -206,7 +215,8 @@ func Default() Config {
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
 		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
-		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative}
+		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -258,6 +268,9 @@ func (c Config) Validate() error {
 	}
 	if !(c.TaskRecallMinRelative > 0 && c.TaskRecallMinRelative <= 1) {
 		return i18n.Errorf("config.err.task_recall_min_relative", c.TaskRecallMinRelative)
+	}
+	if !(c.TaskRecallMinTitleShare > 0 && c.TaskRecallMinTitleShare <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_title_share", c.TaskRecallMinTitleShare)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

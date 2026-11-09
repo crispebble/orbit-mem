@@ -570,10 +570,13 @@ func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
 //     흔한 낱말 하나」는 주제 밖 요청과 가를 수 없다.
 //   - 위임 회상(T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 시키는 말을 뺀 내용 낱말(memory.TaskWords)
 //     minWords개 이상이 맞고, 찾기 점수 ≥ score, 1위 점수의 relative배 이상(5개까지 넣으니 둘째·셋째 주제를 살리게 낮다).
+//     그리고 제목 몫(memory.RecallHit.TitleShare, 맞은 낱말 가운데 기억의 제목·주제에 나온 드문 낱말 몫을 내용 낱말 수로
+//     나눈 값) ≥ title(설계 보완, 1-6 b7f): 긴 위임 글에서는 아무 기억이나 낱말 서넛이 맞으니, 그 기억이 무엇인지를 말하는
+//     자리에 드문 낱말이 위임 글 길이만큼 맞아야 그 기억에 대한 일로 본다. 맞는 것이 없으면 넣지 않는다(역할 지침 제목 줄만).
 type thresholds struct {
-	score, cover, coverOne, relative float64
-	minWords                         int
-	task                             bool
+	score, cover, coverOne, relative, title float64
+	minWords                                int
+	task                                    bool
 }
 
 // requestThresholds are the thresholds of the work recall of a request (B1), the defaults where the settings carry none.
@@ -590,7 +593,8 @@ func taskThresholds(cfg config.Config) thresholds {
 		words = config.DefaultTaskRecallMinWords
 	}
 	return thresholds{score: orDefault(cfg.TaskRecallMinScore, config.DefaultTaskRecallMinScore), minWords: words,
-		relative: orDefault(cfg.TaskRecallMinRelative, config.DefaultTaskRecallMinRelative), task: true}
+		relative: orDefault(cfg.TaskRecallMinRelative, config.DefaultTaskRecallMinRelative),
+		title:    orDefault(cfg.TaskRecallMinTitleShare, config.DefaultTaskRecallMinTitleShare), task: true}
 }
 
 func orDefault(v, d float64) float64 {
@@ -606,7 +610,7 @@ func (th thresholds) pass(h memory.RecallHit) bool {
 		return false
 	}
 	if th.task {
-		return len(h.Matched) >= th.minWords
+		return len(h.Matched) >= th.minWords && h.TitleShare >= th.title
 	}
 	return h.Coverage >= th.coverFor(len(h.Matched))
 }

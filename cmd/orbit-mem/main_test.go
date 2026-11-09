@@ -449,18 +449,19 @@ func TestConfig_요청_회상_문턱을_설정한다(t *testing.T) {
 // 한 낱말 일치 비율과 위임 회상의 세 문턱(설계 보완, 1-6 b6 R1·T1)도 config set으로 바꾼다. 범위 밖 값은 거절하고 파일을 바꾸지 않는다.
 func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *testing.T) {
 	home(t)
-	for _, kv := range [][2]string{{"recallMinCoverageOneWord", "0.4"}, {"taskRecallMinScore", "0.15"}, {"taskRecallMinWords", "4"}, {"taskRecallMinRelative", "0.5"}} {
+	for _, kv := range [][2]string{{"recallMinCoverageOneWord", "0.4"}, {"taskRecallMinScore", "0.15"}, {"taskRecallMinWords", "4"}, {"taskRecallMinRelative", "0.5"}, {"taskRecallMinTitleShare", "0.1"}} {
 		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
 			t.Fatalf("set %s: %s", kv[0], errOut)
 		}
 	}
 	cfg, err := loadConfig()
-	if err != nil || cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinScore != 0.15 || cfg.TaskRecallMinWords != 4 || cfg.TaskRecallMinRelative != 0.5 {
+	if err != nil || cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinScore != 0.15 || cfg.TaskRecallMinWords != 4 || cfg.TaskRecallMinRelative != 0.5 ||
+		cfg.TaskRecallMinTitleShare != 0.1 {
 		t.Fatalf("cfg = %+v %v", cfg, err)
 	}
 	for key, bads := range map[string][]string{
 		"recallMinCoverageOneWord": {"0", "1.5", "abc", "NaN"}, "taskRecallMinScore": {"0", "1.5", "NaN"},
-		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "41", "2.5", "abc"},
+		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "41", "2.5", "abc"}, "taskRecallMinTitleShare": {"0", "1.5", "NaN", "abc"},
 	} {
 		for _, bad := range bads {
 			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
@@ -472,7 +473,7 @@ func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *tes
 		t.Fatalf("bad value changed the file: %+v", cfg)
 	}
 	_, errOut, _ := run(t, "", "config", "set", "nope", "1")
-	for _, key := range []string{"recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinWords", "taskRecallMinRelative"} {
+	for _, key := range []string{"recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinWords", "taskRecallMinRelative", "taskRecallMinTitleShare"} {
 		if !strings.Contains(errOut, key) {
 			t.Fatalf("unknown key list without %s: %s", key, errOut)
 		}
