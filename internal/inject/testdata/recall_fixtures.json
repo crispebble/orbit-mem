@@ -17,7 +17,7 @@
     {"key": "weather", "kind": "fact", "scope": "global", "title": "오늘 날씨 메모", "ageDays": 1}
   ],
   "cases": [
-    {"name": "확정이 후보보다 앞, 같은 점수면 최근 것이 앞(나이 감쇠가 따른 횟수보다 먼저), 다른 프로젝트·일지는 빠짐", "prompt": "운영 배포 전에 뭐 확인해", "want": ["deploy-fact", "deploy-new", "deploy-old"], "absent": ["deploy-other", "deploy-journal"]},
+    {"name": "같은 점수면 최근 것이 앞(나이 감쇠가 따른 횟수보다 먼저), 다른 프로젝트·일지는 빠지고, 낱말 절반만 맞는 확정 사실은 점수 문턱 밑", "prompt": "운영 배포 전에 뭐 확인해", "want": ["deploy-new", "deploy-old"], "absent": ["deploy-other", "deploy-journal", "deploy-fact"]},
     {"name": "같은 주제는 최신 판만", "prompt": "Orbit Code 기본 모델 뭐였지", "want": ["model-new"], "absent": ["model-old"]},
     {"name": "날이 지난 휘발 기억은 빠지고 살아 있는 것만", "prompt": "로그인 배포 동결 언제까지", "want": ["freeze-live"], "absent": ["freeze-gone"]},
     {"name": "재검토일이 지난 기억은 나오되 표시된다", "prompt": "기억 DB 어디 두나 PC", "want": ["db-review"], "contains": ["재검토일 지남"]},

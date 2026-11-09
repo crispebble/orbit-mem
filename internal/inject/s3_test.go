@@ -136,6 +136,7 @@ func TestS3_세션_시작은_user_핵심_제품_핵심_순이고_나머지_규�
 func TestS3_여러_제품_폴더는_요청에_이름이_나온_제품을_앞에_둔다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
+	cfg.RecallMinScore, cfg.RecallMinCoverage = 0.1, 0.1 // 순서만 본다: 제품 이름 낱말은 기억 글에 없어 점수를 낮춘다
 	parent := s3Folders(t)["상위 폴더"]
 	desk := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 레일", "product:orbit-code-desktop", "", "상단바")
 	atlas := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 탭줄", "product:atlas", "", "상단바")

@@ -1,6 +1,7 @@
 package inject
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -33,6 +34,27 @@ func TestDiagnose_요청과_약하게_겹치면_선택_단계에서_멈춘다(t 
 	st := stages(d)[StageSelected]
 	if d.StoppedAt != StageSelected || d.LastProven != StageEligible || st.Code != "weak_match" || st.Args[0] != "codex" {
 		t.Fatalf("%+v", d)
+	}
+	// 두 문턱의 값과 재료: 맞은 낱말, 요청 낱말, 점수(문턱), 맞은 비율(문턱).
+	if len(st.Args) != 6 || st.Args[1] != "codex 설치 방법" || st.Args[3] != fmt.Sprintf("%.2f", config.DefaultRecallMinScore) || st.Args[4] != "0.33" ||
+		st.Args[5] != fmt.Sprintf("%.2f", config.DefaultRecallMinCoverage) {
+		t.Fatalf("args %v", st.Args)
+	}
+}
+
+// 이 세션에 이미 요청 회상으로 넣은 기억은 다시 넣지 않는다: 진단이 그 까닭을 말한다.
+func TestDiagnose_이_세션에_이미_보인_기억은_already_shown이다(t *testing.T) {
+	s := store(t)
+	cfg := config.Default()
+	m := save(t, s, memory.KindRule, "이 앱은 pnpm으로 설치한다", "npm install을 쓰지 않는다", here, true)
+	SessionBundle(s, cfg, here, "claude", "A")
+	RecordShown(s, "claude", "A", PromptInjectionFor(s, cfg, here, "pnpm으로 설치해 줘", "claude", "A", Options{}))
+	d := Diagnose(s, cfg, DiagnoseInput{ID: m.ID, Scope: here, Prompt: "pnpm으로 설치해 줘", Host: "claude", Session: "A"})
+	if st := stages(d)[StageSelected]; st.Status != Yes || st.Code != "matched" {
+		t.Fatalf("selected %+v", st)
+	}
+	if st := stages(d)[StageInjected]; st.Status != No || st.Code != "already_shown" {
+		t.Fatalf("injected %+v", st)
 	}
 }
 

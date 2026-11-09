@@ -7,7 +7,7 @@ package inject
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -19,21 +19,38 @@ import (
 	"github.com/crispebble/orbit-mem/internal/place"
 )
 
-// Lengths (설계 · orbit-mem 2판 AC-1). Claude Code saves a hook context over 10,000
-// characters to a file and shows only its first 2,000, so no hook context passes
-// MaxHookRunes, and the session start, which stays for the whole session, keeps to
-// MaxSessionStartRunes (D2) with the note lines saved in it (T-20). Rules that do not
-// fit are not listed by title: they are counted in one line and come through the work
-// recall when a request matches them.
+// Lengths (설계 · 지연 회상·호스트 계약·어댑터 4절 표, 수용 기준 L-4). The request hook keeps to MaxHookRunes:
+// what changed in the session (B3, 3 lines and maxNewsRunes with its heading) and the work recall
+// (B1, config.MaxPromptRecallChars or less). The session start, which stays for the whole session,
+// keeps to MaxSessionStartRunes (D2) with the note lines saved in it (T-20). Rules that do not fit are
+// not listed by title: they are counted in one line and come through the work recall when a request
+// matches them.
 const (
-	MaxHookRunes         = 9000
+	MaxHookRunes         = 2500
 	MaxSessionStartRunes = 6000
-	// maxNewMemories is how many memories confirmed elsewhere one request announces.
-	maxNewMemories = 3
-	// maxSessionNewsRunes bounds the corrections and new memories of one request.
-	maxSessionNewsRunes = 2000
-	// moreLineRunes is kept for the line that says a domain shows only some signals.
-	moreLineRunes = 60
+	// maxNewsLines and maxNewsRunes bound the correction and new memory lines of one request, heading included.
+	maxNewsLines = 3
+	maxNewsRunes = 300
+	// newsTitleRunes is how much of a title a correction or new memory line shows.
+	newsTitleRunes = 40
+	// oldTitleRunes is how much of the superseded title a correction line shows, so the session knows what to drop.
+	oldTitleRunes = 24
+	// maxRecallLines is how many memory (or domain) lines the work recall of one request lists.
+	maxRecallLines = 3
+	// recallTitleRunes and recallSummaryRunes bound a work recall line's title and the one summary line.
+	recallTitleRunes   = 80
+	recallSummaryRunes = 160
+	// minSummaryRunes is the shortest summary worth a line when the length runs short.
+	minSummaryRunes = 20
+	// minRecallWords is how many meaningful words a request needs for the work recall: one word scores
+	// every memory that has it 1 on both measures, so it says too little (공개 묶음 old-weak-word).
+	minRecallWords = 2
+)
+
+// Headings of the request hook's two parts.
+const (
+	newsHead   = "[" + Label + " 기억 · 이 세션 중 바뀐 것] 옛 판은 따르지 않는다"
+	recallHead = "[" + Label + " 관련 기억] 본문은 memory_get"
 )
 
 // Label is the name every memory context heading carries: the memory system's own name.
@@ -341,26 +358,14 @@ func revertLine(s *memory.Store) string {
 	return ""
 }
 
-// Prompt is the per-request context: the memories that match the request
-// strongly, ranked and packed within the configured length. A weak match adds nothing.
+// Prompt is the per-request context: the memories that pass both recall thresholds, ranked and
+// packed within the work recall's length. A weak match adds nothing.
 func Prompt(s *memory.Store, cfg config.Config, scope, prompt string) string {
 	return PromptInjection(s, cfg, scope, prompt).Text
 }
 
-// ruleBodyRunes is how much of a confirmed rule's body the brief form's work
-// recall shows: the rule itself, not a summary of it.
-const ruleBodyRunes = 600
-
-// recallBodyRunes is how much of a memory's body the work recall shows, the
-// same length as a memory_find summary.
-const recallBodyRunes = 200
-
-// PromptInjection is the work recall (설계 「작업 기준 회상」): memories that
-// match the request strongly, confirmed before candidates (A2), then by match score, this project's scope
-// first, then net usage (followed − irrelevant) over the ledger window, then
-// the most recently edited, packed as title and body excerpt within
-// cfg.RecallChars. A body that does not fit is left out; a title that does
-// not fit ends the list.
+// PromptInjection is the work recall (설계 · 지연 회상·호스트 계약·어댑터 5.1) of a request outside a
+// session: see PromptInjectionFor.
 func PromptInjection(s *memory.Store, cfg config.Config, scope, prompt string) Injection {
 	return PromptInjectionWith(s, cfg, scope, prompt, Options{})
 }
@@ -381,8 +386,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	byID := map[string]memory.Memory{}
 	out := map[string]string{}
 	for _, m := range active {
-		// 세션 묶음에 전문으로 든 확정 규칙은 다시 넣지 않는다(분야 규칙은 빼고). 일지는 대화 맥락이 아니다.
-		domain := memory.DomainOf(m) != ""
+		// 일지는 대화 맥락이 아니다.
 		switch why := excluded(m, now, heads); {
 		case !inScope(m, pl):
 			out[m.ID] = "scope"
@@ -390,8 +394,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 			out[m.ID] = "journal"
 		case why != "":
 			out[m.ID] = why
-		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && inBundle[m.ID],
-			m.Pinned && inBundle[m.ID]:
+		case inBundle[m.ID]: // 세션 묶음(A층)에 든 기억은 이 세션에 이미 들어갔다(설계 5.1 3단계)
 			out[m.ID] = "session_rule"
 		default:
 			byID[m.ID] = m
@@ -405,12 +408,13 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 	return PromptInjectionFor(s, cfg, scope, prompt, "", "", opts)
 }
 
-// PromptInjectionFor is the work recall of a request in a host session. Besides the
-// matching memories it tells the session, once, what changed since its bundle was
-// made (설계 · orbit-mem 2판 6절): a memory of the session superseded meanwhile (a
-// correction line) and memories confirmed elsewhere after the session started (new
-// memory lines, up to maxNewMemories). The whole stays within MaxHookRunes.
-// RecordShown keeps what it told.
+// PromptInjectionFor is the request hook of a host session (설계 · 지연 회상·호스트 계약·어댑터 5.1, 4절 표).
+// It tells the session, once, what changed since its bundle was made (B3, sessionNews): a memory of the
+// session superseded meanwhile (a correction line) and memories confirmed elsewhere after the session
+// started (new memory lines), 3 lines and maxNewsRunes at most. Then the work recall (B1, recallEntries):
+// the memories that pass both thresholds, leaving out what the session already has (its bundle and what
+// the work recall or the news told it; not what a tool call brought). The whole stays within
+// MaxHookRunes. RecordShown keeps what it told; a compaction or /clear (ResetSession) forgets it.
 func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host, session string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -432,12 +436,34 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 	}
 	b.WriteString(news)
 	if !opts.NewsOnly {
-		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news)))
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), MaxHookRunes-runes(news)))
 	}
 	return inj.done(&b)
 }
 
-// sessionNews is the correction and new memory lines of a session (설계 · orbit-mem 2판 6절).
+// toldInSession are the memories the session was given by an earlier work recall or session news line.
+// What a tool call brought is not among them: a request that asks about it still recalls it (공개 묶음 st-3).
+func toldInSession(s *memory.Store, host, session string) map[string]bool {
+	told := map[string]bool{}
+	for _, kind := range []string{memory.MarkShown, memory.MarkNew, memory.MarkCorrection} {
+		for id := range s.SessionMarks(host, session, kind) {
+			told[id] = true
+		}
+	}
+	return told
+}
+
+// clipTitle folds a title's spaces and cuts it to n characters at most (an ellipsis included).
+func clipTitle(title string, n int) string {
+	r := []rune(strings.Join(strings.Fields(title), " "))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// sessionNews is the correction and new memory lines of a session (B3), heading included, or "".
+// Lines that do not fit wait for a later request: only what was told is marked.
 func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleIDs []string, byID map[string]memory.Memory) string {
 	at := s.SessionBundleAt(host, session)
 	told := map[string]bool{}
@@ -450,14 +476,16 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		}
 	}
 	corrected := s.SessionMarks(host, session, memory.MarkCorrection)
+	head := newsHead + "\n"
 	var lines strings.Builder
-	used := 0
+	used, n := runes(head), 0
 	add := func(line string) bool {
-		if used+runes(line) > maxSessionNewsRunes {
+		if n == maxNewsLines || used+runes(line) > maxNewsRunes {
 			return false
 		}
 		lines.WriteString(line)
 		used += runes(line)
+		n++
 		return true
 	}
 	ids := make([]string, 0, len(told))
@@ -478,10 +506,11 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		if !live {
 			continue
 		}
-		if !add(fmt.Sprintf("- 정정: 「%s」(%s)는 「%s」(%s)로 바뀌었다. 옛 판을 따르지 않는다.\n", old.Title, old.ID, cur.Title, cur.ID)) {
+		if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
 			break
 		}
 		inj.mark(memory.MarkCorrection, old.ID)
+		inj.mark(memory.MarkShown, cur.ID) // 바뀐 판은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
 		inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
 		named[cur.ID] = true
 	}
@@ -500,25 +529,18 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		}
 		return fresh[i].ID < fresh[j].ID
 	})
-	for i, m := range fresh {
-		if i == maxNewMemories {
-			break
-		}
-		line := fmt.Sprintf("- 새 기억: %s (%s · %s 확정)\n", m.Title, m.ID, kindName(m.Kind))
-		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			line += "  " + memory.ClipRunes(text, recallBodyRunes) + "\n"
-		}
-		if !add(line) {
+	for _, m := range fresh {
+		if !add(fmt.Sprintf("- 새 기억: %s — %s · %s 확정\n", clipTitle(m.Title, newsTitleRunes), m.ID, kindName(m.Kind))) {
 			break
 		}
 		inj.mark(memory.MarkNew, m.ID)
 		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 		named[m.ID] = true
 	}
-	if used == 0 {
+	if n == 0 {
 		return ""
 	}
-	return "[" + Label + " 기억 · 이 세션 중 바뀐 것] 세션 시작 뒤 대체되거나 다른 세션에서 확정된 기억이다.\n" + lines.String()
+	return head + lines.String()
 }
 
 // liveSuccessor follows superseded_by from old to the live (candidate or confirmed)
@@ -541,151 +563,180 @@ func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
 	return memory.Memory{}, false
 }
 
-// recallEntries is the work recall list of the request within limit characters (and
-// cfg.RecallChars). Memories already named in this injection are not listed again.
-func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, limit int) string {
-	named := map[string]bool{}
-	for _, id := range inj.MemoryIDs {
-		named[id] = true
+// recallThresholds are the two thresholds of the work recall, the defaults where the settings carry none.
+func recallThresholds(cfg config.Config) (score, cover float64) {
+	score, cover = cfg.RecallMinScore, cfg.RecallMinCoverage
+	if score <= 0 {
+		score = config.DefaultRecallMinScore
 	}
-	docs := make([]memory.Doc, 0, len(byID))
-	for _, m := range byID {
-		if !named[m.ID] {
-			docs = append(docs, m.Doc())
+	if cover <= 0 {
+		cover = config.DefaultRecallMinCoverage
+	}
+	return score, cover
+}
+
+// recallHits are the memories of byID, less those the session was told, that pass both thresholds
+// (설계 5.1 3·4단계), best first: confirmed before candidates (A2), then find score, share of the
+// request's words, this place's own before the user's (S3 명세 2.8), age (newer first), net usage
+// (followed − irrelevant) over the ledger window, last edit, id.
+func recallHits(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
+	if len(memory.MeaningfulWords(prompt)) < minRecallWords {
+		return nil
+	}
+	found, err := s.RecallHits(prompt)
+	if err != nil {
+		return nil
+	}
+	minScore, minCover := recallThresholds(cfg)
+	var hits []memory.RecallHit
+	for _, h := range found {
+		m, ok := byID[h.Memory.ID]
+		if !ok || told[m.ID] || h.Score < minScore || h.Coverage < minCover {
+			continue
 		}
+		h.Memory = m
+		hits = append(hits, h)
 	}
-	sort.Slice(docs, func(i, j int) bool { return docs[i].ID < docs[j].ID })
-	hits := memory.Strong(docs, prompt)
 	if len(hits) == 0 {
-		return ""
+		return nil
 	}
 	now := s.Now()
 	usage, _ := s.UsageCounts(memory.Day(now.AddDate(0, 0, -max(cfg.LedgerWindowDays, 1))), memory.Day(now))
 	net := func(id string) int { u := usage[id]; return u.Followed - u.Irrelevant }
-	// 이 폴더의 것(저장소·제품·요청 글에 이름이 나온 제품)이 사용자 공통보다 앞이다(S3 명세 2.8).
 	products := pl.Named(prompt)
-	local := func(id string) bool { m := byID[id]; return pl.Local(m.Scope, m.Project, products) }
+	local := func(m memory.Memory) bool { return pl.Local(m.Scope, m.Project, products) }
+	key := func(x float64) float64 { return math.Round(x * 1e9) } // 같은 값의 부동소수점 오차가 순위를 가르지 않게
 	sort.SliceStable(hits, func(i, j int) bool {
-		a, c := hits[i], hits[j]
-		// 후보(AI가 배운 것)는 회상에 쓰되 확정보다 뒤에 둔다(A2 확정 규칙).
-		if ca, cc := byID[a.Doc.ID].State == memory.StateConfirmed, byID[c.Doc.ID].State == memory.StateConfirmed; ca != cc {
+		a, c := hits[i].Memory, hits[j].Memory
+		if ca, cc := a.State == memory.StateConfirmed, c.State == memory.StateConfirmed; ca != cc {
 			return ca
 		}
-		if a.Score != c.Score {
-			return a.Score > c.Score
+		if sa, sc := key(hits[i].Score), key(hits[j].Score); sa != sc {
+			return sa > sc
 		}
-		if la, lc := local(a.Doc.ID), local(c.Doc.ID); la != lc {
+		if va, vc := key(hits[i].Coverage), key(hits[j].Coverage); va != vc {
+			return va > vc
+		}
+		if la, lc := local(a), local(c); la != lc {
 			return la
 		}
-		// 나이 감쇠: 관련도가 같으면 최근에 바뀌거나 다시 나온 기억이 앞이다.
-		if wa, wc := memory.AgeWeight(byID[a.Doc.ID], now), memory.AgeWeight(byID[c.Doc.ID], now); wa != wc {
+		if wa, wc := memory.AgeWeight(a, now), memory.AgeWeight(c, now); wa != wc {
 			return wa > wc
 		}
-		if na, nc := net(a.Doc.ID), net(c.Doc.ID); na != nc {
+		if na, nc := net(a.ID), net(c.ID); na != nc {
 			return na > nc
 		}
-		return byID[a.Doc.ID].UpdatedAt > byID[c.Doc.ID].UpdatedAt
+		if a.UpdatedAt != c.UpdatedAt {
+			return a.UpdatedAt > c.UpdatedAt
+		}
+		return a.ID < c.ID
 	})
-	budget := cfg.RecallChars
-	if budget <= 0 {
-		budget = config.Default().RecallChars
+	return hits
+}
+
+// recallLine is a work recall line: title (80 characters at most), id, kind and state, with the marks of
+// a memory past its review day and of one whose sources are all untrusted (D7).
+func recallLine(m memory.Memory, now time.Time) string {
+	state := "확정"
+	if m.State == memory.StateCandidate {
+		state = "후보"
 	}
-	budget = min(budget, limit-moreLineRunes) // 분야 신호의 「N개 중 M개만 보임」 줄 몫
-	head := "[" + Label + " 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n"
-	used := utf8.RuneCountInString(head)
-	var entries strings.Builder
-	shown := 0
-	var domains []string // 요청과 맞은 분야, 맞은 순서
-	for _, h := range hits {
-		m := byID[h.Doc.ID]
-		if d := memory.DomainOf(m); d != "" {
-			if !slices.Contains(domains, d) {
-				domains = append(domains, d)
-			}
-			continue
-		}
-		state := "확정"
-		if m.State == memory.StateCandidate {
-			state = "후보"
-		}
-		if m.Freshness(now) == memory.FreshReviewDue {
-			state += " · 재검토일 지남"
-		}
-		if note := memory.TrustNoteIn(i18n.KO, m); note != "" { // 출처가 믿을 수 없는 것뿐인 기억(D7)
-			state += " · " + note
-		}
-		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
-		body := ""
-		clip := recallBodyRunes
-		if m.Kind == memory.KindRule && m.State == memory.StateConfirmed {
-			clip = ruleBodyRunes
-		}
-		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			body = "  " + memory.ClipRunes(text, clip)
-			if clip == ruleBodyRunes && utf8.RuneCountInString(text) > clip {
-				body += " (전문은 memory_get)"
-			}
-			body += "\n"
-		}
-		n := utf8.RuneCountInString(line)
-		if used+n > budget {
-			break
-		}
-		if bn := utf8.RuneCountInString(body); body != "" && used+n+bn <= budget {
-			line += body
-			n += bn
-		}
-		entries.WriteString(line)
-		used += n
-		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-		inj.mark(memory.MarkShown, m.ID)
-		shown++
+	if m.Freshness(now) == memory.FreshReviewDue {
+		state += " · 재검토일 지남"
 	}
-	// 분야 지식은 본문 대신 그 분야의 신호(제목·id)를 글자 수 안에서 보이고, AI가 필요한 항목만 연다(설계 · Orbit 개선 3차).
-	for _, d := range domains {
-		var members []memory.Memory
-		for _, m := range byID {
-			if memory.DomainOf(m) == d {
-				members = append(members, m)
-			}
-		}
-		sort.Slice(members, func(i, j int) bool {
-			if members[i].UpdatedAt != members[j].UpdatedAt {
-				return members[i].UpdatedAt > members[j].UpdatedAt
-			}
-			return members[i].ID < members[j].ID
-		})
-		sec := fmt.Sprintf("[분야 「%s」 신호] 필요한 항목만 memory_get으로 연다.\n", d)
-		if used+utf8.RuneCountInString(sec) > budget {
-			break
-		}
-		entries.WriteString(sec)
-		used += utf8.RuneCountInString(sec)
-		shownN := 0
-		for _, m := range members {
-			line := fmt.Sprintf("- %s (%s)\n", m.Title, m.ID)
-			if used+utf8.RuneCountInString(line) > budget {
-				break
-			}
-			entries.WriteString(line)
-			used += utf8.RuneCountInString(line)
-			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-			shownN++
-			shown++
-		}
-		if shownN < len(members) { // 길이 때문에 다 보이지 못하면 그 사실을 알린다(남은 것은 memory_find로)
-			line := fmt.Sprintf("- …신호 %d개 중 %d개만 보임. 나머지는 memory_find로 찾는다\n", len(members), shownN)
-			if used+runes(line) > budget+moreLineRunes {
-				break
-			}
-			entries.WriteString(line)
-			used += runes(line)
-		}
+	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
+		state += " · " + note
 	}
-	if shown == 0 {
+	return fmt.Sprintf("- %s — %s · %s %s\n", clipTitle(m.Title, recallTitleRunes), m.ID, kindName(m.Kind), state)
+}
+
+// recallEntries is the work recall of a request (B1, 설계 5.1 5단계): the heading, then at most
+// maxRecallLines lines in rank order, a domain's memories as one line that counts its signals and says
+// how to find them, and under the first memory line one summary line (its body's start). All of it
+// stays within cfg.PromptRecallChars and limit. Memories already named in this injection or told in
+// the session are left out; what it lists is marked shown.
+func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told map[string]bool, limit int) string {
+	skip := map[string]bool{}
+	for id := range told {
+		skip[id] = true
+	}
+	for _, id := range inj.MemoryIDs {
+		skip[id] = true
+	}
+	hits := recallHits(s, cfg, pl, prompt, byID, skip)
+	if len(hits) == 0 {
 		return ""
 	}
-	return head + entries.String()
+	// 분야 지식은 본문·제목 대신 분야 한 줄로 든다(분야 순서는 그 분야의 가장 앞선 기억 자리).
+	type item struct {
+		m      memory.Memory
+		domain string
+		ids    []string
+	}
+	var items []item
+	domainAt := map[string]int{}
+	for _, h := range hits {
+		d := memory.DomainOf(h.Memory)
+		if d == "" {
+			items = append(items, item{m: h.Memory})
+			continue
+		}
+		if i, ok := domainAt[d]; ok {
+			items[i].ids = append(items[i].ids, h.Memory.ID)
+			continue
+		}
+		domainAt[d] = len(items)
+		items = append(items, item{domain: d, ids: []string{h.Memory.ID}})
+	}
+	budget := min(cfg.PromptRecallChars(), limit)
+	head := recallHead + "\n"
+	used := runes(head)
+	now := s.Now()
+	var lines []string
+	first := -1 // 요약을 붙일 첫 기억 줄
+	var top memory.Memory
+	for _, it := range items {
+		if len(lines) == maxRecallLines {
+			break
+		}
+		var line string
+		if it.domain != "" {
+			n := 0
+			for _, m := range byID {
+				if memory.DomainOf(m) == it.domain {
+					n++
+				}
+			}
+			line = fmt.Sprintf("- 분야 「%s」 신호 %d개 — memory_find tags=%s%s\n", it.domain, n, memory.DomainPrefix, it.domain)
+		} else {
+			line = recallLine(it.m, now)
+		}
+		if used+runes(line) > budget {
+			break
+		}
+		used += runes(line)
+		lines = append(lines, line)
+		if it.domain != "" {
+			inj.mark(memory.MarkShown, it.ids...) // 분야 줄이 가리킨 기억: 같은 세션에 같은 줄을 다시 내지 않는다
+			continue
+		}
+		inj.MemoryIDs = append(inj.MemoryIDs, it.m.ID)
+		inj.mark(memory.MarkShown, it.m.ID)
+		if first < 0 {
+			first, top = len(lines)-1, it.m
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	if first >= 0 {
+		// 가장 확실한 기억 하나만 요약 한 줄(본문 앞부분, 확정 규칙이면 규칙 자체)을 남는 글자 수 안에서 붙인다.
+		room := min(recallSummaryRunes, budget-used-3)
+		if text := strings.Join(strings.Fields(top.Body), " "); text != "" && room >= minSummaryRunes {
+			lines[first] += "  " + clipTitle(text, room) + "\n"
+		}
+	}
+	return head + strings.Join(lines, "")
 }
 
 func kindName(k string) string {

@@ -531,8 +531,14 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
+	case "recallMinScore", "recallMinCoverage":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		*map[string]*float64{"recallMinScore": &cfg.RecallMinScore, "recallMinCoverage": &cfg.RecallMinCoverage}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·recallMinScore·recallMinCoverage·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

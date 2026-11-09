@@ -2,7 +2,6 @@ package memory
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -118,80 +117,3 @@ func promptTerms(q string) []string {
 	}
 	return out
 }
-
-// Match is a strongly matching doc and its scores.
-type Match struct {
-	Doc          Doc
-	Score, Title float64
-}
-
-// StrongMatches returns at most n docs that match prompt q strongly (see Strong).
-func StrongMatches(docs []Doc, q string, n int) []Doc {
-	var out []Doc
-	for _, m := range Strong(docs, q) {
-		if len(out) == n {
-			break
-		}
-		out = append(out, m.Doc)
-	}
-	return out
-}
-
-// Strong returns the docs that match prompt q strongly, best first: at least
-// two prompt words match, one of them fully, at least one in the title, and
-// either two in the title or three overall. A weak overlap returns nothing.
-func Strong(docs []Doc, q string) []Match {
-	terms := promptTerms(q)
-	if len(terms) < 2 {
-		return nil
-	}
-	phrase := " " + strings.Join(Terms(q, 64), " ") + " " // 낱말 경계: 「규칙 2」는 「규칙 27」에 맞지 않는다
-	var hits []Match
-	for _, d := range docs {
-		title, all := haystack(d)
-		var matched, full, inTitle int
-		var score, titleScore float64
-		for _, t := range terms {
-			s := termScore(t, all)
-			if s == 0 {
-				continue
-			}
-			matched++
-			score += s
-			if s == 1 {
-				full++
-			}
-			if ts := termScore(t, title); ts > 0 {
-				inTitle++
-				titleScore += ts
-			}
-		}
-		if full >= 1 && matched >= 2 && inTitle >= 1 && (inTitle >= 2 || matched >= 3) {
-			// 요청에 제목이 그대로 나오거나 요청 전체가 제목에 나오면 한 점을 더한다. 한 글자 낱말(「규칙 7」의 7)은
-			// 낱말 점수에서 빠지므로, 이것이 없으면 제목만 다른 기억들이 같은 점수가 된다.
-			if t := " " + strings.Join(Terms(d.Title, 64), " ") + " "; utf8.RuneCountInString(t) >= 6 && (strings.Contains(phrase, t) || strings.Contains(t, phrase)) {
-				score++
-				titleScore++
-			}
-			hits = append(hits, Match{d, score, titleScore})
-		}
-	}
-	// 같은 점수끼리는 제목 점수, 제목, id 순이다. 입력 순서(무작위 id)에 결과가 걸리지 않게 끝까지 정한다.
-	sort.SliceStable(hits, func(i, j int) bool {
-		a, b := hits[i], hits[j]
-		if a.Score != b.Score {
-			return a.Score > b.Score
-		}
-		if a.Title != b.Title {
-			return a.Title > b.Title
-		}
-		if a.Doc.Title != b.Doc.Title {
-			return a.Doc.Title < b.Doc.Title
-		}
-		return a.Doc.ID < b.Doc.ID
-	})
-	return hits
-}
-
-// PromptTerms are the words of a user prompt the work recall matches.
-func PromptTerms(q string) []string { return promptTerms(q) }

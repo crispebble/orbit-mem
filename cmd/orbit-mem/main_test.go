@@ -416,6 +416,36 @@ func TestProposals_drain은_대기를_닫고_미리보기는_바꾸지_않는다
 	}
 }
 
+func TestConfig_요청_회상_문턱을_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"recallMinScore", "0.45"}, {"recallMinCoverage", "0.6"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("set %s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 {
+		t.Fatalf("cfg = %v %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage, err)
+	}
+	out, _, _ := run(t, "", "config")
+	if !strings.Contains(out, `"recallMinScore": 0.45`) || !strings.Contains(out, `"recallMinCoverage": 0.6`) {
+		t.Fatalf("config show: %s", out)
+	}
+	for _, key := range []string{"recallMinScore", "recallMinCoverage"} {
+		for _, bad := range []string{"0", "1.5", "-1", "abc", "NaN"} {
+			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
+				t.Fatalf("%s %q accepted: %d", key, bad, code)
+			}
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 {
+		t.Fatalf("bad value changed the file: %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage)
+	}
+	if _, errOut, _ := run(t, "", "config", "set", "nope", "1"); !strings.Contains(errOut, "recallMinScore") || !strings.Contains(errOut, "recallMinCoverage") {
+		t.Fatalf("unknown key list: %s", errOut)
+	}
+}
+
 func TestConfig_saveSimilarMin을_설정한다(t *testing.T) {
 	home(t)
 	if _, errOut, code := run(t, "", "config", "set", "saveSimilarMin", "0.7"); code != 0 {
