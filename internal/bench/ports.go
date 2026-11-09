@@ -1,0 +1,69 @@
+// Package bench is the evaluation set for recall: it reads a case file, prepares a
+// memory DB, splits the cases, runs a recall path over them and measures what it
+// showed. It never calls a model. The recall path is a port: the adapters that
+// implement Recaller, Finder and Similar live in sub packages and are put together
+// by the caller.
+package bench
+
+// Shown is what one recall step put in front of the model: the memory ids in the
+// order shown, the characters of the text, and the text itself.
+type Shown struct {
+	IDs   []string
+	Chars int
+	Text  string
+}
+
+// Recaller is the recall path under test. The origin of a case is the answer key and is
+// never handed over: the path decides from the text whether a person asked.
+type Recaller interface {
+	Name() string
+	// Start is the session start bundle (layer A).
+	Start(session, cwd string) (Shown, error)
+	// Request is the recall for a request (B1, B3).
+	Request(session, cwd, prompt string) (Shown, error)
+	// Tool is the recall just before a tool call (B2).
+	Tool(session, cwd, tool string) (Shown, error)
+	// Subagent is the recall for a task handed to a sub agent.
+	Subagent(session, cwd, task string) (Shown, error)
+}
+
+// Finder is the search a missed recall falls back to: the ids of the top limit hits.
+// One implementation is shared by the recall paths being compared.
+type Finder interface {
+	Find(cwd, query string, limit int) ([]string, error)
+}
+
+// Draft is a memory about to be saved, for the duplicate cases.
+type Draft struct {
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+	Topic string `json:"topic,omitempty"`
+	Scope string `json:"scope,omitempty"`
+}
+
+// Similar gives the ids of the memories most like a draft (top 3).
+type Similar interface {
+	Similar(cwd string, d Draft) ([]string, error)
+}
+
+// Env is one recall path opened on one DB copy.
+type Env struct {
+	Recaller Recaller
+	Finder   Finder
+	Similar  Similar
+	Close    func() error
+}
+
+// Factory opens a recall path on a fresh copy of the prepared DB; every recall path
+// gets its own copy so shown marks and activity never mix. The set carries the top
+// level values the adapter needs (now, products).
+type Factory func(dbPath string, set *Set) (Env, error)
+
+// Limits of the measure.
+const (
+	FindLimit    = 8 // ids a Finder is asked for
+	SimilarLimit = 3 // ids of Similar that count
+	RequestTop   = 3 // ids of a request recall that count as shown
+	MaxExpect    = 3
+)
