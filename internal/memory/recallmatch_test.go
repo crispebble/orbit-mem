@@ -9,9 +9,9 @@ import (
 // 요청 회상의 두 문턱 재료(설계 · 지연 회상 5.1 4단계): 점수는 찾기와 같은 점수이고, 맞은 비율은 뜻 있는 낱말 중
 // 기억에 나온 낱말의 비율이다.
 
-func TestMeaningfulWords_불용어와_한_글자를_뺀다(t *testing.T) {
+func TestMeaningfulWords_불용어와_기능어_한_글자를_빼고_조사_어미를_뗀다(t *testing.T) {
 	got := MeaningfulWords("이거 pnpm으로 설치해 줘 please 7")
-	if want := []string{"pnpm으로", "설치해"}; !slices.Equal(got, want) {
+	if want := []string{"pnpm", "설치"}; !slices.Equal(got, want) {
 		t.Fatalf("뜻 있는 낱말 %v, want %v", got, want)
 	}
 }
@@ -50,13 +50,13 @@ func TestRecallHits_점수는_뜻_있는_낱말로_찾은_찾기_점수와_같�
 	if !ok {
 		t.Fatalf("pnpm 기억이 없습니다: %+v", hits)
 	}
-	if q := RecallQuery(prompt + " 7 v"); q != "pnpm으로 설치해 7 v" {
+	if q := RecallQuery(prompt + " 7 v"); q != "pnpm 설치 7 v" {
 		t.Fatalf("찾기 질의 %q", q)
 	}
 	if want := scoreOf(t, s, RecallQuery(prompt), a.ID); math.Abs(ha.Score-want) > 1e-12 {
 		t.Fatalf("회상 점수 %v, 같은 낱말의 찾기 점수 %v", ha.Score, want)
 	}
-	if ha.Coverage != 1 || !slices.Equal(ha.Matched, []string{"pnpm으로", "설치해"}) {
+	if ha.Coverage != 1 || !slices.Equal(ha.Matched, []string{"pnpm", "설치"}) {
 		t.Fatalf("맞은 비율 %v 낱말 %v", ha.Coverage, ha.Matched)
 	}
 	if hb, ok := byID[b.ID]; ok && hb.Score >= ha.Score {
@@ -78,5 +78,35 @@ func TestRecallHits_뜻_있는_낱말이_없으면_아무것도_없다(t *testin
 		if err != nil || len(hits) != 0 {
 			t.Fatalf("%q → %d건 (err %v)", p, len(hits), err)
 		}
+	}
+}
+
+// 어느 기억에도 없는 질의 토큰은 어느 기억인지를 가르지 못한다: 회상 점수의 분모에 넣지 않는다(설계 보완, 1-6 b6).
+// memory_find의 점수는 그대로다(기억 수에 덜 흔들리고, 낱말 하나 겹친 무관한 기억이 낮다: rank_test.go).
+func TestRecallHits_어느_기억에도_없는_낱말은_점수를_깎지_않고_찾기는_그대로다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := saveDoc(t, s, "운영 배포는 main 병합으로 일어난다", "감시기가 main을 본다", "")
+	saveDoc(t, s, "로그 꼴은 JSON 한 줄", "", "")
+	for i := 0; i < 6; i++ {
+		filler(t, s, i)
+	}
+	recallScore := func(prompt string) float64 {
+		hits, err := s.RecallHits(prompt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, h := range hits {
+			if h.Memory.ID == a.ID {
+				return h.Score
+			}
+		}
+		return 0
+	}
+	without, with := recallScore("배포 main 감시기"), recallScore("배포 main 감시기 zzqxv 콰뚫")
+	if without <= 0 || math.Abs(with-without) > 1e-12 {
+		t.Fatalf("없는 낱말을 더한 회상 점수 %v, 없이 %v", with, without)
+	}
+	if f, g := scoreOf(t, s, "배포 main 감시기", a.ID), scoreOf(t, s, "배포 main 감시기 zzqxv 콰뚫", a.ID); g >= f {
+		t.Fatalf("찾기 점수는 없는 낱말도 분모에 넣어야 함: %v ≥ %v", g, f)
 	}
 }

@@ -115,7 +115,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	if err != nil {
 		return ""
 	}
-	hits := recallHits(s, cfg, pl, task, byID, nil)
+	hits := recallHits(s, cfg, requestThresholds(cfg), pl, task, byID, nil)
 	if len(hits) > maxTaskRecall {
 		hits = hits[:maxTaskRecall]
 	}

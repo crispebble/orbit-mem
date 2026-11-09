@@ -1041,6 +1041,9 @@ type FindInput struct {
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
 	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
+	// SkipUnknownTokens leaves the query tokens no memory has out of the score (rank.go). The recall of a
+	// request and a task sets it; memory_find does not.
+	SkipUnknownTokens bool
 }
 
 // Hit is a found memory with its score for the query: 0~1 for each query on its own (rank.go), 1 for an
@@ -1121,7 +1124,7 @@ func (s *Store) readFind(q querier, in FindInput) (findRead, error) {
 	if len(qs) == 0 {
 		return r, nil
 	}
-	if r.scores, err = queryScores(q, qs, s.findStep); err != nil {
+	if r.scores, err = queryScores(q, qs, in.SkipUnknownTokens, s.findStep); err != nil {
 		return r, err
 	}
 	ids := make([]string, 0, len(r.scores))

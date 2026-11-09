@@ -264,7 +264,43 @@ func TestB1_문턱_두_값의_경계(t *testing.T) {
 	}
 }
 
-// 분야 기억은 본문·제목 대신 분야 한 줄(신호 수와 찾는 법)로 3줄 안에 든다.
+// 상대 문턱(설계 보완, 1-6 b6): 두 문턱을 넘어도 찾기 점수가 1위의 recallMinRelative배 미만이면 빠진다.
+func TestB1_상대_문턱_밑은_빠진다(t *testing.T) {
+	s := store(t)
+	strong := save(t, s, memory.KindFact, "pnpm 설치 캐시 정리 순서", "store prune 다음 설치", here, false)
+	weak := save(t, s, memory.KindRule, "캐시는 매주 비운다", "", here, true)
+	prompt := "pnpm 설치 캐시 정리"
+	var ws, ss float64
+	hits, _ := s.RecallHits(prompt)
+	for _, h := range hits {
+		switch h.Memory.ID {
+		case weak.ID:
+			ws = h.Score
+		case strong.ID:
+			ss = h.Score
+		}
+	}
+	if !(ws > 0 && ss > ws) {
+		t.Fatalf("재료가 맞지 않습니다: 약한 %v 강한 %v", ws, ss)
+	}
+	for _, c := range []struct {
+		name string
+		rel  float64
+		want bool
+	}{
+		{"1위의 배수가 약한 점수와 같으면 든다", ws / ss, true},
+		{"1위의 배수에 모자라면 빠진다", ws/ss + 1e-6, false},
+	} {
+		cfg := config.Default()
+		cfg.RecallMinScore, cfg.RecallMinCoverage, cfg.RecallMinRelative = 0.01, 0.01, c.rel
+		text := PromptInjection(s, cfg, here, prompt).Text
+		if got := strings.Contains(text, weak.ID); got != c.want || !strings.Contains(text, strong.ID) {
+			t.Errorf("%s: 약한 기억 나옴 %v, want %v (강한 기억은 늘)\n%s", c.name, got, c.want, text)
+		}
+	}
+}
+
+// 분야 기억은 본문 대신 분야 한 줄(신호 수, 가장 맞은 기억의 제목과 id, 찾는 법)로 3줄 안에 든다.
 func TestB1_분야_기억은_분야_한_줄로_든다(t *testing.T) {
 	s := store(t)
 	for i := 0; i < 30; i++ {
@@ -274,10 +310,18 @@ func TestB1_분야_기억은_분야_한_줄로_든다(t *testing.T) {
 		}
 	}
 	inj := PromptInjection(s, config.Default(), here, "부가세 신고 항목 적는 법")
-	if !strings.Contains(inj.Text, "- 분야 「세무」 신호 30개 — memory_find tags=분야:세무") || strings.Count(inj.Text, "\n- ") != 1 {
-		t.Fatalf("분야 줄:\n%s", inj.Text)
+	if len(inj.MemoryIDs) != 1 {
+		t.Fatalf("분야 줄이 가리킨 기억 하나가 MemoryIDs에 있어야 합니다: %v\n%s", inj.MemoryIDs, inj.Text)
 	}
-	if strings.Contains(inj.Text, "이렇게 적는다") || inj.Chars > 500 {
-		t.Fatalf("분야 신호 제목이 들어갔습니다:\n%s", inj.Text)
+	best, err := s.Get(inj.MemoryIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "- 분야 「세무」 신호 30개 · 가장 맞은 것 「" + best.Title + "」 " + best.ID + " — memory_find tags=분야:세무"
+	if !strings.Contains(inj.Text, want) || strings.Count(inj.Text, "\n- ") != 1 {
+		t.Fatalf("분야 줄, want %q:\n%s", want, inj.Text)
+	}
+	if strings.Count(inj.Text, "이렇게 적는다") != 1 || strings.Contains(inj.Text, "  본문") || inj.Chars > 500 {
+		t.Fatalf("분야 기억은 한 제목만, 본문 없이 들어야 합니다:\n%s", inj.Text)
 	}
 }

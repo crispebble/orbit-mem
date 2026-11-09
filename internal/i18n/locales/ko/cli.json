@@ -258,6 +258,7 @@
   "cli.why.not_in_bundle": "세션 시작 묶음에 없음",
   "cli.why.no_prompt": "요청 글을 주면 판정함",
   "cli.why.weak_match": "문턱 밑: 맞은 낱말 [%s] / 요청 낱말 [%s], 찾기 점수 %s(문턱 %s)·맞은 비율 %s(문턱 %s). 뜻 있는 낱말이 둘 이상이고 두 값이 모두 문턱 이상이어야 함(recallMinScore·recallMinCoverage)",
+  "cli.why.below_top": "상대 문턱 밑: 찾기 점수 %s가 이 요청에서 가장 잘 맞은 기억 점수의 몫 %s(recallMinRelative %s배)보다 낮음",
   "cli.why.matched": "두 문턱을 넘음(찾기 점수 %s)",
   "cli.why.observed": "이 세션에 넣은 기록 있음(%s)",
   "cli.why.would_inject": "세션 기록 없음. 지금 이 요청이면 %s번째로 들어감",

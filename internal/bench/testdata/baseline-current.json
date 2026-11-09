@@ -27,40 +27,40 @@
         "requests": {
           "cases": 96,
           "hit": {
-            "num": 43,
+            "num": 57,
             "den": 64,
-            "value": 0.6719
+            "value": 0.8906
           },
-          "injected": 61,
-          "correct": 52,
-          "neutral": 4,
+          "injected": 79,
+          "correct": 70,
+          "neutral": 3,
           "wrong": {
-            "num": 5,
-            "den": 61,
-            "value": 0.082
+            "num": 6,
+            "den": 79,
+            "value": 0.0759
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 32,
+            "num": 30,
             "den": 32,
-            "value": 1
+            "value": 0.9375
           },
           "chars": {
             "n": 82,
-            "mean": 43.0244,
-            "median": 0,
-            "max": 188
+            "mean": 63.7683,
+            "median": 81,
+            "max": 134
           },
           "hitByStart": 0,
           "recover": {
-            "num": 17,
-            "den": 17,
+            "num": 1,
+            "den": 1,
             "value": 1
           },
           "recoverMissed": {
-            "num": 21,
-            "den": 21,
+            "num": 7,
+            "den": 7,
             "value": 1
           },
           "b2Chars": {
@@ -71,9 +71,9 @@
           },
           "sessionChars": {
             "n": 62,
-            "mean": 412.0323,
-            "median": 328,
-            "max": 792
+            "mean": 439.4677,
+            "median": 414,
+            "max": 777
           },
           "startChars": {
             "n": 62,
@@ -85,30 +85,30 @@
         "subagent": {
           "cases": 16,
           "hit": {
-            "num": 0,
+            "num": 1,
             "den": 12,
-            "value": 0
+            "value": 0.0833
           },
-          "injected": 3,
-          "correct": 1,
+          "injected": 8,
+          "correct": 6,
           "neutral": 0,
           "wrong": {
             "num": 2,
-            "den": 3,
-            "value": 0.6667
+            "den": 8,
+            "value": 0.25
           },
-          "forbid": 0,
-          "forbidCases": 0,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
-            "num": 3,
+            "num": 2,
             "den": 4,
-            "value": 0.75
+            "value": 0.5
           },
           "chars": {
             "n": 16,
-            "mean": 24,
-            "median": 0,
-            "max": 198
+            "mean": 82.0625,
+            "median": 63,
+            "max": 211
           },
           "hitByLead": 0,
           "leadChars": {
@@ -137,40 +137,40 @@
         "requests": {
           "cases": 41,
           "hit": {
-            "num": 16,
+            "num": 22,
             "den": 27,
-            "value": 0.5926
+            "value": 0.8148
           },
-          "injected": 22,
-          "correct": 19,
+          "injected": 33,
+          "correct": 25,
           "neutral": 1,
           "wrong": {
-            "num": 2,
-            "den": 22,
-            "value": 0.0909
+            "num": 7,
+            "den": 33,
+            "value": 0.2121
           },
-          "forbid": 1,
-          "forbidCases": 1,
+          "forbid": 2,
+          "forbidCases": 2,
           "empty": {
-            "num": 14,
+            "num": 11,
             "den": 14,
-            "value": 1
+            "value": 0.7857
           },
           "chars": {
             "n": 39,
-            "mean": 42.7436,
-            "median": 0,
-            "max": 188
+            "mean": 69.5385,
+            "median": 82,
+            "max": 211
           },
           "hitByStart": 0,
           "recover": {
-            "num": 10,
-            "den": 10,
+            "num": 3,
+            "den": 3,
             "value": 1
           },
           "recoverMissed": {
-            "num": 11,
-            "den": 11,
+            "num": 5,
+            "den": 5,
             "value": 1
           },
           "b2Chars": {
@@ -181,9 +181,9 @@
           },
           "sessionChars": {
             "n": 26,
-            "mean": 406.3462,
-            "median": 366,
-            "max": 686
+            "mean": 446.5385,
+            "median": 423,
+            "max": 804
           },
           "startChars": {
             "n": 26,
@@ -195,18 +195,17 @@
         "subagent": {
           "cases": 11,
           "hit": {
-            "num": 0,
+            "num": 1,
             "den": 9,
-            "value": 0
+            "value": 0.1111
           },
-          "injected": 0,
-          "correct": 0,
+          "injected": 4,
+          "correct": 4,
           "neutral": 0,
           "wrong": {
             "num": 0,
-            "den": 0,
-            "value": 0,
-            "zeroDen": true
+            "den": 4,
+            "value": 0
           },
           "forbid": 0,
           "forbidCases": 0,
@@ -217,9 +216,9 @@
           },
           "chars": {
             "n": 11,
-            "mean": 0,
+            "mean": 49,
             "median": 0,
-            "max": 0
+            "max": 201
           },
           "hitByLead": 0,
           "leadChars": {
@@ -248,40 +247,40 @@
         "requests": {
           "cases": 137,
           "hit": {
-            "num": 59,
+            "num": 79,
             "den": 91,
-            "value": 0.6484
+            "value": 0.8681
           },
-          "injected": 83,
-          "correct": 71,
-          "neutral": 5,
+          "injected": 112,
+          "correct": 95,
+          "neutral": 4,
           "wrong": {
-            "num": 7,
-            "den": 83,
-            "value": 0.0843
+            "num": 13,
+            "den": 112,
+            "value": 0.1161
           },
-          "forbid": 1,
-          "forbidCases": 1,
+          "forbid": 2,
+          "forbidCases": 2,
           "empty": {
-            "num": 46,
+            "num": 41,
             "den": 46,
-            "value": 1
+            "value": 0.8913
           },
           "chars": {
             "n": 121,
-            "mean": 42.9339,
-            "median": 0,
-            "max": 188
+            "mean": 65.6281,
+            "median": 81,
+            "max": 211
           },
           "hitByStart": 0,
           "recover": {
-            "num": 27,
-            "den": 27,
+            "num": 4,
+            "den": 4,
             "value": 1
           },
           "recoverMissed": {
-            "num": 32,
-            "den": 32,
+            "num": 12,
+            "den": 12,
             "value": 1
           },
           "b2Chars": {
@@ -292,9 +291,9 @@
           },
           "sessionChars": {
             "n": 88,
-            "mean": 410.3523,
-            "median": 328,
-            "max": 792
+            "mean": 441.5568,
+            "median": 415,
+            "max": 804
           },
           "startChars": {
             "n": 88,
@@ -306,30 +305,30 @@
         "subagent": {
           "cases": 27,
           "hit": {
-            "num": 0,
+            "num": 2,
             "den": 21,
-            "value": 0
+            "value": 0.0952
           },
-          "injected": 3,
-          "correct": 1,
+          "injected": 12,
+          "correct": 10,
           "neutral": 0,
           "wrong": {
             "num": 2,
-            "den": 3,
-            "value": 0.6667
+            "den": 12,
+            "value": 0.1667
           },
-          "forbid": 0,
-          "forbidCases": 0,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
-            "num": 5,
+            "num": 4,
             "den": 6,
-            "value": 0.8333
+            "value": 0.6667
           },
           "chars": {
             "n": 27,
-            "mean": 14.2222,
+            "mean": 68.5926,
             "median": 0,
-            "max": 198
+            "max": 211
           },
           "hitByLead": 0,
           "leadChars": {
@@ -1536,8 +1535,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000001"
+            ],
+            "chars": 131
           },
           "found": [
             "m-000000000001",
@@ -1556,8 +1557,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000018"
+            ],
+            "chars": 106
           },
           "found": [
             "m-000000000018",
@@ -1574,7 +1577,7 @@
             "ids": [
               "m-000000000014"
             ],
-            "chars": 168
+            "chars": 127
           },
           "found": [
             "m-000000000014",
@@ -1638,7 +1641,7 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000092"
+              "m-000000000032"
             ],
             "chars": 79
           },
@@ -1747,9 +1750,10 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000090"
+              "m-000000000090",
+              "m-000000000126"
             ],
-            "chars": 77
+            "chars": 131
           },
           "found": [
             "m-000000000090",
@@ -1826,8 +1830,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000095"
+            ],
+            "chars": 83
           },
           "found": [
             "m-000000000095",
@@ -1846,8 +1852,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000101"
+            ],
+            "chars": 93
           },
           "found": [
             "m-000000000101",
@@ -1882,8 +1890,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000144"
+            ],
+            "chars": 118
           },
           "found": [
             "m-000000000144",
@@ -1920,8 +1930,11 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000117",
+              "m-000000000164"
+            ],
+            "chars": 132
           },
           "found": [
             "m-000000000117",
@@ -2002,11 +2015,9 @@
           "part": "test",
           "request": {
             "ids": [
-              "m-000000000132",
-              "m-000000000120",
-              "m-000000000003"
+              "m-000000000120"
             ],
-            "chars": 188
+            "chars": 82
           },
           "found": [
             "m-000000000120",
@@ -2054,8 +2065,11 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000048",
+              "m-000000000046"
+            ],
+            "chars": 132
           },
           "found": [
             "m-000000000048",
@@ -2097,10 +2111,9 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000043",
-              "m-000000000044"
+              "m-000000000043"
             ],
-            "chars": 162
+            "chars": 109
           },
           "found": [
             "m-000000000043",
@@ -2185,8 +2198,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000044"
+            ],
+            "chars": 85
           },
           "found": [
             "m-000000000044",
@@ -2249,8 +2264,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000149"
+            ],
+            "chars": 122
           },
           "found": [
             "m-000000000149",
@@ -2269,8 +2286,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000150"
+            ],
+            "chars": 122
           },
           "found": [
             "m-000000000150",
@@ -2312,11 +2331,9 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000135",
-              "m-000000000088",
               "m-000000000062"
             ],
-            "chars": 185
+            "chars": 82
           },
           "found": [
             "m-000000000062",
@@ -2379,8 +2396,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000071"
+            ],
+            "chars": 73
           },
           "found": [
             "m-000000000074",
@@ -2453,8 +2472,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000164"
+            ],
+            "chars": 86
           }
         },
         {
@@ -2573,8 +2594,11 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000003",
+              "m-000000000004"
+            ],
+            "chars": 130
           },
           "found": [
             "m-000000000003",
@@ -2593,8 +2617,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000001"
+            ],
+            "chars": 131
           },
           "found": [
             "m-000000000001",
@@ -2713,8 +2739,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000004"
+            ],
+            "chars": 81
           },
           "found": [
             "m-000000000004",
@@ -2755,8 +2783,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000001"
+            ],
+            "chars": 131
           },
           "found": [
             "m-000000000001",
@@ -2919,11 +2949,9 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000139",
-              "m-000000000040",
-              "m-000000000041"
+              "m-000000000040"
             ],
-            "chars": 188
+            "chars": 82
           },
           "found": [
             "m-000000000040",
@@ -3210,8 +3238,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000149"
+            ],
+            "chars": 122
           },
           "found": [
             "m-000000000149",
@@ -3330,12 +3360,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000043",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 431
           }
         },
         {
@@ -3351,7 +3382,7 @@
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 406
+            "chars": 404
           }
         },
         {
@@ -3361,12 +3392,14 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000003",
+              "m-000000000004",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 421
           }
         },
         {
@@ -3376,12 +3409,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000149",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 365
           }
         },
         {
@@ -3391,12 +3425,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000014",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 413
           }
         },
         {
@@ -3406,12 +3441,13 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000077",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 365
           }
         },
         {
@@ -3422,13 +3458,12 @@
           "subagent": {
             "ids": [
               "m-000000000198",
-              "m-000000000168",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 418
+            "chars": 346
           }
         },
         {
@@ -3523,8 +3558,11 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000146",
+              "m-000000000213"
+            ],
+            "chars": 211
           },
           "found": [
             "m-000000000120",
@@ -3542,8 +3580,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000121"
+            ],
+            "chars": 80
           },
           "found": [
             "m-000000000150",
@@ -3562,8 +3602,12 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000123",
+              "m-000000000018",
+              "m-000000000098"
+            ],
+            "chars": 185
           },
           "found": [
             "m-000000000018",
@@ -3600,8 +3644,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000182"
+            ],
+            "chars": 80
           },
           "found": [
             "m-000000000094",
@@ -3620,8 +3666,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000203"
+            ],
+            "chars": 83
           },
           "found": [
             "m-000000000203",
@@ -3723,8 +3771,11 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000103",
+              "m-000000000192"
+            ],
+            "chars": 134
           },
           "found": [
             "m-000000000103",
@@ -3738,8 +3789,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000194"
+            ],
+            "chars": 87
           },
           "found": [
             "m-000000000194",
@@ -3753,8 +3806,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000125"
+            ],
+            "chars": 85
           }
         },
         {
@@ -3793,8 +3848,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000140"
+            ],
+            "chars": 86
           }
         },
         {
@@ -3803,8 +3860,10 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000090"
+            ],
+            "chars": 77
           }
         },
         {
@@ -3813,8 +3872,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000213"
+            ],
+            "chars": 115
           }
         },
         {
@@ -3914,12 +3975,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000149",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 369
           }
         },
         {
@@ -3959,12 +4021,13 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000222",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 413
           }
         },
         {
@@ -4034,12 +4097,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000089",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 360
           }
         },
         {
@@ -4109,12 +4173,13 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000115",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 385
           }
         },
         {

@@ -9,9 +9,13 @@ import (
 )
 
 // 요청 회상의 두 문턱(설계 · 지연 회상 5.1 4단계): 찾기 점수 recallMinScore와 뜻 있는 낱말 중 맞은 비율 recallMinCoverage.
+// 상대 문턱 recallMinRelative(설계 보완, 1-6 b6)는 두 문턱을 넘은 기억 가운데 1위 점수의 몇 배 이상만 남기는지다.
 // 0 < x ≤ 1만 받고, 키가 없는 옛 파일은 기본값으로 읽는다.
 func TestRecallThresholds_기본값과_범위(t *testing.T) {
 	d := Default()
+	if d.RecallMinRelative != DefaultRecallMinRelative || !(DefaultRecallMinRelative > 0 && DefaultRecallMinRelative <= 1) {
+		t.Fatalf("relative default = %v", d.RecallMinRelative)
+	}
 	if d.RecallMinScore != DefaultRecallMinScore || d.RecallMinCoverage != DefaultRecallMinCoverage {
 		t.Fatalf("default = %v %v", d.RecallMinScore, d.RecallMinCoverage)
 	}
@@ -22,16 +26,12 @@ func TestRecallThresholds_기본값과_범위(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{"inject":"full"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if c, err := Load(p); err != nil || c.RecallMinScore != DefaultRecallMinScore || c.RecallMinCoverage != DefaultRecallMinCoverage {
+	if c, err := Load(p); err != nil || c.RecallMinScore != DefaultRecallMinScore || c.RecallMinCoverage != DefaultRecallMinCoverage || c.RecallMinRelative != DefaultRecallMinRelative {
 		t.Fatalf("old file = %v %v %v", c.RecallMinScore, c.RecallMinCoverage, err)
 	}
-	for _, key := range []string{"recallMinScore", "recallMinCoverage"} {
+	for _, key := range []string{"recallMinScore", "recallMinCoverage", "recallMinRelative"} {
 		set := func(c *Config, v float64) {
-			if key == "recallMinScore" {
-				c.RecallMinScore = v
-			} else {
-				c.RecallMinCoverage = v
-			}
+			*map[string]*float64{"recallMinScore": &c.RecallMinScore, "recallMinCoverage": &c.RecallMinCoverage, "recallMinRelative": &c.RecallMinRelative}[key] = v
 		}
 		for _, bad := range []float64{0, -0.1, 1.01, math.NaN()} {
 			c := Default()

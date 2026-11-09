@@ -107,12 +107,19 @@ type Config struct {
 	// 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
 	RecallMinScore    float64 `json:"recallMinScore"`
 	RecallMinCoverage float64 `json:"recallMinCoverage"`
+	// 요청 회상의 상대 문턱(설계 보완, 계획 1-6 b6): 두 문턱을 넘은 기억 가운데 찾기 점수가 1위의 recallMinRelative배
+	// 미만인 것은 뺀다. 확정을 앞에 두는 순서 때문에 약하게 맞은 기억이 3줄에 끼는 것을 막는다. 0 < x ≤ 1. 이 키가 없는 옛
+	// 파일은 기본값이다.
+	RecallMinRelative float64 `json:"recallMinRelative"`
 }
 
-// 요청 회상 문턱의 기본값. 평가 묶음 학습용 사례로 맞추기 전의 임시값이다.
+// 요청 회상 문턱의 기본값(계획 1-6 b6). 공개 평가 묶음 학습용(internal/bench/testdata/public_set.json)을 훑어, 틀린 회상
+// ≤10%·넣지 않음 ≥90% 안에서 적중이 가장 높고(57/64), 그중 틀린 회상이 가장 적고(6/79), 그중 가장 낮은 값이다. 학습용을
+// 세션 단위로 반씩 나눠도 두 반 모두 틀린 회상 ≤10%다. 위임 회상도 같은 값을 쓴다(위임 전용 값은 학습용에서 나아지지 않았다).
 const (
-	DefaultRecallMinScore    = 0.4
-	DefaultRecallMinCoverage = 0.3
+	DefaultRecallMinScore    = 0.35
+	DefaultRecallMinCoverage = 0.25
+	DefaultRecallMinRelative = 0.9
 )
 
 // MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
@@ -174,7 +181,8 @@ func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
 		RecallChars: 1000, LedgerWindowDays: 7,
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
-		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage}
+		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
+		RecallMinRelative: DefaultRecallMinRelative}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -211,6 +219,9 @@ func (c Config) Validate() error {
 	}
 	if !(c.RecallMinCoverage > 0 && c.RecallMinCoverage <= 1) {
 		return i18n.Errorf("config.err.recall_min_coverage", c.RecallMinCoverage)
+	}
+	if !(c.RecallMinRelative > 0 && c.RecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.recall_min_relative", c.RecallMinRelative)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

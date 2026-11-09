@@ -61,7 +61,11 @@ func TestWhy_기억이_안_나온_까닭을_단계로_보인다(t *testing.T) {
 	home(t)
 	s := seed(t)
 	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "codex exec는 stdin을 닫는다", Source: memory.Source{Kind: "session"}})
-	out, errOut, code := run(t, "", "why", m.ID, "codex", "설치", "방법", "--cwd", "/tmp")
+	// 요청의 다른 낱말도 저장소에 있게 한다: 어느 기억에도 없는 낱말은 회상 점수에서 빠진다(설계 보완 1-6 b6).
+	if _, err := s.Save(memory.SaveInput{Kind: "fact", Title: "node 설치 방법은 정리 순서 문서에 있다", Source: memory.Source{Kind: "session"}}); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "why", m.ID, "codex", "설치", "방법", "정리", "순서", "--cwd", "/tmp")
 	var d struct {
 		StoppedAt  string `json:"stoppedAt"`
 		LastProven string `json:"lastProven"`

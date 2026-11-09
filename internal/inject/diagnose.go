@@ -102,7 +102,7 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 			bundle = ids
 		}
 	}
-	_, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
+	byID, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
 	now := s.Now()
 	// 세션 묶음에 든 상시 핵심과 확정 규칙(recall=on_demand 판, 분야 규칙 빼고)은 세션 시작으로 들어간다(S3-R6).
 	// 묶음에 없는 규칙은 요청 회상 길로 본다.
@@ -153,6 +153,8 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		minScore, minCover := recallThresholds(cfg)
 		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(memory.MeaningfulWords(in.Prompt), " "),
 			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", minScore), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", minCover))
+	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID); score < floor {
+		add(StageSelected, No, "below_top", fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", floor), fmt.Sprintf("%.2f", recallRelative(cfg)))
 	} else {
 		add(StageSelected, Yes, "matched", fmt.Sprintf("%.2f", score))
 	}

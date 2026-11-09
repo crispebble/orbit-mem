@@ -563,6 +563,15 @@ func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
 	return memory.Memory{}, false
 }
 
+// thresholds are the three thresholds of a recall: find score, share of words, share of the best score.
+type thresholds struct{ score, cover, relative float64 }
+
+// requestThresholds are the thresholds of the work recall of a request (B1).
+func requestThresholds(cfg config.Config) thresholds {
+	score, cover := recallThresholds(cfg)
+	return thresholds{score, cover, recallRelative(cfg)}
+}
+
 // recallThresholds are the two thresholds of the work recall, the defaults where the settings carry none.
 func recallThresholds(cfg config.Config) (score, cover float64) {
 	score, cover = cfg.RecallMinScore, cfg.RecallMinCoverage
@@ -575,29 +584,54 @@ func recallThresholds(cfg config.Config) (score, cover float64) {
 	return score, cover
 }
 
+// recallRelative is the relative threshold of the work recall (설계 보완, 1-6 b6), the default where the
+// settings carry none.
+func recallRelative(cfg config.Config) float64 {
+	if cfg.RecallMinRelative <= 0 {
+		return config.DefaultRecallMinRelative
+	}
+	return cfg.RecallMinRelative
+}
+
 // recallHits are the memories of byID, less those the session was told, that pass both thresholds
-// (설계 5.1 3·4단계), best first: confirmed before candidates (A2), then find score, share of the
-// request's words, this place's own before the user's (S3 명세 2.8), age (newer first), net usage
-// (followed − irrelevant) over the ledger window, last edit, id.
-func recallHits(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
+// (설계 5.1 3·4단계) and the relative floor (recallFloor), best first: confirmed before candidates (A2),
+// then find score, share of the request's words, this place's own before the user's (S3 명세 2.8), age
+// (newer first), net usage (followed − irrelevant) over the ledger window, last edit, id.
+func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
+	hits, floor := recallFloor(s, th, prompt, byID)
+	kept := hits[:0]
+	for _, h := range hits {
+		if !told[h.Memory.ID] && h.Score >= floor {
+			kept = append(kept, h)
+		}
+	}
+	return rankHits(s, cfg, pl, prompt, kept)
+}
+
+// recallFloor is the hits of byID that pass both thresholds, and the relative floor (설계 보완, 1-6 b6):
+// recallMinRelative times the best of their find scores, less a rounding margin. The best counts the memories
+// the session was already told: a memory weak next to the best match of the request stays out when that one
+// was told before (L-2: the same request again is 0 characters).
+func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
 	if len(memory.MeaningfulWords(prompt)) < minRecallWords {
-		return nil
+		return nil, 0
 	}
 	found, err := s.RecallHits(prompt)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
-	minScore, minCover := recallThresholds(cfg)
 	var hits []memory.RecallHit
+	top := 0.0
 	for _, h := range found {
 		m, ok := byID[h.Memory.ID]
-		if !ok || told[m.ID] || h.Score < minScore || h.Coverage < minCover {
+		if !ok || h.Score < th.score || h.Coverage < th.cover {
 			continue
 		}
 		h.Memory = m
 		hits = append(hits, h)
+		top = max(top, h.Score)
 	}
-	return rankHits(s, cfg, pl, prompt, hits)
+	return hits, th.relative*top - 1e-9 // 같은 값의 부동소수점 오차로 빠지지 않게
 }
 
 // rankHits orders the hits of a recall, best first (see recallHits).
@@ -668,11 +702,11 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 	for _, id := range inj.MemoryIDs {
 		skip[id] = true
 	}
-	hits := recallHits(s, cfg, pl, prompt, byID, skip)
+	hits := recallHits(s, cfg, requestThresholds(cfg), pl, prompt, byID, skip)
 	if len(hits) == 0 {
 		return ""
 	}
-	// 분야 지식은 본문·제목 대신 분야 한 줄로 든다(분야 순서는 그 분야의 가장 앞선 기억 자리).
+	// 분야 지식은 본문 대신 분야 한 줄(가장 맞은 기억 하나의 제목·id)로 든다(분야 순서는 그 분야의 가장 앞선 기억 자리).
 	type item struct {
 		m      memory.Memory
 		domain string
@@ -712,7 +746,9 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 					n++
 				}
 			}
-			line = fmt.Sprintf("- 분야 「%s」 신호 %d개 — memory_find tags=%s%s\n", it.domain, n, memory.DomainPrefix, it.domain)
+			best := byID[it.ids[0]] // 그 분야에서 가장 앞선(가장 맞은) 기억: 제목과 id만, 본문은 넣지 않는다
+			line = fmt.Sprintf("- 분야 「%s」 신호 %d개 · 가장 맞은 것 「%s」 %s — memory_find tags=%s%s\n",
+				it.domain, n, clipTitle(best.Title, newsTitleRunes), best.ID, memory.DomainPrefix, it.domain)
 		} else {
 			line = recallLine(it.m, now)
 		}
@@ -722,7 +758,8 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		used += runes(line)
 		lines = append(lines, line)
 		if it.domain != "" {
-			inj.mark(memory.MarkShown, it.ids...) // 분야 줄이 가리킨 기억: 같은 세션에 같은 줄을 다시 내지 않는다
+			inj.MemoryIDs = append(inj.MemoryIDs, it.ids[0]) // 줄이 제목과 id를 든 기억
+			inj.mark(memory.MarkShown, it.ids...)            // 분야 줄이 가리킨 기억: 같은 세션에 같은 줄을 다시 내지 않는다
 			continue
 		}
 		inj.MemoryIDs = append(inj.MemoryIDs, it.m.ID)

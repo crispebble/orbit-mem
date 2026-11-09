@@ -4,36 +4,25 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 // 요청 회상의 두 문턱 재료(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계). 문턱 값은 설정이 정하고 여기서는 재기만 한다.
 //
-//   - 점수(Score): 요청의 찾기 질의(RecallQuery)를 찾기(FindScored)와 같은 함수로 매긴 0~1 값이다(rank.go). 같은 질의로
-//     memory_find를 부르면 같은 점수가 나와, 찾기와 회상이 같은 순위를 본다. 질의는 뜻 있는 낱말에 한 글자 숫자·라틴
-//     낱말을 더한 것이다: 「확정 규칙 7」의 7이 빠지면 제목만 다른 「확정 규칙 N」들이 모두 같은 점수가 된다.
+//   - 점수(Score): 요청의 찾기 질의(RecallQuery)를 찾기(FindScored)와 같은 함수로 매긴 0~1 값이다(rank.go). 다만 어느
+//     기억에도 없는 토큰은 분모에서 뺀다(SkipUnknownTokens, 설계 보완 1-6 b6). 그 토큰은 모든 기억에 같은 몫이라 순위는
+//     memory_find와 거의 같고 값만 오른다. 질의는 뜻 있는 낱말(조사·어미를 뗀 것, stem.go)에 한 글자 숫자·라틴 낱말을
+//     더한 것이다: 「확정 규칙 7」의 7이 빠지면 제목만 다른 「확정 규칙 N」들이 모두 같은 점수가 된다.
 //   - 맞은 비율(Coverage): 뜻 있는 낱말 중 기억(제목·주제·태그·본문)에 나온 낱말 수 ÷ 뜻 있는 낱말 수다(IDF 무게 없음).
 //     세 글자 이상 한글 낱말은 두 글자 이상 앞부분이 나와도 맞은 것으로 센다(조사·어미: 「설치해」는 「설치한다」에 맞는다).
 
-// MeaningfulWords are the words of a request worth matching: two or more characters and not a filler word,
-// in request order, at most 40.
-func MeaningfulWords(prompt string) []string { return promptTerms(prompt) }
+// MeaningfulWords are the words of a request worth matching, in request order, at most 40: words of two or
+// more characters and one-syllable Hangul nouns, less filler words, with closed particles and endings taken
+// off (stem.go), each once.
+func MeaningfulWords(prompt string) []string { return requestWords(prompt, false) }
 
-// RecallQuery is the find query of a request: its words without filler words and one-character Hangul
-// words (particles), in request order, at most 40.
-func RecallQuery(prompt string) string {
-	var out []string
-	for _, t := range Terms(prompt, 64) {
-		if stopwords[t] || (utf8.RuneCountInString(t) == 1 && isHangulStart(t)) {
-			continue
-		}
-		out = append(out, t)
-		if len(out) == 40 {
-			break
-		}
-	}
-	return strings.Join(out, " ")
-}
+// RecallQuery is the find query of a request: its meaningful words and its one-character Latin and digit
+// words, in request order, at most 40.
+func RecallQuery(prompt string) string { return strings.Join(requestWords(prompt, true), " ") }
 
 // RecallHit is a memory that shares a token with a request's meaningful words, with the two measures.
 type RecallHit struct {
@@ -75,7 +64,7 @@ func (s *Store) RecallHitsIn(prompt string, states ...string) ([]RecallHit, erro
 	if len(words) == 0 {
 		return nil, nil
 	}
-	found, err := s.FindScored(FindInput{Query: RecallQuery(prompt), States: states, AllProjects: true, Limit: math.MaxInt32})
+	found, err := s.FindScored(FindInput{Query: RecallQuery(prompt), States: states, AllProjects: true, Limit: math.MaxInt32, SkipUnknownTokens: true})
 	if err != nil {
 		return nil, err
 	}

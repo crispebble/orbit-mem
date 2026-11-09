@@ -258,6 +258,7 @@
   "cli.why.not_in_bundle": "not in the session-start bundle",
   "cli.why.no_prompt": "give the request words to judge this",
   "cli.why.weak_match": "under the thresholds: matched [%s] of [%s], find score %s (threshold %s), share of words %s (threshold %s); it needs two or more meaningful words and both values at their thresholds (recallMinScore, recallMinCoverage)",
+  "cli.why.below_top": "under the relative threshold: find score %s is below %s, the share (recallMinRelative %s) of the best match of this request",
   "cli.why.matched": "passes both thresholds (find score %s)",
   "cli.why.observed": "put in for this session (%s)",
   "cli.why.would_inject": "no record for a session; this request would put it in at rank %s",

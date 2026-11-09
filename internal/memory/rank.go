@@ -24,7 +24,11 @@ import (
 //	N′ = (기억 수 − 1) + idfPrior,  n′ = (t에 맞는 기억 수) − [d가 t에 맞음]
 //	idf(t,d) = ln(1 + (N′ − n′ + 0.5) / (n′ + 0.5))  (n′ ≤ N′라 음수가 되지 않는다)
 //
-// 점수는 이상적인 기억(모든 질의 토큰이 제목에 그대로 있는 기억, q = 1)의 점수로 나눈 0~1 값이다.
+// 점수는 이상적인 기억(모든 질의 토큰이 제목에 그대로 있는 기억, q = 1)의 점수로 나눈 0~1 값이다. 회상(FindInput
+// SkipUnknownTokens)은 어느 기억에도 없는 토큰(후보 가운데 맞는 기억 0)을 합에서 뺀다(설계 보완, 계획 1-6 b6): 모든 기억에서 q = 0이고 무게가 같아 어느 기억인지는
+// 가르지 못하고, 제품 이름·말꼬리처럼 저장소에 없는 낱말이 섞인 질의의 점수만 일률적으로 깎는다. 그래서 점수는 「저장소에
+// 있는 질의 낱말 가운데 얼마나 맞나」이고, 주제 밖 질의도 높게 나올 수 있다(회상은 맞은 비율 문턱이 함께 막는다).
+// memory_find는 빼지 않는다: 기억이 몇 건뿐일 때 점수가 기억 수에 흔들리고, 낱말 하나 겹친 무관한 기억이 높아진다.
 //
 //	score(d) = Σ_t idf(t,d) × q(t,d) / Σ_t idf(t,d)
 //
@@ -120,10 +124,12 @@ func matches(qs []queryToken, f fieldTokens) ([]float64, bool) {
 
 // ranker는 한 질의의 후보와 그 통계(기억 수, 토큰마다 맞는 기억 수)다.
 type ranker struct {
-	qs    []queryToken
-	total int
-	df    []int
-	docs  map[string][]float64
+	// skipUnknown leaves the query tokens no memory has out of the score (FindInput.SkipUnknownTokens).
+	skipUnknown bool
+	qs          []queryToken
+	total       int
+	df          []int
+	docs        map[string][]float64
 }
 
 func newRanker(qs []queryToken) *ranker {
@@ -154,6 +160,9 @@ func (r *ranker) score(v []float64) float64 {
 	var num, den float64
 	for i, q := range v {
 		n := r.df[i]
+		if n == 0 && r.skipUnknown { // 어느 기억에도 없는 토큰: 모든 기억에 같은 몫이라 어느 기억인지 가르지 못한다
+			continue
+		}
 		if q > 0 {
 			n--
 		}
@@ -195,8 +204,9 @@ const staleScanSQL = `SELECT id, title, topic, tags, body FROM memories WHERE id
 // 지금 글로 훑은 것을 합친다. 색인 줄 수가 어긋나면(표시 없이 깨진 색인) 늦은 표시 대신 전체 검사의 늦은 줄을 훑는다.
 // 색인 표나 표시 표가 없는 DB(판 4 사본이나 표시 전 판 5 사본으로 복구한 직후)는 모두 훑는다. q의 한 읽기
 // 트랜잭션에서 읽기만 한다. step은 첫 읽기 뒤에 부른다(시험용, nil이면 없음).
-func queryScores(q querier, qs []queryToken, step func()) (map[string]float64, error) {
+func queryScores(q querier, qs []queryToken, skipUnknown bool, step func()) (map[string]float64, error) {
 	r := newRanker(qs)
+	r.skipUnknown = skipUnknown
 	scan := lateScanSQL
 	// 줄 수 비교가 기억 수(IDF의 N)도 센다. COUNT(*)는 b-tree 쪽만 걷고 줄을 풀지 않는다. 트리거로 센 값을 두지 않는
 	// 것은 INSERT OR REPLACE가 지우기 트리거 없이 줄을 바꿔 값이 어긋날 수 있어서다.

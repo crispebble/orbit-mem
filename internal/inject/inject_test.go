@@ -218,6 +218,7 @@ func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶�
 
 // 명세 · O3-5 「PC 기억 분야 묶음」(수용 기준 8): 분야 표식(분야:<이름>) 기억은 세션 시작 묶음과 작업 회상에 본문으로 들어가지 않는다.
 // 요청이 한 분야 기억과 맞으면 그 분야를 한 줄(신호 수와 찾는 법)로 넣고, 맞지 않는 분야는 넣지 않는다(설계 · 지연 회상 5.1 꼴).
+// 분야 줄은 가장 맞은 분야 기억 하나의 제목과 id를 함께 든다(설계 보완, 1-6 b6): 본문과 다른 분야 기억 제목은 넣지 않는다.
 func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 	s := store(t)
 	domain := func(kind, title, body, name string) memory.Memory {
@@ -238,12 +239,12 @@ func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 		t.Errorf("분야 규칙은 세션 시작 묶음에 넣지 않습니다:\n%s", start)
 	}
 	inj := PromptInjection(s, config.Default(), here, "부가세 신고 기한 확인해줘")
-	for _, want := range []string{"- 분야 「세무」 신호 2개 — memory_find tags=분야:세무", plain.Title} {
+	for _, want := range []string{"- 분야 「세무」 신호 2개 · 가장 맞은 것 「" + a.Title + "」 " + a.ID + " — memory_find tags=분야:세무", plain.Title} {
 		if !strings.Contains(inj.Text, want) {
 			t.Errorf("%q가 없습니다:\n%s", want, inj.Text)
 		}
 	}
-	for _, not := range []string{"1기 확정은", "지연 발행은", a.Title, b.Title, c.Title, "물류"} {
+	for _, not := range []string{"1기 확정은", "지연 발행은", b.Title, c.Title, "물류"} {
 		if strings.Contains(inj.Text, not) {
 			t.Errorf("%q는 들어가면 안 됩니다:\n%s", not, inj.Text)
 		}
@@ -255,7 +256,10 @@ func TestPromptInjection_후보는_확정_뒤에_후보로_표시한다(t *testi
 	s := store(t)
 	cand := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 전에 plist 지우기", "후보 본문", memory.ScopeGlobal, false)
 	conf := save(t, s, memory.KindLesson, "launchd 예약 회고", "확정 본문", memory.ScopeGlobal, true)
-	inj := PromptInjection(s, config.Default(), here, "launchd 예약 회고 다시 걸기")
+	// 순서만 본다: 확정은 요청 낱말 일부만 맞아 상대 문턱(1위의 recallMinRelative배)에 걸릴 수 있으니 그 문턱은 끈다.
+	cfg := config.Default()
+	cfg.RecallMinRelative = 0.01
+	inj := PromptInjection(s, cfg, here, "launchd 예약 회고 다시 걸기")
 	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != conf.ID || inj.MemoryIDs[1] != cand.ID {
 		t.Fatalf("확정이 먼저가 아닙니다: %v (conf=%s cand=%s)\n%s", inj.MemoryIDs, conf.ID, cand.ID, inj.Text)
 	}
