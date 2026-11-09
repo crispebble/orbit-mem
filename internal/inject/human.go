@@ -16,9 +16,13 @@ import (
 
 // hostHeaders are plain-text openers with no closing mark. They are peeled off;
 // what follows must be a host tag block, or the whole message is the host's own.
+// The interruption marks are the line the host writes when the person cuts a turn short (also "… for tool
+// use]"); the person typed nothing.
 var hostHeaders = []string{
 	"Another Claude session sent a message:",
 	"[Subagent hand-back]",
+	"[Request interrupted by user]",
+	"[Request interrupted by user for tool use]",
 }
 
 // hostTags are tag names whose blocks are the host's own. A block opens with
@@ -31,6 +35,10 @@ var hostTags = []string{
 	"side-sessions-event",
 	"ci-monitor-event",
 	"scheduled-task",
+	// The output of a command the person ran locally (and its note), which the host writes, not the person.
+	"local-command-stdout",
+	"local-command-stderr",
+	"local-command-caveat",
 }
 
 // hostNoticePrefixes open the paragraph the host adds after a forwarded message
