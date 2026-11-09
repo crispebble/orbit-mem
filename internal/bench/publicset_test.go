@@ -23,6 +23,7 @@ var (
 
 const (
 	publicSet      = "testdata/public_set.json"
+	holdoutSet     = "testdata/holdout_set.json"
 	baselineLegacy = "testdata/baseline-legacy.json"
 	baselineNow    = "testdata/baseline-current.json"
 )
@@ -64,6 +65,79 @@ func TestPublicSetData(t *testing.T) {
 	h := bench.CountBundles(set.Cases, bench.Partition(set), bench.PartTest)
 	if h.Answered < 20 || h.Empty < 10 || h.Subagent < 8 || h.Duplicate < 8 {
 		t.Errorf("test bundles = %+v, want answered>=20 empty>=10 subagent>=8 duplicate>=8", h)
+	}
+}
+
+// TestHoldoutSetData checks that the holdout set loads and keeps its size floors per kind. It asserts
+// no measured value: the file is for one judgement, not for tuning.
+func TestHoldoutSetData(t *testing.T) {
+	set, err := bench.Read(holdoutSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := bench.Read(publicSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Memories) != len(pub.Memories) {
+		t.Errorf("memories = %d, want the %d of the public set", len(set.Memories), len(pub.Memories))
+	}
+	ids := map[string]bool{}
+	for _, c := range pub.Cases {
+		ids[c.ID] = true
+	}
+	var answered, emptyHuman, nonHuman, subagent, duplicate, twice int
+	perSession := map[string]int{}
+	for _, c := range set.Cases {
+		if ids[c.ID] {
+			t.Errorf("case id %q is also in the public set", c.ID)
+		}
+		perSession[c.Session]++
+		switch {
+		case c.CaseKind() == bench.KindSubagent:
+			subagent++
+		case c.CaseKind() == bench.KindDuplicate:
+			duplicate++
+		case c.CaseOrigin() != bench.OriginUser:
+			nonHuman++
+		case len(c.Expect) > 0:
+			answered++
+		default:
+			emptyHuman++
+		}
+	}
+	if answered < 40 || emptyHuman < 25 || nonHuman < 6 || subagent < 15 || duplicate < 8 {
+		t.Errorf("answered=%d emptyHuman=%d nonHuman=%d subagent=%d duplicate=%d, want >=40 >=25 >=6 >=15 >=8",
+			answered, emptyHuman, nonHuman, subagent, duplicate)
+	}
+	if len(perSession) < 8 {
+		t.Errorf("sessions = %d, want >= 8", len(perSession))
+	}
+	for s, n := range perSession {
+		if s == "" || n < 3 || n > 8 {
+			t.Errorf("session %q has %d cases, want 3..8", s, n)
+		}
+	}
+	// A memory asked twice in one session: at least two sessions repeat an expected key.
+	for s := range perSession {
+		seen := map[string]int{}
+		for _, c := range set.Cases {
+			if c.Session != s || c.CaseKind() != bench.KindRequest {
+				continue
+			}
+			for _, k := range c.Expect {
+				seen[k]++
+			}
+		}
+		for _, n := range seen {
+			if n > 1 {
+				twice++
+				break
+			}
+		}
+	}
+	if twice < 2 {
+		t.Errorf("sessions that ask one memory twice = %d, want >= 2", twice)
 	}
 }
 
