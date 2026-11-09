@@ -74,7 +74,7 @@ func TestWhy_기억이_안_나온_까닭을_단계로_보인다(t *testing.T) {
 	}
 	i18n.Set(i18n.KO)
 	defer i18n.Set(i18n.EN)
-	if got := whyText("weak_match", []string{"codex", "codex 설치 방법"}); !strings.Contains(got, "맞은 낱말 [codex] / 요청 낱말 [codex 설치 방법]") {
+	if got := whyText("weak_match", []string{"codex", "codex 설치 방법", "0.33", "0.40", "0.33", "0.30"}); !strings.Contains(got, "맞은 낱말 [codex] / 요청 낱말 [codex 설치 방법], 찾기 점수 0.33(문턱 0.40)·맞은 비율 0.33(문턱 0.30)") {
 		t.Fatalf("ko: %s", got)
 	}
 	if _, _, code := run(t, "", "why"); code != 2 {

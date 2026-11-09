@@ -1,1 +1,1 @@
-{"hookSpecificOutput":{"additionalContext":"[orbit-mem 관련 기억] 필요하면 memory_get으로 본문을 읽는다.\n- 배포 전에 스모크 시험을 돈다 (m-decision     · 결정 확정)\n  배포 전 확인 절차\n- 배포 스크립트는 드라이런이 먼저 (m-candidate    · 교훈 후보)\n  배포 스크립트를 처음 돌릴 때는 드라이런으로 본다","hookEventName":"UserPromptSubmit"}}
+{"hookSpecificOutput":{"additionalContext":"[orbit-mem 관련 기억] 본문은 memory_get\n- 배포 스크립트는 드라이런이 먼저 — m-candidate    · 교훈 후보\n  배포 스크립트를 처음 돌릴 때는 드라이런으로 본다","hookEventName":"UserPromptSubmit"}}
