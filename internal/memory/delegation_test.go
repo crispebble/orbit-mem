@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 )
 
 func take(t *testing.T, s *Store, session, kind, taker string) string {
@@ -163,5 +164,99 @@ func TestDelegation_동시에_가져가도_하나씩_짝이_맞는다(t *testing
 		if want := fmt.Sprintf("위임 %02d", i); got[i] != want {
 			t.Fatalf("got %v", got)
 		}
+	}
+}
+
+// 시작되지 않은 위임(권한 거부·훅이 막음·도구 실패)의 대기 행은 DelegationTTL이 지나면 짝이 되지 않고 지워진다: 뒤에 오는
+// 같은 종류 서브에이전트는 자기 위임 글을 받는다(한 칸씩 어긋나지 않는다). 한도 안의 대기 행은 그대로 짝이 된다.
+func TestDelegation_오래된_대기_행은_짝이_되지_않고_새_위임과_짝이_맞는다(t *testing.T) {
+	s, clk := newTestStore(t)
+	save := func(kind, task string) {
+		t.Helper()
+		if err := s.SaveDelegation("h", "S", kind, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("worker", "시작되지 않은 위임")
+	save("reviewer", "다른 종류의 오래된 위임")
+	clk.t = clk.t.Add(DelegationTTL + time.Second)
+	save("worker", "둘째 위임")
+	save("worker", "셋째 위임")
+	if got := take(t, s, "S", "worker", "a1"); got != "둘째 위임" {
+		t.Fatalf("a1 = %q (오래된 대기 행과 짝이 맞았다)", got)
+	}
+	if got := take(t, s, "S", "worker", "a2"); got != "셋째 위임" {
+		t.Fatalf("a2 = %q", got)
+	}
+	if got := take(t, s, "S", "worker", "a3"); got != "" {
+		t.Fatalf("a3 = %q (남은 worker 위임이 없다)", got)
+	}
+	var n int
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM session_bundles WHERE session LIKE ?`, delegationWaiting+"S"+delegationSep+"worker"+delegationSep+"%").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("오래된 worker 대기 행이 남았다: %d %v", n, err)
+	}
+	if got := take(t, s, "S", "reviewer", "r1"); got != "" {
+		t.Fatalf("오래된 reviewer 대기 행과 짝이 맞았다: %q", got)
+	}
+	// 가져간 글은 한도와 무관하다: 같은 서브에이전트가 나중에 다시 물어도 그 글이다.
+	clk.t = clk.t.Add(DelegationTTL * 3)
+	if got := take(t, s, "S", "worker", "a1"); got != "둘째 위임" {
+		t.Fatalf("a1 again = %q", got)
+	}
+}
+
+// 한도 경계: 정확히 DelegationTTL 된 대기 행은 아직 짝이 된다(권한 확인을 기다린 위임).
+func TestDelegation_한도_안의_대기_행은_짝이_된다(t *testing.T) {
+	s, clk := newTestStore(t)
+	if err := s.SaveDelegation("h", "S", "worker", "기다린 위임"); err != nil {
+		t.Fatal(err)
+	}
+	clk.t = clk.t.Add(DelegationTTL)
+	if got := take(t, s, "S", "worker", "a1"); got != "기다린 위임" {
+		t.Fatalf("a1 = %q", got)
+	}
+}
+
+// 경합: 오래된 대기 행이 섞여 있어도 여러 연결에서 동시에 가져가면 서브에이전트마다 새 위임 하나씩이고, 오래된 행은 아무도 받지 않는다.
+func TestDelegation_오래된_행이_섞여도_동시에_가져가면_새_위임만_하나씩이다(t *testing.T) {
+	s, clk := newTestStore(t)
+	for i := range 4 {
+		if err := s.SaveDelegation("h", "S", "worker", fmt.Sprintf("오래된 %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clk.t = clk.t.Add(DelegationTTL + time.Minute)
+	const n = 12
+	for i := range n {
+		if err := s.SaveDelegation("h", "S", "worker", fmt.Sprintf("위임 %02d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var wg sync.WaitGroup
+	got := make([]string, n+2)
+	errs := make([]error, n+2)
+	start := make(chan struct{})
+	for i := range n + 2 { // 둘은 남은 위임이 없다
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			got[i], _, errs[i] = s.TakeDelegation("h", "S", "worker", fmt.Sprintf("a%02d", i))
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("take %d: %v", i, err)
+		}
+	}
+	slices.Sort(got)
+	want := []string{"", ""}
+	for i := range n {
+		want = append(want, fmt.Sprintf("위임 %02d", i))
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %v", got)
 	}
 }

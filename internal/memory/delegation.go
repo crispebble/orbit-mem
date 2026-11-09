@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -25,6 +26,17 @@ const (
 	delegationWaiting = delegationSep + "delegation" + delegationSep
 	delegationTaken   = delegationSep + "delegated" + delegationSep
 )
+
+// DelegationTTL is how long a delegation waits for its subagent. A delegation whose subagent never started
+// (the permission was denied, a hook blocked the call, the tool failed) leaves a waiting row; without a limit
+// every later subagent of its kind in the session would get the task one before its own. Past the limit
+// TakeDelegation skips and removes the row. 근거(계획 1-6 b10, 재생 묶음 19세션·위임 95건의 시각): 위임 도구
+// 호출에서 서브에이전트 시작까지의 간격은 재생 자료에 없다(서브에이전트 기록은 담지 않는다). 보통은 훅 하나 사이(1초
+// 미만)이고, 길어지는 것은 사람이 권한 확인을 기다릴 때다. 같은 세션·같은 종류의 다음 위임까지 간격(53건)은 최소 20초,
+// 5% 29초, 10% 386초, 중앙 1,502초이고 300초 미만은 4건(30초 미만 3건은 바로 다시 맡긴 것)이다. 5분이면 권한 확인을
+// 몇 분 기다린 위임도 짝을 잃지 않고, 남은 대기 행이 다음 같은 종류 위임을 밀어내는 경우는 간격 10% 지점(386초)보다 짧은
+// 것뿐이다. 한도를 넘겨 시작한 서브에이전트는 위임 회상 없이 상시 핵심 제목 줄만 받는다(틀린 글보다 낫다).
+const DelegationTTL = 5 * time.Minute
 
 func delegationKeyOK(parts ...string) bool {
 	for _, p := range parts {
@@ -62,8 +74,9 @@ func (s *Store) SaveDelegation(host, session, kind, text string) error {
 }
 
 // TakeDelegation gives a subagent (taker) of kind the delegation it was started for: the one it took
-// before, else the oldest one of the session and kind not taken yet, which it takes (no other subagent
-// gets it). Without one it gives false. An empty taker takes the oldest one every time.
+// before, else the oldest one of the session and kind not taken yet and not older than DelegationTTL, which
+// it takes (no other subagent gets it). Older ones of the session and kind are removed. Without one it gives
+// false. An empty taker takes the oldest one every time.
 func (s *Store) TakeDelegation(host, session, kind, taker string) (string, bool, error) {
 	if session == "" || !delegationKeyOK(session, kind, taker) {
 		return "", false, nil
@@ -75,10 +88,15 @@ func (s *Store) TakeDelegation(host, session, kind, taker string) (string, bool,
 		}
 	}
 	prefix := waitingPrefix(session, kind)
+	n := utf8.RuneCountInString(prefix)
+	oldest := s.nowMs() - DelegationTTL.Milliseconds() // 이보다 앞에 적힌 대기 행은 시작되지 않은 위임이다
+	if _, err := s.db.Exec(`DELETE FROM session_bundles WHERE host=? AND substr(session,1,?)=? AND at<?`, host, n, prefix, oldest); err != nil {
+		return "", false, err
+	}
 	for range 16 { // 다른 프로세스가 같은 줄을 먼저 가져가면 다음 줄로
 		var key string
-		err := s.db.QueryRow(`SELECT session FROM session_bundles WHERE host=? AND substr(session,1,?)=? ORDER BY at, rowid LIMIT 1`,
-			host, utf8.RuneCountInString(prefix), prefix).Scan(&key)
+		err := s.db.QueryRow(`SELECT session FROM session_bundles WHERE host=? AND substr(session,1,?)=? AND at>=? ORDER BY at, rowid LIMIT 1`,
+			host, n, prefix, oldest).Scan(&key)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
 		}
