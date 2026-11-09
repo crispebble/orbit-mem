@@ -64,7 +64,10 @@ func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	return p, nil
 }
 
-// copyDB copies a DB into dir with CopyDB (the source is never opened) and checks its schema.
+// copyDB copies a DB into dir with CopyDB (the source is never opened) and brings the copy to this
+// binary's schema: a DB an older orbit-mem left (the replay copies keep the schema of the day they
+// were taken) runs on its migrated copy, and the source keeps its schema. memory.MigrateCopy says why
+// the copy takes no backup first. A DB a newer orbit-mem made, or one with no tables, is refused.
 func copyDB(path, dir string) (string, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "template"), 0o700); err != nil {
 		return "", err
@@ -72,6 +75,9 @@ func copyDB(path, dir string) (string, error) {
 	dst := filepath.Join(dir, "template", "bench.db")
 	if err := CopyDB(path, dst); err != nil {
 		return "", err
+	}
+	if before, err := memory.MigrateCopy(dst); err != nil {
+		return "", fmt.Errorf("the DB schema is %q (DB %d, binary %d): %w", before.State, before.DB, before.Binary, err)
 	}
 	s, info, err := memory.OpenReadOnly(dst)
 	if err != nil {

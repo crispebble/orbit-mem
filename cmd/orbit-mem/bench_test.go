@@ -376,3 +376,27 @@ func TestBench_set은_틀린_키와_값을_실행_전에_거절한다(t *testing
 		}
 	}
 }
+
+func TestBench_recall은_판_4_DB를_사본에서_올려_돈다(t *testing.T) {
+	home(t)
+	db, s := openedDB(t)
+	if _, err := s.DB().Exec(`DROP TABLE memory_fts; DROP TABLE memory_index; DROP TABLE save_requests;
+		ALTER TABLE sources DROP COLUMN trust; UPDATE meta SET value='4' WHERE key='schema.version'; PRAGMA user_version=4`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	cases := filepath.Join(t.TempDir(), "c.json")
+	os.WriteFile(cases, []byte(benchNoMems), 0o600)
+	before := sums(t, db)
+	if out, errb, code := run(t, "", "bench", "recall", "--cases", cases, "--db", db); code != 0 {
+		t.Fatalf("종료 %d: %s %s", code, out, errb)
+	}
+	for k, v := range sums(t, db) {
+		if before[k] != v {
+			t.Errorf("%q의 sha256이 바뀌었다", k)
+		}
+	}
+	if _, info, err := memory.OpenReadOnly(db); err != nil || info.DB != 4 {
+		t.Errorf("원본 판 = %+v %v, 4 그대로여야 한다", info, err)
+	}
+}
