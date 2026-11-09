@@ -176,23 +176,47 @@ func (r *ranker) scores() map[string]float64 {
 	return out
 }
 
-// ftsCandidatesSQL은 색인이 지금 글과 맞는 후보다. 늦은 기억은 색인 글이 낡아 빼고 따로 훑는다.
+// ftsCandidatesSQL은 색인이 지금 글과 맞는 후보다. 늦은 기억(표시가 있거나 색인 글이 낡은 기억)은 빼고 따로 훑는다.
+// MATCH가 바깥 고리이고 나머지는 rowid·기본 키로 찾으므로 후보 수에 비례한다.
 const ftsCandidatesSQL = `SELECT i.memory_id, f.title, f.keys, f.body FROM memory_fts f
 	JOIN memory_index i ON i.rowid = f.rowid JOIN memories m ON m.id = i.memory_id
-	WHERE memory_fts MATCH ? AND i.indexed_at = CAST(m.updated_at AS TEXT)`
+	WHERE memory_fts MATCH ? AND i.indexed_at = CAST(m.updated_at AS TEXT)
+	AND NOT EXISTS (SELECT 1 FROM memory_index_late l WHERE l.memory_id = i.memory_id)`
 
-// queryScores는 질의 토큰이 닿는 모든 기억(상태·범위와 무관)의 점수다. 후보는 FTS 색인과, 색인이 늦은 기억을
-// 지금 글로 훑은 것을 합친다. 색인 표가 없는 DB(판 4 사본으로 복구한 직후)는 모두 훑는다. 읽기만 한다.
-func (s *Store) queryScores(qs []queryToken) (map[string]float64, error) {
+// lateScanSQL은 늦은 표시가 있는 기억의 지금 글이다(CROSS JOIN: 표시가 바깥 고리라 늦은 줄 수에 비례한다).
+const lateScanSQL = `SELECT m.id, m.title, m.topic, m.tags, m.body FROM memory_index_late l CROSS JOIN memories m ON m.id = l.memory_id`
+
+// staleScanSQL은 전체 검사(staleSQL)가 늦다고 본 기억의 지금 글이다: 색인 줄 수가 어긋날 때(index.go 개수 비교 보호
+// 장치)만 쓴다. 표시가 있는 기억을 포함하고, ftsCandidatesSQL의 후보(색인 줄·FTS 줄이 있고 글이 맞고 표시가 없음)와
+// 겹치지 않는다. 기억 전부를 읽는다.
+const staleScanSQL = `SELECT id, title, topic, tags, body FROM memories WHERE id IN (` + staleSQL + `)`
+
+// queryScores는 질의 토큰이 닿는 모든 기억(상태·범위와 무관)의 점수다. 후보는 FTS 색인과, 늦은 표시가 있는 기억을
+// 지금 글로 훑은 것을 합친다. 색인 줄 수가 어긋나면(표시 없이 깨진 색인) 늦은 표시 대신 전체 검사의 늦은 줄을 훑는다.
+// 색인 표나 표시 표가 없는 DB(판 4 사본이나 표시 전 판 5 사본으로 복구한 직후)는 모두 훑는다. q의 한 읽기
+// 트랜잭션에서 읽기만 한다. step은 첫 읽기 뒤에 부른다(시험용, nil이면 없음).
+func queryScores(q querier, qs []queryToken, step func()) (map[string]float64, error) {
 	r := newRanker(qs)
-	scan := `SELECT id, title, topic, tags, body FROM memories WHERE id IN (` + staleSQL + `)`
-	rows, err := s.db.Query(ftsCandidatesSQL, candidateMatch(qs))
+	scan := lateScanSQL
+	// 줄 수 비교가 기억 수(IDF의 N)도 센다. COUNT(*)는 b-tree 쪽만 걷고 줄을 풀지 않는다. 트리거로 센 값을 두지 않는
+	// 것은 INSERT OR REPLACE가 지우기 트리거 없이 줄을 바꿔 값이 어긋날 수 있어서다.
+	total, agree, err := indexCounts(q)
 	switch {
 	case noIndexTable(err):
 		scan = `SELECT id, title, topic, tags, body FROM memories`
+		if err := q.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&total); err != nil {
+			return nil, err
+		}
 	case err != nil:
 		return nil, err
 	default:
+		if !agree {
+			scan = staleScanSQL
+		}
+		rows, err := q.Query(ftsCandidatesSQL, candidateMatch(qs))
+		if err != nil {
+			return nil, err
+		}
 		for rows.Next() {
 			var id, ti, ke, bo string
 			if err := rows.Scan(&id, &ti, &ke, &bo); err != nil {
@@ -201,13 +225,17 @@ func (s *Store) queryScores(qs []queryToken) (map[string]float64, error) {
 			}
 			r.add(id, fieldTokens{strings.Fields(ti), strings.Fields(ke), strings.Fields(bo)})
 		}
-		err := rows.Err()
+		err = rows.Err()
 		rows.Close()
 		if err != nil {
 			return nil, err
 		}
 	}
-	rows, err = s.db.Query(scan)
+	r.total = total
+	if step != nil {
+		step()
+	}
+	rows, err := q.Query(scan)
 	if err != nil {
 		return nil, err
 	}
@@ -220,9 +248,6 @@ func (s *Store) queryScores(qs []queryToken) (map[string]float64, error) {
 		r.add(id, tokensOf(title, topic, tags, body))
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if r.total, err = s.Count(); err != nil {
 		return nil, err
 	}
 	return r.scores(), nil

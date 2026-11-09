@@ -556,8 +556,15 @@ func cmdDoctor(a *app, args []string) error {
 		case memory.SchemaOlder:
 			add("migration-needed", "orbit-mem migrate")
 		case memory.SchemaOK:
-			if n, err := s.StaleIndexCount(); err == nil && n > 0 { // 늦은 줄은 migrate가 채운다(--reindex는 색인이 깨졌을 때)
-				add("index-stale", "orbit-mem migrate", n)
+			// 늦은 줄(옛 실행 파일이 쓴 기억, 검색은 맞다)은 다음 쓰기나 migrate가 채운다. 표시 없이 깨진 색인은 검색이
+			// 전체를 훑어 느려지거나 놓칠 수 있어 따로 알리고 --reindex로 고친다(internal/memory/index.go 보호 장치).
+			if h, err := s.IndexHealth(); err == nil {
+				if h.Late > 0 {
+					add("index-stale", "orbit-mem migrate", h.Late)
+				}
+				if h.Broken > 0 {
+					add("index-broken", "orbit-mem migrate --reindex", h.Broken)
+				}
 			}
 		}
 		all, _ := s.List()

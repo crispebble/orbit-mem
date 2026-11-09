@@ -84,7 +84,7 @@ func BenchmarkFind_옛_훑기_3000건(b *testing.B) {
 	}
 }
 
-// 쓰기 끝(syncIndexTx)이 매번 도는 늦은 줄 훑기(staleSQL)의 값이다.
+// doctor(StaleIndexCount)·FillIndex가 도는 전체 검사(staleSQL)의 값이다. 쓰기 끝과 찾기는 늦은 표시만 읽는다.
 func BenchmarkStaleIndexCount_3000건(b *testing.B) {
 	s := benchStore(b, 3000)
 	b.ResetTimer()

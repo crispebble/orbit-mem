@@ -145,12 +145,13 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 		t.Fatal(err)
 	}
 	for _, o := range []string{"table:memory_index", "table:memory_fts", "table:memory_fts_data", "table:memory_fts_idx",
-		"table:memory_fts_content", "table:memory_fts_docsize", "table:memory_fts_config", "table:save_requests"} {
+		"table:memory_fts_content", "table:memory_fts_docsize", "table:memory_fts_config", "table:save_requests",
+		"table:memory_index_late", "trigger:memory_index_late_insert", "trigger:memory_index_late_update"} {
 		if !want.objects[o] {
 			t.Errorf("expected shape lacks %s", o)
 		}
 	}
-	for _, c := range []string{"memory_index.memory_id", "memory_index.indexed_at", "memory_fts.title", "memory_fts.keys", "memory_fts.body",
+	for _, c := range []string{"memory_index.memory_id", "memory_index.indexed_at", "memory_index_late.memory_id", "memory_fts.title", "memory_fts.keys", "memory_fts.body",
 		"sources.trust", "save_requests.key", "save_requests.args_hash", "save_requests.memory_id", "save_requests.action", "save_requests.at"} {
 		if !want.columns[c] {
 			t.Errorf("expected shape lacks column %s", c)
@@ -748,9 +749,12 @@ func TestIndex_FTS_줄이_빠진_기억은_늦은_줄이고_채우면_다시_찾
 	if n, err := s.StaleIndexCount(); err != nil || n != 1 {
 		t.Fatalf("stale %d %v, want 1", n, err)
 	}
-	// 고치기 전에도 찾기는 늦은 줄을 훑어 찾는다.
-	if got, err := s.Find(FindInput{Query: "드라이런", AllProjects: true}); err != nil || len(got) != 1 || got[0].ID != gone.ID {
-		t.Fatalf("find before fill %v %v", titlesOf(got), err)
+	// 고치기 전에도 찾기는 그 기억을 찾는다: 표시가 없어도 FTS 줄 수가 색인 줄 수와 어긋나니 그 찾기만 전체 검사로
+	// 늦은 줄을 훑는다(개수 비교 보호 장치).
+	in := FindInput{Query: "드라이런 시험", AllProjects: true}
+	before, err := s.FindScored(in)
+	if err != nil || len(before) != 2 || !slices.ContainsFunc(before, func(h Hit) bool { return h.Memory.ID == gone.ID }) {
+		t.Fatalf("find before fill %s %v", hitsText(before), err)
 	}
 	if n, err := s.FillIndex(0); err != nil || n != 1 {
 		t.Fatalf("fill %d %v", n, err)
@@ -764,5 +768,8 @@ func TestIndex_FTS_줄이_빠진_기억은_늦은_줄이고_채우면_다시_찾
 	}
 	if got, err := s.Find(FindInput{Query: "드라이런", AllProjects: true}); err != nil || len(got) != 1 || got[0].ID != gone.ID {
 		t.Fatalf("find after fill %v %v", titlesOf(got), err)
+	}
+	if after, err := s.FindScored(in); err != nil || !sameHits(after, before) {
+		t.Fatalf("find after fill %s %v, want the same as before %s", hitsText(after), err, hitsText(before))
 	}
 }

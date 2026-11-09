@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -28,6 +29,11 @@ type Store struct {
 	// Policy holds the counts of the confirmation rules (A2). Open sets the
 	// defaults; the command line sets the configured ones.
 	Policy Policy
+	// findStep, when set, runs inside FindScored after its first read (tests put another connection's
+	// write there).
+	findStep func()
+	// rankStep, when set, runs in FindScored after its read transaction ended, before it filters and orders.
+	rankStep func()
 }
 
 const schema = `
@@ -170,8 +176,11 @@ func migrate(db *sql.DB) error {
 	if v > SchemaVersion {
 		return schemaNewerError(v)
 	}
-	var indexed int // 색인 표가 이미 있으면 채우지 않는다: 열기는 늦은 줄을 채우지 않는다(채우기는 쓰기 트랜잭션 끝에서)
+	var indexed, marks int // 색인 표가 이미 있으면 채우지 않는다: 열기는 늦은 줄을 채우지 않는다(채우기는 쓰기 트랜잭션 끝에서)
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_index'`).Scan(&indexed); err != nil {
+		return i18n.Errorf("memory.err.db_open", err)
+	}
+	if err := tx.QueryRow(lateObjectsSQL).Scan(&marks); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema); err != nil {
@@ -180,8 +189,13 @@ func migrate(db *sql.DB) error {
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
 	}
-	if indexed == 0 { // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
+	switch {
+	case indexed == 0: // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
 		if _, err := fillStaleTx(tx, 0); err != nil {
+			return i18n.Errorf("memory.err.db_upgrade", err)
+		}
+	case marks < 3: // 늦은 표시가 없던 판 5 DB: 그동안의 쓰기는 표시가 없으니 전체 검사로 표시한다(채우지는 않는다)
+		if err := markStaleTx(tx); err != nil {
 			return i18n.Errorf("memory.err.db_upgrade", err)
 		}
 	}
@@ -1050,28 +1064,79 @@ func (s *Store) Find(in FindInput) ([]Memory, error) {
 	return out, nil
 }
 
-// FindScored is Find with each memory's score. The search index finds the candidates; late memories (not
-// indexed or indexed before their last change) are read by scanning, and every candidate gets the same
-// score function. It only reads, so it works on a read-only store.
+// FindScored is Find with each memory's score. The search index finds the candidates; late memories (marked
+// when written without the index, see index.go) are read by scanning, and every candidate gets the same score
+// function. When the index's row counts disagree (an index broken without a mark) that find scans the late
+// rows of the full check instead. A query reads only the memories it scores; an empty one lists them all.
+// All of it is read in one read transaction, so the scores and the memories are of one moment even while
+// another connection writes; the transaction ends before filtering and ordering. It only reads, so it works
+// on a read-only store.
 func (s *Store) FindScored(in FindInput) ([]Hit, error) {
+	// ReadOnly는 쓰기 잠금 없이 연다: modernc sqlite는 _txlock=immediate 연결에서도 이때 BEGIN(DEFERRED)을 쓴다. WAL이라
+	// 다른 연결의 쓰기를 막지 않고 첫 읽기의 시점을 끝까지 본다. 읽기 전용 열기(mode=ro)에서도 된다.
+	tx, err := s.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	read, err := s.readFind(tx, in)
+	// 읽기를 마치면 바로 닫는다: 저장소의 연결은 하나라 트랜잭션을 쥔 동안 이 프로세스의 다른 op가 기다린다.
+	if rerr := tx.Rollback(); err == nil {
+		err = rerr
+	}
+	if err != nil {
+		return nil, err
+	}
+	if s.rankStep != nil {
+		s.rankStep()
+	}
+	return rankFind(in, read), nil
+}
+
+// findRead is what a find reads in its transaction: the memories in its states that it may return, and
+// their scores (nil for an empty query, where every memory scores 1).
+type findRead struct {
+	all    []Memory
+	scores map[string]float64
+	empty  bool
+}
+
+func (s *Store) readFind(q querier, in FindInput) (findRead, error) {
 	states := in.States
 	if len(states) == 0 {
 		states = []string{StateCandidate, StateConfirmed}
 	}
-	all, err := s.list(states)
-	if err != nil {
-		return nil, err
-	}
 	// 빈 질의(공백뿐)는 색인을 거치지 않고 모두 1점이다. 토큰이 없는 질의(기호뿐)는 아무것도 맞지 않는다.
-	empty := strings.TrimSpace(in.Query) == ""
-	var scores map[string]float64
-	if !empty {
-		if qs := scoreTokens(in.Query); len(qs) > 0 {
-			if scores, err = s.queryScores(qs); err != nil {
-				return nil, err
-			}
+	r := findRead{empty: strings.TrimSpace(in.Query) == ""}
+	var err error
+	if r.empty {
+		if r.all, err = listTx(q, states); err != nil {
+			return r, err
+		}
+		if s.findStep != nil {
+			s.findStep()
+		}
+		return r, nil
+	}
+	qs := scoreTokens(in.Query)
+	if len(qs) == 0 {
+		return r, nil
+	}
+	if r.scores, err = queryScores(q, qs, s.findStep); err != nil {
+		return r, err
+	}
+	ids := make([]string, 0, len(r.scores))
+	for id, sc := range r.scores {
+		if sc > 0 {
+			ids = append(ids, id)
 		}
 	}
+	r.all, err = memoriesTx(q, ids, states)
+	return r, err
+}
+
+// rankFind filters and orders what a find read. It reads nothing.
+func rankFind(in FindInput, read findRead) []Hit {
+	all, scores, empty := read.all, read.scores, read.empty
 	type ranked struct {
 		Hit
 		key  float64 // 비교용으로 반올림한 점수: 같은 값의 부동소수점 오차가 순위를 가르지 않게
@@ -1130,7 +1195,7 @@ func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	for i := 0; i < len(hits) && i < limit; i++ {
 		out = append(out, hits[i].Hit)
 	}
-	return out, nil
+	return out
 }
 
 // sees says whether the find's place sees m. A given Scope alone decides (FindScored checks it).
@@ -1167,13 +1232,15 @@ func (s *Store) List(states ...string) ([]Memory, error) {
 	return s.list(states)
 }
 
-func (s *Store) list(states []string) ([]Memory, error) {
+func (s *Store) list(states []string) ([]Memory, error) { return listTx(s.db, states) }
+
+func listTx(q querier, states []string) ([]Memory, error) {
 	ph := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
 	args := make([]any, len(states))
 	for i, v := range states {
 		args[i] = v
 	}
-	rows, err := s.db.Query(`SELECT `+memoryCols+` FROM memories WHERE state IN (`+ph+`) ORDER BY updated_at DESC, id`, args...)
+	rows, err := q.Query(`SELECT `+memoryCols+` FROM memories WHERE state IN (`+ph+`) ORDER BY updated_at DESC, id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1190,7 +1257,42 @@ func (s *Store) list(states []string) ([]Memory, error) {
 		return nil, err
 	}
 	rows.Close()
-	return out, fillTrust(s.db, out, `memory_id IN (SELECT id FROM memories WHERE state IN (`+ph+`))`, args...)
+	return out, fillTrust(q, out, `memory_id IN (SELECT id FROM memories WHERE state IN (`+ph+`))`, args...)
+}
+
+// memoriesTx reads the memories ids that are in states, in no order. It looks each one up by its key (the
+// ids go in as one JSON array, so there is no limit on how many), so it reads those memories only.
+func memoriesTx(q querier, ids, states []string) ([]Memory, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	list, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	args := []any{string(list)}
+	for _, v := range states {
+		args = append(args, v)
+	}
+	rows, err := q.Query(`SELECT `+memoryCols+` FROM memories WHERE id IN (SELECT value FROM json_each(?)) AND state IN (`+ph+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Memory
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(q, out, `memory_id IN (SELECT value FROM json_each(?))`, string(list))
 }
 
 // Count is the number of memories.

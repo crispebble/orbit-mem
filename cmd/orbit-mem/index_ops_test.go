@@ -180,6 +180,9 @@ func TestDoctor_늦은_색인_줄은_index_stale_문제로_보인다(t *testing.
 	if !ok || p.Fix != "orbit-mem migrate" || !strings.Contains(p.Message, "3") {
 		t.Fatalf("problems = %+v", probs)
 	}
+	if _, ok := probs["index-broken"]; ok { // 옛 실행 파일이 쓴 기억은 표시가 있어 검색이 맞다: 깨짐이 아니다
+		t.Fatalf("index-broken for late rows: %+v", probs)
+	}
 	if dbSum(t, paths().DB()) != before {
 		t.Fatal("doctor changed the DB")
 	}
@@ -188,6 +191,39 @@ func TestDoctor_늦은_색인_줄은_index_stale_문제로_보인다(t *testing.
 	}
 	if _, ok := problemIDs(t)["index-stale"]; ok {
 		t.Fatal("index-stale after migrate")
+	}
+}
+
+func TestDoctor_표시_없이_깨진_색인은_index_broken으로_보이고_reindex가_고친다(t *testing.T) {
+	newFakePC(t)
+	s := seedN(t, 3)
+	// 색인 줄 하나의 FTS 줄과, 다른 기억의 색인 줄을 지운다(늦은 표시 없음).
+	if _, err := s.DB().Exec(`DELETE FROM memory_fts WHERE rowid=(SELECT MIN(rowid) FROM memory_index);
+		DELETE FROM memory_index WHERE rowid=(SELECT MAX(rowid) FROM memory_index)`); err != nil {
+		t.Fatal(err)
+	}
+	before := dbSum(t, paths().DB())
+	probs := problemIDs(t)
+	p, ok := probs["index-broken"]
+	// 깨진 곳: FTS 줄 없는 기억, 색인 줄 없는 기억, 색인 줄 없이 남은 FTS 줄
+	if !ok || p.Fix != "orbit-mem migrate --reindex" || !strings.Contains(p.Message, "3") {
+		t.Fatalf("problems = %+v", probs)
+	}
+	if _, ok := probs["index-stale"]; ok {
+		t.Fatalf("index-stale without late marks: %+v", probs)
+	}
+	if dbSum(t, paths().DB()) != before {
+		t.Fatal("doctor changed the DB")
+	}
+	if _, _, code := run(t, "", "migrate", "--reindex"); code != 0 {
+		t.Fatal(code)
+	}
+	probs = problemIDs(t)
+	if _, ok := probs["index-broken"]; ok {
+		t.Fatalf("index-broken after reindex: %+v", probs)
+	}
+	if _, ok := probs["index-stale"]; ok {
+		t.Fatalf("index-stale after reindex: %+v", probs)
 	}
 }
 
@@ -201,6 +237,9 @@ func TestDoctor_판이_맞지_않으면_index_stale은_내지_않는다(t *testi
 	}
 	if _, ok := probs["index-stale"]; ok {
 		t.Fatal("index-stale with an older DB")
+	}
+	if _, ok := probs["index-broken"]; ok {
+		t.Fatal("index-broken with an older DB")
 	}
 }
 
