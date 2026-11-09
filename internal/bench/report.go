@@ -116,7 +116,7 @@ type Wording interface {
 	Units(cases, units, train, test int) string
 	TestSize(b Bundles, p Points) string
 	Requests(n int) string
-	Hit(rate string, byStart int) string
+	Hit(rate string, byStart, byEarlier int) string
 	Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string
 	Recover(rate, everyMissed string) string
 	Empty(rate string) string
@@ -175,7 +175,7 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 	q, g, d := m.Requests, m.Subagent, m.Duplicates
 	fmt.Fprintf(b, "[%s] %s\n", w.Part(part), w.Requests(q.Cases))
 	for _, line := range []string{
-		w.Hit(pct(w, q.Hit), q.HitByStart),
+		w.Hit(pct(w, q.Hit), q.HitByStart, q.HitByEarlier),
 		w.Wrong(pct(w, q.Wrong), q.Injected, q.Correct, q.Neutral, q.Injected-q.Correct-q.Neutral, q.Forbid, q.ForbidCases),
 		w.Recover(pct(w, q.Recover), pct(w, q.RecoverMissed)),
 		w.Empty(pct(w, q.Empty)),

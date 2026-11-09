@@ -120,7 +120,7 @@ func (tagWording) Header(a, n, s string) string                    { return tag(
 func (tagWording) Units(c, u, tr, te int) string                   { return tag("units", c, u, tr, te) }
 func (tagWording) TestSize(b bench.Bundles, p bench.Points) string { return tag("testSize", b, p) }
 func (tagWording) Requests(n int) string                           { return tag("requests", n) }
-func (tagWording) Hit(r string, n int) string                      { return tag("hit", r, n) }
+func (tagWording) Hit(r string, n, e int) string                   { return tag("hit", r, n, e) }
 func (tagWording) Wrong(r string, i, c, n, w, f, fc int) string {
 	return tag("wrong", r, i, c, n, w, f, fc)
 }

@@ -26,7 +26,7 @@
   "bench.report.units": "사례 %d건 | 묶음 단위 %d(학습 %d, 판정 %d)",
   "bench.report.test_size": "판정용: 요청 정답 있음 %d건(한 건 %.1f%%p) 넣지 않음 %d건(%.1f%%p) 위임 %d건(%.1f%%p) 중복 %d건(%.1f%%p)",
   "bench.report.requests": "요청 %d건",
-  "bench.report.hit": "적중 %s (A층 덕에 %d)",
+  "bench.report.hit": "적중 %s (A층 덕에 %d, 같은 세션 앞 요청 덕에 %d)",
   "bench.report.wrong": "틀린 회상 %s | 넣은 %d = 맞음 %d + 중립 %d + 틀림 %d | forbid %d(사례 %d)",
   "bench.report.recover": "놓침 복구 %s | 적중 못한 사례 전부 %s",
   "bench.report.empty": "넣지 않음 %s",

@@ -182,3 +182,39 @@ func TestSubagent는_회상_몫이_글자를_넣으면_넣지_않음이_아니�
 	}, leads{"sub:T1": core}, keyed{})
 	wantRate(t, "empty", rep.Runs[0].All.Subagent.Empty, 0, 1, f64(0))
 }
+
+// 설계 L-2(같은 기억은 세션당 한 번)와 판정 전용 묶음 h-app-state-again 메모(「이미 넣었으면 다시 넣지 않아도 보인 것으로
+// 센다」): 같은 세션 앞 요청들에서 B1이 넣은 id(넷째 이후도)는 뒤 요청에서 보인 것이다. 앞 요청의 B2·다른 세션의 B1은
+// 아니고, 틀린 회상은 그 요청에 넣은 id로만 센다.
+func TestHit는_같은_세션_앞_요청들의_B1이_넣은_것도_보인_것으로_센다(t *testing.T) {
+	rep, _ := runFake(t, `
+	 {"id":"e1","session":"s1","prompt":"p1","expect":["a"]},
+	 {"id":"e2","session":"s1","prompt":"p2","expect":["d"]},
+	 {"id":"e3","session":"s1","prompt":"p3","expect":["a","d","e"]},
+	 {"id":"e4","session":"s1","prompt":"p4","tool":"t4","expect":["f"]},
+	 {"id":"e5","session":"s1","prompt":"p5","expect":["f"]},
+	 {"id":"e6","session":"s2","prompt":"p6","expect":["d"]}`, script{
+		"req:p1":  {[]string{"a", "b", "c", "d"}, 100}, // d는 넷째: 이 요청에서는 보인 것이 아니지만 넣긴 했다
+		"req:p2":  {[]string{}, 0},
+		"req:p3":  {[]string{"e"}, 50},
+		"req:p4":  {[]string{}, 0},
+		"tool:t4": {[]string{"f"}, 80},
+		"req:p5":  {[]string{}, 0},
+		"req:p6":  {[]string{}, 0},
+	}, keyed{})
+	m := rep.Runs[0].All.Requests
+	// e1 맞음(a는 첫째), e2 맞음(앞 요청이 넷째로 넣은 d), e3 맞음(a·d는 앞서, e는 이번), e4 맞음(B2),
+	// e5 놓침(앞 요청의 B2는 세지 않는다), e6 놓침(다른 세션).
+	wantRate(t, "hit", m.Hit, 4, 6, f64(0.6667))
+	if m.HitByEarlier != 2 {
+		t.Errorf("hitByEarlier = %d, want 2 (e2, e3)", m.HitByEarlier)
+	}
+	if m.HitByStart != 0 {
+		t.Errorf("hitByStart = %d, want 0", m.HitByStart)
+	}
+	// 틀린 회상은 그 요청에 넣은 id로만: e1의 b·c·d(d는 e1의 정답이 아니다).
+	if m.Injected != 6 || m.Correct != 3 {
+		t.Errorf("injected %d correct %d, want 6/3", m.Injected, m.Correct)
+	}
+	wantRate(t, "wrong", m.Wrong, 3, 6, f64(0.5))
+}

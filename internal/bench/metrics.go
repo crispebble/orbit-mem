@@ -54,7 +54,8 @@ type Group struct {
 // recall (B1) per request.
 type Requests struct {
 	Group
-	HitByStart    int  `json:"hitByStart"` // hits that needed layer A
+	HitByStart    int  `json:"hitByStart"`   // hits that needed layer A
+	HitByEarlier  int  `json:"hitByEarlier"` // hits that needed what an earlier request of the session put in (B1)
 	Recover       Rate `json:"recover"`
 	RecoverMissed Rate `json:"recoverMissed"`
 	B2Chars       Dist `json:"b2Chars"`
@@ -240,7 +241,10 @@ func (g *groupAcc) group() Group {
 		Wrong: wrongRate(g.wrong, g.injected), Forbid: g.forbid, ForbidCases: g.forbidCases, Empty: rate(g.emptyNum, g.emptyDen), Chars: dist(g.chars)}
 }
 
-// Compute measures outcomes (see the plan: shown = layer A + the first 3 of B1 + B2).
+// Compute measures outcomes. Shown is layer A of the session + what the work recall (B1) of the
+// session's earlier requests put in + the first 3 of this request's B1 + its B2: a memory is told a
+// session once (설계 L-2), so one put in earlier is still in front of the model. The wrong recall
+// counts only what this request put in.
 func Compute(outs []Outcome) Metrics {
 	var req, sub groupAcc
 	var subLead []int
@@ -248,7 +252,9 @@ func Compute(outs []Outcome) Metrics {
 	var b2Chars, startChars, sessionChars []int
 	var hitByStart, recNum, recDen, missNum, missDen int
 	var dupCases, dupHitNum, dupHitDen, dupOfferNum, dupOfferDen, dupForbid int
-	sessions := map[string]int{} // key → characters so far
+	sessions := map[string]int{}     // key → characters so far
+	earlier := map[string][]string{} // key → what the work recall (B1) of the session's earlier requests put in
+	var hitByEarlier int
 	var order []string
 	for _, o := range outs {
 		c := o.Case
@@ -256,14 +262,18 @@ func Compute(outs []Outcome) Metrics {
 		case KindRequest:
 			injected := union(idsOf(o.B1), idsOf(o.B2))
 			req.add(c, injected)
-			shown := union(o.Start.IDs, top(idsOf(o.B1), RequestTop), idsOf(o.B2))
+			own := union(top(idsOf(o.B1), RequestTop), idsOf(o.B2))
+			shown := union(o.Start.IDs, earlier[o.Key], own)
 			if len(c.Expect) > 0 {
 				req.hitDen++
 				hit := covers(shown, c.Expect)
 				if hit {
 					req.hitNum++
-					if !covers(union(top(idsOf(o.B1), RequestTop), idsOf(o.B2)), c.Expect) {
+					if !covers(union(earlier[o.Key], own), c.Expect) {
 						hitByStart++
+					}
+					if !covers(union(o.Start.IDs, own), c.Expect) {
+						hitByEarlier++
 					}
 				}
 				if c.Prompt != "" && o.Found8 {
@@ -299,6 +309,7 @@ func Compute(outs []Outcome) Metrics {
 				startChars = append(startChars, o.Start.Chars)
 			}
 			sessions[o.Key] += charsOf(o.B1) + charsOf(o.B2)
+			earlier[o.Key] = union(earlier[o.Key], idsOf(o.B1))
 		case KindSubagent:
 			lead := intersect(idsOf(o.Sub), leadOf(o.Sub))
 			recall := minus(idsOf(o.Sub), lead)
@@ -348,7 +359,7 @@ func Compute(outs []Outcome) Metrics {
 		sessionChars = append(sessionChars, sessions[k])
 	}
 	return Metrics{
-		Requests: Requests{Group: req.group(), HitByStart: hitByStart, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
+		Requests: Requests{Group: req.group(), HitByStart: hitByStart, HitByEarlier: hitByEarlier, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
 			B2Chars: dist(b2Chars), SessionChars: dist(sessionChars), StartChars: dist(startChars)},
 		Subagent:   Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
 		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), Offered: rate(dupOfferNum, dupOfferDen), Forbid: dupForbid},

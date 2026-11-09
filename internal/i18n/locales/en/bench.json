@@ -26,7 +26,7 @@
   "bench.report.units": "cases %d | units %d (train %d, test %d)",
   "bench.report.test_size": "test part: answered requests %d (one case %.1f%%p), left empty %d (%.1f%%p), delegations %d (%.1f%%p), duplicates %d (%.1f%%p)",
   "bench.report.requests": "requests %d",
-  "bench.report.hit": "hit %s (%d by layer A)",
+  "bench.report.hit": "hit %s (%d by layer A, %d by an earlier request of the session)",
   "bench.report.wrong": "wrong recall %s | injected %d = right %d + neutral %d + wrong %d | forbid %d (cases %d)",
   "bench.report.recover": "miss recovery %s | every case without a hit %s",
   "bench.report.empty": "left empty %s",

@@ -53,6 +53,7 @@
             "max": 800
           },
           "hitByStart": 0,
+          "hitByEarlier": 0,
           "recover": {
             "num": 8,
             "den": 9,
@@ -138,9 +139,9 @@
         "requests": {
           "cases": 41,
           "hit": {
-            "num": 19,
+            "num": 20,
             "den": 27,
-            "value": 0.7037
+            "value": 0.7407
           },
           "injected": 68,
           "correct": 23,
@@ -164,15 +165,16 @@
             "max": 978
           },
           "hitByStart": 1,
+          "hitByEarlier": 1,
           "recover": {
             "num": 5,
             "den": 6,
             "value": 0.8333
           },
           "recoverMissed": {
-            "num": 7,
-            "den": 8,
-            "value": 0.875
+            "num": 6,
+            "den": 7,
+            "value": 0.8571
           },
           "b2Chars": {
             "n": 2,
@@ -249,9 +251,9 @@
         "requests": {
           "cases": 137,
           "hit": {
-            "num": 69,
+            "num": 70,
             "den": 91,
-            "value": 0.7582
+            "value": 0.7692
           },
           "injected": 232,
           "correct": 87,
@@ -275,15 +277,16 @@
             "max": 978
           },
           "hitByStart": 1,
+          "hitByEarlier": 1,
           "recover": {
             "num": 13,
             "den": 15,
             "value": 0.8667
           },
           "recoverMissed": {
-            "num": 20,
-            "den": 22,
-            "value": 0.9091
+            "num": 19,
+            "den": 21,
+            "value": 0.9048
           },
           "b2Chars": {
             "n": 16,

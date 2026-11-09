@@ -53,6 +53,7 @@
             "max": 132
           },
           "hitByStart": 0,
+          "hitByEarlier": 0,
           "recover": {
             "num": 2,
             "den": 2,
@@ -163,6 +164,7 @@
             "max": 131
           },
           "hitByStart": 0,
+          "hitByEarlier": 0,
           "recover": {
             "num": 5,
             "den": 5,
@@ -273,6 +275,7 @@
             "max": 132
           },
           "hitByStart": 0,
+          "hitByEarlier": 0,
           "recover": {
             "num": 7,
             "den": 7,

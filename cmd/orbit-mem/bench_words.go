@@ -32,8 +32,8 @@ func (benchWording) TestSize(b bench.Bundles, p bench.Points) string {
 
 func (benchWording) Requests(n int) string { return i18n.T("bench.report.requests", n) }
 
-func (benchWording) Hit(rate string, byStart int) string {
-	return i18n.T("bench.report.hit", rate, byStart)
+func (benchWording) Hit(rate string, byStart, byEarlier int) string {
+	return i18n.T("bench.report.hit", rate, byStart, byEarlier)
 }
 
 func (benchWording) Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string {
