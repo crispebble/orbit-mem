@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
@@ -57,7 +59,7 @@ func TestBench공개_묶음은_두_회상_보고를_낸다(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("종료 %d: %s", code, errb)
 	}
-	for _, want := range []string{"== hostpath ==", "== legacy-87ab0fb ==", "[train]", "[test]", "[all]", "find-proxy", "test part"} {
+	for _, want := range []string{"== hostpath ==", "== legacy-87ab0fb ==", "[train]", "[test]", "[all]", "save-check", "find-proxy", "test part"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("보고에 %q가 없다", want)
 		}
@@ -207,8 +209,8 @@ func TestBench_extract는_세_파일을_쓴다(t *testing.T) {
 		Now      string
 		Memories []any
 		Cases    []struct {
-			ID, Session, Kind, Origin, Prompt, Task string
-			Expect                                  []string
+			ID, Session, Kind, Origin, Prompt, Task, At string
+			Expect                                      []string
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
@@ -219,6 +221,10 @@ func TestBench_extract는_세_파일을_쓴다(t *testing.T) {
 		hasPrompt := c.Kind == "request" && c.Prompt != ""
 		if c.Session == "" || len(c.Expect) != 0 || (hasPrompt && c.Origin == "") || (!hasPrompt && c.Origin != "") {
 			t.Errorf("사례 %+v", c)
+		}
+		// 단계의 시각을 남긴다(1-6 b6r 2차): recall이 그 시각의 DB 상태로 잰다.
+		if _, err := time.Parse(time.RFC3339Nano, c.At); err != nil {
+			t.Errorf("사례 %s 시각 %q: %v", c.ID, c.At, err)
 		}
 	}
 	// 합성 기록의 요청·위임 글 원문(internal/bench/claudelog/testdata/projects/-work-alpha/s1.jsonl)은 파일에만 쓰고 출력에 찍지 않는다.
@@ -317,5 +323,129 @@ func TestBench_extract와_recall은_닫힌_WAL_DB_옆에_파일을_만들지_않
 	defer cp.Close()
 	if list, err := cp.List(); err != nil || len(list) != 1 {
 		t.Errorf("the copy has %d memories (%v), want 1", len(list), err)
+	}
+}
+
+// --set은 설정 키를 덮어써 잰다: 같은 사례 파일도 문턱을 바꾸면 중복 지표가 달라지고, 옛 회상은 설정을 읽지 않아 그대로다.
+func TestBench_set은_설정을_덮어써_지금_경로만_움직인다(t *testing.T) {
+	home(t)
+	base, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json")
+	if code != 0 {
+		t.Fatalf("종료 %d: %s", code, errb)
+	}
+	strict, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1", "--set", "saveNearMin=1")
+	if code != 0 {
+		t.Fatalf("종료 %d: %s", code, errb)
+	}
+	type dup struct {
+		Hit struct{ Num, Den int }
+	}
+	type rep struct {
+		Runs []struct {
+			Name string
+			All  struct{ Duplicates dup }
+		}
+	}
+	var a, b rep
+	if err := json.Unmarshal([]byte(base), &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(strict), &b); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Runs) != 2 || len(b.Runs) != 2 {
+		t.Fatalf("runs %d %d", len(a.Runs), len(b.Runs))
+	}
+	if a.Runs[0].All.Duplicates == b.Runs[0].All.Duplicates {
+		t.Errorf("saveSimilarMin=1 saveNearMin=1 did not move the current duplicates: %+v", a.Runs[0].All.Duplicates)
+	}
+	if a.Runs[1].All.Duplicates != b.Runs[1].All.Duplicates {
+		t.Errorf("the frozen recall moved: %+v -> %+v", a.Runs[1].All.Duplicates, b.Runs[1].All.Duplicates)
+	}
+	// 같은 덮어쓰기는 같은 숫자를 낸다. 덮어쓴 값은 글 보고에 밝힌다.
+	again, _, _ := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1", "--set", "saveNearMin=1")
+	if again != strict {
+		t.Error("the same --set gave another report")
+	}
+	text, _, code := run(t, "", "bench", "recall", "--cases", publicSet, "--set", "saveSimilarMin=0.8", "--set", "recallChars=900")
+	if code != 0 || !strings.Contains(text, "saveSimilarMin=0.8") || !strings.Contains(text, "recallChars=900") {
+		t.Errorf("종료 %d, 보고에 덮어쓴 값이 없다:\n%s", code, text)
+	}
+}
+
+func TestBench_set은_틀린_키와_값을_실행_전에_거절한다(t *testing.T) {
+	home(t)
+	for _, set := range []string{"nope=1", "saveSimilarMin=2", "saveSimilarMin=abc", "saveSimilarMin", "=1", "products={}", "recallChars=5"} {
+		_, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--set", set)
+		if code != 1 || !strings.Contains(errb, strings.SplitN(set, "=", 2)[0]) && set != "=1" {
+			t.Errorf("--set %s: 종료 %d, 오류 %q", set, code, errb)
+		}
+	}
+}
+
+func TestBench_recall은_판_4_DB를_사본에서_올려_돈다(t *testing.T) {
+	home(t)
+	db, s := openedDB(t)
+	if _, err := s.DB().Exec(`DROP TABLE memory_fts; DROP TABLE memory_index; DROP TABLE save_requests;
+		ALTER TABLE sources DROP COLUMN trust; UPDATE meta SET value='4' WHERE key='schema.version'; PRAGMA user_version=4`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	cases := filepath.Join(t.TempDir(), "c.json")
+	os.WriteFile(cases, []byte(benchNoMems), 0o600)
+	before := sums(t, db)
+	if out, errb, code := run(t, "", "bench", "recall", "--cases", cases, "--db", db); code != 0 {
+		t.Fatalf("종료 %d: %s %s", code, out, errb)
+	}
+	for k, v := range sums(t, db) {
+		if before[k] != v {
+			t.Errorf("%q의 sha256이 바뀌었다", k)
+		}
+	}
+	if _, info, err := memory.OpenReadOnly(db); err != nil || info.DB != 4 {
+		t.Errorf("원본 판 = %+v %v, 4 그대로여야 한다", info, err)
+	}
+}
+
+// 1-6 b6r 2차: 시각(at) 없이 뽑은 옛 재생 사례는 --steps(같은 추출의 sessions.json)로 단계 시각을 붙여 잰다. 사례 번호의
+// 단계가 같은 종류·같은 글일 때만 붙이고, 아니면 「시각 모름」으로 빼고 그 수를 알린다.
+func TestBench_steps는_옛_재생_사례에_단계_시각을_붙이고_맞지_않는_사례는_뺀다(t *testing.T) {
+	home(t)
+	db, _ := openedDB(t)
+	out := filepath.Join(t.TempDir(), "replay")
+	if _, errb, code := run(t, "", "bench", "extract", "--projects", benchProjs, "--db", db, "--out", out, "--min-sessions", "1", "--min-requests", "1"); code != 0 {
+		t.Fatalf("extract %d: %s", code, errb)
+	}
+	var file map[string]any
+	b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
+	if err := json.Unmarshal(b, &file); err != nil {
+		t.Fatal(err)
+	}
+	cases := file["cases"].([]any)
+	changed := false
+	for _, c := range cases {
+		m := c.(map[string]any)
+		delete(m, "at")
+		if p, ok := m["prompt"].(string); ok && p != "" && !changed {
+			m["prompt"] = p + " (고친 글)" // 단계와 글이 달라 시각을 모른다
+			changed = true
+		}
+	}
+	old := filepath.Join(t.TempDir(), "old-cases.json")
+	nb, _ := json.Marshal(file)
+	if err := os.WriteFile(old, nb, 0o600); err != nil || !changed {
+		t.Fatal(err, changed)
+	}
+	args := []string{"bench", "recall", "--db", filepath.Join(out, "memory-copy.db"), "--recall", "current", "--cases", old}
+	stdout, errb, code := run(t, "", append(args, "--steps", filepath.Join(out, "sessions.json"))...)
+	if code != 0 {
+		t.Fatalf("--steps run %d: %s", code, errb)
+	}
+	if want := fmt.Sprintf("case times: %d cases timed, 1 cases left out", len(cases)-1); !strings.Contains(stdout, want) {
+		t.Fatalf("want %q in:\n%.600s", want, stdout)
+	}
+	// 시각을 남긴 새 추출은 --steps 없이도 그 시각으로 돈다.
+	if _, errb, code := run(t, "", "bench", "recall", "--db", filepath.Join(out, "memory-copy.db"), "--recall", "current,legacy", "--cases", filepath.Join(out, "cases.json")); code != 0 {
+		t.Fatalf("timed run %d: %s", code, errb)
 	}
 }

@@ -61,6 +61,11 @@ type Hook struct {
 	Matcher string   `json:"matcher,omitempty"`
 	Timeout int      `json:"timeout,omitempty"`
 	Missing string   `json:"missing,omitempty"`
+	// CodexContextLimit is Codex's additionalContextLimit for this hook (tokens, > 0): the text the hook
+	// hands the model is cut to a preview at that size and the whole goes to disk. orbit-mem keeps to its
+	// own character limits (inject.Max*Runes), so this only guards against a cut. Codex only; Claude Code
+	// has a fixed 10,000-character limit and gets no field.
+	CodexContextLimit int `json:"codexContextLimit,omitempty"`
 }
 
 // Manifest is source/plugin.json. The version is orbit-mem's own (internal/version).
@@ -100,6 +105,10 @@ var (
 	// hookEvents are the events both hosts know (Claude Code and Codex hooks.json).
 	hookEvents = []string{"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "PreToolUse", "PostToolUse", "SubagentStart"}
 )
+
+// contextEvents are the events whose output is model context: the only ones Codex applies
+// additionalContextLimit to (it ignores the field on others and warns).
+var contextEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "SubagentStart"}
 
 // codexSessionEndMax: Codex cuts a SessionEnd hook's timeout to 3 seconds and warns when it
 // loads the hook (the same check as the orbit-code harness build).
@@ -147,6 +156,9 @@ func (m Manifest) validate(version string) error {
 			}
 			if ev == "SessionEnd" && h.Timeout > codexSessionEndMax {
 				return fail("hooks.%s: Codex cuts a SessionEnd hook to %d seconds, not %d", ev, codexSessionEndMax, h.Timeout)
+			}
+			if h.CodexContextLimit < 0 || (h.CodexContextLimit > 0 && !slices.Contains(contextEvents, ev)) {
+				return fail("hooks.%s: codexContextLimit %d (a positive number, only for %s)", ev, h.CodexContextLimit, strings.Join(contextEvents, ", "))
 			}
 			// Missing goes into a single-quoted sh word.
 			if h.Missing != "" && (ev != "SessionStart" || strings.ContainsAny(h.Missing, "'\n") || controlRE.MatchString(h.Missing)) {
@@ -211,6 +223,9 @@ func (m Manifest) hookFile(host, version string) []byte {
 			hook := map[string]any{"type": "command", "command": hookCommand(ev, h, host, version)}
 			if h.Timeout > 0 {
 				hook["timeout"] = h.Timeout
+			}
+			if host == "codex" && h.CodexContextLimit > 0 {
+				hook["additionalContextLimit"] = h.CodexContextLimit
 			}
 			g := map[string]any{"hooks": []any{hook}}
 			if h.Matcher != "" {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +43,9 @@ func benchRecall(a *app, args []string) error {
 	split := fs.String("split", "all", i18n.T("flag.bench.split"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	report := fs.String("report", "", i18n.T("flag.bench.report"))
+	steps := fs.String("steps", "", i18n.T("flag.bench.steps"))
+	var sets setFlags
+	fs.Var(&sets, "set", i18n.T("flag.bench.set"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return benchFlagErr(err)
@@ -52,7 +56,14 @@ func benchRecall(a *app, args []string) error {
 	if !slices.Contains([]string{bench.PartAll, bench.PartTrain, bench.PartTest}, *split) {
 		return i18n.Errorf("cli.bench.split_bad", *split)
 	}
-	factories, err := benchpaths.Factories(strings.Split(*recalls, ","))
+	override, err := sets.parse()
+	if err != nil {
+		return err
+	}
+	if err := hostpath.CheckSet(override); err != nil {
+		return i18n.Errorf("cli.bench.set_bad", strings.Join(sets, " "), err)
+	}
+	factories, err := benchpaths.FactoriesWith(strings.Split(*recalls, ","), benchpaths.Options{Set: override})
 	if u := (benchpaths.UnknownError{}); errors.As(err, &u) {
 		return i18n.Errorf("cli.bench.recall_bad", u.Name)
 	} else if err != nil {
@@ -61,6 +72,17 @@ func benchRecall(a *app, args []string) error {
 	set, err := bench.Read(*cases)
 	if err != nil {
 		return err
+	}
+	if *steps != "" {
+		sessions, err := readSteps(*steps)
+		if err != nil {
+			return err
+		}
+		kept, dropped := caseTimes(set, sessions)
+		if kept == 0 {
+			return i18n.Err("cli.bench.steps_none")
+		}
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.steps", kept, dropped))
 	}
 	switch {
 	case len(set.Memories) > 0 && *db != "":
@@ -92,10 +114,36 @@ func benchRecall(a *app, args []string) error {
 	}
 	fmt.Fprint(a.stdout, rep.Text(*split, benchWording{}))
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.similar", hostpath.SimilarName))
+	if len(sets) > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.set", strings.Join(sets, " ")))
+	}
 	if *report != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.bench.report_written", *report))
 	}
 	return nil
+}
+
+// setFlags are the --set key=value flags, in the order given.
+type setFlags []string
+
+func (s *setFlags) String() string { return strings.Join(*s, ",") }
+
+func (s *setFlags) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// parse splits the flags into key and value; a key given twice keeps the last value.
+func (s setFlags) parse() (map[string]string, error) {
+	out := map[string]string{}
+	for _, kv := range s {
+		k, v, ok := strings.Cut(kv, "=")
+		if k = strings.TrimSpace(k); !ok || k == "" {
+			return nil, i18n.Errorf("cli.bench.set_form", kv)
+		}
+		out[k] = v
+	}
+	return out, nil
 }
 
 // benchFlagErr turns a flag error (already printed with the usage) into a usage error.
@@ -125,6 +173,7 @@ type benchCase struct {
 	Tool    string   `json:"tool,omitempty"`
 	Expect  []string `json:"expect"`
 	Note    string   `json:"note,omitempty"`
+	At      string   `json:"at"` // when the step happened: the run puts the DB at that time (bench.Case.At)
 }
 
 type benchCaseFile struct {
@@ -178,7 +227,8 @@ func benchExtract(a *app, args []string) error {
 		n := 0
 		for _, st := range s.Steps {
 			n++
-			c := benchCase{ID: fmt.Sprintf("%s-%03d", s.ID, n), Session: s.ID, Kind: bench.KindRequest, Expect: []string{}}
+			c := benchCase{ID: fmt.Sprintf("%s-%03d", s.ID, n), Session: s.ID, Kind: bench.KindRequest, Expect: []string{},
+				At: st.At.UTC().Format(time.RFC3339Nano)}
 			if s.Cwd != "" {
 				c.CWD = s.Cwd
 			} else if file.CWD == "" {
@@ -220,6 +270,65 @@ func benchExtract(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), reqs, subs, tools))
 	return nil
+}
+
+// readSteps reads the sessions.json bench extract wrote next to its cases.
+func readSteps(path string) ([]claudelog.Session, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var sessions []claudelog.Session
+	if err := json.Unmarshal(b, &sessions); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return sessions, nil
+}
+
+// caseTimes gives the cases of a replay file made before bench extract wrote the time of each case their
+// time from the sessions of the same extraction. The id of such a case is "<session>-<n>", n the step number
+// (1 based) of that session, and the step must be the same: a request with the same text, a tool call of the
+// same tool, a delegation with the same task. A case whose step does not say so has no known time and is
+// left out (dropped), so the set runs only on cases whose time is certain. A case that has its time keeps it.
+func caseTimes(set *bench.Set, sessions []claudelog.Session) (kept, dropped int) {
+	byID := make(map[string]claudelog.Session, len(sessions))
+	for _, s := range sessions {
+		byID[s.ID] = s
+	}
+	out := set.Cases[:0]
+	for _, c := range set.Cases {
+		if c.At == "" {
+			if st, ok := stepOf(byID, c); ok {
+				c.At = st.At.UTC().Format(time.RFC3339Nano)
+			}
+		}
+		if _, ok := c.Time(); !ok {
+			dropped++
+			continue
+		}
+		out = append(out, c)
+	}
+	set.Cases = out
+	return len(out), dropped
+}
+
+func stepOf(byID map[string]claudelog.Session, c bench.Case) (claudelog.Step, bool) {
+	sid, num, ok := strings.Cut(c.ID[min(len(c.ID), len(c.Session)):], "-")
+	n, err := strconv.Atoi(num)
+	s, found := byID[c.Session]
+	if !ok || sid != "" || err != nil || !found || !strings.HasPrefix(c.ID, c.Session) || n < 1 || n > len(s.Steps) {
+		return claudelog.Step{}, false
+	}
+	st := s.Steps[n-1]
+	switch {
+	case c.CaseKind() == bench.KindSubagent:
+		ok = st.Kind == claudelog.KindDelegate && st.Task == c.Task
+	case c.Prompt != "":
+		ok = st.Kind == claudelog.KindRequest && st.Text == c.Prompt
+	default:
+		ok = st.Kind == claudelog.KindTool && st.Tool == c.Tool && c.Tool != ""
+	}
+	return st, ok && !st.At.IsZero()
 }
 
 func originNote(ev claudelog.Evidence) string {

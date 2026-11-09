@@ -1,5 +1,5 @@
 {
-  "about": "L-16(설계 6.1) 중복 사례 묶음: 원래 기억을 저장한 뒤 같은 내용을 다르게 다시 저장한다. 개인 내용 없음. 평가 묶음(internal/bench)이 생기면 그쪽으로 옮긴다. 변형은 모두 잡혀야 한다: 못 잡는 변형이 생기면 빼지 않고 판정을 고친다.",
+  "about": "L-16(설계 6.1) 중복 사례 묶음: 원래 기억을 저장한 뒤 같은 내용을 다르게 다시 저장한다. 개인 내용 없음. 평가 묶음(internal/bench)이 생기면 그쪽으로 옮긴다. 변형은 모두 잡혀야 한다: 못 잡는 변형이 생기면 빼지 않고 판정을 고친다. 원래 기억은 others와 비슷하다고 나오면 안 된다. 다만 사례의 allowOthers에 든 others는 같은 주장이라 비슷하다고 나와도 된다(사례 note).",
   "others": [
     {"kind": "fact", "title": "배포 뒤에는 스모크 시험을 돌린다", "body": "배포 직후 스모크 시험으로 첫 화면과 로그인이 되는지 확인한다"},
     {"kind": "fact", "title": "커밋 메시지는 한글로 쓴다", "body": "커밋 제목과 본문은 한글로 쓰고 영어 낱말은 그대로 둔다"},
@@ -8,7 +8,8 @@
     {"kind": "lesson", "title": "Never commit to the main branch", "body": "Create a feature branch first; commits go to main only through a reviewed pull request"},
     {"kind": "fact", "title": "시험 DB는 컨테이너로 띄운다", "body": "통합 시험의 데이터베이스는 Docker 컨테이너로 띄우고 시험이 끝나면 내린다"},
     {"kind": "fact", "title": "Use Homebrew for command line tools", "body": "Command line tools on this machine come from Homebrew, not from curl scripts"},
-    {"kind": "lesson", "title": "느린 시험은 원인을 먼저 찾는다", "body": "간헐적으로 느린 시험은 타임아웃을 늘리지 말고 기다릴 조건을 먼저 찾는다"}
+    {"kind": "lesson", "title": "느린 시험은 원인을 먼저 찾는다", "body": "간헐적으로 느린 시험은 타임아웃을 늘리지 말고 기다릴 조건을 먼저 찾는다"},
+    {"kind": "fact", "title": "컨테이너 이미지는 버전 태그로 고정한다", "body": "배포하는 컨테이너 이미지는 latest 대신 버전 태그를 붙여 고정하고 태그를 다시 쓰지 않는다"}
   ],
   "cases": [
     {
@@ -32,6 +33,8 @@
     },
     {
       "name": "ko 시험 컨테이너",
+      "allowOthers": ["시험 DB는 컨테이너로 띄운다"],
+      "note": "1-6 b6d 2차(진행자 결정): others의 「시험 DB는 컨테이너로 띄운다」(통합 시험 DB를 Docker 컨테이너로 띄우고 내린다)는 이 원래 기억과 같은 주장이라 무관한 기억이 아니다. 평가 묶음(internal/bench/testdata/public_set.json)의 정답 라벨도 같은 성격 짝(api-test-db·docker-db)을 dup-itestdb 사례에서 넣어도 틀리지 않는 것(allow)으로 둔다. 그래서 이 짝은 비슷하다고 나와도 되는 것으로 다시 정의했다. 「무관한 기억은 비슷하다고 내밀지 않는다」는 낱말 「컨테이너」를 나누지만 주장이 다른 기억(「컨테이너 이미지는 버전 태그로 고정한다」)을 others에 더해 계속 본다.",
       "original": {"kind": "fact", "title": "통합 시험은 임시 컨테이너 DB를 쓴다", "body": "통합 시험은 실제 데이터베이스 대신 시험마다 새로 띄운 임시 컨테이너 데이터베이스에 붙는다"},
       "variants": [
         {"how": "어순", "kind": "fact", "title": "임시 컨테이너 DB를 통합 시험이 쓴다", "body": "시험마다 새로 띄운 임시 컨테이너 데이터베이스에 통합 시험이 붙는다, 실제 데이터베이스 대신"},

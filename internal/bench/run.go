@@ -4,11 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
+
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // Run runs every recall path over the set, each on its own fresh copy of the DB so the
 // shown marks and the activity of one never reach another. Cases run in file order and a
-// session starts (layer A) before its first case.
+// session starts (layer A) before its first case. When the cases carry their times, the copy
+// is put at the state of each case's time and the path's clock is moved there before the case
+// (the session start takes the time of its first case); an expected memory made after the case
+// is counted as not there yet (Outcome.NotYet), the answer itself is kept.
 func Run(p *Prepared, factories ...Factory) (*Report, error) {
 	set := p.Set
 	parts := Partition(set)
@@ -41,6 +47,13 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 			os.Remove(db + suffix)
 		}
 	}()
+	var rew *memory.Rewinder
+	if p.history != nil {
+		if rew, err = p.history.Rewind(db); err != nil {
+			return run, err
+		}
+		defer rew.Close()
+	}
 	env, err := f(db, set)
 	if err != nil {
 		return run, err
@@ -57,12 +70,32 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 	}
 	name := env.Recaller.Name()
 	run.Name = name
+	if rew != nil && env.SetNow == nil {
+		return run, fmt.Errorf("%s: the cases carry their times and the recall path cannot move its clock", name)
+	}
+	var last time.Time
 	started := map[string]*Shown{}
 	outs := make([]Outcome, 0, len(set.Cases))
 	for i, c := range set.Cases {
 		fail := func(err error) (RunReport, error) { return run, fmt.Errorf("%s: case %q: %w", name, c.ID, err) }
 		key, cwd := c.SessionKey(), set.CWDOf(c)
 		o := Outcome{Case: c, Key: key, Part: parts[i]}
+		if rew != nil {
+			// 그 시각의 DB와 시계(재생 사례): 그 뒤에 만든 기억은 없고, 그 뒤의 고침·낡음은 그 전 판이다.
+			t, _ := c.Time()
+			if !t.Equal(last) {
+				if err := rew.To(t.UnixMilli()); err != nil {
+					return fail(err)
+				}
+				env.SetNow(t)
+				last = t
+			}
+			for _, id := range c.Expect {
+				if !p.history.Existed(id, t.UnixMilli()) {
+					o.NotYet = append(o.NotYet, id)
+				}
+			}
+		}
 		if k := c.CaseKind(); k != KindDuplicate {
 			a, ok := started[key]
 			if !ok {
@@ -112,10 +145,11 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 			if env.Similar == nil {
 				return fail(errors.New("the recall path has no Similar for a duplicate case"))
 			}
-			if o.Similar, err = env.Similar.Similar(cwd, *c.Save); err != nil {
+			meets, err := env.Similar.Similar(cwd, *c.Save)
+			if err != nil {
 				return fail(err)
 			}
-			o.Similar = nonNil(o.Similar)
+			o.Similar, o.Near = nonNil(meets.Block), nonNil(meets.Near)
 		}
 		outs = append(outs, o)
 		run.Cases = append(run.Cases, caseResult(o))

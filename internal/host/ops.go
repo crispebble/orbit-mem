@@ -262,12 +262,12 @@ func (c *call) version() (any, *Error) {
 
 func (c *call) context() (any, *Error) {
 	if c.req.Audience == AudienceSubagent {
-		limit := memory.UserCoreRunes
+		limit := inject.MaxSubagentRunes
 		if out, err, done := c.openRecall(limit); done {
 			return out, err
 		}
 		c.locate()
-		inj := inject.SubagentStart(c.store, c.cfg)
+		inj := inject.SubagentStart(c.store, c.cfg, c.where, c.subagentTask())
 		c.shown(memory.EventInjectSubagent, inj)
 		return recallOf(inj, limit), nil
 	}
@@ -316,6 +316,7 @@ func (c *call) toolContext() (any, *Error) {
 	if out, err, done := c.openRecall(limit); done {
 		return out, err
 	}
+	c.delegate()
 	c.locate()
 	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool)
 	c.shown(memory.EventInjectTool, inj)
@@ -355,7 +356,7 @@ func (c *call) tool() (any, *Error) {
 		actor = memory.ActorAI
 	}
 	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp,
-		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin})
+		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin})
 	if lvl, _ := c.req.trustLevel(); lvl != "" { // check가 이미 걸러 냈다
 		var lerr error
 		if t, lerr = t.Lower(lvl); lerr != nil {
@@ -379,6 +380,36 @@ func (c *call) delivered() (any, *Error) {
 	return OK{OK: true}, nil
 }
 
+// maxTaskRunes is how much of a delegation's text is kept: its start, enough for the recall's query
+// (at most 40 meaningful words) and the reasons.
+const maxTaskRunes = 2000
+
+// delegate keeps the task of a tool-context request (a call that hands work to a subagent) for the
+// subagent of its kind that starts next in the session (설계 · orbit-mem 4.1). It is written before the
+// result, so a subagent that starts right after finds it. A task that cannot be kept is dropped: that
+// subagent gets the core title lines alone. Only the task recall reads it, and it runs at recall auto only:
+// at on_demand and off the task is not kept.
+func (c *call) delegate() {
+	task := strings.TrimSpace(c.req.Task)
+	if task == "" || c.cfg.RecallMode() != config.RecallAuto {
+		return
+	}
+	if r := []rune(task); len(r) > maxTaskRunes {
+		task = string(r[:maxTaskRunes])
+	}
+	_ = c.store.SaveDelegation(c.req.Host, c.req.Session, c.req.AgentKind, task)
+}
+
+// subagentTask is the task of a starting subagent: the request's own, else the delegation of the session
+// and kind that came first and no other subagent took (it takes it), else none.
+func (c *call) subagentTask() string {
+	if task := strings.TrimSpace(c.req.Task); task != "" {
+		return task
+	}
+	task, _, _ := c.store.TakeDelegation(c.req.Host, c.req.Session, c.req.AgentKind, c.req.Agent)
+	return task
+}
+
 func (c *call) reset() (any, *Error) {
 	if err := c.openRead(); err != nil {
 		return nil, err
@@ -393,6 +424,10 @@ func (c *call) reset() (any, *Error) {
 func (c *call) sessionEnd() (any, *Error) {
 	if err := c.openRead(); err != nil {
 		return nil, err
+	}
+	// 이 세션이 맡기고 아무도 가져가지 않은 위임 글도, 가져간 글도 세션과 함께 끝난다.
+	if err := c.store.DropDelegations(c.req.Host, c.req.Session); err != nil {
+		return nil, &Error{Code: CodeInternal, Message: err.Error()}
 	}
 	c.endActivity()
 	return OK{OK: true}, nil

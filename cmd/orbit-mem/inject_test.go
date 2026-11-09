@@ -28,7 +28,7 @@ func TestInject_훅_없는_호스트에_기억_문맥을_JSON으로_준다(t *te
 	home(t)
 	s := seed(t)
 	r := pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
-	d, _ := s.Save(memory.SaveInput{Kind: "decision", Title: "atlas main 병합은 운영 배포", Body: "병합 전 확인", Source: memory.Source{Kind: "quote", Excerpt: "배포"}})
+	d, _ := s.Save(memory.SaveInput{Kind: "fact", Title: "atlas main 병합은 운영 배포", Body: "병합 전 확인", Source: memory.Source{Kind: "quote", Excerpt: "배포"}})
 
 	start := runInject(t, "", "session-start", "--cwd", "/tmp", "--session", "pi-1", "--host", "host-x")
 	if !strings.Contains(start.Text, "답은 존댓말") || !containsID(start.MemoryIDs, r.ID) {

@@ -13,12 +13,24 @@ type out struct {
 	chars int
 }
 
+// lead is the always-on title lines of a delegation bundle: their keys (listed before the keys of
+// the step in the ids) and their characters (inside the characters of the step).
+type lead struct {
+	keys  []string
+	chars int
+}
+
+// leads answers the lead of the steps, by the same names as script. The lead of a request step ("req:")
+// is its session news (Shown.News): the lines of what changed in the session, put before the recall.
+type leads map[string]lead
+
 // script answers the fake steps: "start:<session>", "req:<prompt>", "tool:<tool>", "sub:<task>".
 type script map[string]out
 
 type fake struct {
 	name  string
 	s     script
+	l     leads
 	idOf  func(string) string
 	calls *[]string
 }
@@ -26,11 +38,18 @@ type fake struct {
 func (f fake) show(call string) (bench.Shown, error) {
 	*f.calls = append(*f.calls, call)
 	o := f.s[call]
-	ids := []string{}
+	ids, lead := []string{}, []string{}
+	ld := f.l[call]
+	for _, k := range ld.keys {
+		ids, lead = append(ids, f.idOf(k)), append(lead, f.idOf(k))
+	}
 	for _, k := range o.keys {
 		ids = append(ids, f.idOf(k))
 	}
-	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars)}, nil
+	if strings.HasPrefix(call, "req:") {
+		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars}, nil
+	}
+	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars}, nil
 }
 func (f fake) Name() string                                      { return f.name }
 func (f fake) Start(s, cwd string) (bench.Shown, error)          { return f.show("start:" + s) }
@@ -42,7 +61,8 @@ func (f fake) Subagent(s, cwd, task string) (bench.Shown, error) { return f.show
 type keyed struct {
 	idOf func(string) string
 	find map[string][]string
-	sim  map[string][]string
+	sim  map[string][]string // 막음 후보
+	near map[string][]string // 가까운 기억
 }
 
 func (k keyed) ids(keys []string) []string {
@@ -53,8 +73,8 @@ func (k keyed) ids(keys []string) []string {
 	return out
 }
 func (k keyed) Find(cwd, q string, limit int) ([]string, error) { return k.ids(k.find[q]), nil }
-func (k keyed) Similar(cwd string, d bench.Draft) ([]string, error) {
-	return k.ids(k.sim[d.Title]), nil
+func (k keyed) Similar(cwd string, d bench.Draft) (bench.SaveMeets, error) {
+	return bench.SaveMeets{Block: k.ids(k.sim[d.Title]), Near: k.ids(k.near[d.Title])}, nil
 }
 
 // memories is ten fake memories with the keys a..j.
@@ -88,11 +108,17 @@ func prepare(t *testing.T, cases string) *bench.Prepared {
 // runFake runs one fake recall path over the cases and gives the report and the calls it got.
 func runFake(t *testing.T, cases string, s script, k keyed) (*bench.Report, *[]string) {
 	t.Helper()
+	return runFakeLead(t, cases, s, nil, k)
+}
+
+// runFakeLead is runFake with the lead of the steps.
+func runFakeLead(t *testing.T, cases string, s script, l leads, k keyed) (*bench.Report, *[]string) {
+	t.Helper()
 	p := prepare(t, cases)
 	k.idOf = p.IDOf
 	var calls []string
 	f := func(db string, set *bench.Set) (bench.Env, error) {
-		return bench.Env{Recaller: fake{"fake", s, p.IDOf, &calls}, Finder: k, Similar: k, Close: func() error { return nil }}, nil
+		return bench.Env{Recaller: fake{"fake", s, l, p.IDOf, &calls}, Finder: k, Similar: k, Close: func() error { return nil }}, nil
 	}
 	rep, err := bench.Run(p, f)
 	if err != nil {

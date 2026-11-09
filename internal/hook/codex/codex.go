@@ -6,6 +6,7 @@ package codex
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 
 	"github.com/crispebble/orbit-mem/internal/hook"
 	"github.com/crispebble/orbit-mem/internal/host"
@@ -22,12 +23,60 @@ func New() Adapter { return Adapter{} }
 
 // input is the part of Codex's hook input the hooks read.
 type input struct {
-	SessionID string `json:"session_id"`
-	Cwd       string `json:"cwd"`
-	Prompt    string `json:"prompt"`
-	Source    string `json:"source"`
-	ToolName  string `json:"tool_name"`
-	AgentID   string `json:"agent_id"`
+	SessionID string          `json:"session_id"`
+	Cwd       string          `json:"cwd"`
+	Prompt    string          `json:"prompt"`
+	Source    string          `json:"source"`
+	ToolName  string          `json:"tool_name"`
+	AgentID   string          `json:"agent_id"`
+	AgentType string          `json:"agent_type"` // SubagentStart
+	ToolInput json.RawMessage `json:"tool_input"` // PreToolUse: 위임 도구의 것만 읽는다
+}
+
+// delegationTools are Codex's tools that start a subagent (Codex hooks 문서의 PreToolUse matcher).
+var delegationTools = []string{"spawn_agent", "Agent"}
+
+// delegation is the part of spawn_agent's input the hooks read. 소스 기준이고 실제 훅 입력은 확인하지 못했다:
+// openai/codex 8703d32 codex-rs/core/src/tools/handlers/multi_agents/spawn.rs(v1: message·items·agent_type),
+// multi_agents_v2/spawn.rs(v2: message·task_name·agent_type). message가 글이 아니면(항목 목록) task_name을 쓴다.
+type delegation struct {
+	Message   json.RawMessage `json:"message"`
+	TaskName  string          `json:"task_name"`
+	AgentType string          `json:"agent_type"`
+}
+
+// defaultAgentType is the kind of a subagent spawned with no agent_type. 소스 기준이고 실제 훅 입력은 확인하지 못했다:
+// openai/codex 8703d32에서 spawn_agent는 agent_type을 다듬어(trim) 비면 역할 없이 띄우고(multi_agents/spawn.rs,
+// multi_agents_v2/spawn.rs), SubagentStart 훅의 agent_type은 역할이 없으면 DEFAULT_ROLE_NAME "default"다
+// (core/src/hook_runtime.rs subagent_hook_context, core/src/agent/role.rs).
+const defaultAgentType = "default"
+
+// agentKind is the kind both hooks put in a request, by one rule so a delegation and its subagent pair up:
+// the agent_type trimmed as Codex trims it, the default kind when that is empty.
+func agentKind(agentType string) string {
+	if kind := strings.TrimSpace(agentType); kind != "" {
+		return kind
+	}
+	return defaultAgentType
+}
+
+// delegate puts the task of a delegation tool call into the request. A call without a text hands no task.
+func delegate(req *host.Request, in input) {
+	if !slices.Contains(delegationTools, in.ToolName) {
+		return
+	}
+	var d delegation
+	if json.Unmarshal(in.ToolInput, &d) != nil {
+		return
+	}
+	var task string
+	if json.Unmarshal(d.Message, &task) != nil || strings.TrimSpace(task) == "" {
+		task = d.TaskName
+	}
+	if strings.TrimSpace(task) == "" {
+		return
+	}
+	req.Task, req.AgentKind = task, agentKind(d.AgentType)
 }
 
 var sources = []string{host.SourceStartup, host.SourceResume, host.SourceFork, host.SourceCompact, host.SourceClear}
@@ -55,9 +104,11 @@ func (Adapter) Plan(ev hook.Event, b []byte) hook.Plan {
 		steps = []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
 		req.Tool = in.ToolName
+		delegate(&req, in)
 		steps = []hook.Step{{Op: host.OpToolContext, Request: req}}
-	case hook.SubagentStart:
+	case hook.SubagentStart: // 서브에이전트 훅의 session_id는 부모 세션이다: 같은 세션·같은 종류의 위임 글과 짝을 맞춘다(host)
 		req.Audience = host.AudienceSubagent
+		req.AgentKind = agentKind(in.AgentType)
 		steps = []hook.Step{{Op: host.OpContext, Request: req}}
 	case hook.SessionEnd:
 		steps = []hook.Step{{Op: host.OpSessionEnd, Request: req}}

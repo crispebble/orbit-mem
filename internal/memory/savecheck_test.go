@@ -20,7 +20,7 @@ func checkIn(title, body, topic string, tags ...string) SaveInput {
 
 func mustCheck(t *testing.T, s *Store, in SaveInput, min float64) SaveCheckResult {
 	t.Helper()
-	r, err := s.SaveCheck(in, min)
+	r, err := s.SaveCheck(in, CheckMins{Similar: min})
 	if err != nil {
 		t.Fatalf("save check %q: %v", in.Title, err)
 	}
@@ -194,7 +194,7 @@ func TestSaveCheck_판정은_읽기만_한다(t *testing.T) {
 	defer ro.Close()
 	for _, in := range []SaveInput{checkIn("배포 스크립트는 드라이런이 먼저", "", ""), checkIn("배포 요일 바꿈", "", "배포 요일"),
 		checkIn("배포 스크립트 드라이런 먼저 돌린다", body, ""), checkIn("전혀 다른 것", "", "")} {
-		if _, err := ro.SaveCheck(in, 0.3); err != nil {
+		if _, err := ro.SaveCheck(in, CheckMins{Similar: 0.3}); err != nil {
 			t.Fatalf("read-only check %q: %v", in.Title, err)
 		}
 	}
@@ -219,7 +219,7 @@ func TestSaveCheck_판정은_읽기만_한다(t *testing.T) {
 
 func TestSaveCheck_입력이_틀리면_Save와_같은_오류다(t *testing.T) {
 	s, _ := newTestStore(t)
-	if _, err := s.SaveCheck(SaveInput{Kind: "nope", Title: "x", Source: Source{Kind: SourceSession}}, 0); !errors.Is(err, ErrInvalid) {
+	if _, err := s.SaveCheck(SaveInput{Kind: "nope", Title: "x", Source: Source{Kind: SourceSession}}, CheckMins{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("err %v", err)
 	}
 }
@@ -282,9 +282,11 @@ var scoreCases = []scoreCase{
 // 기본 문턱(DefaultSimilarMin)을 정한 사례다. 같은 내용을 조금 바꿔 다시 저장한 것(조사·어순·한두 낱말, 한글·영어,
 // 긴 본문과 제목뿐)은 문턱 이상이고, 낱말이 겹쳐도 다른 기억은 문턱 아래다. 기억 1건과 51건 DB에서 함께 본다(두 기억
 // 사이 비슷함은 짝만 보므로 같은 값이 나와야 한다). L-16 중복 사례 묶음(internal/mcpserver/testdata)도 같은 문턱을 쓴다.
-// 잰 값(2026-11-09, a6c): 여기 바꿔 쓴 것 0.725~0.920, 다른 기억 0.000~0.508(짧은 제목이 머리 낱말 「사용자에게」를 나눔).
-// L-16 묶음까지 합치면 바꿔 쓴 것 최저 0.679(낱말 바꿈), 다른 기억 최고 0.541(시험 컨테이너 · 어순과 「시험 DB는
-// 컨테이너로 띄운다」). 문턱 0.61은 그 가운데다.
+// 잰 값(2026-11-09, 1-6 b6db 낱말 단위 기하 평균, 다른 꼴 반 맞음): 여기 바꿔 쓴 것 0.727~1.000(짧은 바꿈 0.833), 다른
+// 기억 0.000~0.333(짧은 제목이 머리 낱말 하나만 나눔). L-16 묶음의 변형은 최저 0.707이다. 그 묶음의 「시험 DB는 컨테이너로
+// 띄운다」(0.570)는 「ko 시험 컨테이너」와 같은 주장이라 비슷해도 되는 것으로 다시 정의했다(자료의 note). 문턱 0.69의
+// 근거는 DefaultSimilarMin 주석이다. (b6d 2차: 짧은 바꿈 0.667, 문턱 0.45. 옛 점수 a6c: 바꿔 쓴 것 0.725~0.920, 다른 기억
+// 0.000~0.508, 문턱 0.61.)
 func TestSaveCheck_기본_문턱은_바꿔_쓴_기억과_다른_기억을_가른다(t *testing.T) {
 	for _, n := range []int{0, 50} {
 		for _, c := range scoreCases {
@@ -293,7 +295,7 @@ func TestSaveCheck_기본_문턱은_바꿔_쓴_기억과_다른_기억을_가른
 				filler(t, s, i)
 			}
 			b := saveDoc(t, s, c.base[0], c.base[1], "")
-			low, err := s.SaveCheck(checkIn(c.probe[0], c.probe[1], ""), 1e-9)
+			low, err := s.SaveCheck(checkIn(c.probe[0], c.probe[1], ""), CheckMins{Similar: 1e-9})
 			if err != nil {
 				t.Fatal(err)
 			}

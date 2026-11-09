@@ -147,10 +147,13 @@ func (f finder) Find(cwd, query string, limit int) ([]string, error) {
 // over the title and the body of the draft, top 3.
 type similar struct{ f finder }
 
-func (s similar) Similar(cwd string, d bench.Draft) ([]string, error) {
+func (s similar) Similar(cwd string, d bench.Draft) (bench.SaveMeets, error) {
 	q := d.Title
 	if d.Body != "" {
 		q += "\n" + d.Body
 	}
-	return s.f.Find(cwd, q, similarOf)
+	// 87ab0fb에는 저장을 막는 판정이 없었다: find-proxy 상위 3은 저장을 막지 않고 곁에 보인 목록이라 가까운 기억으로
+	// 센다(잘못 막음 0, 가까운 목록 내밂 = 이 목록의 내밂, 1-6 b6dn).
+	ids, err := s.f.Find(cwd, q, similarOf)
+	return bench.SaveMeets{Near: ids}, err
 }

@@ -22,8 +22,8 @@ const (
 // (internal/bench/legacy), so it opens nothing of the current path and a change of the current
 // code cannot move the legacy baseline.
 var (
-	hostFactory bench.Factory = hostpath.Factory
-	legacyEnv   bench.Factory = legacy.Env
+	hostFactory func(hostpath.Options) bench.Factory = hostpath.FactoryWith
+	legacyEnv   bench.Factory                        = legacy.Env
 )
 
 // Names is every recall path, in report order.
@@ -36,9 +36,19 @@ func (e UnknownError) Error() string {
 	return fmt.Sprintf("unknown recall path %q (%s)", e.Name, strings.Join(Names, ", "))
 }
 
+// Options are what the command hands the paths. The overrides reach the current path only: the
+// frozen recall reads no settings.
+type Options struct {
+	Set map[string]string // settings by their key in the settings file
+}
+
 // Factories gives the factory of every name in order; spaces around a name are dropped and a
 // name given twice is used once.
-func Factories(names []string) ([]bench.Factory, error) {
+func Factories(names []string) ([]bench.Factory, error) { return FactoriesWith(names, Options{}) }
+
+// FactoriesWith is Factories with the options. An override the current path refuses is an error
+// of the run that opens it.
+func FactoriesWith(names []string, o Options) ([]bench.Factory, error) {
 	var out []bench.Factory
 	seen := map[string]bool{}
 	for _, n := range names {
@@ -48,7 +58,7 @@ func Factories(names []string) ([]bench.Factory, error) {
 		}
 		switch n {
 		case Current:
-			out = append(out, hostFactory)
+			out = append(out, hostFactory(hostpath.Options{Set: o.Set}))
 		case Legacy:
 			out = append(out, legacyEnv)
 		default:

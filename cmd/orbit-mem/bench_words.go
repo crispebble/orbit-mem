@@ -32,8 +32,12 @@ func (benchWording) TestSize(b bench.Bundles, p bench.Points) string {
 
 func (benchWording) Requests(n int) string { return i18n.T("bench.report.requests", n) }
 
-func (benchWording) Hit(rate string, byStart int) string {
-	return i18n.T("bench.report.hit", rate, byStart)
+func (benchWording) Hit(rate string, byStart, byEarlier, byNews int) string {
+	return i18n.T("bench.report.hit", rate, byStart, byEarlier, byNews)
+}
+
+func (benchWording) NotYet(requests, subagents int) string {
+	return i18n.T("bench.report.not_yet", requests, subagents)
 }
 
 func (benchWording) Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string {
@@ -45,6 +49,10 @@ func (benchWording) Recover(rate, everyMissed string) string {
 }
 
 func (benchWording) Empty(rate string) string { return i18n.T("bench.report.empty", rate) }
+
+func (benchWording) News(requests, ids, expected, allowed, other int, chars string) string {
+	return i18n.T("bench.report.news", requests, ids, expected, allowed, other, chars)
+}
 
 func (benchWording) CharsRequest(dist string) string {
 	return i18n.T("bench.report.chars_request", dist)
@@ -58,12 +66,12 @@ func (benchWording) CharsSession(dist string) string {
 
 func (benchWording) CharsStart(dist string) string { return i18n.T("bench.report.chars_start", dist) }
 
-func (benchWording) Subagent(cases int, hit, wrong string, forbid int, empty, chars string) string {
-	return i18n.T("bench.report.subagent", cases, hit, wrong, forbid, empty, chars)
+func (benchWording) Subagent(cases int, hit string, byLead int, wrong string, forbid int, empty, chars, leadChars string) string {
+	return i18n.T("bench.report.subagent", cases, hit, byLead, wrong, forbid, empty, chars, leadChars)
 }
 
-func (benchWording) Duplicate(cases int, hit, offered string, forbid int) string {
-	return i18n.T("bench.report.duplicate", cases, hit, offered, forbid)
+func (benchWording) Duplicate(cases int, hit, wrongBlock, nearOffered string, forbid, nearForbid int) string {
+	return i18n.T("bench.report.duplicate", cases, hit, wrongBlock, nearOffered, forbid, nearForbid)
 }
 
 func (benchWording) ZeroDen() string { return i18n.T("bench.report.zero_den") }

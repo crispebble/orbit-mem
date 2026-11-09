@@ -9,6 +9,15 @@
   "config.err.recent_backup": "check recentDecisions (0-20) and backupKeep (1 or more)",
   "config.err.host_memory": "hostMemory is ask or keep: %q",
   "config.err.ledger_window": "ledgerWindowDays is 1-90",
-  "config.err.save_similar_min": "saveSimilarMin is a number above 0 and at most 1 (the save similarity score a memory needs to count as similar when saving): %v",
+  "config.err.save_similar_min": "saveSimilarMin is a number above 0 and at most 1 (the save similarity score at which a memory stops the save as similar: the geometric mean of how much of each memory's words the other has, default 0.69; below it the memory may be shown as close, saveNearMin): %v",
+  "config.err.save_near_min": "saveNearMin is a number above 0 and at most 1 (the floor of the save similarity score for the close memories, at most 3 ids and titles, shown beside a save that is not stopped; at saveSimilarMin or above none are shown; default 0.22): %v",
+  "config.err.recall_min_score": "recallMinScore is a number above 0 and at most 1 (the find score a memory needs to enter the request recall): %v",
+  "config.err.recall_min_coverage": "recallMinCoverage is a number above 0 and at most 1 (the share of the request's meaningful words a memory needs to enter the request recall): %v",
+  "config.err.recall_min_relative": "recallMinRelative is a number above 0 and at most 1 (the share of the best find score a memory needs to stay in the request recall): %v",
+  "config.err.recall_min_coverage_one_word": "recallMinCoverageOneWord is a number above 0 and at most 1 (the share of the request's meaningful words a memory needs to enter the request recall when only one of them matched it): %v",
+  "config.err.task_recall_min_score": "taskRecallMinScore is a number above 0 and at most 1 (the find score a memory needs to enter the recall of a delegated task): %v",
+  "config.err.task_recall_min_words": "taskRecallMinWords is a whole number from %d to %d (how many content words of a delegated task, less imperative endings, heading words and item numbers, a memory must match to enter its recall): %v",
+  "config.err.task_recall_min_relative": "taskRecallMinRelative is a number above 0 and at most 1 (the share of the best find score a memory needs to stay in the recall of a delegated task): %v",
+  "config.err.task_recall_min_title_share": "taskRecallMinTitleShare is a number above 0 and at most 1 (the rare words' worth, per content word of a delegated task, that a memory's title and topic must hold to be recalled for the task): %v",
   "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q"
 }

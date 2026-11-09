@@ -35,9 +35,9 @@ func TestR6_세션_시작에는_상시_핵심만_넣고_먼저_찾는_곳을_알
 			t.Fatalf("non-core rule %s in session start:\n%s", r.Title, in.Text)
 		}
 	}
-	// 「최근 결정」 줄은 없다(T-3): 핵심 밖 결정은 제목도 넣지 않는다.
-	if !strings.Contains(in.Text, userCore.ID) || !strings.Contains(in.Text, deskCore.ID) || strings.Contains(in.Text, dec.ID) {
-		t.Fatalf("core missing or decision title in:\n%s", in.Text)
+	// 핵심 밖 결정은 「최근 결정」 제목 줄로만 온다(1-6 b6r): 본문은 없다.
+	if !strings.Contains(in.Text, userCore.ID) || !strings.Contains(in.Text, deskCore.ID) || !strings.Contains(in.Text, recentHead+" 본문은 memory_get — "+dec.Title+"("+dec.ID+")") {
+		t.Fatalf("core missing or no decision title line in:\n%s", in.Text)
 	}
 	// 먼저 찾는 곳: 개수 없는 고정 글 한 줄(7판 4절).
 	if !strings.Contains(in.Text, wantFindLine) || strings.Contains(in.Text, "30개") {

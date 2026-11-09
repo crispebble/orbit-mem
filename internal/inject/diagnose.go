@@ -102,7 +102,7 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 			bundle = ids
 		}
 	}
-	_, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
+	byID, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
 	now := s.Now()
 	// 세션 묶음에 든 상시 핵심과 확정 규칙(recall=on_demand 판, 분야 규칙 빼고)은 세션 시작으로 들어간다(S3-R6).
 	// 묶음에 없는 규칙은 요청 회상 길로 본다.
@@ -149,11 +149,14 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		}
 	} else if strings.TrimSpace(in.Prompt) == "" {
 		add(StageSelected, Unknown, "no_prompt")
-	} else if hits := memory.Strong([]memory.Doc{m.Doc()}, in.Prompt); len(hits) == 0 {
-		matched, terms := matchedTerms(m.Doc(), in.Prompt)
-		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(terms, " "))
+	} else if words, score, cover, matched := recallMeasures(s, m, in.Prompt); !passes(cfg, words, score, cover, matched) {
+		th := requestThresholds(cfg)
+		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(words, " "),
+			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", th.score), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", th.coverFor(len(matched))))
+	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID, idSet(bundle)); score < floor {
+		add(StageSelected, No, "below_top", fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", floor), fmt.Sprintf("%.2f", recallRelative(cfg)))
 	} else {
-		add(StageSelected, Yes, "matched", fmt.Sprintf("%.1f", hits[0].Score))
+		add(StageSelected, Yes, "matched", fmt.Sprintf("%.2f", score))
 	}
 
 	// 주입됨: 이 세션에 넣은 기록이 있으면 그것이 증거다. 없으면 지금 같은 요청으로 묶음을 다시 만들어 본다(넣지 않음).
@@ -168,15 +171,13 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 	case selected == Yes && d.Path == "session_rules":
 		add(StageInjected, Unknown, "would_inject_rules")
 	case selected == Yes:
-		inj := PromptInjectionWith(s, cfg, in.Scope, in.Prompt, in.Options)
+		inj := PromptInjectionFor(s, cfg, in.Scope, in.Prompt, in.Host, in.Session, in.Options)
 		if i := slices.Index(inj.MemoryIDs, m.ID); i >= 0 {
 			add(StageInjected, Unknown, "would_inject", fmt.Sprint(i+1))
+		} else if toldInSession(s, in.Host, in.Session)[m.ID] {
+			add(StageInjected, No, "already_shown") // 같은 기억은 세션당 한 번(compact·clear 뒤에는 다시)
 		} else {
-			budget := cfg.RecallChars
-			if budget <= 0 {
-				budget = config.Default().RecallChars
-			}
-			add(StageInjected, No, "over_budget", fmt.Sprint(budget))
+			add(StageInjected, No, "over_budget", fmt.Sprint(maxRecallLines), fmt.Sprint(min(cfg.PromptRecallChars(), MaxHookRunes)))
 		}
 	case selected == Unknown:
 		add(StageInjected, Unknown, "no_prompt")
@@ -265,15 +266,24 @@ func sessionEvents(s *memory.Store, session, host, id, kind string) []sessionEve
 	return out
 }
 
-// matchedTerms are the prompt words that appear in d, and all the words the request recall looks at.
-func matchedTerms(d memory.Doc, prompt string) (matched, terms []string) {
-	for _, t := range memory.PromptTerms(prompt) {
-		terms = append(terms, t)
-		if memory.Relevance(d, t).Score > 0 {
-			matched = append(matched, t)
+// recallMeasures are the words the recall of the request matches (thresholds.words), m's find score and
+// share of them (설계 5.1 4단계), and the words m has.
+func recallMeasures(s *memory.Store, m memory.Memory, prompt string) (words []string, score, cover float64, matched []string) {
+	words = thresholds{}.words(s, prompt) // 요청 회상의 낱말(위임이 아님): 문턱 값과 무관하다
+	cover, matched = memory.Coverage(m, words)
+	hits, _ := s.RecallHits(prompt)
+	for _, h := range hits {
+		if h.Memory.ID == m.ID {
+			score = h.Score
 		}
 	}
-	return matched, terms
+	return words, score, cover, matched
+}
+
+// passes says whether the measures pass the gate of the work recall of a request (thresholds.pass).
+func passes(cfg config.Config, words []string, score, cover float64, matched []string) bool {
+	return len(words) >= minRecallWords &&
+		requestThresholds(cfg).pass(memory.RecallHit{Score: score, Coverage: cover, Matched: matched})
 }
 
 func day(ms int64) string { return time.UnixMilli(ms).Local().Format("2006-01-02") }

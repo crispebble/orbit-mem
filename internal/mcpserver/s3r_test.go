@@ -35,7 +35,7 @@ func TestSave_기본값은_세션_폴더의_제품_저장소_폴더_순이다(t 
 	for i, c := range cases {
 		var out MemoryOut
 		res := call(t, connectIn(t, s, c.scope, c.dir, c.git, c.temp), "memory_save",
-			map[string]any{"kind": "fact", "title": "사실 " + string(rune('가'+i)), "source": quote("x")}, &out)
+			map[string]any{"kind": "fact", "title": distinctTitles[i], "source": quote("x")}, &out)
 		if res.IsError || out.Memory.AppliesTo != c.applies || out.Memory.Project != c.project {
 			t.Fatalf("%s: %v %s %+v", c.name, res.IsError, text(res), out.Memory)
 		}

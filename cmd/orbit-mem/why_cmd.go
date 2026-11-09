@@ -95,7 +95,7 @@ var whyKeys = map[string]string{
 	"eligible": "cli.why.eligible", "session_rule": "cli.why.session_rule", "out_of_scope": "cli.why.out_of_scope", "journal": "cli.why.journal",
 	"expired": "cli.why.expired", "superseded": "cli.why.superseded", "in_bundle": "cli.why.in_bundle", "not_in_bundle": "cli.why.not_in_bundle",
 	"no_prompt": "cli.why.no_prompt", "weak_match": "cli.why.weak_match", "matched": "cli.why.matched", "observed": "cli.why.observed",
-	"would_inject": "cli.why.would_inject", "would_inject_rules": "cli.why.would_inject_rules", "over_budget": "cli.why.over_budget",
+	"would_inject": "cli.why.would_inject", "would_inject_rules": "cli.why.would_inject_rules", "over_budget": "cli.why.over_budget", "already_shown": "cli.why.already_shown",
 	"skipped": "cli.why.skipped", "no_session": "cli.why.no_session", "delivered": "cli.why.delivered", "hook_returned": "cli.why.hook_returned",
 	"not_delivered": "cli.why.not_delivered", "no_record": "cli.why.no_record", "verdict_followed": "cli.why.verdict_followed",
 	"verdict_violated": "cli.why.verdict_violated", "verdict_irrelevant": "cli.why.verdict_irrelevant", "opened": "cli.why.opened",

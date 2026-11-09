@@ -14,6 +14,9 @@ import (
 // 같은 범위(scope)의 후보·확정 기억 가운데 새 기억과의 비슷함(similar.go)이 문턱 이상인 것을 위에서 SimilarLimit개 고른다.
 // 내부 Save(정리·나누기·들여오기·계획 적용이 부름)는 이 판정을 하지 않는다: 넣으면 그 흐름이 모두 바뀐다(T-26).
 // 비슷한 기억은 종류(kind)를 가리지 않는다: 같은 내용이 규칙·결정·사실로 갈라지는 중복도 보이게 한다.
+// 막지 않는 새 기억 판정에는 같은 후보 가운데 비슷함이 가까운 하한(CheckMins.Near) 이상인 것을 Near로 준다(1-6 b6dn):
+// 막는 문턱은 엄격하게 두고, 바꿔 쓴 같은 주장처럼 문턱 밑에 머무는 중복은 저장한 뒤 부른 쪽이 보고 합치게 한다. 글 꼴은
+// 부르는 쪽(어댑터)이 정한다.
 
 // Verdicts of SaveCheck.
 const (
@@ -27,9 +30,29 @@ const (
 const SimilarLimit = 3
 
 // DefaultSimilarMin is the score a memory needs to count as similar when the caller gives no threshold.
-// Measured on rewordings and on different memories (savecheck_test.go scoreCases, the L-16 duplicate set
-// in internal/mcpserver/testdata): the evaluation set of 1-6 tunes it again.
-const DefaultSimilarMin = 0.61
+// 1-6 b6db에 막음을 엄격하게 다시 정했다(사용자 결정 A: 막는 판정은 엄격하게, 막지 않을 때 가까운 기억을 붙인다).
+// 개발 자료 다섯(internal/bench/testdata의 public·holdout·holdout2·holdout3_dup·holdout4_dup 중복 사례)에서 잘못
+// 막음이 0이 되는 것은 0.67부터다: 막지 말아야 할 짝의 최고가 0.668(같은 틀에 시점·도구만 다른 점검)과 0.667(같은 틀에
+// 값만 다른 사실)이다. (막음 ∪ 가까운) 상위 3의 적중은 막음 문턱과 거의 무관하다(막지 않으면 가까운 기억으로 보인다):
+// 0.45부터 1까지 다섯 묶음 모두 같고 옛 판(87ab0fb find-proxy) 이상이다. 위쪽은 시험이 정한다: 계속 막아야 할 L-16
+// 변형·scoreCases의 바꿔 쓴 것 최저가 0.707(본문을 더한 영어 짧은 제목)이다. 0.668 초과 ~ 0.707 이하의 가운데 쪽이다.
+// 다른 기억 최고(시험)는 0.333(머리 낱말 하나만 겹침, 짧은 기억이 긴 글에 다 들어 있음 0.324)이다. 이전 값 0.45(1-6 b6d
+// 2차)는 주제 낱말만 같은 새 사실을 막았다(holdout4_dup 7/18).
+const DefaultSimilarMin = 0.69
+
+// DefaultNearMin is the score a memory needs to be shown as close beside a save that goes on, when the caller
+// gives no floor. 1-6 b6dn에 정했다: 개발 자료 넷(internal/bench/testdata의 public·holdout·holdout2·holdout3_dup 중복
+// 사례)에서 (막음 ∪ 가까운) 상위 3의 적중이 묶음마다 옛 판(87ab0fb find-proxy) 이상인 가장 높은 하한이다. 0.24부터
+// holdout3_dup의 바꿔 쓴 같은 주장(0.239)을 놓쳐 옛 판 아래로 내려간다. 1-6 b6db(막음 0.69, 다른 꼴 반 맞음)에서도
+// holdout4_dup까지 다섯 묶음 모두 옛 판 이상이고 0.24부터 같은 사례로 떨어진다: 그대로 둔다.
+const DefaultNearMin = 0.22
+
+// CheckMins are the scores of SaveCheck. Similar is the score that stops a save (0 or less: DefaultSimilarMin),
+// Near the floor of the close memories shown beside a save that goes on (0 or less: DefaultNearMin).
+type CheckMins struct {
+	Similar float64
+	Near    float64
+}
 
 // similarSummaryRunes is the most characters of a similar memory's summary.
 const similarSummaryRunes = 200
@@ -50,16 +73,19 @@ type SaveCheckResult struct {
 	Verdict  string
 	Existing []string  // same-title: 출처를 더할 기억 하나, same-topic: 대체할 현재값
 	Similar  []Similar // similar: 점수 순
+	Near     []Similar // new: 막지 않고 저장할 때 보일 가까운 기억, 점수 순
 }
 
 // SaveCheck says, only reading, what saving in would meet: the same title (Save adds the source to that
 // memory), the current value of the same scope and topic (Save supersedes it), or else the candidate and
-// confirmed memories of the same scope whose similarity to the new one (similar.go) is min or more, best SimilarLimit
-// first. min <= 0 is DefaultSimilarMin. An input Save refuses is refused with the same error.
-func (s *Store) SaveCheck(in SaveInput, min float64) (SaveCheckResult, error) {
+// confirmed memories of the same scope whose similarity to the new one (similar.go) is mins.Similar or more, best
+// SimilarLimit first. When none is, the save goes on and Near holds, the same way, the memories of mins.Near or
+// more: close ones the caller may merge or fix after it. An input Save refuses is refused with the same error.
+func (s *Store) SaveCheck(in SaveInput, mins CheckMins) (SaveCheckResult, error) {
 	if err := in.validate(); err != nil { // in은 값 복사본이다: 부르는 쪽 입력은 그대로
 		return SaveCheckResult{}, err
 	}
+	min := mins.Similar
 	if min <= 0 {
 		min = DefaultSimilarMin
 	}
@@ -89,24 +115,41 @@ func (s *Store) SaveCheck(in SaveInput, min float64) (SaveCheckResult, error) {
 	if err != nil {
 		return SaveCheckResult{}, err
 	}
+	near := mins.Near
+	if near <= 0 {
+		near = DefaultNearMin
+	}
 	n := memoryTokens(in.Title, in.Topic, in.Tags, in.Body)
 	r := SaveCheckResult{Verdict: CheckNew}
 	for _, h := range hits {
 		m := h.Memory
-		if sc := similarity(n, memoryTokens(m.Title, m.Topic, m.Tags, m.Body)); sc >= min {
-			r.Similar = append(r.Similar, Similar{ID: m.ID, Kind: m.Kind, Title: m.Title, Summary: summaryOf(m.Body),
-				Topic: m.Topic, Score: sc, Trust: m.Trust})
+		sc := similarity(n, memoryTokens(m.Title, m.Topic, m.Tags, m.Body))
+		if sc < min && sc < near {
+			continue
+		}
+		sim := Similar{ID: m.ID, Kind: m.Kind, Title: m.Title, Summary: summaryOf(m.Body), Topic: m.Topic, Score: sc, Trust: m.Trust}
+		if sc >= min {
+			r.Similar = append(r.Similar, sim)
+		} else {
+			r.Near = append(r.Near, sim)
 		}
 	}
-	// 비교용으로 반올림한다: 같은 값의 부동소수점 오차가 순서를 가르지 않게(FindScored와 같다).
-	slices.SortStableFunc(r.Similar, func(a, b Similar) int { return cmp.Compare(math.Round(b.Score*1e9), math.Round(a.Score*1e9)) })
-	if len(r.Similar) > SimilarLimit {
-		r.Similar = r.Similar[:SimilarLimit]
+	if len(r.Similar) > 0 { // 막는 저장에는 가까운 기억을 붙이지 않는다: 고르기(Similar)가 그 자리다
+		r.Verdict, r.Similar, r.Near = CheckSimilar, bestSimilar(r.Similar), nil
+		return r, nil
 	}
-	if len(r.Similar) > 0 {
-		r.Verdict = CheckSimilar
-	}
+	r.Near = bestSimilar(r.Near)
 	return r, nil
+}
+
+// bestSimilar is list ranked by score, the first SimilarLimit. Equal scores keep the find order.
+func bestSimilar(list []Similar) []Similar {
+	// 비교용으로 반올림한다: 같은 값의 부동소수점 오차가 순서를 가르지 않게(FindScored와 같다).
+	slices.SortStableFunc(list, func(a, b Similar) int { return cmp.Compare(math.Round(b.Score*1e9), math.Round(a.Score*1e9)) })
+	if len(list) > SimilarLimit {
+		list = list[:SimilarLimit]
+	}
+	return list
 }
 
 // topicValues are the current (candidate, confirmed) memories of scope and topic, oldest first.

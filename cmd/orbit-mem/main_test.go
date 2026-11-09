@@ -327,6 +327,18 @@ func TestConfig_2차_키를_설정한다(t *testing.T) {
 	if _, _, code := run(t, "", "config", "set", "recallChars", "50"); code != 1 {
 		t.Fatalf("out of range accepted: %d", code)
 	}
+	// doctor는 실제로 쓰는 작업 회상 글자 수(500 상한)를 보인다.
+	onTerminal(t) // 글 꼴(터미널이 아니면 JSON)
+	out, _, _ := run(t, "", "doctor")
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "작업 회상") || strings.Contains(l, "work recall") {
+			line = l
+		}
+	}
+	if !strings.Contains(line, " 500") || strings.Contains(line, "1500") {
+		t.Fatalf("doctor recall line %q:\n%s", line, out)
+	}
 }
 
 // 끝 기준: 시작 훅은 --plugin-version이 자기 판과 다르면 문맥 끝에 맞추라는 한 줄을 더한다. 같으면 없고,
@@ -413,6 +425,88 @@ func TestProposals_drain은_대기를_닫고_미리보기는_바꾸지_않는다
 	}
 	if got, _ := s.Get(a.ID); got.State != memory.StateCandidate || len(got.Links) != 1 {
 		t.Fatalf("a %+v", got)
+	}
+}
+
+func TestConfig_요청_회상_문턱을_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"recallMinScore", "0.45"}, {"recallMinCoverage", "0.6"}, {"recallMinRelative", "0.75"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("set %s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 || cfg.RecallMinRelative != 0.75 {
+		t.Fatalf("cfg = %v %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage, err)
+	}
+	out, _, _ := run(t, "", "config")
+	if !strings.Contains(out, `"recallMinScore": 0.45`) || !strings.Contains(out, `"recallMinCoverage": 0.6`) {
+		t.Fatalf("config show: %s", out)
+	}
+	for _, key := range []string{"recallMinScore", "recallMinCoverage", "recallMinRelative"} {
+		for _, bad := range []string{"0", "1.5", "-1", "abc", "NaN"} {
+			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
+				t.Fatalf("%s %q accepted: %d", key, bad, code)
+			}
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 {
+		t.Fatalf("bad value changed the file: %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage)
+	}
+	if _, errOut, _ := run(t, "", "config", "set", "nope", "1"); !strings.Contains(errOut, "recallMinScore") || !strings.Contains(errOut, "recallMinCoverage") || !strings.Contains(errOut, "recallMinRelative") {
+		t.Fatalf("unknown key list: %s", errOut)
+	}
+}
+
+// 한 낱말 일치 비율과 위임 회상의 세 문턱(설계 보완, 1-6 b6 R1·T1)도 config set으로 바꾼다. 범위 밖 값은 거절하고 파일을 바꾸지 않는다.
+func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"recallMinCoverageOneWord", "0.4"}, {"taskRecallMinScore", "0.15"}, {"taskRecallMinWords", "4"}, {"taskRecallMinRelative", "0.5"}, {"taskRecallMinTitleShare", "0.1"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("set %s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinScore != 0.15 || cfg.TaskRecallMinWords != 4 || cfg.TaskRecallMinRelative != 0.5 ||
+		cfg.TaskRecallMinTitleShare != 0.1 {
+		t.Fatalf("cfg = %+v %v", cfg, err)
+	}
+	for key, bads := range map[string][]string{
+		"recallMinCoverageOneWord": {"0", "1.5", "abc", "NaN"}, "taskRecallMinScore": {"0", "1.5", "NaN"},
+		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "1", "41", "2.5", "abc"}, "taskRecallMinTitleShare": {"0", "1.5", "NaN", "abc"},
+	} {
+		for _, bad := range bads {
+			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
+				t.Fatalf("%s %q accepted: %d", key, bad, code)
+			}
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinWords != 4 {
+		t.Fatalf("bad value changed the file: %+v", cfg)
+	}
+	_, errOut, _ := run(t, "", "config", "set", "nope", "1")
+	for _, key := range []string{"recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinWords", "taskRecallMinRelative", "taskRecallMinTitleShare"} {
+		if !strings.Contains(errOut, key) {
+			t.Fatalf("unknown key list without %s: %s", key, errOut)
+		}
+	}
+}
+
+func TestConfig_saveNearMin을_설정한다(t *testing.T) {
+	home(t)
+	if _, errOut, code := run(t, "", "config", "set", "saveNearMin", "0.3"); code != 0 {
+		t.Fatalf("set: %s", errOut)
+	}
+	if cfg, err := loadConfig(); err != nil || cfg.SaveNearMin != 0.3 {
+		t.Fatalf("cfg = %v %v", cfg.SaveNearMin, err)
+	}
+	for _, bad := range []string{"0", "1.5", "abc"} {
+		if _, _, code := run(t, "", "config", "set", "saveNearMin", bad); code != 1 {
+			t.Fatalf("%q accepted: %d", bad, code)
+		}
+	}
+	if saveNearMinOf() != 0.3 {
+		t.Fatalf("saveNearMinOf = %v", saveNearMinOf())
 	}
 }
 

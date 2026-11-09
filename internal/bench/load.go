@@ -18,6 +18,7 @@ type Prepared struct {
 	Keys map[string]string // id → key, only for a DB made from the memories of the file
 
 	ids      map[string]string // key → id
+	history  *memory.History   // what the DB held over time, for a set whose cases carry their times
 	template string
 	dir      string
 	n        int
@@ -32,7 +33,9 @@ const (
 // Prepare makes the DB of a set. With memories in the file it builds a temporary DB
 // with fixed ids (m-000000000001 in file order). With a DB path it copies that DB with
 // a read only connection (the file, its -wal and its -shm are not written) and checks
-// that every id the cases name is in it. Exactly one of the two is given.
+// that every id the cases name is in it. Exactly one of the two is given. When the cases
+// carry their times it also reads the history of the DB (memory.History), so a run can put
+// its copy at the state of each case's time.
 func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	switch {
 	case len(set.Memories) > 0 && dbPath != "":
@@ -58,13 +61,25 @@ func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	} else if p.template, err = p.seed(set, dir); err != nil {
 		return nil, err
 	}
+	// 틀은 이 실행이 만든 사본이다: 표지를 남겨 재생 사례의 Rewind가 그 사본(Copy)만 고쳐 쓰게 한다.
+	if err = memory.MarkThrowawayCopy(p.template); err != nil {
+		return nil, err
+	}
 	if p.Set, err = p.resolve(set); err != nil {
 		return nil, err
+	}
+	if set.Timed() {
+		if p.history, err = memory.ReadHistory(p.template); err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }
 
-// copyDB copies a DB into dir with CopyDB (the source is never opened) and checks its schema.
+// copyDB copies a DB into dir with CopyDB (the source is never opened) and brings the copy to this
+// binary's schema: a DB an older orbit-mem left (the replay copies keep the schema of the day they
+// were taken) runs on its migrated copy, and the source keeps its schema. memory.MigrateCopy says why
+// the copy takes no backup first. A DB a newer orbit-mem made, or one with no tables, is refused.
 func copyDB(path, dir string) (string, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "template"), 0o700); err != nil {
 		return "", err
@@ -72,6 +87,9 @@ func copyDB(path, dir string) (string, error) {
 	dst := filepath.Join(dir, "template", "bench.db")
 	if err := CopyDB(path, dst); err != nil {
 		return "", err
+	}
+	if before, err := memory.MigrateCopy(dst); err != nil {
+		return "", fmt.Errorf("the DB schema is %q (DB %d, binary %d): %w", before.State, before.DB, before.Binary, err)
 	}
 	s, info, err := memory.OpenReadOnly(dst)
 	if err != nil {

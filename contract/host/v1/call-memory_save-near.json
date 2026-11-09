@@ -1,0 +1,49 @@
+{
+  "name": "call-memory_save-near",
+  "op": "call",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "session": "s-1",
+          "cwd": "/tmp/orbit-contract",
+          "name": "memory_save",
+          "args": {
+            "kind": "lesson",
+            "appliesTo": "user",
+            "title": "배포 공지는 하루 전에 올린다",
+            "source": {
+              "kind": "session",
+              "ref": "test:s-1"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_save",
+    "args": {
+      "kind": "lesson",
+      "appliesTo": "user",
+      "title": "배포 공지는 팀 채널에 미리 알린다",
+      "source": {
+        "kind": "session",
+        "ref": "test:s-1"
+      }
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_save",
+    "result": "$any"
+  }
+}

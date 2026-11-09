@@ -55,13 +55,17 @@ type RunReport struct {
 	Cases    []CaseResult    `json:"cases"`
 }
 
-// Seen is what a step showed: the ids in order and the characters.
+// Seen is what a step showed: the ids in order and the characters, and of them the session news of a request.
 type Seen struct {
-	IDs   []string `json:"ids"`
-	Chars int      `json:"chars"`
+	IDs       []string `json:"ids"`
+	Chars     int      `json:"chars"`
+	News      []string `json:"news,omitempty"`
+	NewsChars int      `json:"newsChars,omitempty"`
 }
 
-func seen(s Shown) Seen { return Seen{IDs: nonNil(s.IDs), Chars: s.Chars} }
+func seen(s Shown) Seen {
+	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s)}
+}
 
 func seenPtr(s *Shown) *Seen {
 	if s == nil {
@@ -86,13 +90,15 @@ type CaseResult struct {
 	Request *Seen    `json:"request,omitempty"`
 	Tool    *Seen    `json:"tool,omitempty"`
 	Sub     *Seen    `json:"subagent,omitempty"`
-	Similar []string `json:"similar,omitempty"`
+	Similar []string `json:"similar,omitempty"` // the memories the save stopped at
+	Near    []string `json:"near,omitempty"`    // the close memories beside a save that went on
 	Found   []string `json:"found,omitempty"`
+	NotYet  []string `json:"notYet,omitempty"`
 }
 
 func caseResult(o Outcome) CaseResult {
 	return CaseResult{ID: o.Case.ID, Session: o.Key, Kind: o.Case.CaseKind(), Part: o.Part,
-		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Found: o.Found}
+		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Near: o.Near, Found: o.Found, NotYet: o.NotYet}
 }
 
 // JSON is the report as indented JSON with a final newline.
@@ -116,16 +122,22 @@ type Wording interface {
 	Units(cases, units, train, test int) string
 	TestSize(b Bundles, p Points) string
 	Requests(n int) string
-	Hit(rate string, byStart int) string
+	Hit(rate string, byStart, byEarlier, byNews int) string
+	NotYet(requests, subagents int) string // answered cases whose answer was made after the case
 	Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string
 	Recover(rate, everyMissed string) string
 	Empty(rate string) string
+	// News is the session news (B3) of the request hooks: requests that had it, the ids it named (expected,
+	// allowed, other) and its characters per such request.
+	News(requests, ids, expected, allowed, other int, chars string) string
 	CharsRequest(dist string) string
 	CharsTool(dist string) string
 	CharsSession(dist string) string
 	CharsStart(dist string) string
-	Subagent(cases int, hit, wrong string, forbid int, empty, chars string) string
-	Duplicate(cases int, hit, offered string, forbid int) string
+	Subagent(cases int, hit string, byLead int, wrong string, forbid int, empty, chars, leadChars string) string
+	// Duplicate is the duplicate bundle: the hit of the block and near ids together, the cases with no answer
+	// where a save was stopped (wrongBlock) or a near line was offered (nearOffered), and the forbidden ids of each.
+	Duplicate(cases int, hit, wrongBlock, nearOffered string, forbid, nearForbid int) string
 	ZeroDen() string
 	Dist(mean, median float64, max, n int) string
 }
@@ -175,17 +187,21 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 	q, g, d := m.Requests, m.Subagent, m.Duplicates
 	fmt.Fprintf(b, "[%s] %s\n", w.Part(part), w.Requests(q.Cases))
 	for _, line := range []string{
-		w.Hit(pct(w, q.Hit), q.HitByStart),
+		w.Hit(pct(w, q.Hit), q.HitByStart, q.HitByEarlier, q.HitByNews),
 		w.Wrong(pct(w, q.Wrong), q.Injected, q.Correct, q.Neutral, q.Injected-q.Correct-q.Neutral, q.Forbid, q.ForbidCases),
 		w.Recover(pct(w, q.Recover), pct(w, q.RecoverMissed)),
 		w.Empty(pct(w, q.Empty)),
+		w.News(q.News.Requests, q.News.IDs, q.News.Expected, q.News.Allowed, q.News.IDs-q.News.Expected-q.News.Allowed, distText(w, q.News.Chars)),
 		w.CharsRequest(distText(w, q.Chars)),
 		w.CharsTool(distText(w, q.B2Chars)),
 		w.CharsSession(distText(w, q.SessionChars)),
 		w.CharsStart(distText(w, q.StartChars)),
-		w.Subagent(g.Cases, pct(w, g.Hit), pct(w, g.Wrong), g.Forbid, pct(w, g.Empty), distText(w, g.Chars)),
-		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.Offered), d.Forbid),
+		w.Subagent(g.Cases, pct(w, g.Hit), g.HitByLead, pct(w, g.Wrong), g.Forbid, pct(w, g.Empty), distText(w, g.Chars), distText(w, g.LeadChars)),
+		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.WrongBlock), pct(w, d.NearOffered), d.Forbid, d.NearForbid),
 	} {
 		b.WriteString("  " + line + "\n")
+	}
+	if q.NotYet+g.NotYet > 0 {
+		b.WriteString("  " + w.NotYet(q.NotYet, g.NotYet) + "\n")
 	}
 }

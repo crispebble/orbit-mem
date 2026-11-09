@@ -58,7 +58,7 @@
 
 기억이 있는 짝(`setup.db`가 `"memories"`)의 `context`·`recall` 성공 결과는 건너뛴 까닭(`skipped`)이 없으면 `text`를 `"$nonEmptyString"`, `memoryIds`를 `"$nonEmptyArray"`로 둔다. 빈 결과로 통과하지 않게 하려는 것이다. `call` 짝은 결과의 봉투(성공·오류·도구 이름)만 대조하고 도구 결과는 `"$any"`로 둔다.
 
-공통 칸 `idempotencyKey`는 `call`의 `memory_save`에서 `args`에 `idempotencyKey`가 없을 때만 `args`에 합친다(`args`가 이긴다). 같은 키·같은 인자로 다시 부르면 한 번만 적용하고 그 기억을 지금 상태로 다시 돌려준다(`call-memory_save-idempotent`). 같은 키에 다른 인자는 도구 오류(`tool`)다. 저장할 기억과 비슷한 기억이 있으면 `memory_save`는 저장하지 않고 성공(종료 `0`)으로 고르기를 돌려주고(`call-memory_save-similar`) (`call memory_save`는 종료 `0`이어도 `result.saved`가 `false`면 저장되지 않았으므로, 호출자는 `saved`를 확인하고 `false`면 `similar`·`choices`를 보고 `resolve`를 넣어 다시 부른다), `args.resolve`로 고른 것을 적용한다(`call-memory_save-resolve`). 결과 꼴은 MCP `memory_save`와 같고 짝은 봉투만 대조한다.
+공통 칸 `idempotencyKey`는 `call`의 `memory_save`에서 `args`에 `idempotencyKey`가 없을 때만 `args`에 합친다(`args`가 이긴다). 같은 키·같은 인자로 다시 부르면 한 번만 적용하고 그 기억을 지금 상태로 다시 돌려준다(`call-memory_save-idempotent`). 같은 키에 다른 인자는 도구 오류(`tool`)다. 저장할 기억과 비슷한 기억이 있으면 `memory_save`는 저장하지 않고 성공(종료 `0`)으로 고르기를 돌려주고(`call-memory_save-similar`) (`call memory_save`는 종료 `0`이어도 `result.saved`가 `false`면 저장되지 않았으므로, 호출자는 `saved`를 확인하고 `false`면 `similar`·`choices`를 보고 `resolve`를 넣어 다시 부른다), `args.resolve`로 고른 것을 적용한다(`call-memory_save-resolve`). 막지 않고 저장했는데 같은 범위에 가까운 기억(비슷함 점수가 설정 `saveNearMin` 이상)이 있으면 `result.near`에 그 id·제목을 최대 3개 한 줄로 붙인다(`call-memory_save-near`). 없으면 그 키가 없다. 결과 꼴은 MCP `memory_save`와 같고 짝은 봉투만 대조한다.
 
 공통 칸 `trust`는 글 하나(`owner`·`agent`·`untrusted`·`system`)다. `call`의 저장이 남기는 출처 등급을 이번 호출만 그 값까지 낮춘다(`call-memory_save-trust-lowered`). 통로의 상한(host call은 `agent`)보다 올리지는 못한다. 다른 꼴(객체·숫자·배열)이나 모르는 값은 어느 op에서든 사용법 오류(종료 `2`)다(`usage-bad-trust`).
 
@@ -74,3 +74,7 @@
 
 - `name`: `call`의 도구 오류(`tool`)·`unknown-tool`·DB 상태 오류(`no-db`·`schema-newer`·`schema-older`)에서 그 도구 이름.
 - `mayHaveApplied`: 쓰기 도구(`memory_save`·`memory_update`)의 `timeout`에만 `true`로 붙는다. 한도를 넘긴 계산도 끝까지 돌아 쓰기가 커밋될 수 있다는 뜻이다. 호출자는 다시 쓰기 전에 `memory_find`·`memory_get`으로 반영됐는지 본다. 읽기 도구와 다른 op의 `timeout`에는 이 칸이 없다. 한도를 넘긴 뒤 나온 결과는 늘 `timeout`이다(결정적).
+
+## 위임 글
+
+서브에이전트에게 일을 맡기는 도구 직전의 `tool-context`에 `task`(위임 글)와 `agentKind`(서브에이전트 종류)를 실으면, 결과는 `task`가 없을 때와 같고(그 도구에 걸린 기억) 위임 글의 앞 2,000자를 세션 상태에 적는다(`tool-context-delegation`). 서브에이전트가 시작할 때의 `context`(`audience` `subagent`)는 `task`가 없으면 같은 `session`·같은 `agentKind`에서 먼저 적힌, 아직 다른 `agent`가 가져가지 않은 위임 글을 가져가 그 글로 묶음을 만든다(`context-subagent-delegated`). 같은 `agent`가 다시 부르면 가져간 글을 다시 쓴다. `task`가 있으면 그 글을 쓰고 적힌 위임 글은 건드리지 않는다(`context-subagent-task`). 짝이 없으면 상시 핵심 제목 줄만이다(`context-subagent`). `reset`·`session-end`는 그 세션의 위임 글을 지운다. 묶음은 위임 회상(2,400자 이하) 뒤 상시 핵심 제목 줄(600자 이하)이고 `budget.limit`은 3,000이다.

@@ -33,14 +33,16 @@ func TestTool_저장의_출처_등급은_통로_상한_agent다(t *testing.T) {
 	home(t)
 	seed(t).Close()
 	base := []string{"--cwd", "/tmp", "--host", "h", "--session", "s"}
+	// 제목은 서로 낱말이 겹치지 않는다: 「환경 user」「플래그 user」처럼 한 낱말만 다르면 저장 때 비슷함에 걸려 저장되지
+	// 않는다(1-6 b6d 2차). 이 시험이 보는 것은 등급이다.
 	for i, c := range []struct {
 		env, flag, args, want string
 	}{
-		{"", "", `{"kind":"fact","appliesTo":"user","title":"기본","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
-		{"user", "", `{"kind":"fact","appliesTo":"user","title":"환경 user","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
-		{"", "user", `{"kind":"fact","appliesTo":"user","title":"플래그 user","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
-		{"user", "user", `{"kind":"fact","appliesTo":"user","title":"요청 owner","source":{"kind":"session","ref":"s","trust":"owner"}}`, memory.TrustAgent},
-		{"", "", `{"kind":"fact","appliesTo":"user","title":"웹 글","source":{"kind":"file","ref":"web","trust":"untrusted"}}`, memory.TrustUntrusted},
+		{"", "", `{"kind":"fact","appliesTo":"user","title":"회의는 30분 안에 끝낸다","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
+		{"user", "", `{"kind":"fact","appliesTo":"user","title":"빌드 캐시는 매주 비운다","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
+		{"", "user", `{"kind":"fact","appliesTo":"user","title":"배포 창은 화요일 오후다","source":{"kind":"session","ref":"s"}}`, memory.TrustAgent},
+		{"user", "user", `{"kind":"fact","appliesTo":"user","title":"운영 로그 보관은 30일이다","source":{"kind":"session","ref":"s","trust":"owner"}}`, memory.TrustAgent},
+		{"", "", `{"kind":"fact","appliesTo":"user","title":"웹에서 읽은 포트 번호","source":{"kind":"file","ref":"web","trust":"untrusted"}}`, memory.TrustUntrusted},
 	} {
 		t.Setenv("ORBIT_ACTOR", c.env)
 		args := append([]string{"tool", "memory_save"}, base...)
@@ -61,8 +63,14 @@ func TestTool_저장의_출처_등급은_통로_상한_agent다(t *testing.T) {
 func TestHostCall_공통_칸_trust로_낮춘_저장(t *testing.T) {
 	home(t)
 	seed(t).Close()
-	for _, c := range []struct{ trust, want string }{{`"untrusted"`, memory.TrustUntrusted}, {`"owner"`, memory.TrustAgent}, {`"system"`, memory.TrustSystem}} {
-		in := `{"host":"h","session":"s","cwd":"/tmp","trust":` + c.trust + `,"name":"memory_save","args":{"kind":"fact","appliesTo":"user","title":"호출 ` + c.want + ` ` + c.trust[1:len(c.trust)-1] + `","source":{"kind":"session","ref":"s"}}}`
+	// 제목은 서로 낱말이 겹치지 않는다: 「호출 agent owner」「호출 system system」처럼 겹치면 저장 때 비슷함에 걸려
+	// 저장되지 않는다(1-6 b6d 2차). 이 시험이 보는 것은 등급이다.
+	for _, c := range []struct{ trust, want, title string }{
+		{`"untrusted"`, memory.TrustUntrusted, "웹에서 읽은 포트 번호"},
+		{`"owner"`, memory.TrustAgent, "회의는 30분 안에 끝낸다"},
+		{`"system"`, memory.TrustSystem, "빌드 캐시는 매주 비운다"},
+	} {
+		in := `{"host":"h","session":"s","cwd":"/tmp","trust":` + c.trust + `,"name":"memory_save","args":{"kind":"fact","appliesTo":"user","title":"` + c.title + `","source":{"kind":"session","ref":"s"}}}`
 		out, errOut, code := run(t, in, "host", "call")
 		if code != 0 {
 			t.Fatalf("%s: code %d out %q err %q", c.trust, code, out, errOut)

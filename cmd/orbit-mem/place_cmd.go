@@ -37,6 +37,16 @@ func saveSimilarMinOf() float64 {
 	return cfg.SaveSimilarMin
 }
 
+// saveNearMinOf is the floor of memory_save's close memories in the configuration (config saveNearMin).
+// An unreadable configuration gives 0, which the handler reads as the default (memory.DefaultNearMin).
+func saveNearMinOf() float64 {
+	cfg, err := loadConfig()
+	if err != nil {
+		return 0
+	}
+	return cfg.SaveNearMin
+}
+
 // cmdPlace shows where a folder stands in the product map: its scope key, its products and whether it is a
 // folder of several products, so a person can check the map and fix a wrong line (S3 명세 2.2).
 func cmdPlace(a *app, args []string) error {

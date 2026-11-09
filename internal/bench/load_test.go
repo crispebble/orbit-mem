@@ -296,3 +296,116 @@ func TestPrepare는_DB도_기억도_없거나_둘_다_있으면_오류다(t *tes
 		t.Error("missing DB")
 	}
 }
+
+// v4Source makes path a memory DB as schema 4 left it (before the search index: no memory_index,
+// memory_fts or save_requests, no sources.trust, meta and user_version 4) with one memory.
+func v4Source(t *testing.T, path, title string) string {
+	t.Helper()
+	w, err := memory.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := w.Save(memory.SaveInput{Kind: "fact", Title: title, Scope: "global", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.DB().Exec(`DROP TABLE memory_fts; DROP TABLE memory_index; DROP TABLE save_requests;
+		ALTER TABLE sources DROP COLUMN trust; UPDATE meta SET value='4' WHERE key='schema.version'; PRAGMA user_version=4`); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	if _, info, err := memory.OpenReadOnly(path); err != nil || info.State != memory.SchemaOlder || info.DB != 4 {
+		t.Fatalf("the source is not a schema 4 DB: %+v %v", info, err)
+	}
+	return saved.ID
+}
+
+func TestPrepare는_판_4_DB의_사본을_지금_판으로_올리고_원본은_그대로_둔다(t *testing.T) {
+	dir, path := writeDB(t)
+	id := v4Source(t, path, "옛 판 사본 이전 확인용 기억")
+	before := folderSums(t, dir)
+	set, err := bench.Parse([]byte(fmt.Sprintf(`{"now":"2026-11-03T09:00:00+09:00","cwd":"/bench/app","cases":[{"id":"c","prompt":"p","expect":[%q]}]}`, id)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := bench.Prepare(set, path)
+	if err != nil {
+		t.Fatalf("a schema 4 DB is refused: %v", err)
+	}
+	defer p.Close()
+	copyPath, err := p.Copy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, info, err := memory.OpenReadOnly(copyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if info.State != memory.SchemaOK || info.DB != memory.SchemaVersion {
+		t.Errorf("copy schema = %+v, want ok at %d", info, memory.SchemaVersion)
+	}
+	got, err := s.Find(memory.FindInput{Query: "사본 이전 확인용"})
+	if err != nil || len(got) != 1 || got[0].ID != id {
+		t.Errorf("the migrated copy does not find the memory by its index: %v %v", got, err)
+	}
+	// 원본 폴더는 파일 하나 바뀌거나 생기지 않는다(백업 폴더도 원본 옆에 생기지 않는다).
+	after := folderSums(t, dir)
+	if len(after) != len(before) {
+		t.Errorf("files next to the source: %v, want %v", keys(after), keys(before))
+	}
+	for name, sum := range before {
+		if after[name] != sum {
+			t.Errorf("%s changed", name)
+		}
+	}
+	if _, info, err := memory.OpenReadOnly(path); err != nil || info.DB != 4 {
+		t.Errorf("the source schema = %+v %v, want 4 left as it was", info, err)
+	}
+}
+
+func TestPrepare는_실행_파일보다_새_판인_DB를_거절한다(t *testing.T) {
+	_, path := writeDB(t)
+	w, err := memory.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.DB().Exec(`UPDATE meta SET value=? WHERE key='schema.version'`, fmt.Sprint(memory.SchemaVersion+1)); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	set, _ := bench.Parse([]byte(`{"now":"2026-11-03T09:00:00Z","cwd":"/x","cases":[]}`))
+	if _, err := bench.Prepare(set, path); err == nil || !strings.Contains(err.Error(), "newer") {
+		t.Errorf("a newer DB: err = %v", err)
+	}
+}
+
+// folderSums is the sha256 of every file under dir by its path relative to dir.
+func folderSums(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		out[rel] = fmt.Sprintf("%x", sha256.Sum256(b))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func keys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}

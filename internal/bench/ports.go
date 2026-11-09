@@ -5,12 +5,28 @@
 // by the caller.
 package bench
 
+import "time"
+
 // Shown is what one recall step put in front of the model: the memory ids in the
 // order shown, the characters of the text, and the text itself.
+//
+// A delegation bundle has two shares: the always-on title lines (the user's core, the guidance of the
+// role) and the recall for the task. The path says which ids are the first with Lead (a subset of IDs)
+// and how many of the characters they are with LeadChars; the rest is the recall share. A path with no
+// such split leaves both empty and all of it counts as recall.
+//
+// A request hook has two shares too: the session news (B3, what changed in the session since its bundle: a
+// replaced memory, one confirmed elsewhere) and the work recall (B1). The path says which ids are the news with
+// News (a subset of IDs) and how many characters they take with NewsChars. The news is not a recall of the
+// request: the measure counts its ids as shown but not as put in (설계 5.1 B3, 1-6 b6r 3차).
 type Shown struct {
-	IDs   []string
-	Chars int
-	Text  string
+	IDs       []string
+	Chars     int
+	Text      string
+	Lead      []string
+	LeadChars int
+	News      []string
+	NewsChars int
 }
 
 // Recaller is the recall path under test. The origin of a case is the answer key and is
@@ -42,9 +58,17 @@ type Draft struct {
 	Scope string `json:"scope,omitempty"`
 }
 
-// Similar gives the ids of the memories most like a draft (top 3).
+// SaveMeets is what saving a draft meets: Block, the memories the save stops at for the caller to pick from
+// (or merges into or replaces), and Near, the close memories shown beside a save that goes on. Each is
+// ranked, best first; only the first SimilarLimit of each count.
+type SaveMeets struct {
+	Block []string
+	Near  []string
+}
+
+// Similar gives what saving a draft meets.
 type Similar interface {
-	Similar(cwd string, d Draft) ([]string, error)
+	Similar(cwd string, d Draft) (SaveMeets, error)
 }
 
 // Env is one recall path opened on one DB copy.
@@ -52,7 +76,10 @@ type Env struct {
 	Recaller Recaller
 	Finder   Finder
 	Similar  Similar
-	Close    func() error
+	// SetNow moves the clock of the path (recall, search, similar) to t. A set whose cases carry their times
+	// (Set.Timed) needs it: the run calls it before a case whose time differs from the last one.
+	SetNow func(t time.Time)
+	Close  func() error
 }
 
 // Factory opens a recall path on a fresh copy of the prepared DB; every recall path

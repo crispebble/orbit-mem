@@ -120,22 +120,28 @@ func (tagWording) Header(a, n, s string) string                    { return tag(
 func (tagWording) Units(c, u, tr, te int) string                   { return tag("units", c, u, tr, te) }
 func (tagWording) TestSize(b bench.Bundles, p bench.Points) string { return tag("testSize", b, p) }
 func (tagWording) Requests(n int) string                           { return tag("requests", n) }
-func (tagWording) Hit(r string, n int) string                      { return tag("hit", r, n) }
+func (tagWording) Hit(r string, n, e, s int) string                { return tag("hit", r, n, e, s) }
+func (tagWording) NotYet(q, g int) string                          { return tag("notYet", q, g) }
 func (tagWording) Wrong(r string, i, c, n, w, f, fc int) string {
 	return tag("wrong", r, i, c, n, w, f, fc)
 }
-func (tagWording) Recover(r, m string) string   { return tag("recover", r, m) }
-func (tagWording) Empty(r string) string        { return tag("empty", r) }
+func (tagWording) Recover(r, m string) string { return tag("recover", r, m) }
+func (tagWording) Empty(r string) string      { return tag("empty", r) }
+func (tagWording) News(q, i, e, a, o int, d string) string {
+	return tag("news", q, i, e, a, o, d)
+}
 func (tagWording) CharsRequest(d string) string { return tag("charsRequest", d) }
 func (tagWording) CharsTool(d string) string    { return tag("charsTool", d) }
 func (tagWording) CharsSession(d string) string { return tag("charsSession", d) }
 func (tagWording) CharsStart(d string) string   { return tag("charsStart", d) }
-func (tagWording) Subagent(c int, h, w string, f int, e, ch string) string {
-	return tag("subagent", c, h, w, f, e, ch)
+func (tagWording) Subagent(c int, h string, bl int, w string, f int, e, ch, lc string) string {
+	return tag("subagent", c, h, bl, w, f, e, ch, lc)
 }
-func (tagWording) Duplicate(c int, h, o string, f int) string { return tag("duplicate", c, h, o, f) }
-func (tagWording) ZeroDen() string                            { return "<zeroDen>" }
-func (tagWording) Dist(m, md float64, mx, n int) string       { return tag("dist", m, md, mx, n) }
+func (tagWording) Duplicate(c int, h, wb, no string, f, nf int) string {
+	return tag("duplicate", c, h, wb, no, f, nf)
+}
+func (tagWording) ZeroDen() string                      { return "<zeroDen>" }
+func (tagWording) Dist(m, md float64, mx, n int) string { return tag("dist", m, md, mx, n) }
 
 func TestReport_Text는_판정용_크기와_한_사례당_퍼센트포인트를_밝힌다(t *testing.T) {
 	r, _ := runFake(t, reportCases, fakeScript(), keyed{sim: map[string][]string{"t5": {"d"}}})
@@ -175,5 +181,16 @@ func TestReport_Text는_분모_0을_밝힌다(t *testing.T) {
 	r, _ := runFake(t, `{"id":"c3","session":"s2","prompt":"p3"}`, script{}, keyed{})
 	if text := r.Text(bench.PartAll, tagWording{}); !strings.Contains(text, "<zeroDen>") {
 		t.Errorf("no zero denominator mark:\n%s", text)
+	}
+}
+
+func TestReport_그_시각엔_없던_정답이_있을_때만_그_줄을_낸다(t *testing.T) {
+	r := &bench.Report{Runs: []bench.RunReport{{Name: "x"}}}
+	if strings.Contains(r.Text(bench.PartAll, tagWording{}), "notYet") {
+		t.Fatal("a set with no such case must not show the line")
+	}
+	r.Runs[0].All.Requests.NotYet = 2
+	if !strings.Contains(r.Text(bench.PartAll, tagWording{}), "<notYet [2 0]>") {
+		t.Fatalf("line missing:\n%s", r.Text(bench.PartAll, tagWording{}))
 	}
 }

@@ -206,8 +206,8 @@ func TestContext_main은_SessionBundle과_같고_시작을_기록한다(t *testi
 	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" {
 		t.Fatalf("context = %+v\nwant %+v", got, want)
 	}
-	// 「최근 결정」 줄은 없다(T-3): 핵심 밖 결정은 제목도 들지 않는다.
-	if !slices.Contains(got.MemoryIDs, rule.ID) || strings.Contains(got.Text, dec.Title) || got.Skipped != "" {
+	// 핵심 밖 결정은 「최근 결정」 제목 줄로만 든다(1-6 b6r).
+	if !slices.Contains(got.MemoryIDs, rule.ID) || !slices.Contains(got.MemoryIDs, dec.ID) || !strings.Contains(got.Text, dec.Title+"("+dec.ID+")") || got.Skipped != "" {
 		t.Fatalf("context = %+v", got)
 	}
 	if got.Budget.Chars != want.Chars || got.Budget.Limit != inject.MaxSessionStartRunes {
@@ -262,8 +262,8 @@ func TestContext_subagent는_SubagentStart이고_서브에이전트_키로_센�
 	a := e.adapter("s-1")
 	a.agent = "ag-1"
 	got := a.recall(host.OpContext, map[string]any{"source": "startup", "audience": "subagent"})
-	want := inject.SubagentStart(s, e.cfg)
-	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" || got.Budget.Limit != memory.UserCoreRunes {
+	want := inject.SubagentStart(s, e.cfg, e.where(), "")
+	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" || got.Budget.Limit != inject.MaxSubagentRunes {
 		t.Fatalf("subagent = %+v want %+v", got, want)
 	}
 	if evs := events(t, s); len(evs) != 1 || evs[0].Kind != memory.EventInjectSubagent || evs[0].Session != "s-1/ag-1" {
@@ -279,7 +279,7 @@ func TestContext_subagent는_SubagentStart이고_서브에이전트_키로_센�
 func TestRecall_origin과_세션_키(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	a.agent = "ag-1"
 	for _, origin := range []string{"agent", "system"} {
@@ -343,7 +343,7 @@ func TestRecall_틀만_있는_요청은_DB를_열지_않고_not_person이다(t *
 func TestRecall_틀만_있는_요청은_활동도_사용_사건도_남기지_않는다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n금요일 배포 금지\n</task-notification>"})
 	if got.Skipped != host.SkippedNotPerson {
@@ -358,7 +358,7 @@ func TestRecall_틀만_있는_요청은_활동도_사용_사건도_남기지_않
 func TestRecall_붙여_넣고_질문하면_회상하고_사람_글을_기록한다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n<status>completed</status>\n</task-notification>\n\n금요일 배포 금지 맞나"})
 	if got.Skipped != "" || !slices.Contains(got.MemoryIDs, dec.ID) {
@@ -373,7 +373,7 @@ func TestRecall_붙여_넣고_질문하면_회상하고_사람_글을_기록한�
 func TestRecall_슬래시_명령은_인자로_회상한다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	got := a.recall(host.OpRecall, map[string]any{"prompt": "/review 금요일 배포 금지 맞나"})
 	if !slices.Contains(got.MemoryIDs, dec.ID) {
@@ -388,7 +388,7 @@ func TestRecall_슬래시_명령은_인자로_회상한다(t *testing.T) {
 func TestRecall_사소한_요청은_B1만_건너뛰고_B3와_활동은_남긴다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	a.recall(host.OpContext, map[string]any{"source": "startup"})
 	time.Sleep(5 * time.Millisecond)
@@ -446,7 +446,7 @@ func TestToolContext는_ToolInjection이고_agent_키로_한_번만_준다(t *te
 func TestInject_수준과_빈_요청은_사건을_남기지_않는다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
-	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Scope: memory.ScopeGlobal})
+	save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Scope: memory.ScopeGlobal})
 	a := e.adapter("s-1")
 	a.recall(host.OpRecall, map[string]any{"prompt": "   "})
 	if evs := events(t, s); len(evs) != 0 {
@@ -856,7 +856,7 @@ func TestLock_기록이_잠금으로_실패해도_결과는_나온다(t *testing
 	e := newEnv(t)
 	s := e.store()
 	rule := pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
-	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Scope: memory.ScopeGlobal})
+	save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Scope: memory.ScopeGlobal})
 	ctx := context.Background()
 	other, err := sql.Open("sqlite", "file:"+e.db)
 	if err != nil {

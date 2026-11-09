@@ -106,18 +106,20 @@ func TestTools_상한을_넣으면_owner이고_Lower는_낮추기만_한다(t *t
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	save := func(tl Tools, title string) string {
-		out, err := tl.Save(SaveIn{Kind: "fact", Title: title, Body: "본문 " + title, AppliesTo: "user", Source: SourceIn{Kind: "session", Ref: "s"}})
+	// 저장마다 낱말이 겹치지 않는 제목·본문이다: 한 낱말만 다른 글(「본문 사람」「본문 낮춤」)은 저장 때 비슷함에 걸려
+	// 저장되지 않는다(1-6 b6d 2차). 이 시험이 보는 것은 등급이다.
+	save := func(tl Tools, title, body string) string {
+		out, err := tl.Save(SaveIn{Kind: "fact", Title: title, Body: body, AppliesTo: "user", Source: SourceIn{Kind: "session", Ref: "s"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return trustOf(t, s, out.Memory.ID)
 	}
 	human := NewTools(s, Options{TrustLimit: memory.TrustOwner})
-	if got := save(human, "사람"); got != memory.TrustOwner {
+	if got := save(human, "사람이 정한 회의 시간", "회의는 30분 안에 끝낸다"); got != memory.TrustOwner {
 		t.Errorf("사람 통로 = %q", got)
 	}
-	if got := save(NewTools(s, Options{}), "비어 있음"); got != memory.TrustAgent {
+	if got := save(NewTools(s, Options{}), "빌드 캐시 비우기", "캐시는 매주 월요일에 지운다"); got != memory.TrustAgent {
 		t.Errorf("상한 비면 = %q", got)
 	}
 	lower := func(tl Tools, trust string) Tools {
@@ -127,10 +129,10 @@ func TestTools_상한을_넣으면_owner이고_Lower는_낮추기만_한다(t *t
 		}
 		return l
 	}
-	if got := save(lower(human, memory.TrustUntrusted), "낮춤"); got != memory.TrustUntrusted {
+	if got := save(lower(human, memory.TrustUntrusted), "웹에서 읽은 포트 번호", "개발 서버는 8080을 쓴다고 적혀 있었다"); got != memory.TrustUntrusted {
 		t.Errorf("Lower untrusted = %q", got)
 	}
-	if got := save(lower(NewTools(s, Options{}), memory.TrustOwner), "못 올림"); got != memory.TrustAgent {
+	if got := save(lower(NewTools(s, Options{}), memory.TrustOwner), "로그 보관 기간", "운영 로그는 30일 동안 둔다"); got != memory.TrustAgent {
 		t.Errorf("Lower owner on agent = %q", got)
 	}
 	if _, err := human.Lower("boss"); !errors.Is(err, memory.ErrInvalid) {
@@ -141,8 +143,9 @@ func TestTools_상한을_넣으면_owner이고_Lower는_낮추기만_한다(t *t
 // find·get 보기: 믿을 수 없는 기억에만 trust 칸이 있다.
 func TestView_믿을_수_없는_기억만_trust를_싣는다(t *testing.T) {
 	cs, _ := connectOpts(t, Options{})
-	saveWith(t, cs, "믿을만한 기억 알파", map[string]any{"kind": "session", "ref": "s1"})
-	saveWith(t, cs, "웹에서 온 기억 알파", map[string]any{"kind": "file", "ref": "web", "trust": "untrusted"})
+	// 두 제목은 찾을 낱말 「알파」만 나눈다: 「… 기억 알파」처럼 한 낱말만 다르면 저장 때 비슷함에 걸린다(1-6 b6d 2차).
+	saveWith(t, cs, "믿을만한 회의 시간 규칙 알파", map[string]any{"kind": "session", "ref": "s1"})
+	saveWith(t, cs, "웹에서 읽은 포트 번호 메모 알파", map[string]any{"kind": "file", "ref": "web", "trust": "untrusted"})
 	var found FindOut
 	call(t, cs, "memory_find", map[string]any{"query": "알파", "scope": "all"}, &found)
 	if len(found.Items) != 2 {

@@ -6,6 +6,7 @@ package hooktest
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/crispebble/orbit-mem/contract"
@@ -19,21 +20,24 @@ const (
 	Session = "s-1"
 )
 
-// want is one expected request: a pair's input, with the host the adapter writes and some fields
+// Want is one expected request: a pair's input, with the host the adapter writes and some fields
 // set (a nil value takes the field out).
-type want struct {
-	pair string
-	set  map[string]any
+type Want struct {
+	Pair string
+	Set  map[string]any
 }
 
-type planCase struct {
-	name  string
-	ev    hook.Event
-	input string // 훅 입력 JSON 그대로
-	want  []want
+// Case is one hook input and the requests it becomes. An adapter adds its own host's cases (the input
+// shapes only its host has) to the shared ones.
+type Case struct {
+	Name  string
+	Event hook.Event
+	Input string // 훅 입력 JSON 그대로
+	Want  []Want
 }
 
-func in(fields map[string]any) string {
+// In is a hook input of the contract test's session with fields.
+func In(fields map[string]any) string {
 	m := map[string]any{"session_id": Session, "cwd": Cwd}
 	for k, v := range fields {
 		m[k] = v
@@ -42,38 +46,39 @@ func in(fields map[string]any) string {
 	return string(b)
 }
 
-var planCases = []planCase{
-	{"session-start startup", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "startup"}),
-		[]want{{"context-main-memories", nil}}},
-	{"session-start resume", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "resume"}),
-		[]want{{"context-main-memories", map[string]any{"source": "resume"}}}},
-	{"session-start fork", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "fork"}),
-		[]want{{"context-main-memories", map[string]any{"source": "fork"}}}},
+var planCases = []Case{
+	{"session-start startup", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "startup"}),
+		[]Want{{"context-main-memories", nil}}},
+	{"session-start resume", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "resume"}),
+		[]Want{{"context-main-memories", map[string]any{"source": "resume"}}}},
+	{"session-start fork", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "fork"}),
+		[]Want{{"context-main-memories", map[string]any{"source": "fork"}}}},
 	// 압축·/clear 뒤에는 앞선 문맥이 없다: 표시를 먼저 비운다(reset 다음 context, 설계 11절).
-	{"session-start compact", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "compact"}),
-		[]want{{"reset-ok", nil}, {"context-main-memories", map[string]any{"source": "compact"}}}},
-	{"session-start clear", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "clear"}),
-		[]want{{"reset-ok", nil}, {"context-main-memories", map[string]any{"source": "clear"}}}},
+	{"session-start compact", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "compact"}),
+		[]Want{{"reset-ok", nil}, {"context-main-memories", map[string]any{"source": "compact"}}}},
+	{"session-start clear", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "clear"}),
+		[]Want{{"reset-ok", nil}, {"context-main-memories", map[string]any{"source": "clear"}}}},
 	// 모르는·빠진 source는 계약에 넣지 않는다(사용법 오류로 문맥을 잃지 않게).
-	{"session-start without source", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart"}),
-		[]want{{"context-main-memories", map[string]any{"source": nil}}}},
-	{"session-start unknown source", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "weird"}),
-		[]want{{"context-main-memories", map[string]any{"source": nil}}}},
-	{"prompt", hook.Prompt, in(map[string]any{"hook_event_name": "UserPromptSubmit", "prompt": "보고 한국어로"}),
-		[]want{{"recall-user", map[string]any{"origin": nil}}}},
-	{"prompt in a subagent", hook.Prompt, in(map[string]any{"prompt": "보고 한국어로", "agent_id": "a-1"}),
-		[]want{{"recall-user", map[string]any{"agent": "a-1", "origin": nil}}}},
-	{"pre-tool", hook.PreTool, in(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}}),
-		[]want{{"tool-context-bash", nil}}},
-	{"pre-tool in a subagent", hook.PreTool, in(map[string]any{"tool_name": "Bash", "agent_id": "a-1"}),
-		[]want{{"tool-context-bash", map[string]any{"agent": "a-1"}}}},
-	{"subagent-start", hook.SubagentStart, in(map[string]any{"hook_event_name": "SubagentStart", "agent_id": "a-1", "agent_type": "worker"}),
-		[]want{{"context-subagent", nil}}},
-	{"session-end", hook.SessionEnd, in(map[string]any{"hook_event_name": "SessionEnd", "reason": "exit"}),
-		[]want{{"session-end-ok", nil}}},
+	{"session-start without source", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart"}),
+		[]Want{{"context-main-memories", map[string]any{"source": nil}}}},
+	{"session-start unknown source", hook.SessionStart, In(map[string]any{"hook_event_name": "SessionStart", "source": "weird"}),
+		[]Want{{"context-main-memories", map[string]any{"source": nil}}}},
+	{"prompt", hook.Prompt, In(map[string]any{"hook_event_name": "UserPromptSubmit", "prompt": "보고 한국어로"}),
+		[]Want{{"recall-user", map[string]any{"origin": nil}}}},
+	{"prompt in a subagent", hook.Prompt, In(map[string]any{"prompt": "보고 한국어로", "agent_id": "a-1"}),
+		[]Want{{"recall-user", map[string]any{"agent": "a-1", "origin": nil}}}},
+	{"pre-tool", hook.PreTool, In(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}}),
+		[]Want{{"tool-context-bash", nil}}},
+	{"pre-tool in a subagent", hook.PreTool, In(map[string]any{"tool_name": "Bash", "agent_id": "a-1"}),
+		[]Want{{"tool-context-bash", map[string]any{"agent": "a-1"}}}},
+	// 서브에이전트 종류는 짝 맞추기에 쓴다(위임 글을 적을 때의 종류와 같은 이름, 설계 4.1).
+	{"subagent-start", hook.SubagentStart, In(map[string]any{"hook_event_name": "SubagentStart", "agent_id": "a-1", "agent_type": "worker"}),
+		[]Want{{"context-subagent", map[string]any{"agentKind": "worker"}}}},
+	{"session-end", hook.SessionEnd, In(map[string]any{"hook_event_name": "SessionEnd", "reason": "exit"}),
+		[]Want{{"session-end-ok", nil}}},
 	// 읽지 못하는 입력은 빈 입력이다: 훅은 계속한다(지금과 같다).
 	{"broken input", hook.Prompt, `not json`,
-		[]want{{"recall-user", map[string]any{"session": nil, "cwd": nil, "prompt": nil, "origin": nil}}}},
+		[]Want{{"recall-user", map[string]any{"session": nil, "cwd": nil, "prompt": nil, "origin": nil}}}},
 }
 
 func pairs(t *testing.T) map[string]contract.Pair {
@@ -120,28 +125,28 @@ func expected(t *testing.T, p contract.Pair, hostName string, set map[string]any
 	return m
 }
 
-// Plan checks that each hook event's input becomes the pairs' requests in order. dir is the
-// session folder the adapter is expected to give as the contract cwd whatever the input says
-// ("" for the input's own cwd).
-func Plan(t *testing.T, a hook.Adapter, hostName, dir string) {
+// Plan checks that each hook event's input (the shared cases, then the adapter's own) becomes the
+// pairs' requests in order. dir is the session folder the adapter is expected to give as the contract
+// cwd whatever the input says ("" for the input's own cwd).
+func Plan(t *testing.T, a hook.Adapter, hostName, dir string, own ...Case) {
 	t.Helper()
 	ps := pairs(t)
-	for _, c := range planCases {
-		t.Run(c.name, func(t *testing.T) {
-			plan := a.Plan(c.ev, []byte(c.input))
-			if len(plan.Steps) != len(c.want) {
-				t.Fatalf("steps %+v, want %d", plan.Steps, len(c.want))
+	for _, c := range append(slices.Clone(planCases), own...) {
+		t.Run(c.Name, func(t *testing.T) {
+			plan := a.Plan(c.Event, []byte(c.Input))
+			if len(plan.Steps) != len(c.Want) {
+				t.Fatalf("steps %+v, want %d", plan.Steps, len(c.Want))
 			}
-			for i, w := range c.want {
-				p, ok := ps[w.pair]
+			for i, w := range c.Want {
+				p, ok := ps[w.Pair]
 				if !ok {
-					t.Fatalf("no pair %s", w.pair)
+					t.Fatalf("no pair %s", w.Pair)
 				}
 				got := plan.Steps[i]
 				if got.Op != p.Op {
 					t.Fatalf("step %d op %q, want %q (%s)", i, got.Op, p.Op, p.Name)
 				}
-				want := expected(t, p, hostName, w.set)
+				want := expected(t, p, hostName, w.Set)
 				if dir != "" {
 					want["cwd"] = dir
 				}
@@ -152,7 +157,7 @@ func Plan(t *testing.T, a hook.Adapter, hostName, dir string) {
 			var raw struct {
 				Cwd string `json:"cwd"`
 			}
-			_ = json.Unmarshal([]byte(c.input), &raw)
+			_ = json.Unmarshal([]byte(c.Input), &raw)
 			if plan.Cwd != raw.Cwd {
 				t.Fatalf("plan cwd %q, want the input's own %q", plan.Cwd, raw.Cwd)
 			}

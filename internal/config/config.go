@@ -100,8 +100,81 @@ type Config struct {
 	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
 	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
 	// 저장 때 정리(설계 6.1, 계획 D8): memory_save가 같은 범위의 기억을 「비슷하다」고 보고 저장 전에 고르게 하는
-	// 저장 때 비슷함 점수(0~1, 두 기억 사이 토큰 양쪽 덮음)의 문턱. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
+	// 저장 때 비슷함 점수(0~1, 두 기억 사이 낱말 두 방향 덮음의 기하 평균)의 문턱. 막는 판정이라 엄격하게 둔다(1-6 b6db): 그 밑은
+	// 가까운 기억(SaveNearMin)이 맡는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
 	SaveSimilarMin float64 `json:"saveSimilarMin"`
+	// 가까운 기억(1-6 b6dn): memory_save가 막지 않고 저장할 때 같은 범위의 기억 가운데 이 점수(같은 비슷함) 이상인 것을
+	// 최대 3개 id·제목 한 줄로 붙인다. 0 < x ≤ 1. saveSimilarMin 이상이면 붙는 것이 없다. 이 키가 없는 옛 파일은 기본값(memory.DefaultNearMin)이다.
+	SaveNearMin float64 `json:"saveNearMin"`
+	// 요청 회상의 두 문턱(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계): 기억은 찾기 점수(0~1, memory.RecallQuery로 찾은
+	// 점수)가 recallMinScore 이상이고 요청의 뜻 있는 낱말 중 맞은 비율(0~1)이 recallMinCoverage 이상일 때만 요청 회상에 든다.
+	// 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	// recallMinCoverage는 맞은 낱말이 둘 이상인 기억의 비율 문턱이고, 맞은 낱말이 하나뿐인 기억은 recallMinCoverageOneWord를
+	// 넘어야 한다(설계 보완, 계획 1-6 b6 R1): 「낱말 넷 중 하나」처럼 흔한 낱말 하나로 맞은 주제 밖 기억을 막는다.
+	RecallMinScore           float64 `json:"recallMinScore"`
+	RecallMinCoverage        float64 `json:"recallMinCoverage"`
+	RecallMinCoverageOneWord float64 `json:"recallMinCoverageOneWord"`
+	// 요청 회상의 상대 문턱(설계 보완, 계획 1-6 b6): 두 문턱을 넘은 기억 가운데 찾기 점수가 1위의 recallMinRelative배
+	// 미만인 것은 뺀다. 확정을 앞에 두는 순서 때문에 약하게 맞은 기억이 3줄에 끼는 것을 막는다. 0 < x ≤ 1. 이 키가 없는 옛
+	// 파일은 기본값이다.
+	RecallMinRelative float64 `json:"recallMinRelative"`
+	// 위임 회상의 문턱(설계 보완, 계획 1-6 b6 T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 위임 글의 내용 낱말
+	// (명령형 어미·위임 머리 낱말·항목 번호를 뺀 것, memory.TaskWords) 가운데 taskRecallMinWords개 이상이 맞고, 찾기 점수가
+	// taskRecallMinScore 이상이며, 1위 점수의 taskRecallMinRelative배 이상인 기억만 넣는다. 점수·배는 0 < x ≤ 1, 낱말 수는
+	// 2~40이다(MinTaskRecallMinWords). 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinScore    float64 `json:"taskRecallMinScore"`
+	TaskRecallMinWords    int     `json:"taskRecallMinWords"`
+	TaskRecallMinRelative float64 `json:"taskRecallMinRelative"`
+	// 위임 회상의 제목 몫 문턱(설계 보완, 계획 1-6 b7f): 위의 세 문턱을 넘어도, 내용 낱말 가운데 그 기억의 제목·주제에 나온
+	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
+	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
+}
+
+// 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
+// 개발 자료)로 골랐다. 지금 기본값으로 잰 공개 묶음 전체(195사례, 회귀를 고친 뒤 3차 지표 정의, 보완안 9.1절)는 요청 적중 82/91 90.1%·
+// 틀린 회상 6/98 6.1%·넣지 않음 43/46 93.5%다. 고를 때는 요청 적중 77/91·틀린 회상 7/104·넣지 않음 42/46·위임 적중 4/21(당시
+// 정의)이었고, deploy-fact를 6개 사례의 허용으로 낮춘 라벨 변경(2026-11-09, 사용자 결정)·위임 제목 몫 문턱(b7f)·지표 정의
+// 변경을 거쳐 지금 값이 됐다. 아래 비교 값은 고를 때의 것이다.
+//   - recallMinScore 0.3: 저장소가 모르는 낱말을 빼고 재는 회상 점수에서 0.2~0.35가 같은 결과인 평탄 구간의 가운데다(0.4부터
+//     적중이 준다).
+//   - recallMinCoverage 0.25·recallMinCoverageOneWord 0.3: 한 낱말 비율을 0.25로 내리면 틀린 회상이 14.7%로, 0.35로 올리면
+//     적중이 73/91로 바뀐다.
+//   - recallMinRelative 0.9: 0.85와 같은 결과다.
+//   - 위임 taskRecallMinWords 3: 2면 틀린 회상 35%, 4면 적중 1/21. taskRecallMinScore 0.1(0.05~0.15 같음)·
+//     taskRecallMinRelative 0.3(0.25~0.35 같음).
+//   - 위임 taskRecallMinTitleShare 0.05(계획 1-6 b7f): 위 세 문턱은 기억 207개짜리 공개 묶음에서 골라, 기억 1,326개 저장소의
+//     긴 위임 글(내용 낱말 36~40개)에서는 아무 기억이나 통과했다. 재생 묶음 학습용(사람 미검토 정답표 초안)에서 위임 회상
+//     맞음 24·틀림 309/334 → 맞음 17·틀림 4/25(적중 5/43 → 2/43, 넣지 않음 0/24 → 22/24). 0.045면 틀림 8/34, 0.055면 맞음
+//     14. 학습용을 세션 반반으로 나눠도 두 쪽 모두 틀림이 줄었다(194 → 0, 109 → 4). 공개 묶음 전체는 결과가 같다.
+const (
+	DefaultRecallMinScore           = 0.3
+	DefaultRecallMinCoverage        = 0.25
+	DefaultRecallMinCoverageOneWord = 0.3
+	DefaultRecallMinRelative        = 0.9
+	DefaultTaskRecallMinScore       = 0.1
+	DefaultTaskRecallMinWords       = 3
+	DefaultTaskRecallMinRelative    = 0.3
+	DefaultTaskRecallMinTitleShare  = 0.05
+)
+
+// MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
+// request, needs two words or more for any recall (one word scores every memory that has it alike), so 1 would
+// act as 2 for a one-word task and as 1 for a longer one. The most is 40: a request has at most 40 meaningful words.
+const (
+	MinTaskRecallMinWords = 2
+	MaxTaskRecallMinWords = 40
+)
+
+// MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
+const MaxPromptRecallChars = 500
+
+// PromptRecallChars is the length the work recall of one request may use: recallChars, at most MaxPromptRecallChars.
+func (c Config) PromptRecallChars() int {
+	if c.RecallChars <= 0 {
+		return MaxPromptRecallChars
+	}
+	return min(c.RecallChars, MaxPromptRecallChars)
 }
 
 // defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
@@ -143,16 +216,20 @@ const (
 	HostMemoryKeep = "keep"
 )
 
-// maxRecallChars keeps the per-request context under the hosts' hook context
-// limit (about 10,000 characters in Claude Code).
+// maxRecallChars is the largest recallChars a file may hold (files written before the work recall
+// was bounded keep loading, the old default 1000 among them). The work recall itself uses PromptRecallChars,
+// MaxPromptRecallChars at most, which is also the default.
 const maxRecallChars = 9000
 
 // Default is the starting configuration.
 func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
-		RecallChars: 1000, LedgerWindowDays: 7,
+		RecallChars: MaxPromptRecallChars, LedgerWindowDays: 7,
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
-		SaveSimilarMin: memory.DefaultSimilarMin}
+		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
+		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
+		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -183,6 +260,33 @@ func (c Config) Validate() error {
 	}
 	if !(c.SaveSimilarMin > 0 && c.SaveSimilarMin <= 1) { // NaN도 거절한다
 		return i18n.Errorf("config.err.save_similar_min", c.SaveSimilarMin)
+	}
+	if !(c.SaveNearMin > 0 && c.SaveNearMin <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.save_near_min", c.SaveNearMin)
+	}
+	if !(c.RecallMinScore > 0 && c.RecallMinScore <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.recall_min_score", c.RecallMinScore)
+	}
+	if !(c.RecallMinCoverage > 0 && c.RecallMinCoverage <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage", c.RecallMinCoverage)
+	}
+	if !(c.RecallMinRelative > 0 && c.RecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.recall_min_relative", c.RecallMinRelative)
+	}
+	if !(c.RecallMinCoverageOneWord > 0 && c.RecallMinCoverageOneWord <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage_one_word", c.RecallMinCoverageOneWord)
+	}
+	if !(c.TaskRecallMinScore > 0 && c.TaskRecallMinScore <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_score", c.TaskRecallMinScore)
+	}
+	if c.TaskRecallMinWords < MinTaskRecallMinWords || c.TaskRecallMinWords > MaxTaskRecallMinWords {
+		return i18n.Errorf("config.err.task_recall_min_words", MinTaskRecallMinWords, MaxTaskRecallMinWords, c.TaskRecallMinWords)
+	}
+	if !(c.TaskRecallMinRelative > 0 && c.TaskRecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_relative", c.TaskRecallMinRelative)
+	}
+	if !(c.TaskRecallMinTitleShare > 0 && c.TaskRecallMinTitleShare <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_title_share", c.TaskRecallMinTitleShare)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

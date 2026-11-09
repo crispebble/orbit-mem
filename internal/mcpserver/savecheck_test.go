@@ -407,7 +407,7 @@ func (m dupMemory) args() map[string]any {
 func scoreOf(t *testing.T, s *memory.Store, m dupMemory, id string) float64 {
 	t.Helper()
 	r, err := s.SaveCheck(memory.SaveInput{Kind: m.Kind, Scope: memory.ScopeGlobal, Title: m.Title, Body: m.Body, Topic: m.Topic,
-		Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, 1e-9)
+		Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, memory.CheckMins{Similar: 1e-9})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,6 +425,9 @@ func scoreOf(t *testing.T, s *memory.Store, m dupMemory, id string) float64 {
 // L-16(설계 6.1): 중복 사례 묶음을 다시 저장해도 같은 내용 기억이 둘 생기지 않는다. 원래 기억과 무관한 기억 여럿을
 // 둔 DB에서 변형마다 저장하면 같은 제목 단축·같은 주제 대체로 바로 합쳐지거나, saved:false와 함께 원래 기억이
 // similar에 온다. 그때 skip과 update:<원래 id>를 번갈아 고르면 현재값은 그 사례에 하나뿐이다.
+// 원래 기억은 무관한 기억과 비슷하다고 나오면 안 된다. 사례의 allowOthers는 예외다: 「ko 시험 컨테이너」의 「시험 DB는
+// 컨테이너로 띄운다」는 같은 주장이라(1-6 b6d 2차, 자료의 note) 비슷하다고 나오면 그것만 있을 때 add로 저장한다.
+// 무관한 기억을 내밀지 않는다는 뜻은 낱말을 나누지만 주장이 다른 기억(「컨테이너 이미지는 버전 태그로 고정한다」)이 지킨다.
 func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_둘_생기지_않는다(t *testing.T) {
 	raw, err := os.ReadFile("testdata/save_duplicates.json")
 	if err != nil {
@@ -433,9 +436,10 @@ func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_�
 	var set struct {
 		Others []dupMemory `json:"others"`
 		Cases  []struct {
-			Name     string      `json:"name"`
-			Original dupMemory   `json:"original"`
-			Variants []dupMemory `json:"variants"`
+			Name        string      `json:"name"`
+			AllowOthers []string    `json:"allowOthers"` // 같은 주장이라 원래 기억과 비슷하다고 나와도 되는 others의 제목
+			Original    dupMemory   `json:"original"`
+			Variants    []dupMemory `json:"variants"`
 		} `json:"cases"`
 	}
 	if err := json.Unmarshal(raw, &set); err != nil {
@@ -445,12 +449,28 @@ func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_�
 	for _, c := range set.Cases {
 		cs, s := connect(t)
 		var others []string
+		allowed := map[string]bool{}
 		for _, o := range set.Others {
-			others = append(others, saveMCP(t, cs, with(o.args(), "resolve", "add")).Memory.ID)
+			id := saveMCP(t, cs, with(o.args(), "resolve", "add")).Memory.ID
+			others = append(others, id)
+			if slices.Contains(c.AllowOthers, o.Title) {
+				allowed[id] = true
+			}
+		}
+		if len(allowed) != len(c.AllowOthers) {
+			t.Fatalf("%s: allowOthers %v가 others에 없다", c.Name, c.AllowOthers)
 		}
 		orig := saveMCP(t, cs, c.Original.args())
 		if !orig.Saved {
-			t.Fatalf("%s: 원래 기억이 고르기를 받았다(무관한 기억과 비슷함): %+v", c.Name, orig.Similar)
+			for _, m := range orig.Similar {
+				if !allowed[m.ID] {
+					t.Fatalf("%s: 원래 기억이 고르기를 받았다(무관한 기억과 비슷함): %+v", c.Name, orig.Similar)
+				}
+			}
+			t.Logf("%s: 원래 기억이 같은 주장의 기억(allowOthers)과 비슷하다: %+v", c.Name, orig.Similar)
+			if orig = saveMCP(t, cs, with(c.Original.args(), "resolve", "add")); !orig.Saved {
+				t.Fatalf("%s: add로도 저장되지 않았다: %+v", c.Name, orig)
+			}
 		}
 	variants:
 		for i, v := range c.Variants {

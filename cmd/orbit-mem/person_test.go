@@ -29,7 +29,7 @@ func TestHook_틀만_있는_요청은_빈_출력이고_붙여_넣고_질문하�
 	}
 	home(t)
 	s := seed(t)
-	if _, err := s.Save(memory.SaveInput{Kind: "decision", Scope: memory.ScopeGlobal, Title: "금요일 배포 금지", Body: "주말 장애", Source: memory.Source{Kind: "quote", Excerpt: "금요일 배포 금지"}}); err != nil {
+	if _, err := s.Save(memory.SaveInput{Kind: "fact", Scope: memory.ScopeGlobal, Title: "금요일 배포 금지", Body: "주말 장애", Source: memory.Source{Kind: "quote", Excerpt: "금요일 배포 금지"}}); err != nil {
 		t.Fatal(err)
 	}
 	n := 0

@@ -71,7 +71,8 @@ func TestAC3_제품_범위_기억은_그_제품의_폴더에서만_회상된다(
 	}
 	all := []memory.Memory{desk, atlas, unsure, repo, user}
 	for name, scope := range f {
-		text := PromptInjection(s, cfg, scope, "상단바 시안 결정 다시 보자").Text
+		// 확정 결정은 세션 시작 「최근 결정」 줄(A층)이나 요청 회상(B1)으로 온다(1-6 b6r): 둘 다 같은 범위 규칙을 따른다.
+		text := SessionStart(s, cfg, scope) + "\n" + PromptInjection(s, cfg, scope, "상단바 시안 결정 다시 보자").Text
 		for _, m := range all {
 			shown := strings.Contains(text, m.ID)
 			exp := false
@@ -136,6 +137,8 @@ func TestS3_세션_시작은_user_핵심_제품_핵심_순이고_나머지_규�
 func TestS3_여러_제품_폴더는_요청에_이름이_나온_제품을_앞에_둔다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
+	cfg.RecallMinScore, cfg.RecallMinCoverage = 0.1, 0.1 // 순서만 본다: 제품 이름 낱말은 기억 글에 없어 점수를 낮춘다
+	cfg.RecentDecisions = 0                              // 요청 회상의 순서를 본다: 결정을 세션 시작 줄로 빼지 않는다
 	parent := s3Folders(t)["상위 폴더"]
 	desk := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 레일", "product:orbit-code-desktop", "", "상단바")
 	atlas := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 탭줄", "product:atlas", "", "상단바")
@@ -155,11 +158,12 @@ func TestS3_여러_제품_폴더는_요청에_이름이_나온_제품을_앞에_
 	}
 }
 
-func TestSubagentStart_user_핵심만_3000자_안에서_넣는다(t *testing.T) {
+// 서브에이전트 시작의 역할 지침은 user 상시 핵심의 제목 줄뿐이다(제품 핵심·핵심 아닌 규칙·본문 없음, 설계 4.1).
+func TestSubagentStart_역할_지침은_user_핵심의_제목_줄뿐이다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
 	f := s3Folders(t)
-	if inj := SubagentStart(s, cfg); inj.Text != "" {
+	if inj := SubagentStart(s, cfg, f["제품 저장소"], ""); inj.Text != "" {
 		t.Fatalf("no core, still:\n%s", inj.Text)
 	}
 	saveIn(t, s, memory.KindRule, "핵심이 아닌 확정 규칙", memory.ScopeGlobal, "", "아님")
@@ -170,10 +174,9 @@ func TestSubagentStart_user_핵심만_3000자_안에서_넣는다(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	_ = f
-	inj := SubagentStart(s, cfg)
-	if !strings.Contains(inj.Text, userCore.ID) || strings.Contains(inj.Text, deskCore.ID) || strings.Contains(inj.Text, "핵심이 아닌") ||
-		inj.Chars > memory.UserCoreRunes+200 || len(inj.MemoryIDs) != 1 {
+	inj := SubagentStart(s, cfg, f["제품 저장소"], "")
+	if !strings.Contains(inj.Text, "- 핵심: 답은 존댓말 — "+userCore.ID) || strings.Contains(inj.Text, deskCore.ID) || strings.Contains(inj.Text, "핵심이 아닌") ||
+		inj.Chars > maxRoleRunes || len(inj.MemoryIDs) != 1 {
 		t.Fatalf("subagent:\n%s", inj.Text)
 	}
 }

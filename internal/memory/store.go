@@ -237,6 +237,33 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db, path: path, Now: time.Now, Policy: DefaultPolicy()}, nil
 }
 
+// MigrateCopy brings a private throwaway copy of a memory DB (a bench copy no other process knows)
+// to this binary's schema with the same migrate Open runs, and gives the schema it had before.
+// Unlike Open it takes no "before-schema" backup: the rule to back up before a schema migration
+// guards the user's DB, and here the user's DB is never opened (the copy was made from its files)
+// and the copy is deleted after the run, so a backup of it would only be a second copy of a copy.
+// The rule that read operations never migrate (they answer empty on an old DB) is about the
+// host's DB as well; a copy is not that DB. A DB a newer orbit-mem made is left alone
+// (ErrSchemaNewer), as Open does.
+func MigrateCopy(path string) (SchemaInfo, error) {
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Busy: writeBusy, Pragmas: storePragmas, Existing: true})
+	if err != nil {
+		return SchemaInfo{Binary: SchemaVersion}, i18n.Errorf("memory.err.db_open", err)
+	}
+	defer db.Close()
+	info, err := schemaInfo(db)
+	if err != nil {
+		return info, i18n.Errorf("memory.err.db_open", err)
+	}
+	switch info.State {
+	case SchemaNewer:
+		return info, schemaNewerError(info.DB)
+	case SchemaOlder:
+		return info, migrate(db)
+	}
+	return info, nil
+}
+
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
@@ -1041,6 +1068,9 @@ type FindInput struct {
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
 	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
+	// SkipUnknownTokens leaves the query tokens no memory has out of the score (rank.go). The recall of a
+	// request and a task sets it; memory_find does not.
+	SkipUnknownTokens bool
 }
 
 // Hit is a found memory with its score for the query: 0~1 for each query on its own (rank.go), 1 for an
@@ -1121,7 +1151,7 @@ func (s *Store) readFind(q querier, in FindInput) (findRead, error) {
 	if len(qs) == 0 {
 		return r, nil
 	}
-	if r.scores, err = queryScores(q, qs, s.findStep); err != nil {
+	if r.scores, err = queryScores(q, qs, in.SkipUnknownTokens, s.findStep); err != nil {
 		return r, err
 	}
 	ids := make([]string, 0, len(r.scores))

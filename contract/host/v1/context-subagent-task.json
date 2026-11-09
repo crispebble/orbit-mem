@@ -1,0 +1,66 @@
+{
+  "name": "context-subagent-task",
+  "op": "context",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "name": "memory_save",
+          "args": {
+            "kind": "rule",
+            "appliesTo": "user",
+            "title": "보고는 한국어로",
+            "topic": "보고 언어",
+            "source": {
+              "kind": "quote",
+              "excerpt": "보고는 한국어로 해"
+            },
+            "pin": true
+          }
+        }
+      },
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "name": "memory_save",
+          "args": {
+            "kind": "rule",
+            "appliesTo": "user",
+            "title": "결제 모듈 동시성 시험은 경합을 실제로 일으킨다",
+            "topic": "결제 동시성 시험",
+            "body": "결제 모듈의 동시성 시험은 고루틴 여럿으로 경합을 실제로 일으킨다",
+            "source": {
+              "kind": "quote",
+              "excerpt": "동시성 시험은 경합을 실제로 일으켜"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "audience": "subagent",
+    "agent": "a-1",
+    "agentKind": "worker",
+    "task": "결제 모듈 동시성 시험을 고친다. 경합을 실제로 일으키는 시험을 쓴다"
+  },
+  "exit": 0,
+  "output": {
+    "text": "$nonEmptyString",
+    "memoryIds": "$nonEmptyArray",
+    "budget": {
+      "chars": "$number",
+      "limit": "$number"
+    }
+  }
+}

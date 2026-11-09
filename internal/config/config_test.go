@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존�
 
 func TestDefault_2차_설정_기본값(t *testing.T) {
 	c := Default()
-	if c.RecallChars != 1000 || c.LedgerWindowDays != 7 || c.CandidateExpiryDays != 28 {
+	if c.RecallChars != MaxPromptRecallChars || c.LedgerWindowDays != 7 || c.CandidateExpiryDays != 28 {
 		t.Fatalf("defaults = %+v", c)
 	}
 }
@@ -80,7 +81,7 @@ func TestLoad_옛_설정_파일에는_2차_기본값이_채워진다(t *testing.
 		t.Fatal(err)
 	}
 	c, err := Load(p)
-	if err != nil || !c.AutoTidy || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+	if err != nil || !c.AutoTidy || c.RecallChars != MaxPromptRecallChars || c.LedgerWindowDays != 7 {
 		t.Fatalf("got %+v %v", c, err)
 	}
 }
@@ -354,5 +355,33 @@ func TestSaveSimilarMin_기본값과_범위(t *testing.T) {
 	}
 	if c, err := Load(p); err != nil || c.SaveSimilarMin != 0.75 {
 		t.Fatalf("0.75 = %v %v", c.SaveSimilarMin, err)
+	}
+}
+
+// 가까운 기억 하한(1-6 b6dn): 막지 않는 저장에 붙일 가까운 기억의 비슷함 하한. 기본은 도메인 기본값, 0 < x ≤ 1만 받고,
+// 이 키가 없는 옛 설정 파일은 기본값이다.
+func TestSaveNearMin_기본값과_범위(t *testing.T) {
+	if got := Default().SaveNearMin; got != memory.DefaultNearMin {
+		t.Fatalf("default = %v, want %v", got, memory.DefaultNearMin)
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"inject":"full"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.SaveNearMin != memory.DefaultNearMin {
+		t.Fatalf("old file = %v %v", c.SaveNearMin, err)
+	}
+	for _, bad := range []float64{0, -0.1, 1.01, math.NaN()} {
+		c := Default()
+		c.SaveNearMin = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "saveNearMin") {
+			t.Errorf("%v accepted or unclear: %v", bad, err)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"saveNearMin":0.3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.SaveNearMin != 0.3 {
+		t.Fatalf("0.3 = %v %v", c.SaveNearMin, err)
 	}
 }

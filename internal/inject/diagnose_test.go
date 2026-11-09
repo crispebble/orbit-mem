@@ -1,6 +1,7 @@
 package inject
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -29,10 +30,49 @@ func TestDiagnose_없는_기억은_저장_단계에서_멈춘다(t *testing.T) {
 func TestDiagnose_요청과_약하게_겹치면_선택_단계에서_멈춘다(t *testing.T) {
 	s := store(t)
 	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
-	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법"})
+	// 요청의 다른 낱말도 저장소에 있다: 어느 기억에도 없는 낱말은 회상 점수에서 빠지므로(설계 보완 1-6 b6), 없으면 codex 하나로 1점이 된다.
+	save(t, s, memory.KindFact, "node 설치 방법은 정리 순서 문서에 있다", "", memory.ScopeGlobal, false)
+	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법 정리 순서"})
 	st := stages(d)[StageSelected]
 	if d.StoppedAt != StageSelected || d.LastProven != StageEligible || st.Code != "weak_match" || st.Args[0] != "codex" {
 		t.Fatalf("%+v", d)
+	}
+	// 두 문턱의 값과 재료: 맞은 낱말, 요청 낱말, 점수(문턱), 맞은 비율(문턱). 맞은 낱말이 하나뿐이라 비율 문턱은 한 낱말
+	// 문턱(recallMinCoverageOneWord, 설계 보완 1-6 b6 R1)이다.
+	if len(st.Args) != 6 || st.Args[1] != "codex 설치 방법 정리 순서" || st.Args[3] != fmt.Sprintf("%.2f", config.DefaultRecallMinScore) || st.Args[4] != "0.20" ||
+		st.Args[5] != fmt.Sprintf("%.2f", config.DefaultRecallMinCoverageOneWord) {
+		t.Fatalf("args %v", st.Args)
+	}
+}
+
+// 두 문턱을 넘어도 이 요청에 더 잘 맞은 기억 점수의 recallMinRelative배 밑이면 선택 단계에서 멈추고 그 값을 말한다(설계 보완 1-6 b6).
+func TestDiagnose_상대_문턱_밑이면_선택_단계에서_멈춘다(t *testing.T) {
+	s := store(t)
+	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
+	save(t, s, memory.KindFact, "node 설치 방법은 문서에 있다", "", memory.ScopeGlobal, false)
+	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법"})
+	st := stages(d)[StageSelected]
+	if d.StoppedAt != StageSelected || st.Code != "below_top" || len(st.Args) != 3 || st.Args[2] != fmt.Sprintf("%.2f", config.DefaultRecallMinRelative) || st.Args[0] >= st.Args[1] {
+		t.Fatalf("%+v", d)
+	}
+	if strings.Contains(PromptInjection(s, config.Default(), here, "codex 설치 방법").Text, m.ID) {
+		t.Fatal("진단은 빠진다고 했는데 회상에 들었습니다")
+	}
+}
+
+// 이 세션에 이미 요청 회상으로 넣은 기억은 다시 넣지 않는다: 진단이 그 까닭을 말한다.
+func TestDiagnose_이_세션에_이미_보인_기억은_already_shown이다(t *testing.T) {
+	s := store(t)
+	cfg := config.Default()
+	m := save(t, s, memory.KindRule, "이 앱은 pnpm으로 설치한다", "npm install을 쓰지 않는다", here, true)
+	SessionBundle(s, cfg, here, "claude", "A")
+	RecordShown(s, "claude", "A", PromptInjectionFor(s, cfg, here, "pnpm으로 설치해 줘", "claude", "A", Options{}))
+	d := Diagnose(s, cfg, DiagnoseInput{ID: m.ID, Scope: here, Prompt: "pnpm으로 설치해 줘", Host: "claude", Session: "A"})
+	if st := stages(d)[StageSelected]; st.Status != Yes || st.Code != "matched" {
+		t.Fatalf("selected %+v", st)
+	}
+	if st := stages(d)[StageInjected]; st.Status != No || st.Code != "already_shown" {
+		t.Fatalf("injected %+v", st)
 	}
 }
 

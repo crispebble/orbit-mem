@@ -13,6 +13,7 @@ package legacy
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
@@ -58,7 +59,10 @@ func Env(dbPath string, set *bench.Set) (bench.Env, error) {
 	}
 	rc := r.(*recaller)
 	f := finder{s: rc.s, products: rc.products}
-	return bench.Env{Recaller: r, Finder: f, Similar: similar{f}, Close: closeFn}, nil
+	// SetNow moves the clock of the one store the recall, the search and the similar search share (cases
+	// that carry their times).
+	setNow := func(t time.Time) { rc.s.Now = func() time.Time { return t } }
+	return bench.Env{Recaller: r, Finder: f, Similar: similar{f}, SetNow: setNow, Close: closeFn}, nil
 }
 
 type recaller struct {
@@ -86,7 +90,7 @@ func (r *recaller) where(cwd string) string {
 // activity the host also kept are not read by the recall, so they are not written.
 func (r *recaller) shown(session string, in injection) bench.Shown {
 	recordShown(r.s, Host, session, in)
-	return bench.Shown{IDs: in.memoryIDs, Chars: in.chars, Text: in.text}
+	return bench.Shown{IDs: in.memoryIDs, Chars: in.chars, Text: in.text, News: slices.Clone(in.memoryIDs[:in.news]), NewsChars: in.newsChars}
 }
 
 // Start is the session start bundle (internal/host/ops.go:251-263 at 87ab0fb).
@@ -112,5 +116,7 @@ func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
 // user core only. The task is not read: 87ab0fb matched nothing against it.
 func (r *recaller) Subagent(session, cwd, task string) (bench.Shown, error) {
 	r.where(cwd)
-	return r.shown(session, subagentStart(r.s)), nil
+	out := r.shown(session, subagentStart(r.s))
+	out.Lead, out.LeadChars = slices.Clone(out.IDs), out.Chars // the core alone: the whole bundle is the title lines
+	return out, nil
 }

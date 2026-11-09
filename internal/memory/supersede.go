@@ -198,11 +198,14 @@ func (s *Store) SessionMarks(host, session, kind string) map[string]bool {
 	return out
 }
 
-// ResetSession forgets the session-start bundle and the marks of a session: after a
+// ResetSession forgets the session-start bundle, the marks and the delegations of a session: after a
 // compaction or /clear the session starts over with a bundle made anew.
 func (s *Store) ResetSession(host, session string) error {
 	if session == "" {
 		return nil
+	}
+	if err := s.DropDelegations(host, session); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`DELETE FROM session_bundles WHERE host=? AND session=?`, host, session); err != nil {
 		return err

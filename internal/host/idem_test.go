@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/crispebble/orbit-mem/internal/host"
@@ -134,5 +135,36 @@ func TestCall_memory_save_문턱은_설정_saveSimilarMin이다(t *testing.T) {
 	}
 	if ms, _ := s.List(memory.StateCandidate); len(ms) != 2 {
 		t.Errorf("기억 %d개", len(ms))
+	}
+}
+
+// 가까운 기억(1-6 b6dn): host call memory_save도 막지 않은 저장에 near 한 줄을 붙이고, 하한은 설정 saveNearMin이다
+// (조립 지점이 설정 값을 넘긴다). 두 제목의 비슷함은 0.365다(mcpserver savenear_test.go).
+func TestCall_memory_save_막지_않은_저장에_가까운_기억을_붙이고_하한은_설정_saveNearMin이다(t *testing.T) {
+	for _, c := range []struct {
+		min  float64
+		near bool
+	}{{0.3, true}, {0.4, false}} {
+		e := newEnv(t)
+		e.cfg.SaveNearMin = c.min
+		a := e.adapter("c-1")
+		var first string
+		for i, title := range []string{"배포 공지는 하루 전에 올린다", "배포 공지는 팀 채널에 미리 알린다"} {
+			out, err := a.do(host.OpCall, map[string]any{"name": "memory_save", "args": json.RawMessage(`{"kind":"lesson","appliesTo":"user","title":"` + title + `","source":{"kind":"session","ref":"x:s"}}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			so := out.(host.CallOut).Result.(mcpserver.SaveOut)
+			if !so.Saved {
+				t.Fatalf("not saved: %+v", so)
+			}
+			if i == 0 {
+				first = so.Memory.ID
+				continue
+			}
+			if got := so.Near != "" && strings.Contains(so.Near, first+" 배포 공지는 하루 전에 올린다"); got != c.near {
+				t.Errorf("saveNearMin %v: near %q, want near %v", c.min, so.Near, c.near)
+			}
+		}
 	}
 }
