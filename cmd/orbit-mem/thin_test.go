@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // onTerminal makes the thin commands see a terminal on stdout.
@@ -111,6 +111,17 @@ func TestThin_search_show_list(t *testing.T) {
 	json.Unmarshal([]byte(runOK(t, "", "list", "--tag", "말투", "--state", "confirmed", "--state", "stale")), &found)
 	if len(found.Items) != 1 || found.Items[0].ID != a.ID {
 		t.Fatalf("list --tag: %+v", found)
+	}
+	// show는 full로 불러 길어도 전문을 보이고 적용 대상을 보인다.
+	long := strings.Repeat("긴 본문 한 줄입니다.\n", 400)
+	c, err := s.Save(memory.SaveInput{Kind: "fact", Title: "긴 본문 기억", Body: long, Source: memory.Source{Kind: "file", Ref: "/x/long.md"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	onTerminal(t)
+	out := runOK(t, "", "show", c.ID)
+	if !strings.Contains(out, strings.TrimSpace(long)) || strings.Contains(out, "전문은 full: true") || !strings.Contains(out, "user") {
+		t.Fatalf("show는 전문과 적용 대상을 보입니다: %q", out[:200])
 	}
 	onTerminal(t)
 	if out := runOK(t, "", "show", a.ID); !strings.Contains(out, "반말 금지") || strings.HasPrefix(out, "{") {

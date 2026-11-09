@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crispebble/orbit-mem/internal/activity"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/project"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/activity"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/project"
 )
 
 // ActivityIn is activity_find's input.
@@ -51,7 +51,7 @@ func (h handlers) activity(_ context.Context, _ *mcp.CallToolRequest, in Activit
 		r, _ := toolError(err)
 		return r, activity.Result{}, nil
 	}
-	res, err := activity.Find(h.s, h.o.WorkDB, q)
+	res, err := activity.Find(h.s, q)
 	if err != nil {
 		r, _ := toolError(err)
 		return r, activity.Result{}, nil
@@ -70,6 +70,17 @@ func NewTools(s *memory.Store, o Options) Tools {
 		o.Actor = memory.ActorUser
 	}
 	return Tools{handlers{s: s, o: o}}
+}
+
+// Lower gives the tools with the trust limit of a call lowered to trust at most: min(the limit now, trust).
+// It never raises it. An unknown trust is an error (memory.ErrInvalid).
+func (t Tools) Lower(trust string) (Tools, error) {
+	limit, err := memory.ResolveTrust(t.h.o.TrustLimit, "", trust)
+	if err != nil {
+		return t, err
+	}
+	t.h.o.TrustLimit = limit
+	return t, nil
 }
 
 // asError turns a tool error result into an error.
@@ -107,9 +118,9 @@ func (t Tools) Activity(in ActivityIn) (activity.Result, error) {
 }
 
 // HostTools are the memory tools a host without an MCP client calls through
-// the CLI (`orbit-mem tool <name>`, Orbit Code): the same input and output as
-// the MCP tools.
-var HostTools = []string{"memory_find", "memory_get", "memory_save", "memory_update"}
+// the CLI (`orbit-mem tool <name>`, `orbit-mem host call`): the same input and
+// output as the MCP tools, under orbit-mem's own names only (host 계약 v1, T-25).
+var HostTools = []string{"memory_find", "memory_get", "memory_save", "memory_update", "activity_find"}
 
 // Call runs one host tool on its MCP input and records the call as the
 // "tool.<name>" event of that host and session (설계 「측정」), which the
@@ -148,9 +159,9 @@ func (t Tools) Call(name string, input []byte, host, session string) (any, error
 	case "memory_save":
 		var in SaveIn
 		if err = decode(input, &in); err == nil {
-			var r MemoryOut
+			var r SaveOut
 			if r, err = t.Save(in); err == nil {
-				out, data = r, map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": r.Memory.State, "memoryId": r.Memory.ID}
+				out, data = r, saveData(in, r)
 			}
 		}
 	case "memory_update":
@@ -159,6 +170,20 @@ func (t Tools) Call(name string, input []byte, host, session string) (any, error
 			var r MemoryOut
 			if r, err = t.Update(in); err == nil {
 				out, data = r, map[string]any{"action": in.Action, "memoryId": in.ID}
+			}
+		}
+	case "activity_find":
+		var in ActivityIn
+		if err = decode(input, &in); err == nil {
+			var r activity.Result
+			if r, err = t.Activity(in); err == nil {
+				list := []string{}
+				for _, a := range r.Items {
+					list = append(list, a.Session)
+				}
+				out, data = r, ids(list)
+				data["query"] = memory.ClipRunes(memory.MaskSecrets(in.Query), 200)
+				data["project"] = in.Project
 			}
 		}
 	default:
@@ -185,7 +210,7 @@ func decode(b []byte, v any) error {
 	return nil
 }
 
-func (t Tools) Save(in SaveIn) (MemoryOut, error) {
+func (t Tools) Save(in SaveIn) (SaveOut, error) {
 	res, out, _ := t.h.save(context.Background(), nil, in)
 	return out, asError(res)
 }

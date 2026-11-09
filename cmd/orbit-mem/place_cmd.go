@@ -10,11 +10,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/project"
 )
 
 // productsOf is the product map of this PC's configuration (설계 · orbit-mem 2판 4.1). A configuration
@@ -25,6 +25,26 @@ func productsOf() place.Map {
 		return nil
 	}
 	return cfg.Products
+}
+
+// saveSimilarMinOf is the similar-memory threshold of memory_save in the configuration (config saveSimilarMin).
+// An unreadable configuration gives 0, which the handler reads as the default (memory.DefaultSimilarMin).
+func saveSimilarMinOf() float64 {
+	cfg, err := loadConfig()
+	if err != nil {
+		return 0
+	}
+	return cfg.SaveSimilarMin
+}
+
+// saveNearMinOf is the floor of memory_save's close memories in the configuration (config saveNearMin).
+// An unreadable configuration gives 0, which the handler reads as the default (memory.DefaultNearMin).
+func saveNearMinOf() float64 {
+	cfg, err := loadConfig()
+	if err != nil {
+		return 0
+	}
+	return cfg.SaveNearMin
 }
 
 // cmdPlace shows where a folder stands in the product map: its scope key, its products and whether it is a

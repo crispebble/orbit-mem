@@ -11,8 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Core limits in characters (D2): the user layer and each product layer.
@@ -71,7 +71,11 @@ func coreTx(q querier, scope string) ([]Memory, error) {
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(q, out, `memory_id IN (SELECT id FROM memories WHERE scope=? AND pinned=1 AND state='confirmed')`, scope)
 }
 
 // ErrCoreFull is a pin past the limit of its core layer.
@@ -114,6 +118,9 @@ func pinnable(m Memory) error {
 	}
 	if m.State != StateConfirmed {
 		return i18n.Errorf("memory.err.pin_state", ErrInvalid, m.State)
+	}
+	if Untrusted(m.Trust) { // 출처가 믿을 수 없는 것뿐인 기억은 핵심에 오르지 않는다(D7)
+		return fmt.Errorf("%w: %s", ErrUntrusted, m.ID)
 	}
 	return nil
 }

@@ -1,0 +1,20 @@
+{
+  "name": "call-activity_find",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "activity_find",
+    "args": {}
+  },
+  "exit": 0,
+  "output": {
+    "name": "activity_find",
+    "result": "$any"
+  }
+}

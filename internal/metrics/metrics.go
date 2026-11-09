@@ -1,4 +1,4 @@
-// Package metrics turns the recorded events, retrospectives and proposals
+// Package metrics turns the recorded events, ledger and proposals
 // into the numbers that say whether orbit-mem makes the AI's work better
 // (설계 「측정」). A new metric reads a new event kind; nothing else changes.
 package metrics
@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // Count is a thing and how often it came up.
@@ -106,36 +106,6 @@ type Sources struct {
 	Stale     int `json:"stale"`  // 모델 판정: 낡음
 }
 
-// Retros are the retrospectives started in the period.
-type Retros struct {
-	Runs       int                  `json:"runs"`
-	Done       int                  `json:"done"`
-	Empty      int                  `json:"empty"`
-	Failed     int                  `json:"failed"`
-	AvgSeconds int                  `json:"avgSeconds"`
-	Kinds      map[string]RetroKind `json:"kinds"`
-	Cost       Cost                 `json:"cost"`
-}
-
-// RetroKind counts the retrospectives of one kind (session, daily, weekly).
-type RetroKind struct {
-	Runs   int `json:"runs"`
-	Done   int `json:"done"`
-	Empty  int `json:"empty"`
-	Failed int `json:"failed"`
-}
-
-// Cost is what the retrospectives' host runs reported. USD is the host's own
-// estimate (Claude Code); runs that report nothing count as unknown.
-type Cost struct {
-	USD          float64 `json:"usd"`
-	SessionUSD   float64 `json:"sessionUsd"`
-	Known        int     `json:"known"`
-	Unknown      int     `json:"unknown"`
-	InputTokens  int     `json:"inputTokens"`
-	OutputTokens int     `json:"outputTokens"`
-}
-
 // Report is the metrics of a period of days (inclusive).
 type Report struct {
 	From         string               `json:"from"`
@@ -147,7 +117,6 @@ type Report struct {
 	SessionStart SessionStart         `json:"sessionStart"`
 	Proposals    Proposals            `json:"proposals"`
 	Sources      Sources              `json:"sources"`
-	Retros       Retros               `json:"retros"`
 	Tools        map[string]int       `json:"tools"`
 	Usage        Usage                `json:"usage"`
 	Ledger       memory.LedgerSummary `json:"ledger"`
@@ -155,16 +124,8 @@ type Report struct {
 	Graph        Graph                `json:"graph"`
 	States       map[string]int       `json:"states"` // 지금 기억 수(상태별)
 	Legacy       memory.LegacyCount   `json:"legacy"` // 옮겨 온 옛 기억 판정(설계 · Orbit 3차 O3-3)
-	Lab          Lab                  `json:"lab"`    // 기간 안에 시작한 하네스 실험(명세 · Orbit 3차 O3-5)
 	// 옛 기억 정리를 시작하기 전 상태별 기억 수(끝 기준 3의 「전」). 시작하지 않았으면 nil
 	LegacyBaseline *memory.LegacyBaseline `json:"legacyBaseline,omitempty"`
-}
-
-// Lab counts the harness lab's experiments in the period and what they cost.
-type Lab struct {
-	Experiments int            `json:"experiments"`
-	Verdicts    map[string]int `json:"verdicts"` // helped·harmful·no_effect·failed
-	CostUSD     float64        `json:"costUsd"`
 }
 
 // Graph is the memory graph as it stands now (설계 · Orbit 3차 O3-2 「클러스터 다시 재기」):
@@ -181,7 +142,7 @@ type Graph struct {
 }
 
 func graphNow(s *memory.Store) (Graph, error) {
-	ms, err := s.List(memory.DefaultGraphStates...)
+	ms, err := s.List(memory.StateCandidate, memory.StateConfirmed, memory.StateStale) // 숨김(거절한 후보)은 뺀다
 	if err != nil {
 		return Graph{}, err
 	}
@@ -237,7 +198,7 @@ func top(m map[string]int, n int) []string {
 
 // Compute reads the store for the days from..to (inclusive, local time).
 func Compute(s *memory.Store, from, to string) (Report, error) {
-	r := Report{From: from, To: to, Tools: map[string]int{}, Retros: Retros{Kinds: map[string]RetroKind{}}}
+	r := Report{From: from, To: to, Tools: map[string]int{}}
 	evs, err := s.Events(memory.EventFilter{FromDay: from, ToDay: to})
 	if err != nil {
 		return r, err
@@ -261,11 +222,6 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			Injected   string   `json:"injected"`
 			Decision   string   `json:"decision"`
 			Verdict    string   `json:"verdict"`
-			RetroKind  string   `json:"retroKind"`
-			CostKnown  bool     `json:"costKnown"`
-			CostUSD    float64  `json:"costUsd"`
-			Input      int      `json:"inputTokens"`
-			Output     int      `json:"outputTokens"`
 			Outcome    string   `json:"outcome"`
 			Memories   int      `json:"memories"`
 			Proposed   bool     `json:"proposed"`
@@ -298,19 +254,6 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 			case memory.UsageIrrelevant:
 				r.Usage.Irrelevant++
 				irrelevant[d.MemoryID]++
-			}
-		case e.Kind == memory.EventRetroRun:
-			c := &r.Retros.Cost
-			if !d.CostKnown {
-				c.Unknown++
-				continue
-			}
-			c.Known++
-			c.USD += d.CostUSD
-			c.InputTokens += d.Input
-			c.OutputTokens += d.Output
-			if d.RetroKind == "session" {
-				c.SessionUSD += d.CostUSD
 			}
 		case strings.HasPrefix(e.Kind, memory.EventToolPrefix):
 			name := strings.TrimPrefix(e.Kind, memory.EventToolPrefix)
@@ -422,62 +365,12 @@ func Compute(s *memory.Store, from, to string) (Report, error) {
 	if b, ok := s.LegacyBaseline(); ok {
 		r.LegacyBaseline = &b
 	}
-	xs, err := s.LabExperiments(startMs, endMs)
-	if err != nil {
-		return r, err
-	}
-	r.Lab = Lab{Verdicts: map[string]int{}}
-	for _, x := range xs {
-		r.Lab.Experiments++
-		r.Lab.CostUSD += x.CostUSD
-		v := x.Verdict
-		if x.Status == memory.LabFailed {
-			v = memory.LabFailed
-		}
-		if v != "" {
-			r.Lab.Verdicts[v]++
-		}
-	}
 	jc, err := s.JudgmentCounts(startMs, endMs)
 	if err != nil {
 		return r, err
 	}
 	r.Writes = Writes{Keep: jc[memory.VerdictKeep], Hold: jc[memory.VerdictHold], Reject: jc[memory.VerdictReject], UserRejected: jc["user_reject"], UserEdited: jc["user_edit"]}
-	rows, err := db.Query(`SELECT kind, status, started_at, finished_at FROM retros WHERE started_at>=? AND started_at<?`, startMs, endMs)
-	if err != nil {
-		return r, err
-	}
-	defer rows.Close()
-	var took int64
-	for rows.Next() {
-		var kind, status string
-		var started, finished int64
-		if err := rows.Scan(&kind, &status, &started, &finished); err != nil {
-			return r, err
-		}
-		k := r.Retros.Kinds[kind]
-		r.Retros.Runs++
-		k.Runs++
-		switch status {
-		case "done":
-			r.Retros.Done++
-			k.Done++
-			if finished > started {
-				took += finished - started
-			}
-		case "empty":
-			r.Retros.Empty++
-			k.Empty++
-		case "failed":
-			r.Retros.Failed++
-			k.Failed++
-		}
-		r.Retros.Kinds[kind] = k
-	}
-	if r.Retros.Done > 0 {
-		r.Retros.AvgSeconds = int(took / int64(r.Retros.Done) / 1000)
-	}
-	return r, rows.Err()
+	return r, nil
 }
 
 func topMemories(s *memory.Store, counts map[string]int) []Count {
@@ -504,16 +397,6 @@ func titled(lg i18n.Lang, cs []Count) string {
 		parts = append(parts, i18n.TIn(lg, "metrics.title_count", title, c.ID, c.Count))
 	}
 	return strings.Join(parts, ", ")
-}
-
-func retroKindNames(lg i18n.Lang) []struct{ kind, name string } {
-	return []struct{ kind, name string }{
-		{"session", i18n.TIn(lg, "metrics.retro_session")},
-		{"daily", i18n.TIn(lg, "metrics.retro_daily")},
-		{"weekly", i18n.TIn(lg, "metrics.retro_weekly")},
-		{"tidy", i18n.TIn(lg, "metrics.retro_tidy")},
-		{"legacy", i18n.TIn(lg, "metrics.retro_legacy")},
-	}
 }
 
 // Render is the report as short text in the current language.
@@ -562,20 +445,6 @@ func RenderIn(r Report, lg i18n.Lang) string {
 	l := r.Ledger
 	b.WriteString(i18n.TIn(lg, "metrics.ledger", l.Changes,
 		l.Judged[memory.VerdictHelped], l.Judged[memory.VerdictHarmful], l.Judged[memory.VerdictNoEffect], l.Judged[memory.VerdictMixed], l.Evidence, l.Pending) + "\n")
-	t := r.Retros
-	b.WriteString(i18n.TIn(lg, "metrics.retros", t.Runs, t.Done, t.Empty, t.Failed, t.AvgSeconds))
-	var kinds []string
-	for _, k := range retroKindNames(lg) {
-		if c, ok := t.Kinds[k.kind]; ok && c.Runs > 0 {
-			kinds = append(kinds, i18n.TIn(lg, "metrics.retro_kind_runs", k.name, c.Runs))
-		}
-	}
-	if len(kinds) > 0 {
-		b.WriteString(" (" + strings.Join(kinds, " · ") + ")")
-	}
-	b.WriteString("\n")
-	cost := t.Cost
-	b.WriteString(i18n.TIn(lg, "metrics.retro_cost", cost.USD, cost.SessionUSD, cost.InputTokens, cost.OutputTokens, cost.Unknown) + "\n")
 	g := r.Graph
 	b.WriteString(i18n.TIn(lg, "metrics.graph", g.Memories, g.Clusters, g.Other, pct(g.OtherRate), g.Untagged, g.Links, g.TopicTags) + "\n")
 	states := func(m map[string]int) string {
@@ -586,11 +455,6 @@ func RenderIn(r Report, lg i18n.Lang) string {
 		b.WriteString(" " + i18n.TIn(lg, "metrics.legacy_baseline", lb.Day, states(lb.States)))
 	}
 	b.WriteString("\n")
-	if lab := r.Lab; lab.Experiments > 0 {
-		v := lab.Verdicts
-		b.WriteString(i18n.TIn(lg, "metrics.lab", lab.Experiments,
-			v[memory.VerdictHelped], v[memory.VerdictHarmful], v[memory.VerdictNoEffect], v[memory.LabFailed], lab.CostUSD) + "\n")
-	}
 	if l := r.Legacy; l.Total > 0 {
 		var by []string
 		for _, v := range []struct{ key, name string }{

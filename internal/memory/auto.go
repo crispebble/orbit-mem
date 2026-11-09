@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // 자동 변경(A2 「자동화가 고칠 수 있다」): 자동화의 확정·합치기·낡음·대체·연결·retag·고치기·재분류는 승인 없이
@@ -225,7 +225,7 @@ func (s *Store) applyRecorded(p *Proposal, in DecideInput) (DecideResult, error)
 	return res, nil
 }
 
-// insertProposal stores a prepared proposal with a status (decided at once unless pending or lab).
+// insertProposal stores a prepared proposal with a status (decided at once unless pending).
 func (s *Store) insertProposal(in ProposalInput, status string) (Proposal, error) {
 	return s.insertProposalTx(s.db, in, status)
 }
@@ -235,7 +235,7 @@ func (s *Store) insertProposalTx(q dbtx, in ProposalInput, status string) (Propo
 	now := s.nowMs()
 	p := Proposal{ID: NewID("p-"), Kind: in.Kind, Title: in.Title, Body: in.Body, MemoryIDs: in.MemoryIDs, Payload: in.Payload,
 		Status: status, CreatedAt: now, RetroID: in.RetroID}
-	if status != StatusPending && status != StatusLab {
+	if status != StatusPending {
 		p.DecidedAt = now
 	}
 	ids, _ := json.Marshal(nonNil(p.MemoryIDs))
@@ -414,10 +414,6 @@ func (s *Store) SubmitChange(in ProposalInput, w Who) (ChangeOutcome, error) {
 		}
 		return ChangeOutcome{}, err
 	case ProposalApplyFile:
-		if in.Lab { // 하네스 변경은 실험실이 도움됨으로 판정하면 적용된다(ReleaseLabProposal)
-			p, err := s.Propose(in)
-			return ChangeOutcome{Proposal: p}, err
-		}
 		if FileTarget(in.Payload.Path) == TargetHarness {
 			return ChangeOutcome{AskUser: true, Reason: i18n.T("memory.reason.harness_no_lab", in.Payload.Path)}, nil
 		}

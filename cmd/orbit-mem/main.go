@@ -1,11 +1,10 @@
 // Command orbit-mem is the shared memory of this PC for AI hosts: memories with
-// their sources, the storage of the retrospectives (retro-store and the retro MCP
-// tools), the activity log of host sessions, and its own Claude Code and Codex
-// plugin (the memory MCP server, hooks and skills) that it builds and registers
-// itself. It never runs a model or a headless host, and it never calls orbit-code's
-// orb: the retrospectives run in orbit-code (orb retro) and the harness lab is an
-// orbit-code dev tool (ONID-124); both reach orbit-mem through retro-store. It does
-// not need orbit-code to keep and recall memories.
+// their sources, the activity log of host sessions, and its own Claude Code and
+// Codex plugin (the memory MCP server, hooks and skills) that it builds and
+// registers itself. A host without hooks or MCP uses orbit-mem host (the host
+// contract: one JSON request in, one JSON result out) or its older names
+// orbit-mem inject and orbit-mem tool. It never runs a model or a headless host
+// and knows no other product: the model-free tidy runs once a day behind the session-start hook.
 package main
 
 import (
@@ -19,8 +18,8 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 type app struct {
@@ -57,9 +56,9 @@ func commands() []command {
 		{"import", "usage.import", cmdImport},
 		{"activity", "usage.activity", cmdActivity},
 		{"proposals", "usage.proposals", cmdProposals},
-		{"retro-store", "usage.retro-store", cmdRetroStore},
 		{"mcp", "usage.mcp", cmdMCP},
 		{"hook", "usage.hook", cmdHook},
+		{"host", "usage.host", cmdHost},
 		{"inject", "usage.inject", cmdInject},
 		{"tool", "usage.tool", cmdTool},
 		{"why", "usage.why", cmdWhy},
@@ -69,10 +68,12 @@ func commands() []command {
 		{"plugin", "usage.plugin", cmdPlugin},
 		{"config", "usage.config", cmdConfig},
 		{"backup", "usage.backup", cmdBackup},
+		{"tidy", "usage.tidy", cmdTidy},
 		{"migrate", "usage.migrate", cmdMigrate},
 		{"stats", "usage.stats", cmdStats},
 		{"ledger", "usage.ledger", cmdLedger},
 		{"audit", "usage.audit", cmdAudit},
+		{"bench", "usage.bench", cmdBench},
 	}
 }
 

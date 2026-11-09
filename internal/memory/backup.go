@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 	"modernc.org/sqlite"
 )
 
@@ -22,8 +22,9 @@ import (
 // 백업 API(sqlite3_backup, 사본→살아 있는 DB)를 쓴다: 다른 프로세스(MCP 서버·훅)가 연 DB 파일을 갈아
 // 끼우지 않고 SQLite 잠금 안에서 한 트랜잭션으로 바꾸므로, 열린 연결은 바뀐 내용을 그대로 본다.
 
-// SchemaVersion is the user_version the current schema sets.
-const SchemaVersion = 4
+// SchemaVersion is the schema version this binary migrates to: migrate writes it to
+// meta schema.version (and the schema still sets user_version to it for older binaries).
+const SchemaVersion = 5
 
 // Why a daily backup made no copy.
 const (
@@ -33,27 +34,24 @@ const (
 
 // BackupOptions are the inputs of a daily backup.
 type BackupOptions struct {
-	Dir    string        // 백업 폴더
-	WorkDB string        // 옛 작업 기록 DB(있으면 함께 복사한다)
-	Keep   int           // 남길 하루 사본 수
-	Force  bool          // 24시간 규칙과 관계없이 만든다
-	Wait   time.Duration // 다른 프로세스가 잠금을 쥐고 있으면 기다리는 시간(0이면 바로 건너뛴다)
+	Dir   string        // 백업 폴더
+	Keep  int           // 남길 하루 사본 수
+	Force bool          // 24시간 규칙과 관계없이 만든다
+	Wait  time.Duration // 다른 프로세스가 잠금을 쥐고 있으면 기다리는 시간(0이면 바로 건너뛴다)
 }
 
-// BackupResult is what a daily backup did. Memory and Work are the copies made, or
-// the newest existing ones when it was skipped.
+// BackupResult is what a daily backup did. Memory is the copy made, or the newest
+// existing one when it was skipped.
 type BackupResult struct {
 	Memory  string
-	Work    string
 	Made    bool
 	Skipped string
 	Removed []string // 보관 개수를 넘어 지운 하루 사본
-	WorkErr error    // 옛 작업 기록 사본 실패: 기억 사본은 남는다
 }
 
-// DailyBackup makes the daily copies under the backups folder's lock: the memory DB
-// (a failure is the error) and the old work DB (a failure is only WorkErr). Without
-// Force it does nothing while the last memory copy is less than 24 hours old.
+// DailyBackup makes the daily copy of the memory DB under the backups folder's lock.
+// Without Force it does nothing while the last memory copy is less than 24 hours old.
+// The old work log (work.db) is no longer copied (2026-11-08, ORBIT-13).
 func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	var r BackupResult
 	unlock, ok, err := backup.Lock(o.Dir, o.Wait)
@@ -62,14 +60,14 @@ func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	}
 	if !ok {
 		r.Skipped = SkipBusy
-		r.Memory, r.Work = lastCopies(o.Dir)
+		r.Memory = lastCopy(o.Dir)
 		return r, nil
 	}
 	defer unlock()
 	// 잠금을 잡은 뒤에 다시 본다: 기다리는 동안 앞 프로세스가 만들었으면 건너뛴다.
 	if !o.Force && !backup.Due(o.Dir, s.Now()) {
 		r.Skipped = SkipFresh
-		r.Memory, r.Work = lastCopies(o.Dir)
+		r.Memory = lastCopy(o.Dir)
 		return r, nil
 	}
 	if r.Memory, err = s.copyDaily(o.Dir); err != nil {
@@ -78,20 +76,14 @@ func (s *Store) DailyBackup(o BackupOptions) (BackupResult, error) {
 	r.Made = true
 	removed, _ := backup.Prune(o.Dir, backup.PrefixMemory, o.Keep)
 	r.Removed = append(r.Removed, removed...)
-	if o.WorkDB != "" {
-		r.Work, r.WorkErr = sqlitedb.BackupDaily(o.WorkDB, o.Dir, backup.PrefixWork, o.Keep, s.Now())
-	}
 	return r, nil
 }
 
-func lastCopies(dir string) (memoryPath, workPath string) {
+func lastCopy(dir string) string {
 	if c, ok := backup.Last(dir, backup.PrefixMemory); ok {
-		memoryPath = c.Path
+		return c.Path
 	}
-	if c, ok := backup.Last(dir, backup.PrefixWork); ok {
-		workPath = c.Path
-	}
-	return memoryPath, workPath
+	return ""
 }
 
 // Backup writes a consistent copy into dir (memory-YYYYMMDD.sqlite, one per day; a
@@ -190,7 +182,8 @@ func expectedShape() (schemaShape, error) {
 
 func readShape(db *sql.DB) (schemaShape, error) {
 	sh := schemaShape{objects: map[string]bool{}, columns: map[string]bool{}}
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&sh.version); err != nil {
+	var err error
+	if sh.version, err = dbVersion(db); err != nil {
 		return sh, err
 	}
 	rows, err := db.Query(`SELECT m.type || ':' || m.name, ifnull(p.name, '') FROM sqlite_master m
@@ -214,34 +207,12 @@ func readShape(db *sql.DB) (schemaShape, error) {
 }
 
 // needsSchemaChange says whether migrate would change an existing DB: it has tables
-// and an older user_version or a missing table, index or column. A new empty file
-// has nothing to keep.
+// and an older schema version (meta schema.version, see dbVersion) or a missing
+// table, index or column. A new empty file has nothing to keep, and a DB a newer
+// orbit-mem made is not migrated at all.
 func needsSchemaChange(db *sql.DB) (bool, error) {
-	want, err := expectedShape()
-	if err != nil {
-		return false, err
-	}
-	have, err := readShape(db)
-	if err != nil {
-		return false, err
-	}
-	if len(have.objects) == 0 {
-		return false, nil
-	}
-	if have.version < want.version {
-		return true, nil
-	}
-	for o := range want.objects {
-		if !have.objects[o] {
-			return true, nil
-		}
-	}
-	for c := range want.columns {
-		if !have.columns[c] {
-			return true, nil
-		}
-	}
-	return false, nil
+	info, err := schemaInfo(db)
+	return info.State == SchemaOlder, err
 }
 
 // schemaBackupDir is where Open keeps the copy before a schema change: the backups
@@ -301,7 +272,10 @@ func ReadCopyInfo(path string) (CopyInfo, error) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&info.Memories); err != nil {
 		return info, i18n.Errorf("memory.err.copy_check", path, err)
 	}
-	_ = db.QueryRow(`PRAGMA user_version`).Scan(&info.SchemaVersion)
+	// 판의 정본은 meta schema.version이다(옛 실행 파일은 user_version을 자기 판으로 되돌린다).
+	if info.SchemaVersion, err = dbVersion(db); err != nil {
+		return info, i18n.Errorf("memory.err.copy_check", path, err)
+	}
 	return info, nil
 }
 

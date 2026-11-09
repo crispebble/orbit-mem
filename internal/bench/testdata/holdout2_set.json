@@ -1,0 +1,4111 @@
+{
+ "about": "두 번째 판정 전용 묶음, 학습에 쓰지 않음. 기억은 공개 고정 묶음에서 그대로 복사했고 사례는 회상 구현과 측정값을 보지 않고 새로 적었다. 고침이 끝난 뒤 한 번만 판정에 쓴다. 747055f에서 한 번 판정에 썼고, 그 뒤 중복 문턱(b6d)을 맞추는 개발 자료로 썼다.",
+ "now": "2026-11-03T09:00:00+09:00",
+ "cwd": "/bench/app",
+ "seed": "orbit-mem-holdout2-1",
+ "memories": [
+  {
+   "key": "rule-pnpm",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "quote": true,
+   "title": "이 앱은 pnpm으로 설치한다",
+   "body": "npm install을 쓰지 않는다. lock 파일은 pnpm-lock.yaml 하나만 둔다.",
+   "topic": "앱 패키지 설치",
+   "ageDays": 40
+  },
+  {
+   "key": "deploy-fact",
+   "kind": "fact",
+   "scope": "global",
+   "quote": true,
+   "title": "운영 배포는 main 병합으로 일어난다",
+   "body": "Beacon 감시기가 origin/main을 보고 배포한다.",
+   "ageDays": 3
+  },
+  {
+   "key": "deploy-new",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "운영 배포 전에는 백업 사본을 확인한다",
+   "ageDays": 5
+  },
+  {
+   "key": "deploy-old",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "운영 배포 전에는 로그 폴더를 확인한다",
+   "ageDays": 200,
+   "followed": 2
+  },
+  {
+   "key": "deploy-other",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "운영 배포는 다른 저장소에서 한다",
+   "ageDays": 1
+  },
+  {
+   "key": "deploy-journal",
+   "kind": "journal",
+   "scope": "global",
+   "quote": true,
+   "title": "운영 배포 일지 11월",
+   "ageDays": 1
+  },
+  {
+   "key": "model-old",
+   "kind": "decision",
+   "scope": "global",
+   "title": "Nimbus 기본 모델은 small",
+   "topic": "nimbus 기본 모델",
+   "ageDays": 10
+  },
+  {
+   "key": "model-new",
+   "kind": "decision",
+   "scope": "global",
+   "title": "Nimbus 기본 모델은 large",
+   "topic": "Nimbus  기본 모델",
+   "ageDays": 1
+  },
+  {
+   "key": "freeze-gone",
+   "kind": "fact",
+   "scope": "global",
+   "title": "로그인 배포 동결은 이번 주까지",
+   "retention": "volatile",
+   "ttlDays": 2,
+   "ageDays": 5
+  },
+  {
+   "key": "freeze-live",
+   "kind": "fact",
+   "scope": "global",
+   "title": "로그인 배포 동결은 금요일까지",
+   "retention": "volatile",
+   "ttlDays": 7,
+   "ageDays": 1
+  },
+  {
+   "key": "db-review",
+   "kind": "decision",
+   "scope": "global",
+   "quote": true,
+   "title": "기억 DB는 PC마다 따로 둔다",
+   "body": "회사 PC에는 옮기지 않는다.",
+   "retention": "durable",
+   "reviewAfterDays": 30,
+   "topic": "기억 DB 위치",
+   "ageDays": 40
+  },
+  {
+   "key": "codex-stdin",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "helix exec는 stdin을 닫는다",
+   "ageDays": 2
+  },
+  {
+   "key": "weather",
+   "kind": "fact",
+   "scope": "global",
+   "title": "오늘 날씨 메모",
+   "ageDays": 1
+  },
+  {
+   "key": "app-test-vitest",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "title": "이 앱 단위 시험은 vitest로 돌린다",
+   "body": "jest 설정을 새로 만들지 않는다. 시험 파일 이름은 *.test.ts다.",
+   "topic": "앱 단위 시험",
+   "ageDays": 30
+  },
+  {
+   "key": "app-lint",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "quote": true,
+   "title": "이 앱은 커밋 전에 eslint와 prettier를 함께 돌린다",
+   "body": "pnpm lint 한 번으로 둘 다 돈다.",
+   "topic": "앱 커밋 전 점검",
+   "ageDays": 25
+  },
+  {
+   "key": "app-router",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "이 앱 라우팅은 파일 기반 라우터를 쓴다",
+   "body": "pages 폴더에 파일을 두면 경로가 생긴다.",
+   "ageDays": 60
+  },
+  {
+   "key": "app-state-old",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "title": "이 앱 전역 상태는 redux로 둔다",
+   "topic": "앱 전역 상태",
+   "ageDays": 120
+  },
+  {
+   "key": "app-state-new",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "quote": true,
+   "title": "이 앱 전역 상태는 zustand로 바꾼다",
+   "body": "redux는 새 코드에 쓰지 않는다.",
+   "topic": "앱 전역 상태",
+   "ageDays": 20
+  },
+  {
+   "key": "app-env",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": ".env.local은 저장소에 올리지 않는다",
+   "body": ".env.example만 올린다.",
+   "ageDays": 70
+  },
+  {
+   "key": "app-i18n",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "title": "이 앱 문구는 ko 파일을 먼저 고치고 en을 맞춘다",
+   "topic": "앱 문구 번역 순서",
+   "ageDays": 33
+  },
+  {
+   "key": "app-aria",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "아이콘만 있는 버튼에는 aria-label을 단다",
+   "ageDays": 15
+  },
+  {
+   "key": "app-snap",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "스냅샷 시험은 날짜를 고정하지 않으면 깨진다",
+   "body": "시험 시작에서 시계를 고정한다.",
+   "ageDays": 12
+  },
+  {
+   "key": "app-dist",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "이 앱 빌드 결과는 dist 폴더에 나온다",
+   "ageDays": 90
+  },
+  {
+   "key": "app-port",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "이 앱 개발 서버 포트는 5173이다",
+   "ageDays": 50
+  },
+  {
+   "key": "app-journal",
+   "kind": "journal",
+   "scope": "project:/bench/app",
+   "title": "Lumen 앱 11월 첫째 주 작업 일지",
+   "ageDays": 2
+  },
+  {
+   "key": "app-bundle",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "번들 크기가 500KB를 넘으면 동적 import로 나눈다",
+   "ageDays": 45
+  },
+  {
+   "key": "app-css",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "title": "이 앱 스타일은 CSS 모듈로 쓴다",
+   "retention": "durable",
+   "reviewAfterDays": 60,
+   "topic": "앱 스타일 방식",
+   "ageDays": 80
+  },
+  {
+   "key": "app-date",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "날짜는 서버에서 ISO 문자열로 받고 화면에서만 바꾼다",
+   "ageDays": 18
+  },
+  {
+   "key": "app-form",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "title": "이 앱 입력 검증은 zod 스키마 하나로 한다",
+   "topic": "앱 입력 검증",
+   "ageDays": 28
+  },
+  {
+   "key": "app-modal",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "모달은 portal 안에 그린다",
+   "ageDays": 35
+  },
+  {
+   "key": "logfmt-old",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "title": "앱 로그는 텍스트 줄로 남긴다",
+   "topic": "앱 로그 꼴",
+   "ageDays": 140
+  },
+  {
+   "key": "logfmt-new",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "title": "앱 로그는 JSON 한 줄로 남긴다",
+   "topic": "앱 로그 꼴",
+   "ageDays": 21
+  },
+  {
+   "key": "stale-npm",
+   "kind": "rule",
+   "scope": "project:/bench/app",
+   "title": "이 앱은 npm으로 설치한다",
+   "body": "package-lock.json을 쓴다.",
+   "topic": "앱 패키지 설치 옛",
+   "ageDays": 300,
+   "state": "stale"
+  },
+  {
+   "key": "hidden-skip",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "시험이 느리면 건너뛰고 넘어간다",
+   "ageDays": 20,
+   "state": "hidden"
+  },
+  {
+   "key": "vol-app-release",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "이번 릴리스 후보는 0.17.0-rc2다",
+   "retention": "volatile",
+   "ttlDays": 7,
+   "ageDays": 3
+  },
+  {
+   "key": "vol-app-demo",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "데모 빌드는 이번 주 수요일에 고정한다",
+   "retention": "volatile",
+   "ttlDays": 5,
+   "ageDays": 8
+  },
+  {
+   "key": "app-hydrate",
+   "kind": "lesson",
+   "scope": "project:/bench/app",
+   "title": "서버 렌더링 화면에서 window를 바로 쓰면 하이드레이션이 깨진다",
+   "ageDays": 26
+  },
+  {
+   "key": "app-cdn",
+   "kind": "fact",
+   "scope": "project:/bench/app",
+   "title": "이미지는 CDN 주소 아래 images 경로로 올린다",
+   "ageDays": 58
+  },
+  {
+   "key": "api-error",
+   "kind": "rule",
+   "scope": "project:/bench/api",
+   "quote": true,
+   "title": "API 오류 응답은 problem+json 꼴로 낸다",
+   "topic": "API 오류 응답 꼴",
+   "ageDays": 55
+  },
+  {
+   "key": "api-migrate-num",
+   "kind": "rule",
+   "scope": "project:/bench/api",
+   "title": "마이그레이션 파일 번호는 건너뛰지 않는다",
+   "topic": "마이그레이션 번호",
+   "ageDays": 48
+  },
+  {
+   "key": "api-migrate-down",
+   "kind": "lesson",
+   "scope": "project:/bench/api",
+   "title": "마이그레이션은 되돌리기 파일을 함께 둔다",
+   "ageDays": 30
+  },
+  {
+   "key": "api-auth-old",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "title": "API 인증은 세션 쿠키로 한다",
+   "topic": "API 인증 방식",
+   "ageDays": 150
+  },
+  {
+   "key": "api-auth-new",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "quote": true,
+   "title": "API 인증은 짧은 수명 토큰으로 바꾼다",
+   "body": "토큰 수명은 15분이고 갱신 토큰은 하루다.",
+   "topic": "API 인증 방식",
+   "ageDays": 25
+  },
+  {
+   "key": "api-page",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "목록 API는 cursor 방식으로 나눠 준다",
+   "ageDays": 65
+  },
+  {
+   "key": "api-db-port",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "api 로컬 DB는 포트 54320에서 돈다",
+   "ageDays": 40
+  },
+  {
+   "key": "api-rate",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "title": "로그인 API는 분당 10회로 제한한다",
+   "topic": "로그인 API 제한",
+   "ageDays": 22
+  },
+  {
+   "key": "api-lockout",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "title": "로그인 실패 5회면 계정을 15분 잠근다",
+   "topic": "로그인 실패 잠금",
+   "ageDays": 22
+  },
+  {
+   "key": "api-log",
+   "kind": "rule",
+   "scope": "project:/bench/api",
+   "quote": true,
+   "title": "API 로그에는 요청 본문을 남기지 않는다",
+   "topic": "API 로그 내용",
+   "ageDays": 37
+  },
+  {
+   "key": "api-idempotent",
+   "kind": "lesson",
+   "scope": "project:/bench/api",
+   "title": "결제 요청은 멱등 키 없이 다시 보내지 않는다",
+   "ageDays": 20
+  },
+  {
+   "key": "api-timeout",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "API가 바깥을 부를 때 기본 제한 시간은 5초다",
+   "ageDays": 44
+  },
+  {
+   "key": "api-test-db",
+   "kind": "rule",
+   "scope": "project:/bench/api",
+   "quote": true,
+   "title": "API 시험은 실제 DB 컨테이너로 돌리고 모의 DB를 쓰지 않는다",
+   "topic": "API 시험 DB",
+   "ageDays": 52
+  },
+  {
+   "key": "api-journal",
+   "kind": "journal",
+   "scope": "project:/bench/api",
+   "title": "Tally API 10월 장애 일지",
+   "ageDays": 14
+  },
+  {
+   "key": "api-openapi",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "openapi 문서는 빌드 때 만들고 손으로 고치지 않는다",
+   "ageDays": 33
+  },
+  {
+   "key": "api-index",
+   "kind": "lesson",
+   "scope": "project:/bench/api",
+   "title": "느린 목록 조회는 먼저 인덱스를 본다",
+   "ageDays": 27
+  },
+  {
+   "key": "cache-old",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "title": "API 캐시 만료는 1시간으로 한다",
+   "topic": "API 캐시 만료",
+   "ageDays": 90
+  },
+  {
+   "key": "cache-new",
+   "kind": "decision",
+   "scope": "project:/bench/api",
+   "title": "API 캐시 만료는 10분으로 줄인다",
+   "topic": "API 캐시 만료",
+   "ageDays": 15
+  },
+  {
+   "key": "vol-api-maint",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "API 점검 창은 오늘 밤이다",
+   "retention": "volatile",
+   "ttlDays": 1,
+   "ageDays": 4
+  },
+  {
+   "key": "vol-api-live",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "이번 주 API 점검 창은 목요일 02시다",
+   "retention": "volatile",
+   "ttlDays": 7,
+   "ageDays": 2
+  },
+  {
+   "key": "inc-timeline",
+   "kind": "lesson",
+   "scope": "project:/bench/api",
+   "title": "장애가 나면 시간순 기록을 먼저 남긴다",
+   "ageDays": 16
+  },
+  {
+   "key": "api-version",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "API 경로는 /v2 아래에 둔다",
+   "ageDays": 75
+  },
+  {
+   "key": "api-n1",
+   "kind": "lesson",
+   "scope": "project:/bench/api",
+   "title": "목록 응답에서 관계를 하나씩 읽으면 질의가 폭증한다",
+   "ageDays": 39
+  },
+  {
+   "key": "docs-title",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "title": "문서 제목은 문장이 아니라 명사구로 쓴다",
+   "topic": "문서 제목 꼴",
+   "ageDays": 42
+  },
+  {
+   "key": "docs-order",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "title": "문서 첫 문단에 결론을 먼저 쓴다",
+   "topic": "문서 첫 문단",
+   "ageDays": 42
+  },
+  {
+   "key": "docs-publish",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "quote": true,
+   "title": "문서를 발행하기 전에 링크 검사를 돌린다",
+   "topic": "문서 발행 점검",
+   "ageDays": 18,
+   "tools": [
+    "mcp__docs__publish"
+   ]
+  },
+  {
+   "key": "docs-write-page",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "quote": true,
+   "title": "문서 쓰기는 초안 공간에 먼저 올린다",
+   "topic": "문서 쓰기 위치",
+   "ageDays": 16,
+   "tools": [
+    "mcp__docs__write_page"
+   ]
+  },
+  {
+   "key": "docs-write-lesson",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "문서 도구는 같은 쪽을 두 번 덮어쓰면 앞 수정이 사라진다",
+   "ageDays": 9,
+   "tools": [
+    "mcp__docs__*"
+   ]
+  },
+  {
+   "key": "docs-img",
+   "kind": "fact",
+   "scope": "project:/bench/docs",
+   "title": "문서 그림은 svg로 두고 폭을 800으로 맞춘다",
+   "ageDays": 60
+  },
+  {
+   "key": "docs-glossary",
+   "kind": "decision",
+   "scope": "project:/bench/docs",
+   "title": "용어집 문서가 용어의 정본이다",
+   "retention": "durable",
+   "reviewAfterDays": 60,
+   "topic": "용어 정본",
+   "ageDays": 88
+  },
+  {
+   "key": "docs-link",
+   "kind": "lesson",
+   "scope": "project:/bench/docs",
+   "title": "상대 링크는 쪽을 옮기면 깨지니 쪽 id로 건다",
+   "ageDays": 36
+  },
+  {
+   "key": "docs-search",
+   "kind": "fact",
+   "scope": "project:/bench/docs",
+   "title": "문서 검색 색인은 매일 새벽에 다시 만든다",
+   "ageDays": 55
+  },
+  {
+   "key": "docs-toc",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "title": "목차는 3단계까지만 둔다",
+   "topic": "문서 목차 깊이",
+   "ageDays": 70
+  },
+  {
+   "key": "docs-journal",
+   "kind": "journal",
+   "scope": "project:/bench/docs",
+   "title": "Pagewright 문서 개편 일지",
+   "ageDays": 5
+  },
+  {
+   "key": "docs-pubold",
+   "kind": "rule",
+   "scope": "project:/bench/docs",
+   "title": "문서를 발행하기 전에 맞춤법 검사를 돌린다",
+   "topic": "문서 발행 점검 옛",
+   "ageDays": 120,
+   "tools": [
+    "mcp__docs__publish"
+   ],
+   "state": "stale"
+  },
+  {
+   "key": "vol-docs-freeze",
+   "kind": "fact",
+   "scope": "project:/bench/docs",
+   "title": "문서 개편 중에는 목차를 바꾸지 않는다",
+   "retention": "volatile",
+   "ttlDays": 3,
+   "ageDays": 10
+  },
+  {
+   "key": "docs-example",
+   "kind": "lesson",
+   "scope": "project:/bench/docs",
+   "title": "예제 코드는 문서에 붙이기 전에 한 번 돌려 본다",
+   "ageDays": 24
+  },
+  {
+   "key": "other-test",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "다른 저장소 시험은 jest로 돌린다",
+   "ageDays": 45
+  },
+  {
+   "key": "other-pnpm",
+   "kind": "rule",
+   "scope": "project:/bench/other",
+   "title": "저장소 other는 yarn으로 설치한다",
+   "topic": "other 패키지 설치",
+   "ageDays": 45
+  },
+  {
+   "key": "other-port",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "other 개발 서버 포트는 3000이다",
+   "ageDays": 45
+  },
+  {
+   "key": "other-auth",
+   "kind": "decision",
+   "scope": "project:/bench/other",
+   "title": "other 인증은 세션 쿠키를 쓴다",
+   "topic": "other 인증",
+   "ageDays": 45
+  },
+  {
+   "key": "other-lint",
+   "kind": "rule",
+   "scope": "project:/bench/other",
+   "title": "other는 커밋 전에 eslint만 돌린다",
+   "topic": "other 커밋 전 점검",
+   "ageDays": 45
+  },
+  {
+   "key": "other-journal",
+   "kind": "journal",
+   "scope": "project:/bench/other",
+   "title": "other 저장소 10월 작업 일지",
+   "ageDays": 20
+  },
+  {
+   "key": "db-mig-other",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "other 저장소 마이그레이션은 손으로 실행한다",
+   "ageDays": 9,
+   "tools": [
+    "mcp__db__run_migration"
+   ]
+  },
+  {
+   "key": "pin-polite",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "사용자에게는 존댓말로 답한다",
+   "topic": "답변 말투",
+   "ageDays": 120,
+   "pinned": true
+  },
+  {
+   "key": "pin-delete",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "데이터를 지우는 작업은 먼저 사용자 확인을 받는다",
+   "topic": "삭제 전 확인",
+   "ageDays": 120,
+   "pinned": true
+  },
+  {
+   "key": "pin-result",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "결과를 먼저 말하고 근거를 뒤에 붙인다",
+   "topic": "보고 순서",
+   "ageDays": 120,
+   "pinned": true
+  },
+  {
+   "key": "pin-zero",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "시험은 실패 0개로 만들어 둔다",
+   "topic": "시험 실패 0개",
+   "ageDays": 120,
+   "pinned": true
+  },
+  {
+   "key": "git-branch",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "기본 브랜치에는 직접 커밋하지 않는다",
+   "topic": "기본 브랜치 커밋",
+   "ageDays": 90
+  },
+  {
+   "key": "git-msg",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "커밋 메시지 제목은 영어 명령형으로 쓴다",
+   "topic": "커밋 제목 꼴",
+   "ageDays": 90
+  },
+  {
+   "key": "git-add",
+   "kind": "rule",
+   "scope": "global",
+   "title": "git add는 경로를 하나씩 명시한다",
+   "topic": "커밋 경로 명시",
+   "ageDays": 60
+  },
+  {
+   "key": "git-push",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "푸시는 사용자가 시킬 때만 한다",
+   "topic": "푸시 허락",
+   "ageDays": 75
+  },
+  {
+   "key": "git-rebase",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "공유 브랜치에서는 rebase 하지 않는다",
+   "ageDays": 120
+  },
+  {
+   "key": "git-tag",
+   "kind": "fact",
+   "scope": "global",
+   "title": "릴리스 태그는 v0.17.0 꼴이다",
+   "ageDays": 30
+  },
+  {
+   "key": "git-stash",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "작업 복제본이 여럿이면 stash를 함께 쓰지 않는다",
+   "ageDays": 44
+  },
+  {
+   "key": "test-first",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "새 기능은 실패하는 시험부터 쓴다",
+   "topic": "시험 먼저",
+   "ageDays": 88
+  },
+  {
+   "key": "test-flaky",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "간헐 실패는 시간 제한을 늘려 덮지 않는다",
+   "ageDays": 27
+  },
+  {
+   "key": "test-golden",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "golden 파일을 바꿀 때는 diff를 눈으로 본다",
+   "ageDays": 21
+  },
+  {
+   "key": "test-mock",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "모의 객체가 많으면 시험이 코드 모양만 지킨다",
+   "ageDays": 41
+  },
+  {
+   "key": "test-race",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "고루틴을 쓰는 코드는 -race로 한 번 돌린다",
+   "ageDays": 17
+  },
+  {
+   "key": "tz-lesson",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "자정 근처에 도는 시험은 시간대 때문에 깨진다",
+   "ageDays": 19
+  },
+  {
+   "key": "tz-fact",
+   "kind": "fact",
+   "scope": "global",
+   "title": "서버 시간은 UTC로 저장하고 화면에서만 바꾼다",
+   "ageDays": 100
+  },
+  {
+   "key": "docker-db",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "DB 같은 저장소는 호스트에 깔지 않고 Docker로 띄운다",
+   "topic": "DB 실행 방법",
+   "ageDays": 66
+  },
+  {
+   "key": "docker-volume",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "컨테이너 볼륨을 지우기 전에는 사용자에게 묻는다",
+   "topic": "볼륨 삭제 확인",
+   "ageDays": 66
+  },
+  {
+   "key": "docker-cache",
+   "kind": "fact",
+   "scope": "global",
+   "title": "Docker 빌드 캐시는 한 달에 한 번 정리한다",
+   "ageDays": 33
+  },
+  {
+   "key": "shell-quote",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "공백이 든 경로는 셸에서 따옴표로 감싼다",
+   "ageDays": 52
+  },
+  {
+   "key": "shell-rg",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "rg는 검색 경로를 꼭 줘야 입력을 기다리며 멈추지 않는다",
+   "ageDays": 8
+  },
+  {
+   "key": "shell-sed",
+   "kind": "fact",
+   "scope": "global",
+   "title": "macOS의 sed는 -i 뒤에 빈 인자를 받는다",
+   "ageDays": 77
+  },
+  {
+   "key": "write-korean",
+   "kind": "rule",
+   "scope": "global",
+   "title": "문서는 한국어로 쓴다",
+   "topic": "문서 언어",
+   "ageDays": 80
+  },
+  {
+   "key": "write-short",
+   "kind": "rule",
+   "scope": "global",
+   "title": "문장은 짧게 쓰고 한 문장에 한 생각만 담는다",
+   "topic": "문장 길이",
+   "ageDays": 80
+  },
+  {
+   "key": "write-diagram",
+   "kind": "rule",
+   "scope": "global",
+   "title": "구조를 설명하는 문서에는 그림을 하나 이상 넣는다",
+   "topic": "문서 그림",
+   "ageDays": 55
+  },
+  {
+   "key": "write-id",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "보고에는 내부 번호를 쓰지 않고 풀어서 쓴다",
+   "topic": "보고 용어",
+   "ageDays": 12
+  },
+  {
+   "key": "port-adapter",
+   "kind": "decision",
+   "scope": "global",
+   "quote": true,
+   "title": "도메인은 포트를 정하고 바깥은 어댑터로 붙인다",
+   "topic": "포트와 어댑터",
+   "ageDays": 12
+  },
+  {
+   "key": "design-event",
+   "kind": "decision",
+   "scope": "global",
+   "title": "서비스 사이 알림은 이벤트로 보내고 직접 부르지 않는다",
+   "topic": "서비스 사이 알림",
+   "ageDays": 70
+  },
+  {
+   "key": "design-flag",
+   "kind": "decision",
+   "scope": "global",
+   "title": "기능 깃발은 두 주 안에 걷는다",
+   "topic": "기능 깃발 수명",
+   "ageDays": 40
+  },
+  {
+   "key": "lang-old",
+   "kind": "decision",
+   "scope": "global",
+   "title": "사내 도구는 Python으로 만든다",
+   "topic": "도구 언어",
+   "ageDays": 200
+  },
+  {
+   "key": "lang-new",
+   "kind": "decision",
+   "scope": "global",
+   "quote": true,
+   "title": "사내 도구는 Go로 만든다",
+   "topic": "도구 언어",
+   "ageDays": 30
+  },
+  {
+   "key": "ci-old",
+   "kind": "decision",
+   "scope": "global",
+   "title": "CI는 사내 서버에서 돌린다",
+   "topic": "CI 실행 위치",
+   "ageDays": 160
+  },
+  {
+   "key": "ci-new",
+   "kind": "decision",
+   "scope": "global",
+   "title": "CI는 클라우드 실행기에서 돌린다",
+   "topic": "CI 실행 위치",
+   "ageDays": 35
+  },
+  {
+   "key": "design-dry",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "두 번 나온 코드는 합치지 말고 세 번째에 합친다",
+   "ageDays": 62
+  },
+  {
+   "key": "ops-backup",
+   "kind": "fact",
+   "scope": "global",
+   "title": "DB 백업은 매일 03시에 돈다",
+   "ageDays": 22
+  },
+  {
+   "key": "ops-restore",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "백업은 복원해 보기 전에는 백업이 아니다",
+   "ageDays": 95
+  },
+  {
+   "key": "ops-alert",
+   "kind": "rule",
+   "scope": "global",
+   "title": "알림 규칙에는 대응 문서 링크를 단다",
+   "topic": "알림 규칙 링크",
+   "ageDays": 38
+  },
+  {
+   "key": "ops-oncall",
+   "kind": "fact",
+   "scope": "global",
+   "title": "당직 교대는 월요일 10시다",
+   "ageDays": 8
+  },
+  {
+   "key": "ops-secret",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "비밀값은 코드와 로그에 남기지 않는다",
+   "topic": "비밀값 취급",
+   "ageDays": 100
+  },
+  {
+   "key": "deploy-stage",
+   "kind": "fact",
+   "scope": "global",
+   "title": "스테이징 배포는 PR이 열릴 때마다 자동으로 돈다",
+   "ageDays": 14
+  },
+  {
+   "key": "deploy-after",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "운영 배포 뒤에는 오류율 그래프를 15분 본다",
+   "ageDays": 6
+  },
+  {
+   "key": "deploy-rollback",
+   "kind": "decision",
+   "scope": "global",
+   "title": "운영 배포가 실패하면 먼저 이전 판으로 되돌린다",
+   "topic": "배포 실패 대응",
+   "ageDays": 30
+  },
+  {
+   "key": "deploy-hotfix",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "급한 수정도 운영에 직접 올리지 않고 main을 거친다",
+   "topic": "긴급 수정 경로",
+   "ageDays": 45
+  },
+  {
+   "key": "deploy-window",
+   "kind": "rule",
+   "scope": "global",
+   "title": "금요일 오후에는 운영 배포를 하지 않는다",
+   "topic": "배포 금지 시간",
+   "ageDays": 28
+  },
+  {
+   "key": "deploy-freeze-gone2",
+   "kind": "fact",
+   "scope": "global",
+   "title": "결제 배포 동결은 월말까지",
+   "retention": "volatile",
+   "ttlDays": 3,
+   "ageDays": 9
+  },
+  {
+   "key": "rev-ops",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "당직 도구 계정 목록은 분기마다 다시 본다",
+   "retention": "durable",
+   "reviewAfterDays": 45,
+   "ageDays": 60
+  },
+  {
+   "key": "hidden-retro",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "회고는 매일 밤 자동으로 돈다",
+   "ageDays": 50,
+   "state": "hidden"
+  },
+  {
+   "key": "deploy-release-rule",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "release 호출 전에 백업 사본이 있는지 확인한다",
+   "topic": "release 전 백업",
+   "ageDays": 10,
+   "tools": [
+    "mcp__deploy__release"
+   ]
+  },
+  {
+   "key": "deploy-release-lesson",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "배포 도구 release는 변경 요약을 비우면 실패한다",
+   "ageDays": 11,
+   "tools": [
+    "mcp__deploy__release"
+   ]
+  },
+  {
+   "key": "deploy-rollback-lesson",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "rollback은 직전 판 하나로만 되돌아간다",
+   "ageDays": 13,
+   "tools": [
+    "mcp__deploy__rollback"
+   ]
+  },
+  {
+   "key": "tracker-create",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "이슈를 만들 때 제목 앞에 영역 이름을 붙인다",
+   "topic": "이슈 제목 꼴",
+   "ageDays": 20,
+   "tools": [
+    "mcp__tracker__create_issue"
+   ]
+  },
+  {
+   "key": "tracker-dup",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "이슈를 만들기 전에 같은 제목이 있는지 찾는다",
+   "ageDays": 13,
+   "tools": [
+    "mcp__tracker__*"
+   ]
+  },
+  {
+   "key": "tracker-old",
+   "kind": "rule",
+   "scope": "global",
+   "title": "이슈를 만들 때 담당자를 비워 둔다",
+   "topic": "이슈 담당 옛",
+   "ageDays": 100,
+   "tools": [
+    "mcp__tracker__create_issue"
+   ],
+   "state": "stale"
+  },
+  {
+   "key": "tracker-vol",
+   "kind": "fact",
+   "scope": "global",
+   "title": "이번 주 이슈는 모두 스프린트 7에 단다",
+   "retention": "volatile",
+   "ttlDays": 3,
+   "ageDays": 6,
+   "tools": [
+    "mcp__tracker__create_issue"
+   ]
+  },
+  {
+   "key": "db-mig",
+   "kind": "rule",
+   "scope": "project:/bench/api",
+   "quote": true,
+   "title": "마이그레이션 실행 전에 사본 DB로 먼저 돌려 본다",
+   "topic": "마이그레이션 사전 실행",
+   "ageDays": 14,
+   "tools": [
+    "mcp__db__run_migration"
+   ]
+  },
+  {
+   "key": "db-mig-cand",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "마이그레이션이 길면 락 걸리는 시간을 먼저 잰다",
+   "ageDays": 4,
+   "tools": [
+    "mcp__db__*"
+   ]
+  },
+  {
+   "key": "chat-send",
+   "kind": "rule",
+   "scope": "global",
+   "quote": true,
+   "title": "채팅 메시지를 보내기 전에 받는 채널을 확인한다",
+   "topic": "채팅 보내기 전 확인",
+   "ageDays": 17,
+   "tools": [
+    "mcp__chat__send_message"
+   ]
+  },
+  {
+   "key": "chat-send-lesson",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "채널 전체 알림은 사람이 시킨 때만 보낸다",
+   "ageDays": 7,
+   "tools": [
+    "mcp__chat__send_message"
+   ]
+  },
+  {
+   "key": "a11y-contrast",
+   "kind": "fact",
+   "scope": "global",
+   "title": "본문 글자 대비는 4.5 대 1 이상이다",
+   "tags": [
+    "분야:접근성"
+   ],
+   "ageDays": 84
+  },
+  {
+   "key": "a11y-focus",
+   "kind": "rule",
+   "scope": "global",
+   "title": "포커스 표시를 없애지 않는다",
+   "tags": [
+    "분야:접근성"
+   ],
+   "topic": "포커스 표시를 없애지 않는",
+   "ageDays": 57
+  },
+  {
+   "key": "a11y-alt",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "그림에는 뜻이 있는 대체 글을 단다",
+   "tags": [
+    "분야:접근성"
+   ],
+   "ageDays": 39
+  },
+  {
+   "key": "a11y-kbd",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "마우스로만 되는 메뉴는 키보드 사용자를 막는다",
+   "tags": [
+    "분야:접근성"
+   ],
+   "ageDays": 40
+  },
+  {
+   "key": "a11y-motion",
+   "kind": "fact",
+   "scope": "global",
+   "title": "움직임 줄이기 설정을 따른다",
+   "tags": [
+    "분야:접근성"
+   ],
+   "ageDays": 66
+  },
+  {
+   "key": "pay-round",
+   "kind": "fact",
+   "scope": "global",
+   "title": "금액은 정수 원 단위로 저장한다",
+   "tags": [
+    "분야:결제"
+   ],
+   "ageDays": 48
+  },
+  {
+   "key": "pay-refund",
+   "kind": "rule",
+   "scope": "global",
+   "title": "결제 환불은 원래 결제 수단으로만 한다",
+   "tags": [
+    "분야:결제"
+   ],
+   "topic": "결제 환불은 원래 결제 수",
+   "ageDays": 57
+  },
+  {
+   "key": "pay-webhook",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "결제 웹훅은 같은 알림이 중복해서 온다",
+   "tags": [
+    "분야:결제"
+   ],
+   "ageDays": 66
+  },
+  {
+   "key": "pay-tax",
+   "kind": "fact",
+   "scope": "global",
+   "title": "부가세는 결제 때 계산해 따로 저장한다",
+   "tags": [
+    "분야:결제"
+   ],
+   "ageDays": 30
+  },
+  {
+   "key": "pay-test",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "결제 시험은 샌드박스 키로만 돌린다",
+   "tags": [
+    "분야:결제"
+   ],
+   "ageDays": 39
+  },
+  {
+   "key": "i18n-plural",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "복수형은 문장을 이어 붙이지 말고 규칙으로 처리한다",
+   "tags": [
+    "분야:번역"
+   ],
+   "ageDays": 66
+  },
+  {
+   "key": "i18n-date",
+   "kind": "fact",
+   "scope": "global",
+   "title": "날짜 표기는 지역 설정을 따라 바꾼다",
+   "tags": [
+    "분야:번역"
+   ],
+   "ageDays": 48
+  },
+  {
+   "key": "i18n-key",
+   "kind": "rule",
+   "scope": "global",
+   "title": "번역 키는 화면 이름부터 점으로 이어 짓는다",
+   "tags": [
+    "분야:번역"
+   ],
+   "topic": "번역 키는 화면 이름부터 ",
+   "ageDays": 39
+  },
+  {
+   "key": "go-err",
+   "kind": "rule",
+   "scope": "global",
+   "title": "Go 오류는 감싸서 올리고 문자열로 비교하지 않는다",
+   "topic": "Go 오류 처리",
+   "ageDays": 10
+  },
+  {
+   "key": "go-ctx",
+   "kind": "rule",
+   "scope": "global",
+   "title": "context는 함수의 첫 인자로 받는다",
+   "topic": "Go context 위치",
+   "ageDays": 27
+  },
+  {
+   "key": "go-table",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "표 주도 시험의 사례 이름은 한글로 쓴다",
+   "ageDays": 44
+  },
+  {
+   "key": "go-cache",
+   "kind": "fact",
+   "scope": "global",
+   "title": "Go 빌드 캐시는 한 달에 한 번 비운다",
+   "ageDays": 61
+  },
+  {
+   "key": "go-vet",
+   "kind": "fact",
+   "scope": "global",
+   "title": "커밋 전에 go vet과 gofmt를 돌린다",
+   "ageDays": 78
+  },
+  {
+   "key": "sql-index",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "복합 인덱스는 같음 조건 열을 앞에 둔다",
+   "ageDays": 95
+  },
+  {
+   "key": "sql-txn",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "트랜잭션 안에서 바깥 호출을 기다리지 않는다",
+   "ageDays": 112
+  },
+  {
+   "key": "sql-null",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "NULL과 비교할 때는 IS NULL을 쓴다",
+   "ageDays": 129
+  },
+  {
+   "key": "sql-order",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "정렬 없는 LIMIT은 매번 다른 행을 돌려준다",
+   "ageDays": 146
+  },
+  {
+   "key": "sec-sql",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "SQL에 입력을 이어 붙이지 않고 바인딩을 쓴다",
+   "ageDays": 163
+  },
+  {
+   "key": "sec-cors",
+   "kind": "fact",
+   "scope": "global",
+   "title": "CORS 허용 출처는 환경 설정에서만 바꾼다",
+   "ageDays": 20
+  },
+  {
+   "key": "sec-cookie",
+   "kind": "rule",
+   "scope": "global",
+   "title": "쿠키는 Secure와 HttpOnly를 함께 단다",
+   "topic": "쿠키 속성",
+   "ageDays": 37
+  },
+  {
+   "key": "sec-dep",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "의존 패키지는 달마다 취약점 목록을 확인한다",
+   "ageDays": 54
+  },
+  {
+   "key": "perf-n1",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "반복문 안의 질의는 한 번에 묶어 읽는다",
+   "ageDays": 71
+  },
+  {
+   "key": "perf-cache",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "캐시를 넣기 전에 먼저 느린 곳을 잰다",
+   "ageDays": 88
+  },
+  {
+   "key": "perf-image",
+   "kind": "fact",
+   "scope": "global",
+   "title": "큰 그림은 webp로 줄여서 올린다",
+   "ageDays": 105
+  },
+  {
+   "key": "rev-small",
+   "kind": "rule",
+   "scope": "global",
+   "title": "PR은 한 가지 일만 담는다",
+   "topic": "PR 크기",
+   "ageDays": 122
+  },
+  {
+   "key": "rev-desc",
+   "kind": "rule",
+   "scope": "global",
+   "title": "PR 설명에는 바꾼 이유를 먼저 쓴다",
+   "topic": "PR 설명 꼴",
+   "ageDays": 139
+  },
+  {
+   "key": "rev-self",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "올리기 전에 자기 diff를 한 번 읽는다",
+   "ageDays": 156
+  },
+  {
+   "key": "fe-lazy",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "화면 밖 이미지는 느리게 불러온다",
+   "ageDays": 13
+  },
+  {
+   "key": "fe-key",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "목록 렌더링의 key에 배열 번호를 쓰지 않는다",
+   "ageDays": 30
+  },
+  {
+   "key": "fe-debounce",
+   "kind": "fact",
+   "scope": "global",
+   "title": "검색 입력은 300ms 늦춰 요청한다",
+   "ageDays": 47
+  },
+  {
+   "key": "fe-toast",
+   "kind": "rule",
+   "scope": "global",
+   "title": "알림 토스트는 한 번에 하나만 띄운다",
+   "topic": "토스트 개수",
+   "ageDays": 64
+  },
+  {
+   "key": "log-level",
+   "kind": "rule",
+   "scope": "global",
+   "title": "로그 단계는 오류·경고·정보 셋만 쓴다",
+   "topic": "로그 단계",
+   "ageDays": 81
+  },
+  {
+   "key": "log-id",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "요청마다 추적 id를 로그에 남긴다",
+   "ageDays": 98
+  },
+  {
+   "key": "retry-backoff",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "재시도는 간격을 늘려 가며 최대 3번 한다",
+   "ageDays": 115
+  },
+  {
+   "key": "queue-dead",
+   "kind": "fact",
+   "scope": "global",
+   "title": "실패한 작업은 죽은 편지 큐에 모은다",
+   "ageDays": 132
+  },
+  {
+   "key": "cron-tz",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "정기 작업 시각은 UTC로 적는다",
+   "ageDays": 149
+  },
+  {
+   "key": "env-names",
+   "kind": "rule",
+   "scope": "global",
+   "title": "환경 변수 이름은 제품 이름을 앞에 붙인다",
+   "topic": "환경 변수 이름",
+   "ageDays": 166
+  },
+  {
+   "key": "file-size",
+   "kind": "rule",
+   "scope": "global",
+   "title": "파일 하나는 500줄을 넘기지 않는다",
+   "topic": "파일 크기",
+   "ageDays": 23
+  },
+  {
+   "key": "name-bool",
+   "kind": "rule",
+   "scope": "global",
+   "title": "참거짓 변수 이름은 is·has로 시작한다",
+   "topic": "참거짓 이름",
+   "ageDays": 40
+  },
+  {
+   "key": "comment-why",
+   "kind": "rule",
+   "scope": "global",
+   "title": "주석은 무엇이 아니라 왜를 쓴다",
+   "topic": "주석 내용",
+   "ageDays": 57
+  },
+  {
+   "key": "todo-owner",
+   "kind": "rule",
+   "scope": "global",
+   "title": "TODO에는 담당자와 날짜를 적는다",
+   "topic": "TODO 꼴",
+   "ageDays": 74
+  },
+  {
+   "key": "readme-run",
+   "kind": "rule",
+   "scope": "global",
+   "title": "README 첫 화면에 실행 명령을 둔다",
+   "topic": "README 첫 화면",
+   "ageDays": 91
+  },
+  {
+   "key": "adr-short",
+   "kind": "decision",
+   "scope": "global",
+   "title": "결정 기록은 한 쪽을 넘기지 않는다",
+   "topic": "결정 기록 길이",
+   "ageDays": 108
+  },
+  {
+   "key": "adr-alt",
+   "kind": "rule",
+   "scope": "global",
+   "title": "결정 기록에는 버린 대안을 함께 적는다",
+   "topic": "결정 기록 대안",
+   "ageDays": 125
+  },
+  {
+   "key": "mtg-notes",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "회의 메모는 결정과 할 일만 남긴다",
+   "ageDays": 142
+  },
+  {
+   "key": "estimate",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "추정은 가장 나쁜 경우를 따로 적는다",
+   "ageDays": 159
+  },
+  {
+   "key": "scope-cut",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "일정이 밀리면 기능을 줄이지 일정을 늘리지 않는다",
+   "ageDays": 16
+  },
+  {
+   "key": "pair-short",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "막힌 지 30분이 지나면 사람에게 묻는다",
+   "ageDays": 33
+  },
+  {
+   "key": "bench-seed",
+   "kind": "fact",
+   "scope": "global",
+   "title": "평가 묶음은 고정 시드로 나눈다",
+   "ageDays": 50
+  },
+  {
+   "key": "bench-gold",
+   "kind": "rule",
+   "scope": "global",
+   "title": "평가 정답은 현재 코드가 아니라 참을 기준으로 적는다",
+   "topic": "평가 정답 기준",
+   "ageDays": 67
+  },
+  {
+   "key": "ux-empty",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "빈 목록 화면에는 다음 행동을 보여 준다",
+   "ageDays": 84
+  },
+  {
+   "key": "ux-error",
+   "kind": "rule",
+   "scope": "global",
+   "title": "오류 문구에는 원인과 다음 행동을 함께 쓴다",
+   "topic": "오류 문구",
+   "ageDays": 101
+  },
+  {
+   "key": "ux-loading",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "300ms 넘게 걸리는 곳에만 로딩 표시를 둔다",
+   "ageDays": 118
+  },
+  {
+   "key": "mobile-tap",
+   "kind": "fact",
+   "scope": "global",
+   "title": "터치 대상은 최소 44px로 둔다",
+   "ageDays": 135
+  },
+  {
+   "key": "mobile-offline",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "오프라인에서 쓴 입력은 지우지 말고 보관한다",
+   "ageDays": 152
+  },
+  {
+   "key": "data-csv",
+   "kind": "fact",
+   "scope": "global",
+   "title": "CSV는 UTF-8 BOM을 붙여 내보낸다",
+   "ageDays": 169
+  },
+  {
+   "key": "data-null",
+   "kind": "rule",
+   "scope": "global",
+   "title": "빈 값은 빈 문자열이 아니라 null로 저장한다",
+   "topic": "빈 값 저장",
+   "ageDays": 26
+  },
+  {
+   "key": "data-soft",
+   "kind": "decision",
+   "scope": "global",
+   "title": "지운 행은 삭제 표시만 하고 한 달 뒤 지운다",
+   "topic": "삭제 표시",
+   "ageDays": 43
+  },
+  {
+   "key": "mon-slo",
+   "kind": "fact",
+   "scope": "global",
+   "title": "가용성 목표는 월 99.9퍼센트다",
+   "ageDays": 60
+  },
+  {
+   "key": "mon-dash",
+   "kind": "rule",
+   "scope": "global",
+   "title": "대시보드 한 장에는 그래프 여섯 개까지만 둔다",
+   "topic": "대시보드 크기",
+   "ageDays": 77
+  },
+  {
+   "key": "dup-dryrun",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "배포 스크립트는 드라이런을 먼저 돌린다",
+   "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다",
+   "ageDays": 25
+  },
+  {
+   "key": "dup-itest-db",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "통합 시험은 임시 컨테이너 DB를 쓴다",
+   "body": "통합 시험은 실제 데이터베이스 대신 시험마다 새로 띄운 임시 컨테이너 데이터베이스에 붙는다",
+   "ageDays": 18
+  },
+  {
+   "key": "dup-dryrun-en",
+   "kind": "lesson",
+   "scope": "project:/bench/other",
+   "title": "Run the deploy script with dry-run first",
+   "body": "When running the production deploy script for the first time, run it with dry-run to see what changes before the real run",
+   "ageDays": 30
+  },
+  {
+   "key": "dup-commit-en",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "Write commit messages in English",
+   "body": "Commit message subjects and bodies are written in English, in the imperative mood",
+   "ageDays": 22
+  },
+  {
+   "key": "dup-docker-en",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "Use Docker for databases",
+   "ageDays": 15
+  },
+  {
+   "key": "dup-o-smoke",
+   "kind": "fact",
+   "scope": "global",
+   "title": "배포 뒤에는 스모크 시험을 돌린다",
+   "body": "배포 직후 스모크 시험으로 첫 화면과 로그인이 되는지 확인한다",
+   "ageDays": 12
+  },
+  {
+   "key": "dup-o-commitbody",
+   "kind": "fact",
+   "scope": "global",
+   "title": "커밋 본문에는 이슈 링크를 단다",
+   "body": "커밋 본문 끝에 관련 이슈 링크를 한 줄로 단다",
+   "ageDays": 40
+  },
+  {
+   "key": "dup-o-ask",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "사용자에게 묻기 전에 먼저 찾아본다",
+   "body": "사용자에게 확인을 묻기 전에 저장소와 문서에서 답을 먼저 찾아본다",
+   "ageDays": 35
+  },
+  {
+   "key": "dup-o-logs-en",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "Check the deploy logs after a release",
+   "body": "After each release, read the deploy logs for errors and warnings before closing the ticket",
+   "ageDays": 9
+  },
+  {
+   "key": "dup-o-squash-en",
+   "kind": "lesson",
+   "scope": "project:/bench/other",
+   "title": "Squash the fixup commits before review",
+   "body": "Fold fixup commits into the commit they fix before asking for review",
+   "ageDays": 14
+  },
+  {
+   "key": "dup-o-testport",
+   "kind": "fact",
+   "scope": "project:/bench/api",
+   "title": "시험 DB 포트는 시험마다 무작위로 잡는다",
+   "body": "통합 시험은 비어 있는 포트를 골라 DB를 띄우고 그 포트를 설정에 넘긴다",
+   "ageDays": 11
+  },
+  {
+   "key": "dup-o-brew-en",
+   "kind": "fact",
+   "scope": "project:/bench/other",
+   "title": "Use Homebrew for command line tools",
+   "body": "Command line tools on this machine come from Homebrew, not from curl scripts",
+   "ageDays": 50
+  },
+  {
+   "key": "dup-o-slowtests",
+   "kind": "lesson",
+   "scope": "global",
+   "title": "느린 시험은 별도 묶음으로 나눠 야간에 돌린다",
+   "body": "오래 걸리는 시험은 빠른 시험과 묶음을 나눠 밤에 따로 돌린다",
+   "ageDays": 28
+  },
+  {
+   "key": "store-old",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "title": "이 앱 서버 데이터는 swr로 가져온다",
+   "topic": "앱 서버 데이터 가져오기",
+   "ageDays": 150
+  },
+  {
+   "key": "store-new",
+   "kind": "decision",
+   "scope": "project:/bench/app",
+   "quote": true,
+   "title": "이 앱 서버 데이터는 react-query로 바꾼다",
+   "body": "목록 화면부터 옮기고 swr 호출은 남기지 않는다.",
+   "topic": "앱 서버 데이터 가져오기",
+   "ageDays": 6
+  }
+ ],
+ "cases": [
+  {
+   "id": "h2-01-1",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "새로 클론했는데 의존성은 어떻게 설치해야 해요?",
+   "expect": [
+    "rule-pnpm"
+   ],
+   "allow": [
+    "app-env"
+   ],
+   "forbid": [
+    "stale-npm",
+    "other-pnpm"
+   ],
+   "note": "설치 도구를 묻는다. 옛 npm 규칙(낡음)과 다른 저장소의 yarn 규칙은 아니다."
+  },
+  {
+   "id": "h2-01-2",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "개발 서버 몇 번 포트에서 뜨는지 알려 주세요",
+   "expect": [
+    "app-port"
+   ],
+   "forbid": [
+    "other-port",
+    "api-db-port"
+   ],
+   "note": "포트는 이 앱 사실이다. 다른 저장소 포트와 api DB 포트는 아니다."
+  },
+  {
+   "id": "h2-01-3",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "안녕하세요, 오늘도 잘 부탁드립니다",
+   "forbid": [
+    "rule-pnpm",
+    "app-port"
+   ],
+   "note": "인사다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-01-4",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "빌드 결과물 폴더가 어디죠",
+   "expect": [
+    "app-dist"
+   ],
+   "forbid": [
+    "app-cdn"
+   ],
+   "note": "짧은 요청. 빌드 결과 위치 사실이다."
+  },
+  {
+   "id": "h2-01-5",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "PR 올리기 전에 린트나 포맷 검사 돌려야 하나요? 이 앱 기준으로요.",
+   "expect": [
+    "app-lint"
+   ],
+   "allow": [
+    "go-vet",
+    "pin-zero"
+   ],
+   "forbid": [
+    "other-lint"
+   ],
+   "note": "이 앱의 커밋 전 점검이다. 다른 저장소는 eslint만 돌리는 규칙이라 아니다."
+  },
+  {
+   "id": "h2-01-6",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": "단위 테스트 실행",
+   "expect": [
+    "app-test-vitest"
+   ],
+   "allow": [
+    "test-first"
+   ],
+   "forbid": [
+    "other-test"
+   ],
+   "note": "짧은 요청. 이 앱 단위 시험 도구다."
+  },
+  {
+   "id": "h2-01-7",
+   "session": "h2-s01-setup",
+   "cwd": "/bench/app",
+   "prompt": ".env.local 파일을 같이 커밋해도 괜찮을까요",
+   "expect": [
+    "app-env"
+   ],
+   "allow": [
+    "ops-secret"
+   ],
+   "note": "환경 파일을 저장소에 올리는 일이다."
+  },
+  {
+   "id": "h2-02-1",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "아이콘만 있는 닫기 버튼을 스크린 리더가 읽게 하려면 어떻게 해?",
+   "expect": [
+    "app-aria"
+   ],
+   "allow": [
+    "a11y-alt",
+    "a11y-kbd"
+   ],
+   "note": "제목과 다른 말(스크린 리더)로 물었지만 같은 내용이다."
+  },
+  {
+   "id": "h2-02-2",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "확인 대화상자를 어디에 렌더링하는 게 맞아요?",
+   "expect": [
+    "app-modal"
+   ],
+   "note": "모달을 portal 안에 그린다는 사실을 다른 말(대화상자, 렌더링)로 물었다."
+  },
+  {
+   "id": "h2-02-3",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "리액트가 처음 나온 해가 언제인지 아세요?",
+   "forbid": [
+    "app-state-old",
+    "app-router"
+   ],
+   "note": "일반 지식 질문이다. 이 앱 기억은 필요 없다."
+  },
+  {
+   "id": "h2-02-4",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "서버에서 목록 받아오는 훅을 새로 만들 건데 어떤 방식으로 짜야 해?",
+   "expect": [
+    "store-new"
+   ],
+   "forbid": [
+    "store-old"
+   ],
+   "note": "서버 데이터 가져오기는 새 판 결정이다. 옛 판은 아니다."
+  },
+  {
+   "id": "h2-02-5",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "SSR 페이지에서 새로고침하면 콘솔에 불일치 경고가 뜨는데 window를 쓰는 코드가 있어서 그런 걸까요? 최근에 브라우저 크기를 읽는 코드를 넣었습니다.",
+   "expect": [
+    "app-hydrate"
+   ],
+   "note": "긴 요청. 서버 렌더링에서 window를 바로 쓰면 깨진다는 교훈이다."
+  },
+  {
+   "id": "h2-02-6",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "청크가 커졌다는 경고가 떴어요. 어떻게 쪼개죠?",
+   "expect": [
+    "app-bundle"
+   ],
+   "allow": [
+    "perf-image"
+   ],
+   "note": "번들 크기 기준과 쪼개는 방법이다."
+  },
+  {
+   "id": "h2-02-7",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "이미지 올릴 주소 규칙이랑 화면 밖 이미지 처리도 같이 알려 주세요.",
+   "expect": [
+    "app-cdn",
+    "fe-lazy"
+   ],
+   "allow": [
+    "perf-image"
+   ],
+   "note": "주제 둘을 묶은 요청이다. CDN 경로와 느리게 불러오기."
+  },
+  {
+   "id": "h2-02-8",
+   "session": "h2-s02-ui",
+   "cwd": "/bench/app",
+   "prompt": "전역 상태를 어떤 걸로 관리하고 있었더라?",
+   "expect": [
+    "app-state-new"
+   ],
+   "forbid": [
+    "app-state-old"
+   ],
+   "note": "옛 판(redux)이 아니라 바꾼 새 판이 답이다."
+  },
+  {
+   "id": "h2-03-1",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "문구를 바꿀 때 한국어부터 고쳐요, 영어부터 고쳐요?",
+   "expect": [
+    "app-i18n"
+   ],
+   "allow": [
+    "i18n-key"
+   ],
+   "note": "문구 수정 순서다."
+  },
+  {
+   "id": "h2-03-2",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "서버가 준 날짜를 화면에 그대로 찍어도 되나요",
+   "expect": [
+    "app-date"
+   ],
+   "allow": [
+    "tz-fact",
+    "i18n-date"
+   ],
+   "note": "날짜는 서버에서 ISO로 받고 화면에서만 바꾼다."
+  },
+  {
+   "id": "h2-03-3",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "가입 폼 입력 검증을 추가하려 합니다. 필드마다 따로 검사 함수를 만들면 되나요?",
+   "expect": [
+    "app-form"
+   ],
+   "note": "입력 검증은 스키마 하나로 한다. 필드별 함수는 아니다."
+  },
+  {
+   "id": "h2-03-4",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "ㅇㅇ",
+   "forbid": [
+    "app-form",
+    "app-date"
+   ],
+   "note": "한 글자 답이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-03-5",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "스냅샷 시험이 어제부터 갑자기 깨져요",
+   "expect": [
+    "app-snap"
+   ],
+   "allow": [
+    "tz-lesson",
+    "test-golden"
+   ],
+   "note": "날짜 고정 안 한 스냅샷이 깨지는 교훈이다."
+  },
+  {
+   "id": "h2-03-6",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "새 페이지 라우트를 하나 추가하려는데",
+   "expect": [
+    "app-router"
+   ],
+   "note": "파일 기반 라우터. 파일을 두면 경로가 생긴다."
+  },
+  {
+   "id": "h2-03-7",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "로그를 어떤 형식으로 찍기로 했었죠?",
+   "expect": [
+    "logfmt-new"
+   ],
+   "allow": [
+    "log-level",
+    "log-id"
+   ],
+   "forbid": [
+    "logfmt-old"
+   ],
+   "note": "로그 형식은 새 판(JSON 한 줄)이다."
+  },
+  {
+   "id": "h2-03-8",
+   "session": "h2-s03-text",
+   "cwd": "/bench/app",
+   "prompt": "redux라는 이름은 어디서 따온 건가요",
+   "forbid": [
+    "app-state-old",
+    "app-state-new"
+   ],
+   "note": "이름 유래를 묻는 일반 지식이다. 낱말만 앱 기억과 겹친다."
+  },
+  {
+   "id": "h2-04-1",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "오류 응답을 어떤 꼴로 내려야 해요?",
+   "expect": [
+    "api-error"
+   ],
+   "allow": [
+    "ux-error"
+   ],
+   "note": "API 오류 응답 꼴이다."
+  },
+  {
+   "id": "h2-04-2",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "목록 조회를 페이지로 나눠 주는 방식이 정해져 있나요",
+   "expect": [
+    "api-page"
+   ],
+   "note": "cursor 방식이다."
+  },
+  {
+   "id": "h2-04-3",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "로그인 API가 1분에 몇 번까지 받는지 알고 싶어요",
+   "expect": [
+    "api-rate"
+   ],
+   "forbid": [
+    "api-lockout"
+   ],
+   "note": "분당 제한 값이다. 실패 잠금 규칙은 다른 얘기다."
+  },
+  {
+   "id": "h2-04-4",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "비밀번호를 여러 번 틀리면 계정이 어떻게 되죠",
+   "expect": [
+    "api-lockout"
+   ],
+   "forbid": [
+    "api-rate"
+   ],
+   "note": "실패 횟수와 잠금이다. 분당 제한은 아니다."
+  },
+  {
+   "id": "h2-04-5",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "JWT가 어떻게 생겼는지 구조만 간단히 설명해 주세요",
+   "forbid": [
+    "api-auth-new",
+    "api-auth-old"
+   ],
+   "note": "일반 지식 질문이다. 인증 결정 기억은 필요 없다."
+  },
+  {
+   "id": "h2-04-6",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "로그인 뒤 받는 토큰 수명이 얼마였죠",
+   "expect": [
+    "api-auth-new"
+   ],
+   "forbid": [
+    "api-auth-old",
+    "other-auth"
+   ],
+   "note": "인증은 짧은 수명 토큰으로 바꿨다. 옛 세션 쿠키 결정과 다른 저장소 결정은 아니다."
+  },
+  {
+   "id": "h2-04-7",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "응답 캐시를 얼마 동안 들고 있게 했는지 확인해 주세요",
+   "expect": [
+    "cache-new"
+   ],
+   "forbid": [
+    "cache-old"
+   ],
+   "note": "캐시 만료는 새 판 10분이다."
+  },
+  {
+   "id": "h2-04-8",
+   "session": "h2-s04-apidesign",
+   "cwd": "/bench/api",
+   "prompt": "/review 요청 본문을 로그에 찍는 미들웨어",
+   "expect": [
+    "api-log"
+   ],
+   "allow": [
+    "ops-secret"
+   ],
+   "note": "슬래시 명령 인자. 요청 본문을 로그에 남기지 않는 규칙이다."
+  },
+  {
+   "id": "h2-05-1",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "목록 API가 요청 하나에 쿼리를 수백 번 날려요",
+   "expect": [
+    "api-n1"
+   ],
+   "allow": [
+    "perf-n1"
+   ],
+   "note": "관계를 하나씩 읽어 질의가 폭증하는 교훈이다."
+  },
+  {
+   "id": "h2-05-2",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "마이그레이션 파일 이름 번호 중간이 비어도 되나요",
+   "expect": [
+    "api-migrate-num"
+   ],
+   "forbid": [
+    "db-mig-other"
+   ],
+   "note": "번호는 건너뛰지 않는다."
+  },
+  {
+   "id": "h2-05-3",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "down 스크립트는 안 만들어도 되죠?",
+   "expect": [
+    "api-migrate-down"
+   ],
+   "note": "되돌리기 파일을 함께 둔다. 짧게 다른 말로 물었다."
+  },
+  {
+   "id": "h2-05-4",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "스키마 변경 적용 직전에 해 둘 일이 있나요",
+   "expect": [
+    "db-mig"
+   ],
+   "allow": [
+    "db-mig-cand",
+    "api-migrate-down"
+   ],
+   "forbid": [
+    "db-mig-other"
+   ],
+   "note": "마이그레이션 실행 전 사본 DB 규칙이다. 다른 저장소 규칙이 아니다."
+  },
+  {
+   "id": "h2-05-5",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "통합 시험 돌릴 때 DB는 어떻게 하죠. 모의 객체로 대충 막아도 될까요?",
+   "expect": [
+    "api-test-db"
+   ],
+   "allow": [
+    "dup-itest-db",
+    "docker-db",
+    "test-mock"
+   ],
+   "note": "시험은 실제 DB 컨테이너로 돌린다."
+  },
+  {
+   "id": "h2-05-6",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "결제 요청이 타임아웃 나서 그냥 다시 보내려는데요",
+   "expect": [
+    "api-idempotent"
+   ],
+   "allow": [
+    "pay-webhook",
+    "retry-backoff"
+   ],
+   "note": "멱등 키 없이 다시 보내지 않는다."
+  },
+  {
+   "id": "h2-05-7",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "바깥 서비스를 부를 때 기다리는 시간 기본값",
+   "expect": [
+    "api-timeout"
+   ],
+   "allow": [
+    "retry-backoff"
+   ],
+   "note": "기본 제한 시간 사실."
+  },
+  {
+   "id": "h2-05-8",
+   "session": "h2-s05-apidata",
+   "cwd": "/bench/api",
+   "prompt": "로컬에서 DB에 붙을 때 포트",
+   "expect": [
+    "api-db-port"
+   ],
+   "forbid": [
+    "other-port",
+    "app-port"
+   ],
+   "note": "api 로컬 DB 포트다. 다른 저장소 개발 서버 포트는 아니다."
+  },
+  {
+   "id": "h2-06-1",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "새 문서 제목을 문장으로 쓸까요 아니면 짧게 쓸까요?",
+   "expect": [
+    "docs-title"
+   ],
+   "note": "제목은 명사구로 쓴다."
+  },
+  {
+   "id": "h2-06-2",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "글 맨 앞에 뭘 두어야 읽는 사람이 편해요?",
+   "expect": [
+    "docs-order"
+   ],
+   "allow": [
+    "pin-result",
+    "write-short"
+   ],
+   "note": "첫 문단에 결론을 먼저 쓴다. 다른 말로 물었다."
+  },
+  {
+   "id": "h2-06-3",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "그림 파일 형식과 가로 크기 기준",
+   "expect": [
+    "docs-img"
+   ],
+   "allow": [
+    "write-diagram"
+   ],
+   "note": "svg 폭 800."
+  },
+  {
+   "id": "h2-06-4",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "목차를 몇 단계까지 만들어요",
+   "expect": [
+    "docs-toc"
+   ],
+   "forbid": [
+    "vol-docs-freeze"
+   ],
+   "note": "3단계까지만."
+  },
+  {
+   "id": "h2-06-5",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "다른 쪽으로 가는 링크를 걸 때 주소를 어떻게 적죠? 쪽 위치를 자주 옮겨서요.",
+   "expect": [
+    "docs-link"
+   ],
+   "note": "쪽을 옮겨도 안 깨지게 쪽 id로 건다."
+  },
+  {
+   "id": "h2-06-6",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "고마워요, 잘 읽었습니다",
+   "forbid": [
+    "docs-title",
+    "docs-order"
+   ],
+   "note": "인사 답이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-06-7",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "본문에 넣을 예제를 붙이기 전에 확인할 게 있나요",
+   "expect": [
+    "docs-example"
+   ],
+   "note": "예제는 붙이기 전에 한 번 돌려 본다."
+  },
+  {
+   "id": "h2-06-8",
+   "session": "h2-s06-docs1",
+   "cwd": "/bench/docs",
+   "prompt": "검색에 새 문서가 안 잡혀요. 색인은 언제 새로 만들어지나요?",
+   "expect": [
+    "docs-search"
+   ],
+   "note": "색인은 매일 새벽에 다시 만든다."
+  },
+  {
+   "id": "h2-07-1",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "글을 올리기 전 점검이랑 처음 쓰는 위치도 알려 주세요",
+   "expect": [
+    "docs-publish",
+    "docs-write-page"
+   ],
+   "allow": [
+    "docs-write-lesson"
+   ],
+   "forbid": [
+    "docs-pubold"
+   ],
+   "note": "발행 전 링크 검사와 초안 공간 먼저. 옛 맞춤법 검사 규칙(낡음)은 아니다."
+  },
+  {
+   "id": "h2-07-2",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "이 글은 한국어로 쓰고, 문장은 짧게, 결론은 앞에 두고 싶어요.",
+   "expect": [
+    "write-korean",
+    "write-short",
+    "docs-order"
+   ],
+   "allow": [
+    "pin-result"
+   ],
+   "note": "문서 언어·문장 길이·첫 문단 결론, 셋이 겹친다."
+  },
+  {
+   "id": "h2-07-3",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "/review 이 쪽의 그림 파일이 우리 문서 규칙대로인지",
+   "expect": [
+    "docs-img"
+   ],
+   "allow": [
+    "write-diagram"
+   ],
+   "forbid": [
+    "docs-glossary"
+   ],
+   "note": "슬래시 명령 인자. 문서 그림 형식과 폭 규칙이다."
+  },
+  {
+   "id": "h2-07-4",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "/compact",
+   "forbid": [
+    "docs-toc"
+   ],
+   "note": "인자 없는 슬래시 명령이다. 사소한 요청이다."
+  },
+  {
+   "id": "h2-07-5",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "구조 설명 글에 그림 넣어야 하나요",
+   "expect": [
+    "write-diagram"
+   ],
+   "allow": [
+    "docs-img"
+   ],
+   "note": "구조를 설명하는 문서에는 그림을 하나 이상."
+  },
+  {
+   "id": "h2-07-6",
+   "session": "h2-s07-docs2",
+   "cwd": "/bench/docs",
+   "prompt": "보고서에 내부 번호를 적으면 안 된다던데 어떻게 풀어 쓰죠",
+   "expect": [
+    "write-id"
+   ],
+   "note": "보고에는 내부 번호를 쓰지 않는다."
+  },
+  {
+   "id": "h2-08-1",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "여기선 패키지를 뭘로 설치하죠?",
+   "expect": [
+    "other-pnpm"
+   ],
+   "forbid": [
+    "rule-pnpm",
+    "stale-npm"
+   ],
+   "note": "이 저장소(other)의 설치 규칙은 yarn이다. 앱 저장소의 pnpm 규칙은 아니다."
+  },
+  {
+   "id": "h2-08-2",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "시험 러너가 뭐였죠",
+   "expect": [
+    "other-test"
+   ],
+   "forbid": [
+    "app-test-vitest"
+   ],
+   "note": "other 저장소 시험은 jest. 앱의 vitest 규칙은 다른 프로젝트 것이다."
+  },
+  {
+   "id": "h2-08-3",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "점심 먹고 올게요",
+   "forbid": [
+    "other-port"
+   ],
+   "note": "잡담이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-08-4",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "개발 서버 주소 포트 번호요",
+   "expect": [
+    "other-port"
+   ],
+   "forbid": [
+    "app-port",
+    "api-db-port"
+   ],
+   "note": "other 개발 서버 포트다. 앱 포트는 아니다."
+  },
+  {
+   "id": "h2-08-5",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "로그인 방식이 세션이었나 토큰이었나",
+   "expect": [
+    "other-auth"
+   ],
+   "forbid": [
+    "api-auth-new",
+    "api-auth-old"
+   ],
+   "note": "other 인증은 세션 쿠키다. api의 토큰 결정과 섞지 않는다."
+  },
+  {
+   "id": "h2-08-6",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "커밋하기 전에 돌릴 검사",
+   "expect": [
+    "other-lint"
+   ],
+   "forbid": [
+    "app-lint"
+   ],
+   "note": "other는 eslint만 돌린다. 앱의 eslint와 prettier 규칙은 아니다."
+  },
+  {
+   "id": "h2-08-7",
+   "session": "h2-s08-other",
+   "cwd": "/bench/other",
+   "prompt": "스키마 바꾸는 명령은 자동으로 도나요, 제가 직접 돌리나요?",
+   "expect": [
+    "db-mig-other"
+   ],
+   "allow": [
+    "db-mig-cand"
+   ],
+   "forbid": [
+    "db-mig"
+   ],
+   "note": "other 저장소 마이그레이션은 손으로 실행한다. api의 사본 DB 규칙은 아니다."
+  },
+  {
+   "id": "h2-09-1",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "급해서 main에 바로 밀어 넣고 싶은데 괜찮을까요?",
+   "expect": [
+    "git-branch",
+    "git-push"
+   ],
+   "allow": [
+    "pin-delete"
+   ],
+   "note": "기본 브랜치 직접 커밋 금지와 푸시 허락 규칙이 모두 닿는다."
+  },
+  {
+   "id": "h2-09-2",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "바꾼 파일을 스테이징할 때 한꺼번에 담아도 돼요?",
+   "expect": [
+    "git-add"
+   ],
+   "note": "경로를 하나씩 명시한다."
+  },
+  {
+   "id": "h2-09-3",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "커밋 제목은 영어로, 한국어로?",
+   "expect": [
+    "git-msg"
+   ],
+   "forbid": [
+    "dup-commit-en",
+    "dup-o-commitbody"
+   ],
+   "note": "커밋 제목은 영어 명령형."
+  },
+  {
+   "id": "h2-09-4",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "커밋 메시지라는 말이 영어로 정확히 뭔가요",
+   "forbid": [
+    "git-msg",
+    "git-add"
+   ],
+   "note": "일반 지식 질문이다. 낱말만 겹친다."
+  },
+  {
+   "id": "h2-09-5",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "팀 브랜치를 rebase로 정리해도 되나요",
+   "expect": [
+    "git-rebase"
+   ],
+   "note": "공유 브랜치에서는 rebase 하지 않는다."
+  },
+  {
+   "id": "h2-09-6",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "릴리스에 붙이는 태그 이름 형식",
+   "expect": [
+    "git-tag"
+   ],
+   "note": "릴리스 태그 꼴 v0.17.0."
+  },
+  {
+   "id": "h2-09-7",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "PR 설명을 쓰는데 무엇부터 쓰고 한 PR에 어디까지 담는 게 좋은가요",
+   "expect": [
+    "rev-desc",
+    "rev-small"
+   ],
+   "allow": [
+    "rev-self"
+   ],
+   "note": "PR 설명 순서와 PR 크기, 둘이 겹친다."
+  },
+  {
+   "id": "h2-09-8",
+   "session": "h2-s09-git",
+   "cwd": "/bench/scratch",
+   "prompt": "작업 폴더를 여러 개 두고 쓰는데 변경분을 잠깐 치워 두려면?",
+   "expect": [
+    "git-stash"
+   ],
+   "note": "작업 복제본이 여럿이면 stash를 함께 쓰지 않는다. 다른 말로 물었다."
+  },
+  {
+   "id": "h2-10-1",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "새 기능 만들기 시작할 때 코드부터 짜도 되나요",
+   "expect": [
+    "test-first"
+   ],
+   "allow": [
+    "pin-zero"
+   ],
+   "note": "새 기능은 실패하는 시험부터."
+  },
+  {
+   "id": "h2-10-2",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "가끔씩만 실패하는 시험이 있어요. 제한 시간을 넉넉히 늘릴까요?",
+   "expect": [
+    "test-flaky"
+   ],
+   "allow": [
+    "pin-zero"
+   ],
+   "note": "간헐 실패는 시간 제한을 늘려 덮지 않는다."
+  },
+  {
+   "id": "h2-10-3",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "golden 파일 갱신",
+   "expect": [
+    "test-golden"
+   ],
+   "note": "짧은 요청. golden은 diff를 눈으로 본다."
+  },
+  {
+   "id": "h2-10-4",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "모의 객체를 잔뜩 써서 시험을 짰는데 괜찮을까요? 코드를 고칠 때마다 시험이 같이 깨져요.",
+   "expect": [
+    "test-mock"
+   ],
+   "note": "모의 객체가 많으면 시험이 코드 모양만 지킨다."
+  },
+  {
+   "id": "h2-10-5",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "고루틴 쓰는 함수 시험은 어떻게 돌려야 해요",
+   "expect": [
+    "test-race"
+   ],
+   "note": "-race로 한 번 돌린다."
+  },
+  {
+   "id": "h2-10-6",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "밤 12시 직전에만 실패하는 시험의 원인이 뭘까요",
+   "expect": [
+    "tz-lesson"
+   ],
+   "allow": [
+    "tz-fact"
+   ],
+   "note": "자정 근처 시험은 시간대 때문에 깨진다."
+  },
+  {
+   "id": "h2-10-7",
+   "session": "h2-s10-tests",
+   "cwd": "/bench/scratch",
+   "prompt": "테스트 커버리지 퍼센트가 높으면 무조건 좋은 건가요? 일반론만 짧게요",
+   "forbid": [
+    "test-mock",
+    "test-first"
+   ],
+   "note": "일반 의견 질문이다. 구체 규칙 기억이 필요한 일이 아니다."
+  },
+  {
+   "id": "h2-11-1",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "운영에 올린 다음 어떤 걸 지켜봐야 하죠?",
+   "expect": [
+    "deploy-after"
+   ],
+   "allow": [
+    "deploy-rollback"
+   ],
+   "forbid": [
+    "deploy-new",
+    "deploy-old",
+    "deploy-journal"
+   ],
+   "note": "배포 「뒤」 확인이다. 「전」 확인 기억은 제목만 비슷한 짝이다."
+  },
+  {
+   "id": "h2-11-2",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "방금 올린 판에서 장애가 났어요. 제일 먼저 뭘 하죠?",
+   "expect": [
+    "deploy-rollback"
+   ],
+   "allow": [
+    "deploy-rollback-lesson"
+   ],
+   "forbid": [
+    "deploy-freeze-gone2"
+   ],
+   "note": "배포 실패 시 이전 판으로 먼저 되돌린다."
+  },
+  {
+   "id": "h2-11-3",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "금요일 4시에 급한 수정을 배포해도 되나요?",
+   "expect": [
+    "deploy-window",
+    "deploy-hotfix"
+   ],
+   "allow": [
+    "deploy-rollback"
+   ],
+   "note": "금요일 오후 금지와 긴급 수정 경로가 모두 닿는다."
+  },
+  {
+   "id": "h2-11-4",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "배포 끝나고 팀 회식 장소 추천해 주세요",
+   "forbid": [
+    "deploy-after",
+    "deploy-new",
+    "deploy-window"
+   ],
+   "note": "「배포」 낱말만 겹친 잡담이다."
+  },
+  {
+   "id": "h2-11-5",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "PR을 열면 스테이징에 자동으로 올라가요?",
+   "expect": [
+    "deploy-stage"
+   ],
+   "note": "스테이징 배포는 PR마다 자동."
+  },
+  {
+   "id": "h2-11-6",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "DB 백업은 하루 중 언제 돌죠",
+   "expect": [
+    "ops-backup"
+   ],
+   "allow": [
+    "ops-restore"
+   ],
+   "note": "백업 시각."
+  },
+  {
+   "id": "h2-11-7",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "경보 규칙을 새로 만드는데 빠뜨리면 안 되는 것",
+   "expect": [
+    "ops-alert"
+   ],
+   "note": "알림 규칙에는 대응 문서 링크를 단다."
+  },
+  {
+   "id": "h2-11-8",
+   "session": "h2-s11-ops",
+   "cwd": "/bench/scratch",
+   "prompt": "당직 인수인계가 몇 시였더라",
+   "expect": [
+    "ops-oncall"
+   ],
+   "forbid": [
+    "rev-ops"
+   ],
+   "note": "당직 교대는 월요일 10시."
+  },
+  {
+   "id": "h2-12-1",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "주문 서비스가 재고 서비스를 직접 호출해도 되나요",
+   "expect": [
+    "design-event"
+   ],
+   "allow": [
+    "port-adapter"
+   ],
+   "note": "서비스 사이 알림은 이벤트로."
+  },
+  {
+   "id": "h2-12-2",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "실험용 깃발을 얼마나 오래 두죠",
+   "expect": [
+    "design-flag"
+   ],
+   "note": "기능 깃발은 두 주 안에 걷는다."
+  },
+  {
+   "id": "h2-12-3",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "같은 코드가 두 군데 생겼는데 지금 하나로 합칠까요?",
+   "expect": [
+    "design-dry"
+   ],
+   "note": "두 번 나온 코드는 합치지 않고 세 번째에 합친다."
+  },
+  {
+   "id": "h2-12-4",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "외부 결제 서비스를 붙이는 구조를 잡고 있어요. 도메인 코드가 그 서비스 모양을 알면 안 되는데 어디에 경계를 둘까요?",
+   "expect": [
+    "port-adapter"
+   ],
+   "allow": [
+    "pay-webhook"
+   ],
+   "note": "긴 요청. 도메인은 포트를 정하고 바깥은 어댑터로 붙인다."
+  },
+  {
+   "id": "h2-12-5",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "사내 도구는 어떤 언어로 만들기로 했죠",
+   "expect": [
+    "lang-new"
+   ],
+   "forbid": [
+    "lang-old"
+   ],
+   "note": "도구 언어는 새 판(Go). 옛 Python 결정은 아니다."
+  },
+  {
+   "id": "h2-12-6",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "우리 CI가 어디서 돌아가나요?",
+   "expect": [
+    "ci-new"
+   ],
+   "forbid": [
+    "ci-old"
+   ],
+   "note": "CI는 클라우드 실행기. 옛 사내 서버 결정은 아니다."
+  },
+  {
+   "id": "h2-12-7",
+   "session": "h2-s12-design",
+   "cwd": "/bench/scratch",
+   "prompt": "추상화가 너무 많으면 좋지 않다는 말에 대해 어떻게 생각하세요",
+   "forbid": [
+    "design-dry",
+    "port-adapter"
+   ],
+   "note": "일반 의견 질문이다."
+  },
+  {
+   "id": "h2-13-1",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "Go에서 에러를 위로 올릴 때 문자열로 비교하나요?",
+   "expect": [
+    "go-err"
+   ],
+   "note": "오류는 감싸서 올리고 문자열로 비교하지 않는다."
+  },
+  {
+   "id": "h2-13-2",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "context 인자는 몇 번째에 둬요",
+   "expect": [
+    "go-ctx"
+   ],
+   "note": "context는 첫 인자."
+  },
+  {
+   "id": "h2-13-3",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "표 주도 시험을 쓰는데 사례 이름을 어떤 언어로 붙일까요",
+   "expect": [
+    "go-table"
+   ],
+   "note": "사례 이름은 한글."
+  },
+  {
+   "id": "h2-13-4",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "Go 빌드 캐시랑 Docker 캐시를 정리하는 주기가 궁금해요",
+   "expect": [
+    "go-cache",
+    "docker-cache"
+   ],
+   "note": "Go 빌드 캐시와 Docker 빌드 캐시, 둘 다 묻는다."
+  },
+  {
+   "id": "h2-13-5",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "복합 인덱스에서 열 순서를 어떻게 정해야 하죠",
+   "expect": [
+    "sql-index"
+   ],
+   "allow": [
+    "api-index"
+   ],
+   "note": "같음 조건 열을 앞에."
+  },
+  {
+   "id": "h2-13-6",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "LIMIT만 걸었더니 호출할 때마다 다른 행이 나와요",
+   "expect": [
+    "sql-order"
+   ],
+   "note": "정렬 없는 LIMIT은 매번 다른 행."
+  },
+  {
+   "id": "h2-13-7",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "트랜잭션 열어 둔 채로 바깥 API를 부르는 코드를 리뷰해야 해요.",
+   "expect": [
+    "sql-txn"
+   ],
+   "allow": [
+    "api-timeout"
+   ],
+   "note": "트랜잭션 안에서 바깥 호출을 기다리지 않는다."
+  },
+  {
+   "id": "h2-13-8",
+   "session": "h2-s13-golang",
+   "cwd": "/bench/scratch",
+   "prompt": "컬럼이 비었는지 볼 때 = NULL로 비교하면 되나요",
+   "expect": [
+    "sql-null"
+   ],
+   "allow": [
+    "data-null"
+   ],
+   "note": "NULL 비교는 IS NULL."
+  },
+  {
+   "id": "h2-14-1",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "쿼리에 사용자 입력을 문자열로 붙여 만들고 있는데",
+   "expect": [
+    "sec-sql"
+   ],
+   "note": "SQL에 입력을 이어 붙이지 않고 바인딩."
+  },
+  {
+   "id": "h2-14-2",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "로그인 쿠키에 붙일 속성",
+   "expect": [
+    "sec-cookie"
+   ],
+   "note": "Secure와 HttpOnly."
+  },
+  {
+   "id": "h2-14-3",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "프런트 도메인을 하나 더 허용해야 하는데 서버 코드에 직접 추가할까요",
+   "expect": [
+    "sec-cors"
+   ],
+   "note": "CORS 허용 출처는 환경 설정에서만."
+  },
+  {
+   "id": "h2-14-4",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "의존 라이브러리 취약점은 얼마나 자주 봐요?",
+   "expect": [
+    "sec-dep"
+   ],
+   "note": "달마다 확인."
+  },
+  {
+   "id": "h2-14-5",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "느리다고 하니 캐시부터 넣어야 할까요",
+   "expect": [
+    "perf-cache"
+   ],
+   "forbid": [
+    "cache-new"
+   ],
+   "note": "캐시를 넣기 전에 느린 곳부터 잰다."
+  },
+  {
+   "id": "h2-14-6",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "목록 컴포넌트에서 key를 배열 index로 줘도 되나",
+   "expect": [
+    "fe-key"
+   ],
+   "note": "key에 배열 번호를 쓰지 않는다."
+  },
+  {
+   "id": "h2-14-7",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "검색창에 글자 칠 때마다 서버를 부르면 안 될 것 같은데 몇 초 늦추죠",
+   "expect": [
+    "fe-debounce"
+   ],
+   "note": "검색 입력은 300ms 늦춰 요청."
+  },
+  {
+   "id": "h2-14-8",
+   "session": "h2-s14-secperf",
+   "cwd": "/bench/scratch",
+   "prompt": "알림 토스트를 여러 개 겹쳐 보여 줘도 돼요?",
+   "expect": [
+    "fe-toast"
+   ],
+   "note": "토스트는 한 번에 하나."
+  },
+  {
+   "id": "h2-15-1",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "본문 글자색이랑 배경색 대비는 어느 정도여야 해요",
+   "expect": [
+    "a11y-contrast"
+   ],
+   "allow": [
+    "a11y-focus"
+   ],
+   "note": "본문 글자 대비 4.5 대 1."
+  },
+  {
+   "id": "h2-15-2",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "마우스 없이 키보드만으로 드롭다운 메뉴를 열 수 있어야 하나요",
+   "expect": [
+    "a11y-kbd"
+   ],
+   "allow": [
+    "a11y-focus"
+   ],
+   "note": "마우스로만 되는 메뉴는 키보드 사용자를 막는다."
+  },
+  {
+   "id": "h2-15-3",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "모션 효과를 쓰는 화면은 설정 중 따라야 할 게 있나요",
+   "expect": [
+    "a11y-motion"
+   ],
+   "note": "움직임 줄이기 설정을 따른다."
+  },
+  {
+   "id": "h2-15-4",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "환불을 다른 카드로 돌려 달라는 요청이 왔어요",
+   "expect": [
+    "pay-refund"
+   ],
+   "note": "환불은 원래 결제 수단으로만."
+  },
+  {
+   "id": "h2-15-5",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "결제 완료 알림이 서버에 두 번씩 들어와요",
+   "expect": [
+    "pay-webhook"
+   ],
+   "note": "웹훅은 같은 알림이 중복해서 온다."
+  },
+  {
+   "id": "h2-15-6",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "금액 컬럼을 실수 타입으로 해도 돼요?",
+   "expect": [
+    "pay-round"
+   ],
+   "note": "금액은 정수 원 단위."
+  },
+  {
+   "id": "h2-15-7",
+   "session": "h2-s15-domains",
+   "cwd": "/bench/app",
+   "prompt": "몇 개 남았는지 보여 주는 문구에서 단수 복수 처리를 어떻게 하죠",
+   "expect": [
+    "i18n-plural"
+   ],
+   "note": "복수형은 규칙으로 처리."
+  },
+  {
+   "id": "h2-16-1",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "네, 그렇게 해 주세요",
+   "forbid": [
+    "app-state-new"
+   ],
+   "note": "짧은 동의 답이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-16-2",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "테스트 파일은 이름을 어떻게 붙여야 하나요",
+   "expect": [
+    "app-test-vitest"
+   ],
+   "allow": [
+    "test-first"
+   ],
+   "forbid": [
+    "other-test"
+   ],
+   "note": "시험 파일 이름 규칙은 이 앱 단위 시험 기억 본문에 있다."
+  },
+  {
+   "id": "h2-16-3",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "파이썬 리스트와 튜플의 차이를 설명해 주세요",
+   "forbid": [
+    "app-form"
+   ],
+   "note": "일반 지식 질문이다."
+  },
+  {
+   "id": "h2-16-4",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "pnpm이라는 이름은 무슨 뜻에서 나왔나요",
+   "forbid": [
+    "rule-pnpm",
+    "stale-npm"
+   ],
+   "note": "이름 유래를 묻는 일반 질문이다. 설치 규칙이 필요한 일이 아니다."
+  },
+  {
+   "id": "h2-16-5",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "앱스토어 심사는 보통 며칠 걸리나요?",
+   "forbid": [
+    "vol-app-release",
+    "vol-app-demo"
+   ],
+   "note": "일반 지식 질문이다."
+  },
+  {
+   "id": "h2-16-6",
+   "session": "h2-s16-chat1",
+   "cwd": "/bench/app",
+   "prompt": "방금 말한 걸 한 줄로 줄여 주실래요",
+   "note": "앞 답을 줄여 달라는 요청이다. 새 기억이 필요 없다."
+  },
+  {
+   "id": "h2-17-1",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "ㅇㅋ",
+   "forbid": [
+    "api-error"
+   ],
+   "note": "한두 글자 답이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-17-2",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "로그인 화면 디자인 참고할 만한 사례를 추천해 주세요",
+   "forbid": [
+    "api-rate",
+    "api-lockout"
+   ],
+   "note": "「로그인」 낱말만 겹친다. 로그인 API 제한과 잠금은 이 일에 필요 없다."
+  },
+  {
+   "id": "h2-17-3",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "HTTP 429가 무슨 뜻이에요?",
+   "forbid": [
+    "api-rate"
+   ],
+   "note": "상태 코드 뜻을 묻는 일반 질문이다."
+  },
+  {
+   "id": "h2-17-4",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "연어가 강을 거슬러 올라가는 이동도 migration이라고 하나요",
+   "forbid": [
+    "api-migrate-num",
+    "api-migrate-down"
+   ],
+   "note": "「마이그레이션」 낱말만 겹친 생물 질문이다."
+  },
+  {
+   "id": "h2-17-5",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "CPU 캐시 메모리 L1과 L2의 차이를 알려 주세요",
+   "forbid": [
+    "cache-new",
+    "cache-old"
+   ],
+   "note": "하드웨어 일반 지식이다. 캐시 낱말만 겹친다."
+  },
+  {
+   "id": "h2-17-6",
+   "session": "h2-s17-chat2",
+   "cwd": "/bench/api",
+   "prompt": "응답이 갑자기 느려졌어요. 먼저 어디부터 볼까요?",
+   "expect": [
+    "api-index"
+   ],
+   "allow": [
+    "perf-cache",
+    "api-n1",
+    "sql-index"
+   ],
+   "forbid": [
+    "cache-new"
+   ],
+   "note": "느린 목록 조회는 먼저 인덱스를 본다."
+  },
+  {
+   "id": "h2-18-1",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "읽을 만한 에세이 책 하나 추천해 주세요",
+   "note": "개인 취향 잡담이다."
+  },
+  {
+   "id": "h2-18-2",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "영어로 '문서 발행'을 뭐라고 하나요",
+   "forbid": [
+    "docs-publish",
+    "docs-pubold"
+   ],
+   "note": "번역 질문이다. 발행 전 점검 규칙이 필요한 일이 아니다."
+  },
+  {
+   "id": "h2-18-3",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "글을 쓸 때 곧바로 정식 공간에 올려도 되나요?",
+   "expect": [
+    "docs-write-page"
+   ],
+   "allow": [
+    "docs-write-lesson"
+   ],
+   "forbid": [
+    "docs-pubold"
+   ],
+   "note": "문서 쓰기는 초안 공간에 먼저 올린다."
+  },
+  {
+   "id": "h2-18-4",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "'쪽수'랑 '페이지수' 중에 어느 쪽이 맞는 표현인가요",
+   "forbid": [
+    "docs-link",
+    "docs-pubold"
+   ],
+   "note": "어휘 질문이다. 링크나 발행 규칙은 필요 없다."
+  },
+  {
+   "id": "h2-18-5",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "수고하셨어요, 내일 봬요",
+   "note": "작별 인사다."
+  },
+  {
+   "id": "h2-18-6",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "prompt": "한국에서 가장 긴 강이 어디예요",
+   "note": "일반 지식 질문이다."
+  },
+  {
+   "id": "h2-18-7",
+   "session": "h2-s18-chat3",
+   "cwd": "/bench/docs",
+   "origin": "agent",
+   "prompt": "서브에이전트 보고 · writer · 완료\n문서 제목 꼴과 목차 깊이를 맞췄습니다. 발행 전 링크 검사도 끝냈습니다.",
+   "forbid": [
+    "docs-title",
+    "docs-toc",
+    "docs-publish"
+   ],
+   "note": "서브에이전트 보고 머리말이다. 사람이 쓴 요청이 아니다."
+  },
+  {
+   "id": "h2-19-1",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "도커 컨테이너랑 가상 머신은 뭐가 달라요",
+   "forbid": [
+    "docker-db",
+    "docker-volume"
+   ],
+   "note": "일반 지식 질문이다. 낱말만 겹친다."
+  },
+  {
+   "id": "h2-19-2",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "경로에 공백이 들어간 폴더에서 스크립트를 돌리려는데 자꾸 깨져요",
+   "expect": [
+    "shell-quote"
+   ],
+   "note": "공백이 든 경로는 따옴표로 감싼다."
+  },
+  {
+   "id": "h2-19-3",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "셸 파이프가 뭔지 비유로 설명해 주세요",
+   "forbid": [
+    "shell-rg",
+    "shell-sed"
+   ],
+   "note": "일반 지식 질문이다."
+  },
+  {
+   "id": "h2-19-4",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "맥에서 sed -i로 파일을 바꾸려는데 오류가 나요",
+   "expect": [
+    "shell-sed"
+   ],
+   "allow": [
+    "shell-quote"
+   ],
+   "note": "macOS sed는 -i 뒤에 빈 인자."
+  },
+  {
+   "id": "h2-19-5",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "백업 사진을 클라우드에 자동으로 올려 주는 앱 추천해 주세요",
+   "forbid": [
+    "ops-backup",
+    "ops-restore"
+   ],
+   "note": "「백업」 낱말만 겹친 개인 질문이다."
+  },
+  {
+   "id": "h2-19-6",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "시험 기간이라 공부가 영 안 되네요",
+   "forbid": [
+    "test-first",
+    "pin-zero"
+   ],
+   "note": "「시험」 낱말만 겹친 잡담이다."
+  },
+  {
+   "id": "h2-19-7",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "DB를 제 맥에 바로 설치하려는데 괜찮을까요",
+   "expect": [
+    "docker-db"
+   ],
+   "allow": [
+    "docker-volume"
+   ],
+   "note": "DB 같은 저장소는 호스트에 깔지 않고 Docker로."
+  },
+  {
+   "id": "h2-19-8",
+   "session": "h2-s19-chat4",
+   "cwd": "/bench/scratch",
+   "prompt": "회고록 쓰는 요령을 알려 주세요",
+   "forbid": [
+    "hidden-retro"
+   ],
+   "note": "「회고」 낱말만 겹친 글쓰기 질문이다."
+  },
+  {
+   "id": "h2-20-1",
+   "session": "h2-s20-bot1",
+   "cwd": "/bench/app",
+   "origin": "agent",
+   "prompt": "서브에이전트 보고 · explorer · 완료\n마이그레이션 번호 규칙과 pnpm 설치 규칙을 점검했습니다. 위반은 없습니다. 운영 배포 뒤 확인 항목도 정리해 두었습니다.",
+   "forbid": [
+    "rule-pnpm",
+    "deploy-after",
+    "api-migrate-num"
+   ],
+   "note": "서브에이전트 보고 머리말이다. 사람이 쓴 요청이 아니다."
+  },
+  {
+   "id": "h2-20-2",
+   "session": "h2-s20-bot1",
+   "cwd": "/bench/app",
+   "prompt": "서브에이전트 보고 · worker · 완료\n변경을 정리해서 커밋 두 개를 만들었습니다.\n\n이 보고를 읽었는데, 이제 원격에 올려도 되는 건가요?",
+   "expect": [
+    "git-push"
+   ],
+   "allow": [
+    "git-branch"
+   ],
+   "note": "보고를 붙여 넣고 사람이 질문을 덧붙였다. 사람 요청이고 푸시 허락 규칙이 닿는다."
+  },
+  {
+   "id": "h2-20-3",
+   "session": "h2-s20-bot1",
+   "cwd": "/bench/app",
+   "origin": "system",
+   "prompt": "<system-reminder>\n이전 대화가 요약되었습니다. 린트 규칙과 환경 파일 규칙을 다시 읽어 보세요.\n</system-reminder>",
+   "forbid": [
+    "app-lint",
+    "app-env"
+   ],
+   "note": "시스템 알림만 있는 메시지다."
+  },
+  {
+   "id": "h2-20-4",
+   "session": "h2-s20-bot1",
+   "cwd": "/bench/app",
+   "prompt": "CI 로그를 붙입니다.\n```\nERR_PNPM_OUTDATED_LOCKFILE  Cannot install with \"frozen-lockfile\"\npnpm-lock.yaml is not up to date with package.json\n```\n이게 왜 실패하는 거죠?",
+   "expect": [
+    "rule-pnpm"
+   ],
+   "forbid": [
+    "stale-npm"
+   ],
+   "note": "로그를 붙여 넣고 묻는 사람 요청. lock 파일은 pnpm-lock.yaml 하나만 둔다."
+  },
+  {
+   "id": "h2-20-5",
+   "session": "h2-s20-bot1",
+   "cwd": "/bench/app",
+   "origin": "agent",
+   "prompt": "<task-notification>\n<task-id>w91</task-id>\n<status>completed</status>\n<summary>스냅샷 시험이 날짜 때문에 깨지는 이유를 찾았고 하이드레이션 경고도 같이 확인했다</summary>\n</task-notification>",
+   "forbid": [
+    "app-snap",
+    "app-hydrate"
+   ],
+   "note": "작업 알림이다. 사람 요청이 아니다."
+  },
+  {
+   "id": "h2-21-1",
+   "session": "h2-s21-bot2",
+   "cwd": "/bench/scratch",
+   "origin": "system",
+   "prompt": "<system-reminder>\n세션 시작 때 불러온 기억 목록이 갱신되었습니다. 푸시 허락 규칙과 기본 브랜치 규칙을 지키세요.\n</system-reminder>",
+   "forbid": [
+    "git-push",
+    "git-branch"
+   ],
+   "note": "시스템 알림이다."
+  },
+  {
+   "id": "h2-21-2",
+   "session": "h2-s21-bot2",
+   "cwd": "/bench/scratch",
+   "origin": "agent",
+   "prompt": "서브에이전트 보고 · reviewer · 막힘\nrebase 충돌을 풀지 못했습니다. 공유 브랜치와 태그 형식을 확인하라는 안내가 있었습니다.",
+   "forbid": [
+    "git-rebase",
+    "git-tag"
+   ],
+   "note": "서브에이전트 보고다. 사람이 쓴 요청이 아니다."
+  },
+  {
+   "id": "h2-21-3",
+   "session": "h2-s21-bot2",
+   "cwd": "/bench/scratch",
+   "prompt": "터미널에 이렇게 나와요.\n```\nfatal: Not possible to fast-forward, aborting.\n```\n팀이 같이 쓰는 브랜치인데 rebase로 해결하면 되나요?",
+   "expect": [
+    "git-rebase"
+   ],
+   "note": "에러를 붙여 넣고 묻는 사람 요청. 공유 브랜치 rebase 금지다."
+  },
+  {
+   "id": "h2-21-4",
+   "session": "h2-s21-bot2",
+   "cwd": "/bench/scratch",
+   "origin": "system",
+   "prompt": "<local-command-stdout>\nOn branch release/0.17\nnothing to commit, working tree clean\n</local-command-stdout>",
+   "forbid": [
+    "git-add",
+    "git-tag"
+   ],
+   "note": "로컬 명령 출력만 있는 메시지다."
+  },
+  {
+   "id": "h2-21-5",
+   "session": "h2-s21-bot2",
+   "cwd": "/bench/scratch",
+   "prompt": "/clear",
+   "note": "인자 없는 슬래시 명령이다. 사소한 요청이다."
+  },
+  {
+   "id": "h2-22-1",
+   "session": "h2-s22-del1",
+   "cwd": "/bench/api",
+   "kind": "subagent",
+   "task": "계획 항목 S2: 목록 API에 cursor 방식 페이지 나누기를 붙이고 오류 응답이 problem+json 꼴을 따르는지 확인하라.",
+   "expect": [
+    "api-page",
+    "api-error"
+   ],
+   "note": "계획 항목. 페이지 나누기 방식과 오류 응답 꼴, 둘 다 일에 필요하다."
+  },
+  {
+   "id": "h2-22-2",
+   "session": "h2-s22-del1",
+   "cwd": "/bench/api",
+   "kind": "subagent",
+   "task": "계획 항목 S3: 로그인 API가 분당 몇 회까지 받는지 설정 파일로 빼고 시험을 추가하라.",
+   "expect": [
+    "api-rate"
+   ],
+   "forbid": [
+    "api-lockout"
+   ],
+   "note": "분당 제한만 필요하다. 실패 잠금은 제목만 비슷한 짝이다."
+  },
+  {
+   "id": "h2-22-3",
+   "session": "h2-s22-del1",
+   "cwd": "/bench/api",
+   "kind": "subagent",
+   "task": "검토 요청: 갱신 토큰 수명을 바꾼 변경분이 우리 인증 결정과 맞는지 읽고 판정하라.",
+   "expect": [
+    "api-auth-new"
+   ],
+   "forbid": [
+    "api-auth-old",
+    "other-auth"
+   ],
+   "note": "인증 결정은 새 판. 옛 세션 쿠키 결정은 아니다."
+  },
+  {
+   "id": "h2-22-4",
+   "session": "h2-s22-del1",
+   "cwd": "/bench/api",
+   "kind": "subagent",
+   "task": "조사 요청: 응답 캐시 만료 시간을 바꾸면 영향 받는 엔드포인트를 모두 나열해 보고하라.",
+   "expect": [
+    "cache-new"
+   ],
+   "forbid": [
+    "cache-old"
+   ],
+   "note": "캐시 만료는 새 판 10분."
+  },
+  {
+   "id": "h2-22-5",
+   "session": "h2-s22-del1",
+   "cwd": "/bench/api",
+   "kind": "subagent",
+   "task": "README의 오타 하나를 고쳐라.",
+   "forbid": [
+    "api-error",
+    "readme-run"
+   ],
+   "note": "사소한 위임이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-23-1",
+   "session": "h2-s23-del2",
+   "cwd": "/bench/app",
+   "kind": "subagent",
+   "task": "계획 항목 A1: 새 아이콘 버튼 컴포넌트에 스크린 리더용 이름을 달고 시험을 쓰라.",
+   "expect": [
+    "app-aria"
+   ],
+   "allow": [
+    "a11y-alt",
+    "a11y-kbd"
+   ],
+   "note": "아이콘만 있는 버튼에 aria-label."
+  },
+  {
+   "id": "h2-23-2",
+   "session": "h2-s23-del2",
+   "cwd": "/bench/app",
+   "kind": "subagent",
+   "task": "점검 요청: 이 앱에서 의존성을 잘못된 도구로 설치하게 만드는 스크립트나 문서가 있는지 찾아 보고하라.",
+   "expect": [
+    "rule-pnpm"
+   ],
+   "allow": [
+    "app-env"
+   ],
+   "forbid": [
+    "stale-npm",
+    "other-pnpm"
+   ],
+   "note": "설치 도구 규칙이다. 낡은 npm 규칙은 아니다."
+  },
+  {
+   "id": "h2-23-3",
+   "session": "h2-s23-del2",
+   "cwd": "/bench/app",
+   "kind": "subagent",
+   "task": "계획 항목 A3: 서버 데이터를 가져오는 훅을 새 방식으로 옮겨라.",
+   "expect": [
+    "store-new"
+   ],
+   "forbid": [
+    "store-old"
+   ],
+   "note": "서버 데이터 가져오기는 새 판이다."
+  },
+  {
+   "id": "h2-23-4",
+   "session": "h2-s23-del2",
+   "cwd": "/bench/app",
+   "kind": "subagent",
+   "task": "조사 요청: 번들이 500KB를 넘는 라우트를 찾고 나눌 후보를 제안하라.",
+   "expect": [
+    "app-bundle",
+    "app-router"
+   ],
+   "note": "번들 기준과 파일 기반 라우터 구조, 둘이 일에 닿는다."
+  },
+  {
+   "id": "h2-23-5",
+   "session": "h2-s23-del2",
+   "cwd": "/bench/app",
+   "kind": "subagent",
+   "task": "계획 항목 A5: 설정 화면 문구를 한국어와 영어 모두 갱신하라.",
+   "expect": [
+    "app-i18n"
+   ],
+   "allow": [
+    "i18n-key"
+   ],
+   "note": "문구는 ko 먼저 고치고 en을 맞춘다."
+  },
+  {
+   "id": "h2-24-1",
+   "session": "h2-s24-del3",
+   "cwd": "/bench/docs",
+   "kind": "subagent",
+   "task": "계획 항목 W1: 발행 전 점검 절차를 정리해 초안 공간에 올려라.",
+   "expect": [
+    "docs-publish",
+    "docs-write-page"
+   ],
+   "allow": [
+    "docs-write-lesson"
+   ],
+   "forbid": [
+    "docs-pubold"
+   ],
+   "note": "발행 전 링크 검사와 초안 공간 먼저. 옛 맞춤법 규칙은 낡음."
+  },
+  {
+   "id": "h2-24-2",
+   "session": "h2-s24-del3",
+   "cwd": "/bench/docs",
+   "kind": "subagent",
+   "task": "계획 항목 W2: 용어 쪽의 그림을 모두 같은 형식과 폭으로 맞춰라.",
+   "expect": [
+    "docs-img"
+   ],
+   "allow": [
+    "write-diagram"
+   ],
+   "note": "그림은 svg, 폭 800."
+  },
+  {
+   "id": "h2-24-3",
+   "session": "h2-s24-del3",
+   "cwd": "/bench/docs",
+   "kind": "subagent",
+   "task": "점검 요청: 쪽을 옮긴 뒤 깨진 링크를 찾아 고쳐라.",
+   "expect": [
+    "docs-link"
+   ],
+   "note": "쪽 id로 링크 건다."
+  },
+  {
+   "id": "h2-24-4",
+   "session": "h2-s24-del3",
+   "cwd": "/bench/docs",
+   "kind": "subagent",
+   "task": "검토 요청: 결정 기록 두 건이 길이 기준을 넘지 않는지, 버린 대안을 적었는지 확인하라.",
+   "expect": [
+    "adr-short",
+    "adr-alt"
+   ],
+   "note": "결정 기록 길이와 대안 두 규칙이 닿는다."
+  },
+  {
+   "id": "h2-24-5",
+   "session": "h2-s24-del3",
+   "cwd": "/bench/docs",
+   "kind": "subagent",
+   "task": "파일 하나를 열어서 첫 줄만 보여라.",
+   "forbid": [
+    "docs-order"
+   ],
+   "note": "사소한 위임이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-25-1",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "조사 요청: 배포가 실패했을 때 이전 판으로 되돌리는 절차가 문서와 맞는지 확인하라.",
+   "expect": [
+    "deploy-rollback"
+   ],
+   "allow": [
+    "deploy-rollback-lesson"
+   ],
+   "forbid": [
+    "deploy-after"
+   ],
+   "note": "배포 실패 대응 결정이다. 배포 뒤 확인은 아니다."
+  },
+  {
+   "id": "h2-25-2",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "계획 항목 O2: 운영 배포 뒤 확인 절차 문서를 쓰라.",
+   "expect": [
+    "deploy-after"
+   ],
+   "allow": [
+    "deploy-rollback"
+   ],
+   "forbid": [
+    "deploy-new",
+    "deploy-old",
+    "deploy-journal"
+   ],
+   "note": "배포 「뒤」 확인이다. 「전」 확인 기억은 제목만 비슷한 짝이다."
+  },
+  {
+   "id": "h2-25-3",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "계획 항목 O3: DB 백업이 도는 시각과 복원 훈련 계획을 정리하라.",
+   "expect": [
+    "ops-backup",
+    "ops-restore"
+   ],
+   "note": "백업 시각과 복원해 보기 교훈, 둘 다 필요하다."
+  },
+  {
+   "id": "h2-25-4",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "검토 요청: Go 코드에서 오류를 올리는 방식과 context 인자 위치를 읽고 판정하라.",
+   "expect": [
+    "go-err",
+    "go-ctx"
+   ],
+   "note": "Go 오류 처리와 context 위치."
+  },
+  {
+   "id": "h2-25-5",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "현재 git 상태를 보여라.",
+   "forbid": [
+    "git-add",
+    "git-branch"
+   ],
+   "note": "사소한 위임이다. 아무것도 넣지 않는다."
+  },
+  {
+   "id": "h2-25-6",
+   "session": "h2-s25-del4",
+   "cwd": "/bench/scratch",
+   "kind": "subagent",
+   "task": "조사 요청: 알림 규칙 일곱 개가 대응 문서 링크를 갖고 있는지 확인하라.",
+   "expect": [
+    "ops-alert"
+   ],
+   "forbid": [
+    "rev-ops"
+   ],
+   "note": "알림 규칙에는 대응 문서 링크."
+  },
+  {
+   "id": "h2-26-1",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "lesson",
+    "title": "간헐 실패는 제한 시간을 늘려서 덮지 않는다",
+    "body": "",
+    "scope": "global"
+   },
+   "expect": [
+    "test-flaky"
+   ],
+   "allow": [
+    "pin-zero"
+   ],
+   "note": "같은 교훈을 낱말만 바꿔 다시 쓴 초안이다. 저장하면 같은 내용이 둘 생긴다."
+  },
+  {
+   "id": "h2-26-2",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "lesson",
+    "title": "공유 브랜치에서는 rebase를 하지 않는다",
+    "body": "팀이 같이 쓰는 브랜치의 기록을 바꾸지 않는다.",
+    "scope": "global"
+   },
+   "expect": [
+    "git-rebase"
+   ],
+   "note": "같은 뜻을 어순만 바꿔 다시 쓴 초안이다."
+  },
+  {
+   "id": "h2-26-3",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "rule",
+    "title": "브랜치 이름은 feature/로 시작한다",
+    "body": "",
+    "scope": "global"
+   },
+   "forbid": [
+    "git-branch",
+    "git-tag"
+   ],
+   "note": "브랜치 이름 규칙은 기존 기억에 없다. 같은 내용이 아니다."
+  },
+  {
+   "id": "h2-26-4",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "fact",
+    "title": "DB 백업은 매일 새벽 3시에 실행된다",
+    "body": "",
+    "scope": "global"
+   },
+   "expect": [
+    "ops-backup"
+   ],
+   "note": "같은 사실의 표현만 다른 초안이다."
+  },
+  {
+   "id": "h2-26-5",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "rule",
+    "title": "푸시는 사용자가 요청할 때만 한다",
+    "body": "사람이 시키지 않으면 원격에 올리지 않는다.",
+    "scope": "global"
+   },
+   "expect": [
+    "git-push"
+   ],
+   "allow": [
+    "git-branch"
+   ],
+   "note": "같은 규칙을 짧게 다시 쓴 초안이다."
+  },
+  {
+   "id": "h2-26-6",
+   "session": "h2-s26-dup1",
+   "cwd": "/bench/scratch",
+   "kind": "duplicate",
+   "save": {
+    "kind": "fact",
+    "title": "테스트 DB 포트는 54329다",
+    "body": "",
+    "scope": "global"
+   },
+   "forbid": [
+    "api-db-port"
+   ],
+   "note": "포트 값이 다른 별개 사실이다. 같은 내용이 아니다."
+  },
+  {
+   "id": "h2-27-1",
+   "session": "h2-s27-dup2",
+   "cwd": "/bench/api",
+   "kind": "duplicate",
+   "save": {
+    "kind": "lesson",
+    "title": "일정이 늦어지면 일정을 늘리지 말고 기능을 줄인다",
+    "body": "",
+    "scope": "global"
+   },
+   "expect": [
+    "scope-cut"
+   ],
+   "note": "같은 교훈을 어순만 바꿔 쓴 초안이다."
+  },
+  {
+   "id": "h2-27-2",
+   "session": "h2-s27-dup2",
+   "cwd": "/bench/api",
+   "kind": "duplicate",
+   "save": {
+    "kind": "rule",
+    "title": "알림 규칙에는 담당 팀 이름을 단다",
+    "body": "",
+    "scope": "global"
+   },
+   "forbid": [
+    "ops-alert"
+   ],
+   "note": "대응 문서 링크 규칙과 다른 별개 규칙이다."
+  },
+  {
+   "id": "h2-27-3",
+   "session": "h2-s27-dup2",
+   "cwd": "/bench/api",
+   "kind": "duplicate",
+   "save": {
+    "kind": "decision",
+    "title": "로그인 실패가 5번이면 계정을 15분 동안 잠근다",
+    "body": "",
+    "scope": "project:/bench/api"
+   },
+   "expect": [
+    "api-lockout"
+   ],
+   "forbid": [
+    "api-rate"
+   ],
+   "note": "같은 결정을 풀어 쓴 초안이다."
+  },
+  {
+   "id": "h2-27-4",
+   "session": "h2-s27-dup2",
+   "cwd": "/bench/api",
+   "kind": "duplicate",
+   "save": {
+    "kind": "lesson",
+    "title": "추정할 때는 최악의 경우를 따로 적어 둔다",
+    "body": "",
+    "scope": "global"
+   },
+   "expect": [
+    "estimate"
+   ],
+   "note": "같은 교훈을 낱말만 바꿔 쓴 초안이다."
+  },
+  {
+   "id": "h2-27-5",
+   "session": "h2-s27-dup2",
+   "cwd": "/bench/api",
+   "kind": "duplicate",
+   "save": {
+    "kind": "rule",
+    "title": "회의 메모 맨 위에는 참석자 이름을 적는다",
+    "body": "",
+    "scope": "global"
+   },
+   "forbid": [
+    "mtg-notes"
+   ],
+   "note": "회의 메모는 결정과 할 일만 남긴다는 기억과 다른 규칙이다."
+  }
+ ]
+}

@@ -20,6 +20,8 @@ type hookFile struct {
 			Command string `json:"command"`
 			Timeout int    `json:"timeout"`
 			Async   bool   `json:"async"`
+			// Codex 전용: 모델에 내는 글을 토큰 임계값에서 디스크로 넘기지 않게 하는 보호. Claude Code 꼴에는 없다.
+			ContextLimit *int `json:"additionalContextLimit"`
 		} `json:"hooks"`
 	} `json:"hooks"`
 }
@@ -93,17 +95,18 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 		events = append(events, e)
 	}
 	slices.Sort(events)
-	want := []string{"PreToolUse", "SessionEnd", "SessionStart", "UserPromptSubmit"}
-	if host == "claude" { // 서브에이전트 시작 훅은 Claude 꼴에만(설계 · orbit-mem 2판 S3)
-		want = []string{"PreToolUse", "SessionEnd", "SessionStart", "SubagentStart", "UserPromptSubmit"}
-	}
+	// 서브에이전트 시작 훅은 두 호스트 모두에 건다(설계 11절: Codex 공식 훅 문서에 SubagentStart가 있다).
+	want := []string{"PreToolUse", "SessionEnd", "SessionStart", "SubagentStart", "UserPromptSubmit"}
 	if !slices.Equal(events, want) {
 		t.Fatalf("%s 훅 %v", path, events)
 	}
+	// 글자 상한(inject.Max*Runes) × 2 토큰: 한글은 글자당 토큰이 1을 넘을 수 있어 상한을 지키는 글이 잘리지 않게 한다.
 	for e, want := range map[string]struct {
 		name    string
 		timeout int
-	}{"SessionStart": {"session-start", 10}, "UserPromptSubmit": {"prompt", 5}, "PreToolUse": {"pre-tool", 5}, "SessionEnd": {"session-end", 3}} {
+		limit   int // Codex additionalContextLimit(토큰), 0이면 칸이 없다
+	}{"SessionStart": {"session-start", 10, 12000}, "UserPromptSubmit": {"prompt", 5, 5000}, "PreToolUse": {"pre-tool", 5, 5000},
+		"SubagentStart": {"subagent-start", 5, 6000}, "SessionEnd": {"session-end", 3, 0}} {
 		g := h.Hooks[e]
 		if len(g) != 1 || len(g[0].Hooks) != 1 {
 			t.Fatalf("%s %s: %+v", path, e, g)
@@ -112,6 +115,13 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 		call := "orbit-mem hook " + want.name + " --host " + host + " --plugin-version " + version
 		if hk.Type != "command" || hk.Timeout != want.timeout || hk.Async || !strings.Contains(hk.Command, call) || !strings.HasPrefix(hk.Command, "if command -v orbit-mem ") {
 			t.Errorf("%s %s: %+v", path, e, hk)
+		}
+		if host == "codex" && want.limit > 0 {
+			if hk.ContextLimit == nil || *hk.ContextLimit != want.limit {
+				t.Errorf("%s %s: additionalContextLimit %v (want %d)", path, e, hk.ContextLimit, want.limit)
+			}
+		} else if hk.ContextLimit != nil {
+			t.Errorf("%s %s: additionalContextLimit %d (이 호스트·사건에는 칸이 없다)", path, e, *hk.ContextLimit)
 		}
 	}
 	if h.Hooks["SessionStart"][0].Matcher != "startup|resume|clear|compact|fork" || h.Hooks["UserPromptSubmit"][0].Matcher != "" || h.Hooks["PreToolUse"][0].Matcher != "" {
@@ -271,7 +281,7 @@ func TestHook_sh_꼴(t *testing.T) {
 		HookSpecificOutput struct{ HookEventName, AdditionalContext string }
 	}
 	if code != 0 || json.Unmarshal([]byte(out), &v) != nil || v.HookSpecificOutput.HookEventName != "SessionStart" ||
-		!strings.Contains(v.HookSpecificOutput.AdditionalContext, "orbit-mem install") || !strings.Contains(v.HookSpecificOutput.AdditionalContext, "https://github.com/onidot-labs/orbit-mem") {
+		!strings.Contains(v.HookSpecificOutput.AdditionalContext, "orbit-mem install") || !strings.Contains(v.HookSpecificOutput.AdditionalContext, "https://github.com/crispebble/orbit-mem") {
 		t.Fatalf("없을 때 시작 훅 %d %q", code, out)
 	}
 	for _, c := range []string{prompt, end} {
@@ -328,25 +338,50 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// 설계 · orbit-mem 2판 S3(S3-8): 서브에이전트 시작 훅은 Claude 꼴에만 싣는다(Codex는 차례 7).
-func TestSubagentStart_훅은_Claude_꼴에만_있다(t *testing.T) {
-	claude, err := Claude("0.4.0")
-	if err != nil {
-		t.Fatal(err)
+// 설계 11절: 서브에이전트 시작 훅은 두 호스트 꼴 모두에 있고, 각자 --host를 단다.
+func TestSubagentStart_훅은_두_호스트_꼴에_있다(t *testing.T) {
+	for host, build := range map[string]func(string) (Files, error){"claude": Claude, "codex": Codex} {
+		files, err := build("0.4.0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := map[string]string{"claude": "hooks/hooks.json", "codex": "hooks/codex.json"}[host]
+		var hf hookFile
+		mustJSON(t, files, path, &hf)
+		groups := hf.Hooks["SubagentStart"]
+		if len(groups) != 1 || len(groups[0].Hooks) != 1 || !strings.Contains(groups[0].Hooks[0].Command, "orbit-mem hook subagent-start --host "+host) {
+			t.Fatalf("%s SubagentStart %+v", host, groups)
+		}
 	}
-	var hf hookFile
-	mustJSON(t, claude, "hooks/hooks.json", &hf)
-	groups := hf.Hooks["SubagentStart"]
-	if len(groups) != 1 || len(groups[0].Hooks) != 1 || !strings.Contains(groups[0].Hooks[0].Command, "orbit-mem hook subagent-start --host claude") {
-		t.Fatalf("claude SubagentStart %+v", groups)
+}
+
+// Codex 전용 글 상한 칸: 양의 정수이고, 글을 받는 사건(SessionStart·UserPromptSubmit·PreToolUse·PostToolUse·SubagentStart)에만 쓴다.
+func TestValidate_codexContextLimit(t *testing.T) {
+	load := func() Manifest {
+		m, err := loadManifest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
 	}
-	codex, err := Codex("0.4.0")
-	if err != nil {
-		t.Fatal(err)
+	m := load()
+	m.Hooks["SessionEnd"][0].CodexContextLimit = 100
+	if err := m.validate("0.4.0"); err == nil || !strings.Contains(err.Error(), "SessionEnd") {
+		t.Fatalf("글을 받지 않는 사건에 칸: %v", err)
 	}
-	var cf hookFile
-	mustJSON(t, codex, "hooks/codex.json", &cf)
-	if _, ok := cf.Hooks["SubagentStart"]; ok || len(cf.Hooks) == 0 {
-		t.Fatalf("codex hooks %v", cf.Hooks)
+	m = load()
+	m.Hooks["Stop"] = []Hook{{Hook: "stop", CodexContextLimit: 100}}
+	if err := m.validate("0.4.0"); err == nil {
+		t.Fatal("Stop에 칸")
+	}
+	m = load()
+	m.Hooks["SubagentStart"][0].CodexContextLimit = -1
+	if err := m.validate("0.4.0"); err == nil {
+		t.Fatal("음수")
+	}
+	m = load()
+	m.Hooks["PostToolUse"] = []Hook{{Hook: "post-tool", CodexContextLimit: 100}}
+	if err := m.validate("0.4.0"); err != nil {
+		t.Fatalf("PostToolUse는 글을 받는 사건: %v", err)
 	}
 }

@@ -6,11 +6,12 @@ package memory
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // supersedeTx replaces, for the memory m just saved, the current value of its scope and
@@ -20,6 +21,9 @@ import (
 func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (SaveReport, error) {
 	var rep SaveReport
 	targets := slices.Clone(in.Supersedes)
+	if in.Replaces != "" {
+		targets = append(targets, in.Replaces)
+	}
 	if topic && m.Topic != "" && m.Retention != RetentionVolatile {
 		rows, err := tx.Query(`SELECT id FROM memories WHERE scope=? AND topic=? AND state IN ('candidate','confirmed') AND id<>?`, m.Scope, m.Topic, m.ID)
 		if err != nil {
@@ -39,6 +43,11 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		}
 	}
 	userWords := in.Source.Kind == SourceQuote
+	// 출처가 믿을 수 없는 것뿐인 새 판은 owner·agent 기억을 대체하지 않고 어긋남으로 둔다(D7).
+	newTrust, err := memoryTrustTx(tx, m.ID)
+	if err != nil {
+		return rep, err
+	}
 	for _, id := range uniq(targets) {
 		if id == m.ID {
 			continue
@@ -53,10 +62,20 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		reason := "같은 주제의 새 판: " + m.Title
 		if userWords {
 			reason = "사용자 말로 대체: " + m.Title // D1: 새 말 자체가 근거다
+		} else if id == in.Replaces {
+			// 고른 옛 판(Replaces)은 SupersedeAs처럼 막는다: 사용자 말 보호는 save가 guardTx로 이미 거쳤고,
+			// 믿을 수 없는 출처뿐인 새 판은 owner·agent 판을 낡게 하지 못한다(D7) — 어긋남으로 두지 않고 거절한다.
+			if !mayOverride(newTrust, old.Trust, in.Who.quote()) {
+				return rep, fmt.Errorf("%w: %s", ErrUntrusted, m.ID)
+			}
 		} else if p, err := protectedTx(tx, id); err != nil {
 			return rep, err
 		} else if p {
 			rep.Conflicts = append(rep.Conflicts, id) // AI·자동화는 사용자 말을 대체하지 않는다
+			continue
+		} else if !mayOverride(newTrust, old.Trust, "") {
+			rep.Conflicts = append(rep.Conflicts, id)
+			rep.untrusted = append(rep.untrusted, id)
 			continue
 		}
 		old.State, old.SupersededBy, old.StaleReason = StateStale, m.ID, reason
@@ -117,7 +136,8 @@ func (m Memory) TriggeredBy(tool string) (exact, ok bool) {
 // Triggered lists the live (candidate or confirmed) memories that have tool triggers.
 // The PreToolUse hook runs before every tool call, so it reads only these.
 func (s *Store) Triggered() ([]Memory, error) {
-	rows, err := s.db.Query(`SELECT ` + memoryCols + ` FROM memories WHERE tools NOT IN ('','[]') AND state IN ('candidate','confirmed') ORDER BY updated_at DESC, id`)
+	const live = `tools NOT IN ('','[]') AND state IN ('candidate','confirmed')`
+	rows, err := s.db.Query(`SELECT ` + memoryCols + ` FROM memories WHERE ` + live + ` ORDER BY updated_at DESC, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +150,11 @@ func (s *Store) Triggered() ([]Memory, error) {
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, fillTrust(s.db, out, `memory_id IN (SELECT id FROM memories WHERE `+live+`)`)
 }
 
 // Session marks: what a session was told once, so the hooks do not say it again.
@@ -174,11 +198,14 @@ func (s *Store) SessionMarks(host, session, kind string) map[string]bool {
 	return out
 }
 
-// ResetSession forgets the session-start bundle and the marks of a session: after a
+// ResetSession forgets the session-start bundle, the marks and the delegations of a session: after a
 // compaction or /clear the session starts over with a bundle made anew.
 func (s *Store) ResetSession(host, session string) error {
 	if session == "" {
 		return nil
+	}
+	if err := s.DropDelegations(host, session); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`DELETE FROM session_bundles WHERE host=? AND session=?`, host, session); err != nil {
 		return err

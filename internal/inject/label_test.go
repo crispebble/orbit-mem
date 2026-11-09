@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // memName is the memory system's name the headings must carry.
@@ -65,12 +65,11 @@ func TestLabel_기억_문맥_머리말은_orbit_mem이다(t *testing.T) {
 	rulesCfg := cfg
 	rulesCfg.Inject = config.InjectRules
 	checkLabels(t, "rules form", SessionStartInjection(s, rulesCfg, f["무관 저장소"]).Text, "["+memName+" 기억 · 확정 규칙]")
-	checkLabels(t, "brief rules form", SessionStartInjectionWith(s, rulesCfg, f["무관 저장소"], Options{Brief: true}).Text, "["+memName+" 기억 · 확정 규칙]")
 
 	checkLabels(t, "prompt recall", PromptInjection(s, cfg, f["무관 저장소"], "보고는 표로 쓰나").Text, "["+memName+" 관련 기억]")
 	checkLabels(t, "pre-tool", ToolInjection(s, cfg, f["무관 저장소"], "claude", "A", "mcp__atlas__write_page").Text,
 		"["+memName+" 기억 · mcp__atlas__write_page 호출 직전]", tool.ID)
-	checkLabels(t, "subagent", SubagentStart(s, cfg).Text, "["+memName+" 기억 · 상시 핵심]")
+	checkLabels(t, "subagent", SubagentStart(s, cfg, f["무관 저장소"], "보고는 표로 쓰나").Text, "["+memName+" 기억 · 상시 핵심]")
 
 	// 세션 도중 대체된 핵심 기억은 정정 줄로 온다.
 	later(s, time.Hour)

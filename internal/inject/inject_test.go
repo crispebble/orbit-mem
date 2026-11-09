@@ -1,14 +1,13 @@
 package inject
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 func store(t *testing.T) *memory.Store {
@@ -37,7 +36,7 @@ func save(t *testing.T, s *memory.Store, kind, title, body, scope string, quote 
 
 const here = "project:github.com/me/app"
 
-func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안_줄은_없다(t *testing.T) {
+func TestSessionStart_핵심_밖_규칙_전문도_결정_본문도_대기_제안_줄도_없고_최근_결정은_제목만_있다(t *testing.T) {
 	s := store(t)
 	save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
 	save(t, s, memory.KindRule, "이 앱은 pnpm", "npm을 쓰지 않는다", here, true)
@@ -48,14 +47,15 @@ func TestSessionStart_확정_규칙_전문과_최근_결정_제목_대기_제안
 	s.Propose(memory.ProposalInput{Kind: memory.ProposalConfirm, Title: "확정?", MemoryIDs: []string{c.ID}})
 
 	got := SessionStart(s, config.Default(), here)
-	// 상시 핵심 밖 확정 규칙은 넣지 않고 수만 알린다(S3-R6): 전역과 이 앱 규칙 둘, 다른 앱·후보는 세지 않는다.
-	for _, want := range []string{"먼저 찾는 곳", "확정 규칙 2개", "결정 1개", "memory_find", "Orbit 먼저 만든다"} {
+	// 상시 핵심 밖 확정 규칙·결정의 본문은 넣지 않고 먼저 찾을 곳만 개수 없이 알린다(S3-R6, 7판 4절). 최근 결정은
+	// 제목 줄로만 있다(1-6 b6r, T-3을 사용자 결정으로 되돌림).
+	for _, want := range []string{wantFindLine, "memory_find", recentHead, "Orbit 먼저 만든다"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
 	// 사람 승인 대기열은 없다(설계 · orbit-mem 2판 18.6): 옛 대기 제안이 남아 있어도 줄을 붙이지 않는다.
-	for _, bad := range []string{"답은 한글 존댓말", "이 앱은 pnpm", "다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "제안 1건", "대기"} {
+	for _, bad := range []string{"답은 한글 존댓말", "이 앱은 pnpm", "다른 앱 규칙", "후보 규칙", "본문은 안 넣음", "2개", "제안 1건", "대기"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("must not contain %q", bad)
 		}
@@ -160,9 +160,15 @@ func TestPromptInjection_넣은_기억_id(t *testing.T) {
 
 func TestSessionBundle_같은_세션은_처음_묶음을_그대로_쓴다(t *testing.T) {
 	s := store(t)
-	save(t, s, memory.KindDecision, "첫 결정", "본문", memory.ScopeGlobal, true)
+	pin := func(title string) {
+		m := save(t, s, memory.KindRule, title, "본문", memory.ScopeGlobal, true)
+		if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pin("첫 규칙")
 	first := SessionBundle(s, config.Default(), here, "claude", "s1")
-	save(t, s, memory.KindDecision, "세션 중에 확정된 규칙", "본문", memory.ScopeGlobal, true)
+	pin("세션 중에 확정된 규칙")
 	again := SessionBundle(s, config.Default(), here, "claude", "s1")
 	if again.Text != first.Text || strings.Contains(again.Text, "세션 중에") || strings.Join(again.MemoryIDs, ",") != strings.Join(first.MemoryIDs, ",") {
 		t.Fatalf("bundle changed within the session:\n%s\n---\n%s", first.Text, again.Text)
@@ -180,6 +186,7 @@ func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶�
 	g := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기", "전역 본문", memory.ScopeGlobal, false)
 	p := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 (이 앱)", "프로젝트 본문", here, false)
 	cfg := config.Default()
+	cfg.RecallMinScore, cfg.RecallMinCoverage = 0.1, 0.1 // 순위와 길이만 본다(문턱은 TestB1_문턱_두_값의_경계)
 	inj := PromptInjection(s, cfg, here, "launchd 예약 회고를 다시 걸어야 해")
 	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != p.ID || inj.MemoryIDs[1] != g.ID {
 		t.Fatalf("project first: %v (p=%s g=%s)\n%s", inj.MemoryIDs, p.ID, g.ID, inj.Text)
@@ -196,7 +203,7 @@ func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶�
 	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != a.ID {
 		t.Fatalf("usage order: %v (a=%s)", inj.MemoryIDs, a.ID)
 	}
-	// 글자 수 상한: 넘으면 본문을 빼고, 제목도 안 들어가면 멈춘다.
+	// 글자 수 상한: 요약은 남는 글자 수 안에서만, 줄이 안 들어가면 멈춘다.
 	s3 := store(t)
 	var ids []string
 	for i := 0; i < 8; i++ {
@@ -211,7 +218,8 @@ func TestPromptInjection_작업_회상은_순위대로_글자_수_안에서_묶�
 }
 
 // 명세 · O3-5 「PC 기억 분야 묶음」(수용 기준 8): 분야 표식(분야:<이름>) 기억은 세션 시작 묶음과 작업 회상에 본문으로 들어가지 않는다.
-// 요청이 한 분야 기억과 강하게 맞으면 그 분야의 신호(제목과 id)만 모두 넣고, 맞지 않는 분야는 넣지 않는다.
+// 요청이 한 분야 기억과 맞으면 그 분야를 한 줄(신호 수와 찾는 법)로 넣고, 맞지 않는 분야는 넣지 않는다(설계 · 지연 회상 5.1 꼴).
+// 분야 줄은 가장 맞은 분야 기억 하나의 제목과 id를 함께 든다(설계 보완, 1-6 b6): 본문과 다른 분야 기억 제목은 넣지 않는다.
 func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 	s := store(t)
 	domain := func(kind, title, body, name string) memory.Memory {
@@ -225,39 +233,22 @@ func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 	a := domain(memory.KindFact, "부가세 신고 기한은 분기 다음 달 25일", "1기 확정은 7월 25일까지 신고한다", "세무")
 	b := domain(memory.KindRule, "세금계산서 발행은 공급 시기 다음 달 10일까지", "지연 발행은 가산세", "세무")
 	c := domain(memory.KindFact, "출고 마감은 매일 오후 3시", "그 뒤 주문은 다음 날 출고", "물류")
-	plain := save(t, s, memory.KindLesson, "신고 기한 질문에는 날짜를 먼저 답한다", "근거 조항은 뒤에", memory.ScopeGlobal, false)
+	plain := save(t, s, memory.KindLesson, "부가세 신고 기한 질문에는 날짜를 먼저 답한다", "근거 조항은 뒤에", memory.ScopeGlobal, false)
 
 	start := SessionStart(s, config.Default(), here)
 	if strings.Contains(start, b.Title) {
 		t.Errorf("분야 규칙은 세션 시작 묶음에 넣지 않습니다:\n%s", start)
 	}
 	inj := PromptInjection(s, config.Default(), here, "부가세 신고 기한 확인해줘")
-	for _, want := range []string{"분야 「세무」", a.Title, a.ID, b.Title, b.ID, plain.Title} {
+	for _, want := range []string{"- 분야 「세무」 신호 2개 · 가장 맞은 것 「" + a.Title + "」 " + a.ID + " — memory_find tags=분야:세무", plain.Title} {
 		if !strings.Contains(inj.Text, want) {
 			t.Errorf("%q가 없습니다:\n%s", want, inj.Text)
 		}
 	}
-	for _, not := range []string{"1기 확정은", "지연 발행은", c.Title, "물류"} {
+	for _, not := range []string{"1기 확정은", "지연 발행은", b.Title, c.Title, "물류"} {
 		if strings.Contains(inj.Text, not) {
 			t.Errorf("%q는 들어가면 안 됩니다:\n%s", not, inj.Text)
 		}
-	}
-}
-
-// 검토 지적 10: 분야 신호가 글자 수를 넘으면 보인 수와 전체 수를 알린다.
-func TestPrompt_분야_신호가_넘치면_알린다(t *testing.T) {
-	s := store(t)
-	for i := 0; i < 30; i++ {
-		if _, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: fmt.Sprintf("부가세 신고 항목 %02d번은 이렇게 적는다", i), Tags: []string{"분야:세무"},
-			Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession, Ref: "x"}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	cfg := config.Default()
-	cfg.RecallChars = 300
-	inj := PromptInjection(s, cfg, here, "부가세 신고 항목 적는 법")
-	if !strings.Contains(inj.Text, "신호 30개 중") || len(inj.MemoryIDs) >= 30 {
-		t.Fatalf("넘친 신호 알림:\n%s", inj.Text)
 	}
 }
 
@@ -266,7 +257,10 @@ func TestPromptInjection_후보는_확정_뒤에_후보로_표시한다(t *testi
 	s := store(t)
 	cand := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 전에 plist 지우기", "후보 본문", memory.ScopeGlobal, false)
 	conf := save(t, s, memory.KindLesson, "launchd 예약 회고", "확정 본문", memory.ScopeGlobal, true)
-	inj := PromptInjection(s, config.Default(), here, "launchd 예약 회고 다시 걸기 전에 plist 지우기")
+	// 순서만 본다: 확정은 요청 낱말 일부만 맞아 상대 문턱(1위의 recallMinRelative배)에 걸릴 수 있으니 그 문턱은 끈다.
+	cfg := config.Default()
+	cfg.RecallMinRelative = 0.01
+	inj := PromptInjection(s, cfg, here, "launchd 예약 회고 다시 걸기")
 	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != conf.ID || inj.MemoryIDs[1] != cand.ID {
 		t.Fatalf("확정이 먼저가 아닙니다: %v (conf=%s cand=%s)\n%s", inj.MemoryIDs, conf.ID, cand.ID, inj.Text)
 	}
@@ -285,5 +279,75 @@ func TestSessionStart_자동_되돌림을_알린다(t *testing.T) {
 	got := SessionStart(s, config.Default(), here)
 	if !strings.Contains(got, "자동 변경 1건을 되돌림") {
 		t.Fatalf("알림이 없습니다:\n%s", got)
+	}
+}
+
+// 출처가 믿을 수 없는 것뿐인 기억은 회상 줄에 「믿을 수 없음」이 붙는다(D7). 회상 글은 고정 한국어라 언어 설정과 무관하다.
+func TestPrompt_믿을_수_없는_기억은_회상_줄에_표시가_붙는다(t *testing.T) {
+	s := store(t)
+	ok := save(t, s, memory.KindLesson, "stdin을 닫고 codex exec를 백그라운드로 돌린다", "본문", memory.ScopeGlobal, false)
+	web, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "codex exec 백그라운드 실행은 stdin을 닫으면 된다는 웹 글", Body: "본문", Scope: memory.ScopeGlobal,
+		Source: memory.Source{Kind: memory.SourceFile, Ref: "web", Trust: memory.TrustUntrusted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Prompt(s, config.Default(), here, "codex exec를 백그라운드에서 stdin 닫기")
+	lineOf := func(id string) string {
+		for _, l := range strings.Split(got, "\n") {
+			if strings.Contains(l, id) {
+				return l
+			}
+		}
+		return ""
+	}
+	if l := lineOf(web.ID); !strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("웹 글 줄에 표시가 없다: %q\n%s", l, got)
+	}
+	if l := lineOf(ok.ID); l == "" || strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("믿을 만한 기억 줄: %q", l)
+	}
+}
+
+func TestTool_믿을_수_없는_기억은_도구_직전_줄에_표시가_붙는다(t *testing.T) {
+	s := store(t)
+	ok, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "Bash 호출 전에 경로를 확인한다", Body: "본문", Scope: memory.ScopeGlobal,
+		Tools:  []string{"Bash"},
+		Source: memory.Source{Kind: memory.SourceSession, Ref: "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	web, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "Bash 호출 전에 웹 글대로 옵션을 붙인다", Body: "본문", Scope: memory.ScopeGlobal,
+		Tools:  []string{"Bash"},
+		Source: memory.Source{Kind: memory.SourceFile, Ref: "web", Trust: memory.TrustUntrusted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash").Text
+	lineOf := func(id string) string {
+		for _, l := range strings.Split(got, "\n") {
+			if strings.Contains(l, id) {
+				return l
+			}
+		}
+		return ""
+	}
+	if l := lineOf(web.ID); !strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("웹 글 줄에 표시가 없다: %q\n%s", l, got)
+	}
+	if l := lineOf(ok.ID); l == "" || strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("믿을 만한 기억 줄: %q\n%s", l, got)
+	}
+}
+
+// NewsOnly는 요청 회상을 건너뛴다: 요청이 회상에 맞아도 글이 없고, 빈 요청도 새 소식 길은 연다.
+func TestPromptInjection_NewsOnly는_요청_회상을_건너뛴다(t *testing.T) {
+	s := store(t)
+	save(t, s, memory.KindLesson, "codex exec를 백그라운드로 돌릴 때 stdin을 닫는다", "", memory.ScopeGlobal, false)
+	ask := "codex exec를 백그라운드에서 돌렸더니 멈춰요"
+	if inj := PromptInjectionFor(s, config.Default(), here, ask, "claude", "s1", Options{}); inj.Text == "" {
+		t.Fatal("기준: 이 요청은 회상된다")
+	}
+	if inj := PromptInjectionFor(s, config.Default(), here, ask, "claude", "s2", Options{NewsOnly: true}); inj.Text != "" || len(inj.MemoryIDs) != 0 {
+		t.Fatalf("NewsOnly = %+v", inj)
 	}
 }

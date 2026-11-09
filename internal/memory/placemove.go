@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Moved is one memory the product map moved.

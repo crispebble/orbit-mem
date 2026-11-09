@@ -1,13 +1,14 @@
 package inject
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 func stages(d Diagnosis) map[string]Stage {
@@ -29,10 +30,49 @@ func TestDiagnose_없는_기억은_저장_단계에서_멈춘다(t *testing.T) {
 func TestDiagnose_요청과_약하게_겹치면_선택_단계에서_멈춘다(t *testing.T) {
 	s := store(t)
 	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
-	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법"})
+	// 요청의 다른 낱말도 저장소에 있다: 어느 기억에도 없는 낱말은 회상 점수에서 빠지므로(설계 보완 1-6 b6), 없으면 codex 하나로 1점이 된다.
+	save(t, s, memory.KindFact, "node 설치 방법은 정리 순서 문서에 있다", "", memory.ScopeGlobal, false)
+	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법 정리 순서"})
 	st := stages(d)[StageSelected]
 	if d.StoppedAt != StageSelected || d.LastProven != StageEligible || st.Code != "weak_match" || st.Args[0] != "codex" {
 		t.Fatalf("%+v", d)
+	}
+	// 두 문턱의 값과 재료: 맞은 낱말, 요청 낱말, 점수(문턱), 맞은 비율(문턱). 맞은 낱말이 하나뿐이라 비율 문턱은 한 낱말
+	// 문턱(recallMinCoverageOneWord, 설계 보완 1-6 b6 R1)이다.
+	if len(st.Args) != 6 || st.Args[1] != "codex 설치 방법 정리 순서" || st.Args[3] != fmt.Sprintf("%.2f", config.DefaultRecallMinScore) || st.Args[4] != "0.20" ||
+		st.Args[5] != fmt.Sprintf("%.2f", config.DefaultRecallMinCoverageOneWord) {
+		t.Fatalf("args %v", st.Args)
+	}
+}
+
+// 두 문턱을 넘어도 이 요청에 더 잘 맞은 기억 점수의 recallMinRelative배 밑이면 선택 단계에서 멈추고 그 값을 말한다(설계 보완 1-6 b6).
+func TestDiagnose_상대_문턱_밑이면_선택_단계에서_멈춘다(t *testing.T) {
+	s := store(t)
+	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
+	save(t, s, memory.KindFact, "node 설치 방법은 문서에 있다", "", memory.ScopeGlobal, false)
+	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex 설치 방법"})
+	st := stages(d)[StageSelected]
+	if d.StoppedAt != StageSelected || st.Code != "below_top" || len(st.Args) != 3 || st.Args[2] != fmt.Sprintf("%.2f", config.DefaultRecallMinRelative) || st.Args[0] >= st.Args[1] {
+		t.Fatalf("%+v", d)
+	}
+	if strings.Contains(PromptInjection(s, config.Default(), here, "codex 설치 방법").Text, m.ID) {
+		t.Fatal("진단은 빠진다고 했는데 회상에 들었습니다")
+	}
+}
+
+// 이 세션에 이미 요청 회상으로 넣은 기억은 다시 넣지 않는다: 진단이 그 까닭을 말한다.
+func TestDiagnose_이_세션에_이미_보인_기억은_already_shown이다(t *testing.T) {
+	s := store(t)
+	cfg := config.Default()
+	m := save(t, s, memory.KindRule, "이 앱은 pnpm으로 설치한다", "npm install을 쓰지 않는다", here, true)
+	SessionBundle(s, cfg, here, "claude", "A")
+	RecordShown(s, "claude", "A", PromptInjectionFor(s, cfg, here, "pnpm으로 설치해 줘", "claude", "A", Options{}))
+	d := Diagnose(s, cfg, DiagnoseInput{ID: m.ID, Scope: here, Prompt: "pnpm으로 설치해 줘", Host: "claude", Session: "A"})
+	if st := stages(d)[StageSelected]; st.Status != Yes || st.Code != "matched" {
+		t.Fatalf("selected %+v", st)
+	}
+	if st := stages(d)[StageInjected]; st.Status != No || st.Code != "already_shown" {
+		t.Fatalf("injected %+v", st)
 	}
 }
 
@@ -61,7 +101,7 @@ func TestDiagnose_Orbit_Code_세션의_여섯_단계(t *testing.T) {
 	s := store(t)
 	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
 	prompt := "codex exec stdin 닫힘 문제"
-	in := DiagnoseInput{ID: m.ID, Scope: here, Prompt: prompt, Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
+	in := DiagnoseInput{ID: m.ID, Scope: here, Prompt: prompt, Host: "orbit-code", Session: "c-1"}
 	d := Diagnose(s, config.Default(), in)
 	if st := stages(d); st[StageSelected].Status != Yes || st[StageInjected].Code != "would_inject" || st[StageDelivered].Code != "no_record" {
 		t.Fatalf("before: %+v", d)
@@ -99,13 +139,13 @@ func TestDiagnose_훅_호스트는_돌려준_문맥이_전달이고_확정_규�
 	}
 }
 
-func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
+func TestDiagnose_상시_핵심_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말 금지", memory.ScopeGlobal, true)
 	if _, err := s.Pin(r.ID, memory.Who{}); err != nil { // 세션 시작에는 상시 핵심만 든다(S3-R6)
 		t.Fatal(err)
 	}
-	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
+	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1"}
 	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "orbit-code", Session: "c-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +159,27 @@ func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전�
 	}
 }
 
-func TestPrompt_짧은_꼴에서_잘린_규칙_본문은_전문_자리를_알린다(t *testing.T) {
+func TestPrompt_잘린_규칙_본문은_전문_자리를_알린다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "배포 전 확인 순서", strings.Repeat("확인한다. ", 200), memory.ScopeGlobal, true)
-	inj := PromptInjectionWith(s, config.Default(), here, "배포 전 확인 순서 알려줘", Options{Brief: true})
+	inj := PromptInjectionWith(s, config.Default(), here, "배포 전 확인 순서 알려줘", Options{})
 	if !slices.Contains(inj.MemoryIDs, r.ID) || !strings.Contains(inj.Text, "memory_get") {
 		t.Fatalf("%s", inj.Text)
+	}
+}
+
+// 기획 · orbit-mem M-4: 훅 호스트(claude·codex)만 「훅이 돌려줌」으로 보고, 이름을 모르는 다른 호스트는 모두
+// inject delivered로 알려야 전달됨이다.
+func TestDiagnose_훅_호스트_밖의_호스트는_전달_사건이_있어야_전달됨이다(t *testing.T) {
+	for host, want := range map[string]string{"claude": "hook_returned", "codex": "hook_returned", "openclaw": "not_delivered", "host-x": "not_delivered"} {
+		s := store(t)
+		m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
+		if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectPrompt, Host: host, Session: "h-1"}, map[string]any{"memoryIds": []string{m.ID}}); err != nil {
+			t.Fatal(err)
+		}
+		d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: "codex exec stdin 닫힘 문제", Host: host, Session: "h-1"})
+		if got := stages(d)[StageDelivered].Code; got != want {
+			t.Errorf("%s: delivered = %s, want %s", host, got, want)
+		}
 	}
 }

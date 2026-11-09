@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // Proposal kinds (설계 「제안과 승인」).
@@ -37,7 +37,6 @@ const (
 	StatusApproved = "approved"
 	StatusRejected = "rejected"
 	StatusSettled  = "settled" // 다른 길로 이미 이뤄져 닫힘
-	StatusLab      = "lab"     // 실험실 대기: 하네스 변경은 실험실이 도움됨으로 판정해야 대기로 올라간다(설계 · Orbit 개선 3차 「스킬 제안」)
 )
 
 var ProposalKinds = []string{ProposalConfirm, ProposalStale, ProposalMerge, ProposalReclassify, ProposalApplyFile, ProposalDirection, ProposalEdit, ProposalRevert, ProposalLink, ProposalRetag, ProposalSupersede}
@@ -104,9 +103,6 @@ type ProposalInput struct {
 	MemoryIDs []string
 	Payload   Payload
 	RetroID   string
-	// Lab stores the proposal waiting for the harness lab (StatusLab) instead of pending:
-	// a change to the plugin source reaches the user only after the lab says it helped.
-	Lab bool
 }
 
 // FileHash is the hash used to notice that a file changed under a proposal.
@@ -160,16 +156,6 @@ func fingerprint(in ProposalInput) string {
 	return hex.EncodeToString(h[:16])
 }
 
-// SameProposal finds the pending or rejected proposal that stops in from
-// being proposed again (Propose's ErrDuplicateProposal), if there is one.
-func (s *Store) SameProposal(in ProposalInput) (Proposal, bool) {
-	fp := fingerprint(in)
-	row := s.db.QueryRow(`SELECT `+proposalCols+` FROM proposals WHERE fingerprint=? AND status IN ('pending','lab','rejected')
-		ORDER BY status='rejected' LIMIT 1`, fp)
-	p, err := scanProposal(row)
-	return p, err == nil
-}
-
 // Propose stores a pending proposal. The same proposal is not stacked while
 // pending, and one the user rejected does not come back.
 func (s *Store) Propose(in ProposalInput) (Proposal, error) {
@@ -178,18 +164,14 @@ func (s *Store) Propose(in ProposalInput) (Proposal, error) {
 	}
 	fp := fingerprint(in)
 	var status string
-	err := s.db.QueryRow(`SELECT status FROM proposals WHERE fingerprint=? AND status IN ('pending','lab','rejected') LIMIT 1`, fp).Scan(&status)
+	err := s.db.QueryRow(`SELECT status FROM proposals WHERE fingerprint=? AND status IN ('pending','rejected') LIMIT 1`, fp).Scan(&status)
 	if err == nil {
 		return Proposal{}, fmt.Errorf("%w (%s)", ErrDuplicateProposal, status)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, err
 	}
-	st := StatusPending
-	if in.Lab {
-		st = StatusLab
-	}
-	return s.insertProposal(in, st)
+	return s.insertProposal(in, StatusPending)
 }
 
 // prepare checks a proposal and fills in what it shows (diffs, the memories a
@@ -546,8 +528,16 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 				}
 			}
 		}
+		// 합친 기억은 합친 기억들 가운데 가장 높은 등급이다: 믿을 수 없는 것뿐이면 그 등급으로 후보에 둔다(D7, 확정 길 ⑤).
+		trust, err := trustOfAll(s.db, p.MemoryIDs)
+		if err != nil {
+			return err
+		}
+		if Untrusted(trust) {
+			state = StateCandidate
+		}
 		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: state,
-			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦"}, noEvidence: true})
+			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦", Trust: trust}, noEvidence: true})
 		if err != nil {
 			return err
 		}
@@ -835,7 +825,7 @@ func (s *Store) prepareRetag(in *ProposalInput) error {
 		if len(in.Payload.FromTags) == 0 {
 			return i18n.Errorf("memory.err.need_ids_or_from", ErrInvalid)
 		}
-		all, err := s.list(DefaultGraphStates)
+		all, err := s.list([]string{StateCandidate, StateConfirmed, StateStale}) // 숨김(거절한 후보)은 뺀다
 		if err != nil {
 			return err
 		}

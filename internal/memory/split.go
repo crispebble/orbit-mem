@@ -23,7 +23,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // errSplitChanged means the original changed between the plan's checks and the split's transaction.
@@ -244,18 +244,17 @@ func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi 
 		return nil, "", fmt.Errorf("%w: checked v%d, now v%d %s", errSplitChanged, mem.Version, s0.Version, s0.State)
 	}
 	mem = s0
-	type src struct {
-		kind, ref, excerpt, hash string
-		at                       int64
+	var srcs []Source
+	rows, err := tx.Query(`SELECT kind,ref,excerpt,hash,at,trust FROM sources WHERE memory_id=? ORDER BY at, rowid`, mem.ID)
+	if noTrustColumn(err) { // 판 4 사본으로 복구된 DB: 등급은 kind로 읽는다
+		rows, err = tx.Query(`SELECT kind,ref,excerpt,hash,at,'' FROM sources WHERE memory_id=? ORDER BY at, rowid`, mem.ID)
 	}
-	var srcs []src
-	rows, err := tx.Query(`SELECT kind,ref,excerpt,hash,at FROM sources WHERE memory_id=? ORDER BY at, rowid`, mem.ID)
 	if err != nil {
 		return nil, "", err
 	}
 	for rows.Next() {
-		var x src
-		if err := rows.Scan(&x.kind, &x.ref, &x.excerpt, &x.hash, &x.at); err != nil {
+		var x Source
+		if err := rows.Scan(&x.Kind, &x.Ref, &x.Excerpt, &x.Hash, &x.At, &x.Trust); err != nil {
 			rows.Close()
 			return nil, "", err
 		}
@@ -276,9 +275,11 @@ func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi 
 			n.Retention, n.ReviewDays, n.ReviewAt, n.ExpiresAt, n.Topic, toolsJSON(n.Tools)); err != nil {
 			return nil, "", err
 		}
+		if err := indexTx(tx, n.ID); err != nil {
+			return nil, "", err
+		}
 		for _, x := range srcs {
-			if _, err := tx.Exec(`INSERT INTO sources(id,memory_id,kind,ref,excerpt,hash,at) VALUES(?,?,?,?,?,?,?)`,
-				NewID("s-"), n.ID, x.kind, x.ref, x.excerpt, x.hash, x.at); err != nil {
+			if err := insertSourceTx(tx, NewID("s-"), n.ID, x, x.At); err != nil { // 출처 등급도 그대로 옮긴다
 				return nil, "", err
 			}
 		}

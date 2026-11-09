@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
 // fakeBackground records the background runs a test asks for instead of starting a process.
@@ -25,7 +25,7 @@ func fakeBackground(t *testing.T, fail error) *[][]string {
 	calls := &[][]string{}
 	old := startBackground
 	startBackground = func(args ...string) error {
-		if len(args) > 0 && args[0] == "update" { // 새 판 확인 갱신은 사본과 상관없다
+		if len(args) > 0 && (args[0] == "update" || args[0] == "tidy") { // 새 판 확인 갱신·하루 정리는 사본과 상관없다
 			return nil
 		}
 		mu.Lock()
@@ -37,12 +37,20 @@ func fakeBackground(t *testing.T, fail error) *[][]string {
 	return calls
 }
 
+// dailyCopy makes a copy whose file time is age ago. A copy under 24 hours old is
+// today's copy, so its name carries today's date even just after midnight (when
+// age ago was yesterday); an older copy is named for the day it was made.
 func dailyCopy(t *testing.T, h string, age time.Duration) string {
 	t.Helper()
 	dir := filepath.Join(h, "backups")
 	os.MkdirAll(dir, 0o700)
-	at := time.Now().Add(-age)
-	p := filepath.Join(dir, "memory-"+at.Format("20060102")+".sqlite")
+	now := time.Now()
+	at := now.Add(-age)
+	named := at
+	if age < 24*time.Hour {
+		named = now
+	}
+	p := filepath.Join(dir, "memory-"+named.Local().Format("20060102")+".sqlite")
 	os.WriteFile(p, []byte("x"), 0o600)
 	os.Chtimes(p, at, at)
 	return p
@@ -113,7 +121,7 @@ func TestHook_요청과_세션_끝_훅은_사본을_만들지_않는다(t *testi
 	home(t)
 	seed(t)
 	calls := fakeBackground(t, nil)
-	run(t, `{"cwd":"/tmp","prompt":"안녕","session_id":"s-1"}`, "hook", "prompt", "--host", "claude")
+	run(t, `{"cwd":"/tmp","prompt":"배포 규칙이 뭐였지","session_id":"s-1"}`, "hook", "prompt", "--host", "claude")
 	run(t, `{"cwd":"/tmp","session_id":"s-1"}`, "hook", "session-end", "--host", "claude")
 	if len(*calls) != 0 {
 		t.Fatalf("background = %v", *calls)
@@ -365,25 +373,6 @@ func TestBackup_복구는_깨진_사본과_없는_사본을_받지_않는다(t *
 	}
 	if _, _, code := run(t, "", "backup", "restore"); code != 2 {
 		t.Fatalf("no name: %d", code)
-	}
-}
-
-// 끝난 기준: orb retro 앞의 백업(retro-store backup)도 24시간 안이면 건너뛴다. 결과 꼴(errors·memory·work)은 그대로다.
-func TestRetroStore_backup은_24시간_안이면_새로_만들지_않는다(t *testing.T) {
-	h, _ := storeHome(t)
-	fresh := dailyCopy(t, h, time.Hour)
-	b := storeJSON(t, "", "backup")
-	if keys(b) != "errors,memory,work" || b["memory"] != fresh {
-		t.Fatalf("backup = %v", b)
-	}
-	if st, _ := os.Stat(fresh); st.Size() != 1 {
-		t.Fatal("the fresh copy was rewritten")
-	}
-	os.Remove(fresh)
-	dailyCopy(t, h, 25*time.Hour)
-	b = storeJSON(t, "", "backup")
-	if err := memory.CheckCopy(b["memory"].(string)); err != nil {
-		t.Fatalf("after 24h: %v (%v)", err, b)
 	}
 }
 

@@ -1,0 +1,1 @@
+{"hookSpecificOutput":{"additionalContext":"[orbit-mem 기억 · 이 세션 중 바뀐 것] 옛 판은 따르지 않는다\n- 정정: 「시험은 모의 DB로 돈다」(m-old         ) → 시험은 실제 DB로 돈다 — m-replaced    \n- 새 기억: 릴리스 노트는 한국어로 — m-fresh        · 규칙 확정","hookEventName":"UserPromptSubmit"}}

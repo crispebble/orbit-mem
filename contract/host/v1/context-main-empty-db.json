@@ -1,0 +1,24 @@
+{
+  "name": "context-main-empty-db",
+  "op": "context",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "source": "startup",
+    "audience": "main"
+  },
+  "exit": 0,
+  "output": {
+    "text": "$string",
+    "memoryIds": "$array",
+    "budget": {
+      "chars": "$number",
+      "limit": "$number"
+    }
+  }
+}

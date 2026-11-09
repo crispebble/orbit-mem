@@ -8,54 +8,73 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Injection levels (설계 「PC 설정」의 기억 주입 수준).
 const (
-	InjectFull  = "full"  // 규칙 전문, 최근 결정, 회고 한 줄, 요청마다 관련 기억
+	InjectFull  = "full"  // 규칙 전문, 최근 결정, 요청마다 관련 기억
 	InjectRules = "rules" // 규칙 전문만
 	InjectOff   = "off"   // 아무것도 넣지 않음(MCP로만 씀)
 )
 
-// Config is this PC's settings.
+// Recall modes (설계 보완 T-2): the new key `recall`. The old key `inject` reads as the same meaning
+// (full=auto, rules=on_demand, off=off).
+const (
+	RecallAuto     = "auto"      // 기본: 규칙·B1 회상·요청마다 회상
+	RecallOnDemand = "on_demand" // B1 없음(옛 inject=rules와 같은 뜻)
+	RecallOff      = "off"       // 아무것도 넣지 않음
+)
+
+var recallRank = map[string]int{RecallAuto: 0, RecallOnDemand: 1, RecallOff: 2}
+
+// InjectOfRecall maps a recall mode to the old inject value, which an older executable still reads.
+func InjectOfRecall(recall string) string {
+	switch recall {
+	case RecallOnDemand:
+		return InjectRules
+	case RecallOff:
+		return InjectOff
+	}
+	return InjectFull
+}
+
+// RecallMode is the recall setting: `recall` and the old `inject` read alike; when they differ the
+// more restrictive one wins (off > on_demand > auto). An empty recall (the default, or a file from
+// before the key) follows inject.
+func (c Config) RecallMode() string {
+	mode := RecallAuto
+	switch c.Inject {
+	case InjectRules:
+		mode = RecallOnDemand
+	case InjectOff:
+		mode = RecallOff
+	}
+	if r, ok := recallRank[c.Recall]; ok && r > recallRank[mode] {
+		mode = c.Recall
+	}
+	return mode
+}
+
+// Config is this PC's settings. Keys of earlier versions that are gone (the retrospective
+// settings retroHost·sessionRetro·graphTidy*·legacy*·applyTargets·pluginSource… removed
+// 2026-11-08, and orbit-code's old work settings) are ignored when read and kept as they
+// were in the file when saved.
 type Config struct {
-	Language        string   `json:"language,omitempty"`     // en(기본) | ko: orbit-mem이 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
-	RetroHost       string   `json:"retroHost"`              // claude | codex
-	RetroModel      string   `json:"retroModel"`             // 비우면 호스트 기본값
-	RetroHour       int      `json:"retroHour"`              // 하루 회고 시각(0-23)
-	Inject          string   `json:"inject"`                 // full | rules | off
-	RecentDecisions int      `json:"recentDecisions"`        // 세션 시작에 넣을 최근 결정 제목 수
-	BackupKeep      int      `json:"backupKeep"`             // 남길 하루 사본 수(넘는 memory-YYYYMMDD·work-YYYYMMDD 사본만 지운다)
-	AutoBackup      bool     `json:"autoBackup"`             // 세션 시작 훅이 마지막 사본이 24시간보다 오래됐으면 뒤에서 사본을 만든다
-	Hosts           []string `json:"hosts"`                  // 연결한 호스트(claude, codex)
-	ClaudePath      string   `json:"claudePath,omitempty"`   // 예약 실행에서 쓸 claude 절대경로
-	CodexPath       string   `json:"codexPath,omitempty"`    // 예약 실행에서 쓸 codex 절대경로
-	ApplyTargets    []string `json:"applyTargets,omitempty"` // 회고가 반영 제안을 낼 수 있는 파일·디렉터리(플러그인 원본, 내 지침 파일)
-	PluginSource    string   `json:"pluginSource,omitempty"` // orbit-code 하네스 플러그인을 바이너리 내장 원본 대신 이 디렉터리에서 빌드한다(스킬을 고쳐 쓰는 PC)
-	// 옛 작업 기록 설정(work·workTestCommands·workStaleAfter)은 작업 기록이 orbit-code로 옮겨 갔고
-	// orbit-code가 같은 config.json에서 아직 읽는다. 모르는 키는 읽을 때 무시하고, 저장할 때는 파일에 있던 그대로 보존한다.
-
-	SessionRetro         bool   `json:"sessionRetro"`                // 세션이 끝나면 그 세션만 짧게 회고한다
-	SessionRetroModel    string `json:"sessionRetroModel,omitempty"` // 비우면 claude는 haiku, codex는 호스트 기본
-	SessionRetroDailyMax int    `json:"sessionRetroDailyMax"`        // 하루 세션 끝 회고 실행 상한, 0은 상한 없음
-	RecallChars          int    `json:"recallChars"`                 // 요청마다 넣는 작업 회상의 글자 수 상한
-	LedgerWindowDays     int    `json:"ledgerWindowDays"`            // 변경 효과를 보는 변경 전·후 기간(일)
-
-	// 기억 그래프 정리(설계 · Orbit 3차 O3-2). 하루 회고에 붙는다. 0이면 그 부분을 끈다.
-	// 기본값은 첫 실행 실측(기억 40+20개를 보면 제안 18~20건, $0.28~0.38)을 보고 사용자가 정했다(2026-10-30, 회당 20건).
-	GraphTidyMemories  int `json:"graphTidyMemories"`  // 회당 연결 후보를 볼 클러스터 기억 수
-	GraphTidyUntagged  int `json:"graphTidyUntagged"`  // 회당 태그를 달 주제 태그 없는 기억 수
-	GraphTidyProposals int `json:"graphTidyProposals"` // 회당 받는 정리 제안(link·retag) 수 상한, 0은 상한 없음
-
-	// 옛 기억 정리(설계 · Orbit 3차 O3-3). 옮겨 온 옛 기억(imported:*)을 묶음마다 판정한다. orbit-code 예약 회고(orb retro)가 하루에
-	// LegacyBatches 묶음까지 돌리고, 0이면 끈다(orb retro legacy는 그래도 돈다). 판정할 옛 기억이 없으면 돌지 않는다.
-	// 첫 실행 실측(30개 묶음 2회, 약 50초·$0.27~0.40)을 보고 사용자가 정했다(2026-10-30, 남은 것은 한 번에 판정하고 예약은 하루 1묶음).
-	LegacyMemories int      `json:"legacyMemories"`         // 한 묶음에 판정할 옛 기억 수
-	LegacyBatches  int      `json:"legacyBatches"`          // 예약 회고가 하루에 돌리는 묶음 수
-	RetiredNames   []string `json:"retiredNames,omitempty"` // 보관한 저장소·옛 제품 이름(낡음 판정의 근거로 보인다)
+	Language         string   `json:"language,omitempty"` // en(기본) | ko: orbit-mem이 사람에게 보이는 글의 언어(ORBIT_LANG이 앞선다)
+	Inject           string   `json:"inject"`             // full | rules | off (옛 키: recall과 같은 뜻으로 읽는다)
+	Recall           string   `json:"recall,omitempty"`   // auto | on_demand | off (비면 inject를 따른다)
+	RecentDecisions  int      `json:"recentDecisions"`    // 세션 시작에 넣을 최근 결정 제목 수
+	BackupKeep       int      `json:"backupKeep"`         // 남길 하루 사본 수(넘는 memory-YYYYMMDD 사본만 지운다)
+	AutoBackup       bool     `json:"autoBackup"`         // 세션 시작 훅이 마지막 사본이 24시간보다 오래됐으면 뒤에서 사본을 만든다
+	AutoTidy         bool     `json:"autoTidy"`           // 세션 시작 훅이 하루 한 번 뒤에서 모델 없는 정리(orbit-mem tidy auto)를 돌린다
+	Hosts            []string `json:"hosts"`              // 연결한 호스트(claude, codex)
+	RecallChars      int      `json:"recallChars"`        // 요청마다 넣는 작업 회상의 글자 수 상한
+	LedgerWindowDays int      `json:"ledgerWindowDays"`   // 변경 효과를 보는 변경 전·후 기간(일)
 
 	// 확정 규칙(A2, 계획 · AU-6). 후보가 스스로 확정되는 증거의 횟수와 반복 교정 표시 기준.
 	// confirmFollowedVerified·correctionRepeatSessions는 E2: 이 PC 기억 DB 사본(2026-10-26~11-01)으로 잰
@@ -64,7 +83,7 @@ type Config struct {
 	ConfirmFollowedVerified  int `json:"confirmFollowedVerified"`  // ② 회상돼 따랐고 검증 통과·교정 없는 세션 수
 	CorrectionRepeatSessions int `json:"correctionRepeatSessions"` // 같은 대상 교정이 나온 세션 수가 이 이상이면 표시
 
-	// 후보 기한(설계 · orbit-mem 2판 18.4): 이 날 수 동안 넣지도 찾지도 고치지도 않은 후보는 회고 정리 단계가 낡음으로
+	// 후보 기한(설계 · orbit-mem 2판 18.4): 이 날 수 동안 넣지도 찾지도 고치지도 않은 후보는 하루 정리(tidy)가 낡음으로
 	// 돌린다(원장에 남아 되돌릴 수 있다). 사용자 말 출처 기억은 대상이 아니다. 0이면 끈다.
 	CandidateExpiryDays int `json:"candidateExpiryDays"`
 
@@ -77,6 +96,118 @@ type Config struct {
 	// 제품 지도(설계 · orbit-mem 2판 4.1, S3 명세 2.2): 제품 이름 → 그 제품의 저장소 원격 키·폴더(글롭 가능)와 요청 글에서
 	// 그 제품을 가리키는 말. 제품 범위 기억(product:<이름>)이 어느 폴더에서 보이는지를 정한다. 비어 있으면 제품이 없다.
 	Products place.Map `json:"products,omitempty"`
+	// host 계약의 시간 한도(설계 · 지연 회상·호스트 계약 10.1): op 이름 → Go 기간 글(예 "1.5s"). 빠진 op는 기본값이다.
+	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
+	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
+	// 저장 때 정리(설계 6.1, 계획 D8): memory_save가 같은 범위의 기억을 「비슷하다」고 보고 저장 전에 고르게 하는
+	// 저장 때 비슷함 점수(0~1, 두 기억 사이 낱말 두 방향 덮음의 기하 평균)의 문턱. 막는 판정이라 엄격하게 둔다(1-6 b6db): 그 밑은
+	// 가까운 기억(SaveNearMin)이 맡는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
+	SaveSimilarMin float64 `json:"saveSimilarMin"`
+	// 가까운 기억(1-6 b6dn): memory_save가 막지 않고 저장할 때 같은 범위의 기억 가운데 이 점수(같은 비슷함) 이상인 것을
+	// 최대 3개 id·제목 한 줄로 붙인다. 0 < x ≤ 1. saveSimilarMin 이상이면 붙는 것이 없다. 이 키가 없는 옛 파일은 기본값(memory.DefaultNearMin)이다.
+	SaveNearMin float64 `json:"saveNearMin"`
+	// 요청 회상의 두 문턱(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계): 기억은 찾기 점수(0~1, memory.RecallQuery로 찾은
+	// 점수)가 recallMinScore 이상이고 요청의 뜻 있는 낱말 중 맞은 비율(0~1)이 recallMinCoverage 이상일 때만 요청 회상에 든다.
+	// 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	// recallMinCoverage는 맞은 낱말이 둘 이상인 기억의 비율 문턱이고, 맞은 낱말이 하나뿐인 기억은 recallMinCoverageOneWord를
+	// 넘어야 한다(설계 보완, 계획 1-6 b6 R1): 「낱말 넷 중 하나」처럼 흔한 낱말 하나로 맞은 주제 밖 기억을 막는다.
+	RecallMinScore           float64 `json:"recallMinScore"`
+	RecallMinCoverage        float64 `json:"recallMinCoverage"`
+	RecallMinCoverageOneWord float64 `json:"recallMinCoverageOneWord"`
+	// 요청 회상의 상대 문턱(설계 보완, 계획 1-6 b6): 두 문턱을 넘은 기억 가운데 찾기 점수가 1위의 recallMinRelative배
+	// 미만인 것은 뺀다. 확정을 앞에 두는 순서 때문에 약하게 맞은 기억이 3줄에 끼는 것을 막는다. 0 < x ≤ 1. 이 키가 없는 옛
+	// 파일은 기본값이다.
+	RecallMinRelative float64 `json:"recallMinRelative"`
+	// 위임 회상의 문턱(설계 보완, 계획 1-6 b6 T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 위임 글의 내용 낱말
+	// (명령형 어미·위임 머리 낱말·항목 번호를 뺀 것, memory.TaskWords) 가운데 taskRecallMinWords개 이상이 맞고, 찾기 점수가
+	// taskRecallMinScore 이상이며, 1위 점수의 taskRecallMinRelative배 이상인 기억만 넣는다. 점수·배는 0 < x ≤ 1, 낱말 수는
+	// 2~40이다(MinTaskRecallMinWords). 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinScore    float64 `json:"taskRecallMinScore"`
+	TaskRecallMinWords    int     `json:"taskRecallMinWords"`
+	TaskRecallMinRelative float64 `json:"taskRecallMinRelative"`
+	// 위임 회상의 제목 몫 문턱(설계 보완, 계획 1-6 b7f): 위의 세 문턱을 넘어도, 내용 낱말 가운데 그 기억의 제목·주제에 나온
+	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
+	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
+}
+
+// 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
+// 개발 자료)로 골랐다. 지금 기본값으로 잰 공개 묶음 전체(195사례, 회귀를 고친 뒤 3차 지표 정의, 보완안 9.1절)는 요청 적중 82/91 90.1%·
+// 틀린 회상 6/98 6.1%·넣지 않음 43/46 93.5%다. 고를 때는 요청 적중 77/91·틀린 회상 7/104·넣지 않음 42/46·위임 적중 4/21(당시
+// 정의)이었고, deploy-fact를 6개 사례의 허용으로 낮춘 라벨 변경(2026-11-09, 사용자 결정)·위임 제목 몫 문턱(b7f)·지표 정의
+// 변경을 거쳐 지금 값이 됐다. 아래 비교 값은 고를 때의 것이다.
+//   - recallMinScore 0.3: 저장소가 모르는 낱말을 빼고 재는 회상 점수에서 0.2~0.35가 같은 결과인 평탄 구간의 가운데다(0.4부터
+//     적중이 준다).
+//   - recallMinCoverage 0.25·recallMinCoverageOneWord 0.3: 한 낱말 비율을 0.25로 내리면 틀린 회상이 14.7%로, 0.35로 올리면
+//     적중이 73/91로 바뀐다.
+//   - recallMinRelative 0.9: 0.85와 같은 결과다.
+//   - 위임 taskRecallMinWords 3: 2면 틀린 회상 35%, 4면 적중 1/21. taskRecallMinScore 0.1(0.05~0.15 같음)·
+//     taskRecallMinRelative 0.3(0.25~0.35 같음).
+//   - 위임 taskRecallMinTitleShare 0.05(계획 1-6 b7f): 위 세 문턱은 기억 207개짜리 공개 묶음에서 골라, 기억 1,326개 저장소의
+//     긴 위임 글(내용 낱말 36~40개)에서는 아무 기억이나 통과했다. 재생 묶음 학습용(사람 미검토 정답표 초안)에서 위임 회상
+//     맞음 24·틀림 309/334 → 맞음 17·틀림 4/25(적중 5/43 → 2/43, 넣지 않음 0/24 → 22/24). 0.045면 틀림 8/34, 0.055면 맞음
+//     14. 학습용을 세션 반반으로 나눠도 두 쪽 모두 틀림이 줄었다(194 → 0, 109 → 4). 공개 묶음 전체는 결과가 같다.
+const (
+	DefaultRecallMinScore           = 0.3
+	DefaultRecallMinCoverage        = 0.25
+	DefaultRecallMinCoverageOneWord = 0.3
+	DefaultRecallMinRelative        = 0.9
+	DefaultTaskRecallMinScore       = 0.1
+	DefaultTaskRecallMinWords       = 3
+	DefaultTaskRecallMinRelative    = 0.3
+	DefaultTaskRecallMinTitleShare  = 0.05
+)
+
+// MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
+// request, needs two words or more for any recall (one word scores every memory that has it alike), so 1 would
+// act as 2 for a one-word task and as 1 for a longer one. The most is 40: a request has at most 40 meaningful words.
+const (
+	MinTaskRecallMinWords = 2
+	MaxTaskRecallMinWords = 40
+)
+
+// MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
+const MaxPromptRecallChars = 500
+
+// PromptRecallChars is the length the work recall of one request may use: recallChars, at most MaxPromptRecallChars.
+func (c Config) PromptRecallChars() int {
+	if c.RecallChars <= 0 {
+		return MaxPromptRecallChars
+	}
+	return min(c.RecallChars, MaxPromptRecallChars)
+}
+
+// defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
+// Its keys are the operations whose hostTimeouts value is checked; other keys are ignored.
+var defaultHostTimeouts = map[string]time.Duration{
+	"version":      500 * time.Millisecond,
+	"context":      1500 * time.Millisecond,
+	"recall":       time.Second,
+	"tool-context": 500 * time.Millisecond,
+	"call":         5 * time.Second,
+	"delivered":    500 * time.Millisecond,
+	"reset":        500 * time.Millisecond,
+	"session-end":  500 * time.Millisecond,
+}
+
+// DefaultHostTimeouts is a copy of the default time limit of each host contract operation.
+func DefaultHostTimeouts() map[string]time.Duration {
+	out := make(map[string]time.Duration, len(defaultHostTimeouts))
+	for op, d := range defaultHostTimeouts {
+		out[op] = d
+	}
+	return out
+}
+
+// HostTimeout is the time limit of a host contract operation: hostTimeouts, else the
+// default. An operation with no default and no valid setting gets 0.
+func (c Config) HostTimeout(op string) time.Duration {
+	if v, ok := c.HostTimeouts[op]; ok {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultHostTimeouts[op]
 }
 
 // HostMemory values.
@@ -85,16 +216,20 @@ const (
 	HostMemoryKeep = "keep"
 )
 
-// maxRecallChars keeps the per-request context under the hosts' hook context
-// limit (about 10,000 characters in Claude Code).
+// maxRecallChars is the largest recallChars a file may hold (files written before the work recall
+// was bounded keep loading, the old default 1000 among them). The work recall itself uses PromptRecallChars,
+// MaxPromptRecallChars at most, which is also the default.
 const maxRecallChars = 9000
 
 // Default is the starting configuration.
 func Default() Config {
-	return Config{Language: string(i18n.EN), RetroHost: "claude", RetroHour: 4, Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, Hosts: []string{"claude", "codex"},
-		SessionRetro: true, RecallChars: 1000, LedgerWindowDays: 7, GraphTidyMemories: 40, GraphTidyUntagged: 20, GraphTidyProposals: 20,
-		LegacyMemories: 30, LegacyBatches: 1,
-		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true}
+	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
+		RecallChars: MaxPromptRecallChars, LedgerWindowDays: 7,
+		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
+		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
+		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
+		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -102,14 +237,11 @@ func (c Config) Validate() error {
 	if _, ok := i18n.Parse(c.Language); c.Language != "" && !ok {
 		return i18n.Errorf("config.err.language", c.Language)
 	}
-	if c.RetroHost != "claude" && c.RetroHost != "codex" {
-		return i18n.Errorf("config.err.retro_host", c.RetroHost)
-	}
-	if c.RetroHour < 0 || c.RetroHour > 23 {
-		return i18n.Errorf("config.err.retro_hour", c.RetroHour)
-	}
 	if c.Inject != InjectFull && c.Inject != InjectRules && c.Inject != InjectOff {
 		return i18n.Errorf("config.err.inject", c.Inject)
+	}
+	if _, ok := recallRank[c.Recall]; c.Recall != "" && !ok {
+		return i18n.Errorf("config.err.recall", c.Recall)
 	}
 	if c.RecentDecisions < 0 || c.RecentDecisions > 20 || c.BackupKeep < 1 {
 		return i18n.Errorf("config.err.recent_backup")
@@ -117,20 +249,52 @@ func (c Config) Validate() error {
 	if c.RecallChars < 100 || c.RecallChars > maxRecallChars {
 		return i18n.Errorf("config.err.recall_chars", maxRecallChars, c.RecallChars)
 	}
-	if c.LedgerWindowDays < 1 || c.LedgerWindowDays > 90 || c.SessionRetroDailyMax < 0 {
-		return i18n.Errorf("config.err.ledger_session")
-	}
-	if c.GraphTidyMemories < 0 || c.GraphTidyMemories > 200 || c.GraphTidyUntagged < 0 || c.GraphTidyUntagged > 200 || c.GraphTidyProposals < 0 || c.GraphTidyProposals > 20 {
-		return i18n.Errorf("config.err.graph_tidy")
-	}
-	if c.LegacyMemories < 1 || c.LegacyMemories > 100 || c.LegacyBatches < 0 || c.LegacyBatches > 20 {
-		return i18n.Errorf("config.err.legacy")
+	if c.LedgerWindowDays < 1 || c.LedgerWindowDays > 90 {
+		return i18n.Errorf("config.err.ledger_window")
 	}
 	if c.HostMemory != "" && c.HostMemory != HostMemoryAsk && c.HostMemory != HostMemoryKeep {
 		return i18n.Errorf("config.err.host_memory", c.HostMemory)
 	}
 	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
 		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)
+	}
+	if !(c.SaveSimilarMin > 0 && c.SaveSimilarMin <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.save_similar_min", c.SaveSimilarMin)
+	}
+	if !(c.SaveNearMin > 0 && c.SaveNearMin <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.save_near_min", c.SaveNearMin)
+	}
+	if !(c.RecallMinScore > 0 && c.RecallMinScore <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.recall_min_score", c.RecallMinScore)
+	}
+	if !(c.RecallMinCoverage > 0 && c.RecallMinCoverage <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage", c.RecallMinCoverage)
+	}
+	if !(c.RecallMinRelative > 0 && c.RecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.recall_min_relative", c.RecallMinRelative)
+	}
+	if !(c.RecallMinCoverageOneWord > 0 && c.RecallMinCoverageOneWord <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage_one_word", c.RecallMinCoverageOneWord)
+	}
+	if !(c.TaskRecallMinScore > 0 && c.TaskRecallMinScore <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_score", c.TaskRecallMinScore)
+	}
+	if c.TaskRecallMinWords < MinTaskRecallMinWords || c.TaskRecallMinWords > MaxTaskRecallMinWords {
+		return i18n.Errorf("config.err.task_recall_min_words", MinTaskRecallMinWords, MaxTaskRecallMinWords, c.TaskRecallMinWords)
+	}
+	if !(c.TaskRecallMinRelative > 0 && c.TaskRecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_relative", c.TaskRecallMinRelative)
+	}
+	if !(c.TaskRecallMinTitleShare > 0 && c.TaskRecallMinTitleShare <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_title_share", c.TaskRecallMinTitleShare)
+	}
+	for op, v := range c.HostTimeouts {
+		if _, ok := defaultHostTimeouts[op]; !ok {
+			continue // 뒤 판의 op: 이 판은 쓰지 않으니 거절하지 않는다(옛 실행 파일이 새 설정 파일을 읽는다)
+		}
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return i18n.Errorf("config.err.host_timeout", op, v)
+		}
 	}
 	if err := c.Products.Validate(); err != nil {
 		return err
@@ -180,9 +344,7 @@ func (p Paths) Config() string      { return filepath.Join(p.Home, "config.json"
 func (p Paths) DB() string          { return filepath.Join(p.Home, "memory.db") }
 func (p Paths) Backups() string     { return filepath.Join(p.Home, "backups") }
 func (p Paths) Marketplace() string { return filepath.Join(p.Home, "plugin") }
-func (p Paths) RetroDir() string    { return filepath.Join(p.Home, "retro") }
 func (p Paths) Logs() string        { return filepath.Join(p.Home, "logs") }
-func (p Paths) WorkDB() string      { return filepath.Join(p.Home, "work.db") } // 옛 작업 기록(읽기·하루 백업만)
 
 // Load reads the configuration; a missing file gives the defaults.
 func Load(path string) (Config, error) {
@@ -209,6 +371,9 @@ func Save(path string, c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
+	// 두 키를 같은 뜻으로 쓴다: 옛 실행 파일은 recall을 모르고 inject대로 돈다.
+	c.Recall = c.RecallMode()
+	c.Inject = InjectOfRecall(c.Recall)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}

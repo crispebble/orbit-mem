@@ -55,11 +55,11 @@ func TestRegisterClaude(t *testing.T) {
 		name, source, markets, plugins string
 		want                           []string
 	}{
-		{"처음 GitHub", "onidot-labs/orbit-mem", "", "",
-			[]string{"claude plugin marketplace add onidot-labs/orbit-mem", "claude plugin install orbit-mem@orbit-mem --scope user"}},
-		{"같은 GitHub 마켓과 깔린 플러그인", "onidot-labs/orbit-mem", `[{"name":"orbit-mem","source":"github","repo":"onidot-labs/orbit-mem"}]`, `[{"id":"orbit-mem@orbit-mem","version":"0.3.0","enabled":true}]`,
+		{"처음 GitHub", "crispebble/orbit-mem", "", "",
+			[]string{"claude plugin marketplace add crispebble/orbit-mem", "claude plugin install orbit-mem@orbit-mem --scope user"}},
+		{"같은 GitHub 마켓과 깔린 플러그인", "crispebble/orbit-mem", `[{"name":"orbit-mem","source":"github","repo":"crispebble/orbit-mem"}]`, `[{"id":"orbit-mem@orbit-mem","version":"0.3.0","enabled":true}]`,
 			[]string{"claude plugin marketplace update orbit-mem", "claude plugin update orbit-mem@orbit-mem"}},
-		{"GitHub에서 로컬 폴더로", "/h/plugins/orbit-mem", `[{"name":"orbit-mem","source":"github","repo":"onidot-labs/orbit-mem"},{"name":"orbit","source":"directory","path":"/x"}]`, "",
+		{"GitHub에서 로컬 폴더로", "/h/plugins/orbit-mem", `[{"name":"orbit-mem","source":"github","repo":"crispebble/orbit-mem"},{"name":"orbit","source":"directory","path":"/x"}]`, "",
 			[]string{"claude plugin marketplace remove orbit-mem", "claude plugin marketplace add /h/plugins/orbit-mem", "claude plugin install orbit-mem@orbit-mem --scope user"}},
 		{"같은 로컬 폴더", "/h/plugins/orbit-mem", `[{"name":"orbit-mem","source":"directory","path":"/h/plugins/orbit-mem"}]`, "",
 			[]string{"claude plugin marketplace update orbit-mem", "claude plugin install orbit-mem@orbit-mem --scope user"}},
@@ -77,8 +77,8 @@ func TestRegisterClaude(t *testing.T) {
 		})
 	}
 	// 마켓을 더하지 못하면 설치하지 않는다
-	f := &fakeHost{fail: map[string]bool{"claude plugin marketplace add onidot-labs/orbit-mem": true}}
-	if err := (Hosts{Claude: "/bin/claude", Run: f.run}).RegisterClaude("onidot-labs/orbit-mem", "orbit-mem", "orbit-mem"); err == nil || len(f.writes()) != 1 {
+	f := &fakeHost{fail: map[string]bool{"claude plugin marketplace add crispebble/orbit-mem": true}}
+	if err := (Hosts{Claude: "/bin/claude", Run: f.run}).RegisterClaude("crispebble/orbit-mem", "orbit-mem", "orbit-mem"); err == nil || len(f.writes()) != 1 {
 		t.Fatalf("%v %q", err, f.writes())
 	}
 }
@@ -142,7 +142,7 @@ func TestReadCodexState(t *testing.T) {
 // 끝 기준: 해제는 있는 것만 뺀다: Claude는 plugin uninstall --scope user와 marketplace remove,
 // Codex는 plugin remove와 marketplace remove. 데이터·파일은 건드리지 않는다.
 func TestUnregister(t *testing.T) {
-	f := &fakeHost{markets: `[{"name":"orbit-mem","source":"github","repo":"onidot-labs/orbit-mem"}]`, plugins: `[{"id":"orbit-mem@orbit-mem"}]`}
+	f := &fakeHost{markets: `[{"name":"orbit-mem","source":"github","repo":"crispebble/orbit-mem"}]`, plugins: `[{"id":"orbit-mem@orbit-mem"}]`}
 	h := Hosts{Claude: "/bin/claude", Codex: "/bin/codex", Run: f.run}
 	if err := h.UnregisterClaude("orbit-mem", "orbit-mem"); err != nil {
 		t.Fatal(err)

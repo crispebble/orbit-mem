@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func gitRepo(t *testing.T, dir, remote string) {
@@ -67,7 +67,8 @@ func TestAC3_상위_폴더_기억은_아래_모든_폴더와_저장소에서_보
 	}
 	for name, want := range sessions {
 		dir := dirs[name]
-		text := PromptInjection(s, cfg, dir, "빌드 순서 결정 다시 보자").Text
+		// 확정 결정은 세션 시작 「최근 결정」 줄(A층)이나 요청 회상(B1)으로 온다(1-6 b6r).
+		text := SessionStart(s, cfg, dir) + "\n" + PromptInjection(s, cfg, dir, "빌드 순서 결정 다시 보자").Text
 		for _, m := range inherited {
 			if strings.Contains(text, m.ID) != want {
 				t.Errorf("%s 요청: %s shown %v, want %v\n%s", name, m.Title, !want, want, text)

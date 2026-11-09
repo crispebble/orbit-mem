@@ -1,0 +1,26 @@
+{
+  "name": "call-memory_find-schema-newer",
+  "op": "call",
+  "setup": {
+    "db": "empty",
+    "meta": {
+      "schema.version": "99"
+    }
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_find",
+    "args": {
+      "query": "x"
+    }
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "schema-newer",
+    "name": "memory_find"
+  }
+}

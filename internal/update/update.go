@@ -1,7 +1,7 @@
 // Package update replaces this orbit-mem with a release from GitHub Releases and
 // remembers (once a day at most) which version is the newest.
 //
-// Releases are public (onidot-labs/orbit-mem). The newest version comes from the GitHub
+// Releases are public (crispebble/orbit-mem). The newest version comes from the GitHub
 // API (/repos/<repo>/releases/latest); an archive is orbit-mem-<version>-<os>-<arch>.tar.gz
 // (.zip on windows) and the checksums are the release's SHA256SUMS (shasum -a 256 format).
 // ORBIT_MEM_BASE_URL replaces both hosts (tests point it at a fake server).
@@ -27,12 +27,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/install"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/install"
 )
 
 // Repo is the public repository the releases come from.
-const Repo = "onidot-labs/orbit-mem"
+const Repo = "crispebble/orbit-mem"
 
 // EnvBaseURL replaces the GitHub hosts (for tests).
 const EnvBaseURL = "ORBIT_MEM_BASE_URL"

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/sqlitedb"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
 func saveFact(t *testing.T, s *Store, title string) {
@@ -100,17 +100,22 @@ func TestDailyBackup_Force면_24시간_안이어도_만든다(t *testing.T) {
 	}
 }
 
-func TestDailyBackup_옛_작업_기록도_같이_복사하고_실패는_알리기만_한다(t *testing.T) {
+// 기획 · orbit-mem X5(M-5): 옛 작업 기록(work.db)은 더 복사하지 않고, 옛 파일도 건드리지 않는다.
+func TestDailyBackup_옛_작업_기록은_복사하지_않는다(t *testing.T) {
 	s, _ := newTestStore(t)
 	home := t.TempDir()
 	work := filepath.Join(home, "work.db")
-	os.WriteFile(work, []byte("SQLite가 아닌 파일"), 0o600)
-	r, err := s.DailyBackup(BackupOptions{Dir: filepath.Join(home, "backups"), WorkDB: work, Keep: 14})
-	if err != nil || !r.Made || r.Work != "" || r.WorkErr == nil {
-		t.Fatalf("work failure = %+v %v", r, err)
+	os.WriteFile(work, []byte("옛 작업 기록"), 0o600)
+	dir := filepath.Join(home, "backups")
+	r, err := s.DailyBackup(BackupOptions{Dir: dir, Keep: 14})
+	if err != nil || !r.Made {
+		t.Fatalf("backup = %+v %v", r, err)
 	}
-	if _, err := os.Stat(r.Memory); err != nil {
-		t.Fatal(err)
+	if m, _ := filepath.Glob(filepath.Join(dir, "work-*")); len(m) != 0 {
+		t.Fatalf("work 사본 = %v", m)
+	}
+	if b, err := os.ReadFile(work); err != nil || string(b) != "옛 작업 기록" {
+		t.Fatalf("work.db = %q %v", b, err)
 	}
 }
 
@@ -224,7 +229,8 @@ func TestDailyBackup_동시에_불러도_사본은_하나만_만든다(t *testin
 
 // --- 스키마 이전 전 사본 ---
 
-// oldSchema makes path look like a memory DB an older orbit-mem left: user_version 3 and no audit tables.
+// oldSchema makes path look like a memory DB an older orbit-mem left: no meta schema.version,
+// user_version 3 and no audit tables.
 func oldSchema(t *testing.T, path string, titlesToKeep ...string) {
 	t.Helper()
 	s, err := Open(path)
@@ -234,7 +240,7 @@ func oldSchema(t *testing.T, path string, titlesToKeep ...string) {
 	for _, ti := range titlesToKeep {
 		saveFact(t, s, ti)
 	}
-	if _, err := s.DB().Exec(`DROP TABLE audit_acks; DROP TABLE audit_flags; PRAGMA user_version=3`); err != nil {
+	if _, err := s.DB().Exec(`DROP TABLE audit_acks; DROP TABLE audit_flags; DELETE FROM meta WHERE key='schema.version'; PRAGMA user_version=3`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

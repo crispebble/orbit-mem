@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,36 +121,6 @@ func TestQ4_방향_지침파일_되돌리기(t *testing.T) {
 	out, err = s.SubmitChange(ProposalInput{Kind: ProposalRevert, Title: "되돌리기", Payload: Payload{LedgerID: userLine}}, Who{Actor: ActorAutomation})
 	if err != nil || out.Applied || !out.AskUser {
 		t.Fatalf("revert human %+v %v", out, err)
-	}
-	noPending(t, s)
-}
-
-// Q-4: 실험실이 도움됨으로 판정한 하네스 변경은 바로 적용되고 원장에 남는다.
-func TestQ4_실험실_도움됨은_자동_적용(t *testing.T) {
-	s, _ := newTestStore(t)
-	path := filepath.Join(t.TempDir(), "skills", "plain-writing", "SKILL.md")
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte("옛 스킬\n"), 0o644)
-	out, err := s.SubmitChange(ProposalInput{Kind: ProposalApplyFile, Title: "스킬 고치기", Lab: true, Payload: Payload{Path: path, Content: "새 스킬\n"}}, Who{Actor: ActorAutomation})
-	if err != nil || out.Applied || out.Proposal.Status != StatusLab {
-		t.Fatalf("lab %+v %v", out, err)
-	}
-	if err := s.ReleaseLabProposal(out.Proposal.ID, "실험 x-1: 도움됨"); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(path); string(b) != "새 스킬\n" {
-		t.Fatalf("파일 %q", b)
-	}
-	got, _ := s.GetProposal(out.Proposal.ID)
-	if got.Status != StatusAuto || !strings.Contains(got.Body, "실험 x-1: 도움됨") {
-		t.Fatalf("proposal %+v", got)
-	}
-	e := ledgerOf(t, s, got.ID)
-	if _, err := s.RevertChange(e.ID, Who{}, "되돌림"); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(path); string(b) != "옛 스킬\n" {
-		t.Fatalf("되돌린 파일 %q", b)
 	}
 	noPending(t, s)
 }
@@ -347,14 +316,14 @@ func TestQ8_미리_보기는_파일을_되돌리지_않는다(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "skills", "x", "SKILL.md")
 	os.MkdirAll(filepath.Dir(path), 0o755)
 	os.WriteFile(path, []byte("옛\n"), 0o644)
-	out, err := s.SubmitChange(ProposalInput{Kind: ProposalApplyFile, Title: "스킬", Lab: true, Payload: Payload{Path: path, Content: "새\n"}}, Who{Actor: ActorAutomation})
+	p, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "스킬", Payload: Payload{Path: path, Content: "새\n"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReleaseLabProposal(out.Proposal.ID, "도움됨"); err != nil {
+	if _, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"}); err != nil {
 		t.Fatal(err)
 	}
-	line := ledgerOf(t, s, out.Proposal.ID)
+	line := ledgerOf(t, s, p.ID)
 	rp, err := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌리기", Payload: Payload{LedgerID: line.ID}})
 	if err != nil {
 		t.Fatal(err)
@@ -390,25 +359,6 @@ func TestQ8_그_뒤_바뀐_기억은_옛_고치기로_덮지_않는다(t *testin
 	}
 	if got, _ := s.GetProposal(p.ID); got.Status != StatusDropped {
 		t.Fatalf("p %+v", got)
-	}
-}
-
-// 검토 지적 5: 실험실이 판정한 뒤 파일이 바뀌었으면 덮지 않고 실험실 대기로 남긴다(다시 실험할 수 있다).
-func TestQ4_실험실_도움됨이라도_파일이_바뀌었으면_대기로_남는다(t *testing.T) {
-	s, _ := newTestStore(t)
-	path := filepath.Join(t.TempDir(), "skills", "x", "SKILL.md")
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, []byte("옛\n"), 0o644)
-	out, _ := s.SubmitChange(ProposalInput{Kind: ProposalApplyFile, Title: "스킬", Lab: true, Payload: Payload{Path: path, Content: "새\n"}}, Who{Actor: ActorAutomation})
-	os.WriteFile(path, []byte("그 사이 고침\n"), 0o644)
-	if err := s.ReleaseLabProposal(out.Proposal.ID, "도움됨"); !errors.Is(err, ErrFileChanged) {
-		t.Fatalf("err = %v", err)
-	}
-	if b, _ := os.ReadFile(path); string(b) != "그 사이 고침\n" {
-		t.Fatalf("덮었습니다: %q", b)
-	}
-	if p, _ := s.GetProposal(out.Proposal.ID); p.Status != StatusLab {
-		t.Fatalf("p %+v", p)
 	}
 }
 

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/project"
 )
 
 // Stored scope values. The memories table keeps "global" and "project:<key>" as before (옛 판 실행

@@ -105,6 +105,9 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, TopicKey(m.Topic), toolsJSON(tools)); err != nil {
 		return "", err
 	}
+	if err := indexTx(tx, m.ID); err != nil {
+		return "", err
+	}
 	for _, src := range m.Sources {
 		if !contains(SourceKinds, src.Kind) {
 			continue

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/backup"
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/backup"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // 백업(ONID-136): 세션 시작 훅이 하루 한 번 뒤에서 사본을 만들고, 사람은 orbit-mem backup 하나로
@@ -41,7 +41,7 @@ func cmdBackup(a *app, args []string) error {
 	return errUsage
 }
 
-// backupNow copies the memory DB (and the old work DB) now, whatever the time of the last copy.
+// backupNow copies the memory DB now, whatever the time of the last copy.
 func backupNow(a *app, args []string) error {
 	fs := a.flags("backup")
 	if pos, err := parse(fs, args); err != nil || len(pos) != 0 {
@@ -56,7 +56,7 @@ func backupNow(a *app, args []string) error {
 		return err
 	}
 	defer s.Close()
-	r, err := s.DailyBackup(memory.BackupOptions{Dir: paths().Backups(), WorkDB: paths().WorkDB(), Keep: cfg.BackupKeep, Force: true, Wait: manualWait})
+	r, err := s.DailyBackup(memory.BackupOptions{Dir: paths().Backups(), Keep: cfg.BackupKeep, Force: true, Wait: manualWait})
 	if err != nil {
 		return err
 	}
@@ -64,12 +64,6 @@ func backupNow(a *app, args []string) error {
 		return i18n.Errorf("cli.backup.busy")
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", r.Memory))
-	if r.WorkErr != nil {
-		return r.WorkErr
-	}
-	if r.Work != "" {
-		fmt.Fprintln(a.stdout, i18n.T("cli.backup.done", r.Work))
-	}
 	return nil
 }
 
@@ -245,6 +239,18 @@ func backupRestore(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.done", src, r.Info.Memories, r.Before))
+	// 복구는 이전하지 않는다: 같은 프로세스에서 다시 열어 판을 올리고(판 4 사본이면 판 5로) 색인을 다 채운다.
+	s.Close()
+	w, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	if n, err := w.FillIndex(0); err != nil {
+		return err
+	} else if n > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.migrate.index_filled", n))
+	}
 	return nil
 }
 
@@ -277,23 +283,17 @@ func backupAuto(a *app, args []string) error {
 		return nil
 	}
 	defer s.Close()
-	r, err := s.DailyBackup(memory.BackupOptions{Dir: p.Backups(), WorkDB: p.WorkDB(), Keep: cfg.BackupKeep})
+	r, err := s.DailyBackup(memory.BackupOptions{Dir: p.Backups(), Keep: cfg.BackupKeep})
 	if err != nil {
 		backupLog(p, "error: "+err.Error())
 		return nil
 	}
 	if r.Made {
 		line := "made " + r.Memory
-		if r.Work != "" {
-			line += " " + r.Work
-		}
 		if len(r.Removed) > 0 {
 			line += " removed " + strings.Join(r.Removed, ",")
 		}
 		backupLog(p, line)
-	}
-	if r.WorkErr != nil {
-		backupLog(p, "error: work: "+r.WorkErr.Error())
 	}
 	return nil
 }
@@ -314,7 +314,7 @@ func backupLog(p config.Paths, line string) {
 // `orbit-mem backup auto` as its own process and does not wait for it. Checking costs
 // one folder read; nothing here can fail the hook.
 func autoBackup(cfg config.Config) {
-	if !cfg.AutoBackup || os.Getenv("ORBIT_RETRO_ID") != "" {
+	if !cfg.AutoBackup {
 		return
 	}
 	if !backup.Due(paths().Backups(), time.Now()) {

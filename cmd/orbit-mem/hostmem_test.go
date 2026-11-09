@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // hostPC is a fake HOME with Claude Code's and Codex's settings folders, a project folder
@@ -308,7 +308,7 @@ func TestInstall_겹치는_기억을_사용자에게_묻고_바꾸지_않는다(
 		}
 		return v
 	}
-	out, errOut, code := run(t, "", "install", "--json", "--no-schedule", "--bin-dir", dest)
+	out, errOut, code := run(t, "", "install", "--json", "--bin-dir", dest)
 	if code != 0 {
 		t.Fatalf("%d %s %s", code, out, errOut)
 	}
@@ -323,20 +323,20 @@ func TestInstall_겹치는_기억을_사용자에게_묻고_바꾸지_않는다(
 	if read(t, settings) != `{"model": "opus"}` {
 		t.Fatal("install changed Claude settings")
 	}
-	human, _, _ := run(t, "", "install", "--no-schedule", "--bin-dir", dest)
+	human, _, _ := run(t, "", "install", "--bin-dir", dest)
 	if !strings.Contains(human, "Check with the user") || !strings.Contains(human, a.Question) || !strings.Contains(human, a.Apply) || !strings.Contains(human, a.Keep) {
 		t.Fatalf("human install:\n%s", human)
 	}
-	dryOut, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-schedule", "--bin-dir", dest)
+	dryOut, _, _ := run(t, "", "install", "--dry-run", "--json", "--bin-dir", dest)
 	if dry := parse(dryOut); len(dry.AskUser) != 1 {
 		t.Fatalf("dry-run askUser %+v", dry)
 	}
 	run(t, "", "config", "set", "hostMemory", "keep")
-	o, _, _ := run(t, "", "install", "--json", "--no-schedule", "--bin-dir", dest)
+	o, _, _ := run(t, "", "install", "--json", "--bin-dir", dest)
 	if !strings.Contains(o, `"askUser": []`) {
 		t.Fatalf("keep still asks:\n%s", o)
 	}
-	if h, _, _ := run(t, "", "install", "--no-schedule", "--bin-dir", dest); strings.Contains(h, "Check with the user") {
+	if h, _, _ := run(t, "", "install", "--bin-dir", dest); strings.Contains(h, "Check with the user") {
 		t.Fatalf("keep still asks:\n%s", h)
 	}
 }
@@ -347,7 +347,7 @@ func TestInstall_한국어로는_질문도_한국어다(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", claude)
 	t.Setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "")
 	t.Setenv("ORBIT_LANG", "ko")
-	out, _, _ := run(t, "", "install", "--dry-run", "--no-schedule", "--bin-dir", t.TempDir())
+	out, _, _ := run(t, "", "install", "--dry-run", "--bin-dir", t.TempDir())
 	if !strings.Contains(out, "사용자에게 확인할 것") || !strings.Contains(out, "끌까요?") {
 		t.Fatalf("%s", out)
 	}
@@ -520,20 +520,6 @@ func TestHostMemory_off는_심볼릭_링크를_따라가_원본을_고친다(t *
 	}
 }
 
-func TestHook_사람이_없는_실행에는_겹침_줄을_넣지_않는다(t *testing.T) {
-	h := newHostPC(t)
-	write(t, h.settings(), `{}`)
-	seed(t)
-	out, _, _ := run(t, `{"cwd":"/tmp","session_id":"w1","source":"startup"}`, "hook", "session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "workflow")
-	if ctx := eventContext(t, out, "SessionStart"); strings.Contains(ctx, "host-memory") {
-		t.Fatalf("workflow run noted:\n%s", ctx)
-	}
-	out, _, _ = run(t, `{"cwd":"/tmp","session_id":"s1","source":"startup"}`, "hook", "session-start", "--host", "claude", "--runtime", "orbit-pi", "--launcher", "studio")
-	if ctx := eventContext(t, out, "SessionStart"); !strings.Contains(ctx, "host-memory off") {
-		t.Fatalf("studio session not noted:\n%s", ctx)
-	}
-}
-
 type overlapOut struct {
 	ID, Kind, Name, Settings, Off, LockedBy string
 	On, Manual                              bool
@@ -622,7 +608,7 @@ func TestHostMemory_읽지_못한_설정은_경고로_남고_판정은_이어진
 	if code != 0 || json.Unmarshal([]byte(out), &st) != nil || len(st.Warnings) != 1 || st.Warnings[0].Path != h.settings() {
 		t.Fatalf("%d %s", code, out)
 	}
-	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-schedule", "--no-hosts", "--bin-dir", t.TempDir())
+	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-hosts", "--bin-dir", t.TempDir())
 	if !strings.Contains(ins, h.settings()) || !strings.Contains(ins, "codex-memories") {
 		t.Fatalf("install json without the warning: %s", ins)
 	}
@@ -637,7 +623,7 @@ func TestInstall_json은_실패해도_JSON_하나를_낸다(t *testing.T) {
 	write(t, h.settings(), `{}`)
 	blocker := filepath.Join(h.home, "not-a-dir")
 	write(t, blocker, "x")
-	out, errOut, code := run(t, "", "install", "--json", "--no-schedule", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
+	out, errOut, code := run(t, "", "install", "--json", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
 	var res struct {
 		OK      bool
 		Error   string
@@ -650,7 +636,7 @@ func TestInstall_json은_실패해도_JSON_하나를_낸다(t *testing.T) {
 	if code != 2 || json.Unmarshal([]byte(out), &res) != nil || res.OK || res.Error == "" {
 		t.Fatalf("bad flag: %d %q", code, out)
 	}
-	ok, _, code := run(t, "", "install", "--json", "--dry-run", "--no-schedule", "--bin-dir", t.TempDir())
+	ok, _, code := run(t, "", "install", "--json", "--dry-run", "--bin-dir", t.TempDir())
 	if code != 0 || !strings.Contains(ok, `"ok": true`) {
 		t.Fatalf("dry run: %d %s", code, ok)
 	}
@@ -682,7 +668,7 @@ func TestHostMemory_Claude_MCP_기억_서버는_알리고_끄기는_호스트에
 	if c := overlapByID(t, "claude-mcp:cloud"); c.On {
 		t.Fatalf("disabled for this project but on: %+v", c)
 	}
-	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-schedule", "--no-hosts", "--bin-dir", t.TempDir())
+	ins, _, _ := run(t, "", "install", "--dry-run", "--json", "--no-hosts", "--bin-dir", t.TempDir())
 	if !strings.Contains(ins, "claude mcp remove kg --scope user") {
 		t.Fatalf("install askUser: %s", ins)
 	}
@@ -782,7 +768,7 @@ func TestInstall_json_실패에도_진행한_단계를_싣고_help와_json_false
 	h := newHostPC(t)
 	blocker := filepath.Join(h.home, "not-a-dir")
 	write(t, blocker, "x")
-	out, _, _ := run(t, "", "install", "--json", "--no-schedule", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
+	out, _, _ := run(t, "", "install", "--json", "--no-hosts", "--bin-dir", filepath.Join(blocker, "bin"))
 	var res struct {
 		Binary string
 		Steps  []string

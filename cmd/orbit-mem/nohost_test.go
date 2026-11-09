@@ -26,11 +26,10 @@ var execAllowed = map[string]string{
 var hostArgs = []string{"-p", "--print", "--output-format", "--ephemeral", "--strict-mcp-config", "--mcp-config", "--allowedTools",
 	"--no-session-persistence", "--skip-git-repo-check", "--dangerously-skip-permissions"}
 
-// K2: orbit-mem keeps the memory and never runs a model or a headless host; the
-// retrospectives run in orbit-code. No file imports os/exec unless the allow-list says why,
-// and no file carries the argument literals of a headless host run. ONID-124: the harness
-// lab went to orbit-code's dev tools, so orbit-mem calls no orb either (no "orb" literal):
-// orbit-code calls orbit-mem, never the other way.
+// K2: orbit-mem keeps the memory and never runs a model or a headless host (the model
+// retrospectives were removed, 2026-11-08). No file imports os/exec unless the allow-list says
+// why, and no file carries the argument literals of a headless host run. orbit-mem calls no
+// orb either (no "orb" literal): other tools call orbit-mem, never the other way.
 func TestNoHostCalls(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	if err != nil {

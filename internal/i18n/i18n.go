@@ -3,8 +3,8 @@
 // locales/<lang>/*.json; every language has the same keys.
 //
 // Only what a person reads is here: command output, errors and help. JSON
-// output, MCP response structures, text written for the AI (injection,
-// retrospective prompts, tool descriptions) and memory content are not.
+// output, MCP response structures, text written for the AI (injection, tool
+// descriptions) and memory content are not.
 package i18n
 
 import (

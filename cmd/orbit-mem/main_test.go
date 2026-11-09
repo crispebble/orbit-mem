@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
 )
 
 func run(t *testing.T, stdin string, args ...string) (string, string, int) {
@@ -194,9 +194,6 @@ func TestHook_주입을_사건으로_남긴다(t *testing.T) {
 	if evs[1].Kind != memory.EventInjectPrompt || !strings.Contains(string(evs[1].Data), `"memoryIds":[]`) {
 		t.Errorf("prompt = %+v %s", evs[1], evs[1].Data)
 	}
-	if injected, known := s.InjectedIn("sess-1", r.ID); !injected || !known {
-		t.Errorf("injected=%v known=%v", injected, known)
-	}
 }
 
 func TestStats_기간_지표를_보여_준다(t *testing.T) {
@@ -225,13 +222,10 @@ func TestHook_주입하지_않는_호출은_세지_않는다(t *testing.T) {
 	s := seed(t)
 	s.Save(memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
 	run(t, `{"cwd":"/tmp","session_id":"s","prompt":""}`, "hook", "prompt", "--host", "claude") // 빈 요청
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"rules","recentDecisions":5,"backupKeep":14}`), 0o600)
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"inject":"rules","recentDecisions":5,"backupKeep":14}`), 0o600)
 	run(t, `{"cwd":"/tmp","session_id":"s","prompt":"존댓말"}`, "hook", "prompt", "--host", "claude") // 요청마다 넣지 않는 수준
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"off","recentDecisions":5,"backupKeep":14}`), 0o600)
+	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"inject":"off","recentDecisions":5,"backupKeep":14}`), 0o600)
 	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "claude")
-	os.WriteFile(filepath.Join(h, "config.json"), []byte(`{"retroHost":"claude","retroHour":4,"inject":"full","recentDecisions":5,"backupKeep":14}`), 0o600)
-	t.Setenv("ORBIT_RETRO_ID", "r-1") // 회고 실행 안의 훅
-	run(t, `{"cwd":"/tmp","session_id":"s"}`, "hook", "session-start", "--host", "codex")
 	evs, _ := s.Events(memory.EventFilter{FromDay: "2000-01-01", ToDay: "2999-12-31"})
 	if len(evs) != 0 {
 		t.Fatalf("events = %+v", evs)
@@ -261,21 +255,25 @@ func TestHook_세션_끝은_활동_기록만_남긴다(t *testing.T) {
 	}
 }
 
-// K1: retro 명령은 없다(회고는 orbit-code의 orb retro).
+// 기획 · orbit-mem R1~R3: 회고 명령(retro·retro-store)과 회고 MCP(mcp --retro), 그래프 읽기 서버(mcp --reader)는 없다.
 func TestRetro_명령은_없다(t *testing.T) {
 	home(t)
-	_, errOut, code := run(t, "", "retro", "run")
-	if code != 2 || !strings.Contains(strings.ToLower(errOut), "unknown command") {
-		t.Fatalf("code=%d err=%q", code, errOut)
+	for _, args := range [][]string{{"retro", "run"}, {"retro-store", "queue", "list"}} {
+		_, errOut, code := run(t, "", args...)
+		if code != 2 || !strings.Contains(strings.ToLower(errOut), "unknown command") {
+			t.Fatalf("%v: code=%d err=%q", args, code, errOut)
+		}
+	}
+	for _, flag := range []string{"--retro=r-1", "--reader"} {
+		if _, _, code := run(t, "", "mcp", flag); code == 0 {
+			t.Fatalf("mcp %s: code=%d", flag, code)
+		}
 	}
 	_, help, _ := run(t, "", "help")
 	for _, line := range strings.Split(help, "\n") {
-		if f := strings.Fields(line); len(f) > 1 && f[0] == "orbit-mem" && f[1] == "retro" {
-			t.Fatalf("help lists retro: %q", line)
+		if f := strings.Fields(line); len(f) > 1 && f[0] == "orbit-mem" && strings.HasPrefix(f[1], "retro") {
+			t.Fatalf("help lists %q", line)
 		}
-	}
-	if !strings.Contains(help, "orbit-mem retro-store") {
-		t.Fatalf("help has no retro-store:\n%s", help)
 	}
 }
 
@@ -317,17 +315,29 @@ func TestLedger_승인한_변경을_보여_준다(t *testing.T) {
 
 func TestConfig_2차_키를_설정한다(t *testing.T) {
 	home(t)
-	for _, kv := range [][2]string{{"sessionRetro", "false"}, {"sessionRetroModel", "sonnet"}, {"sessionRetroDailyMax", "12"}, {"recallChars", "1500"}, {"ledgerWindowDays", "14"}} {
+	for _, kv := range [][2]string{{"recallChars", "1500"}, {"ledgerWindowDays", "14"}, {"autoTidy", "false"}} {
 		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
 			t.Fatalf("%s: %s", kv[0], errOut)
 		}
 	}
 	cfg, err := loadConfig()
-	if err != nil || cfg.SessionRetro || cfg.SessionRetroModel != "sonnet" || cfg.SessionRetroDailyMax != 12 || cfg.RecallChars != 1500 || cfg.LedgerWindowDays != 14 {
+	if err != nil || cfg.AutoTidy || cfg.RecallChars != 1500 || cfg.LedgerWindowDays != 14 {
 		t.Fatalf("cfg = %+v %v", cfg, err)
 	}
 	if _, _, code := run(t, "", "config", "set", "recallChars", "50"); code != 1 {
 		t.Fatalf("out of range accepted: %d", code)
+	}
+	// doctor는 실제로 쓰는 작업 회상 글자 수(500 상한)를 보인다.
+	onTerminal(t) // 글 꼴(터미널이 아니면 JSON)
+	out, _, _ := run(t, "", "doctor")
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "작업 회상") || strings.Contains(l, "work recall") {
+			line = l
+		}
+	}
+	if !strings.Contains(line, " 500") || strings.Contains(line, "1500") {
+		t.Fatalf("doctor recall line %q:\n%s", line, out)
 	}
 }
 
@@ -354,7 +364,7 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 		}
 		return v.HookSpecificOutput.AdditionalContext
 	}
-	line := "orbit-mem 판(0.16.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
+	line := "orbit-mem 판(0.17.0)과 플러그인 판(0.3.9)이 다릅니다: `orbit-mem install`로 맞추세요."
 	// 기억이 없어도 그 한 줄은 낸다
 	if got := ctx("hook", "session-start", "--host", "claude", "--plugin-version", "0.3.9"); got != line {
 		t.Fatalf("빈 문맥 %q", got)
@@ -364,7 +374,8 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	if !strings.Contains(got, "답은 존댓말") || !strings.HasSuffix(got, "\n"+line) {
 		t.Fatalf("다른 판 %q", got)
 	}
-	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.16.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
+	in = `{"cwd":"/tmp","session_id":"s2","hook_event_name":"SessionStart","source":"startup"}` // 안내 줄은 세션 묶음에 든다(T-20): 새 세션으로 본다
+	if got := ctx("hook", "session-start", "--host", "codex", "--plugin-version", "0.17.0"); strings.Contains(got, "orbit-mem install") || !strings.Contains(got, "답은 존댓말") {
 		t.Fatalf("같은 판 %q", got)
 	}
 	if got := ctx("hook", "prompt", "--host", "claude", "--plugin-version", "0.3.9"); strings.Contains(got, "orbit-mem install") {
@@ -375,26 +386,6 @@ func TestHook_plugin_version이_다르면_시작_문맥에_한_줄(t *testing.T)
 	}
 	if out, _, code := run(t, in, "hook", "session-start", "--plugin-version"); code != 0 || out != "" {
 		t.Fatalf("값 없는 플래그 %d %q", code, out)
-	}
-}
-
-// AU-7: 판정한 줄에 작업 지표가 있으면 관찰 아래 작업 줄을 보인다.
-func TestLedger_판정에_든_작업_지표를_보여_준다(t *testing.T) {
-	home(t)
-	s := seed(t)
-	m, _ := s.Save(memory.SaveInput{Kind: "lesson", Title: "교훈", Source: memory.Source{Kind: "session"}})
-	p, _ := s.Propose(memory.ProposalInput{Kind: memory.ProposalEdit, Title: "고치기", MemoryIDs: []string{m.ID}, Payload: memory.Payload{Title: "고친 교훈"}})
-	res, err := s.Decide(memory.DecideInput{ID: p.ID, Decision: "approve"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	obs := `{"before":{"bad":0,"irrelevant":0,"sessions":0,"works":2,"trouble":3,"firstPassed":1,"firstSteps":4},"after":{"bad":0,"irrelevant":0,"sessions":0,"works":1,"trouble":0,"firstPassed":2,"firstSteps":2}}`
-	if _, err := s.DB().Exec(`UPDATE ledger SET verdict='helped', evidence=1, observation=? WHERE id=?`, obs, res.LedgerID); err != nil {
-		t.Fatal(err)
-	}
-	out, _, code := run(t, "", "ledger")
-	if code != 0 || !strings.Contains(out, "Works: before 2 (trouble 3 · first-try verified 1/4) → after 1 (trouble 0 · 2/2)") {
-		t.Fatalf("ledger: %s", out)
 	}
 }
 
@@ -434,5 +425,110 @@ func TestProposals_drain은_대기를_닫고_미리보기는_바꾸지_않는다
 	}
 	if got, _ := s.Get(a.ID); got.State != memory.StateCandidate || len(got.Links) != 1 {
 		t.Fatalf("a %+v", got)
+	}
+}
+
+func TestConfig_요청_회상_문턱을_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"recallMinScore", "0.45"}, {"recallMinCoverage", "0.6"}, {"recallMinRelative", "0.75"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("set %s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 || cfg.RecallMinRelative != 0.75 {
+		t.Fatalf("cfg = %v %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage, err)
+	}
+	out, _, _ := run(t, "", "config")
+	if !strings.Contains(out, `"recallMinScore": 0.45`) || !strings.Contains(out, `"recallMinCoverage": 0.6`) {
+		t.Fatalf("config show: %s", out)
+	}
+	for _, key := range []string{"recallMinScore", "recallMinCoverage", "recallMinRelative"} {
+		for _, bad := range []string{"0", "1.5", "-1", "abc", "NaN"} {
+			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
+				t.Fatalf("%s %q accepted: %d", key, bad, code)
+			}
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.RecallMinScore != 0.45 || cfg.RecallMinCoverage != 0.6 {
+		t.Fatalf("bad value changed the file: %v %v", cfg.RecallMinScore, cfg.RecallMinCoverage)
+	}
+	if _, errOut, _ := run(t, "", "config", "set", "nope", "1"); !strings.Contains(errOut, "recallMinScore") || !strings.Contains(errOut, "recallMinCoverage") || !strings.Contains(errOut, "recallMinRelative") {
+		t.Fatalf("unknown key list: %s", errOut)
+	}
+}
+
+// 한 낱말 일치 비율과 위임 회상의 세 문턱(설계 보완, 1-6 b6 R1·T1)도 config set으로 바꾼다. 범위 밖 값은 거절하고 파일을 바꾸지 않는다.
+func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *testing.T) {
+	home(t)
+	for _, kv := range [][2]string{{"recallMinCoverageOneWord", "0.4"}, {"taskRecallMinScore", "0.15"}, {"taskRecallMinWords", "4"}, {"taskRecallMinRelative", "0.5"}, {"taskRecallMinTitleShare", "0.1"}} {
+		if _, errOut, code := run(t, "", "config", "set", kv[0], kv[1]); code != 0 {
+			t.Fatalf("set %s: %s", kv[0], errOut)
+		}
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinScore != 0.15 || cfg.TaskRecallMinWords != 4 || cfg.TaskRecallMinRelative != 0.5 ||
+		cfg.TaskRecallMinTitleShare != 0.1 {
+		t.Fatalf("cfg = %+v %v", cfg, err)
+	}
+	for key, bads := range map[string][]string{
+		"recallMinCoverageOneWord": {"0", "1.5", "abc", "NaN"}, "taskRecallMinScore": {"0", "1.5", "NaN"},
+		"taskRecallMinRelative": {"0", "2"}, "taskRecallMinWords": {"0", "1", "41", "2.5", "abc"}, "taskRecallMinTitleShare": {"0", "1.5", "NaN", "abc"},
+	} {
+		for _, bad := range bads {
+			if _, _, code := run(t, "", "config", "set", key, bad); code != 1 {
+				t.Fatalf("%s %q accepted: %d", key, bad, code)
+			}
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.RecallMinCoverageOneWord != 0.4 || cfg.TaskRecallMinWords != 4 {
+		t.Fatalf("bad value changed the file: %+v", cfg)
+	}
+	_, errOut, _ := run(t, "", "config", "set", "nope", "1")
+	for _, key := range []string{"recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinWords", "taskRecallMinRelative", "taskRecallMinTitleShare"} {
+		if !strings.Contains(errOut, key) {
+			t.Fatalf("unknown key list without %s: %s", key, errOut)
+		}
+	}
+}
+
+func TestConfig_saveNearMin을_설정한다(t *testing.T) {
+	home(t)
+	if _, errOut, code := run(t, "", "config", "set", "saveNearMin", "0.3"); code != 0 {
+		t.Fatalf("set: %s", errOut)
+	}
+	if cfg, err := loadConfig(); err != nil || cfg.SaveNearMin != 0.3 {
+		t.Fatalf("cfg = %v %v", cfg.SaveNearMin, err)
+	}
+	for _, bad := range []string{"0", "1.5", "abc"} {
+		if _, _, code := run(t, "", "config", "set", "saveNearMin", bad); code != 1 {
+			t.Fatalf("%q accepted: %d", bad, code)
+		}
+	}
+	if saveNearMinOf() != 0.3 {
+		t.Fatalf("saveNearMinOf = %v", saveNearMinOf())
+	}
+}
+
+func TestConfig_saveSimilarMin을_설정한다(t *testing.T) {
+	home(t)
+	if _, errOut, code := run(t, "", "config", "set", "saveSimilarMin", "0.7"); code != 0 {
+		t.Fatalf("set: %s", errOut)
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.SaveSimilarMin != 0.7 {
+		t.Fatalf("cfg = %v %v", cfg.SaveSimilarMin, err)
+	}
+	out, _, _ := run(t, "", "config")
+	if !strings.Contains(out, `"saveSimilarMin": 0.7`) {
+		t.Fatalf("config show: %s", out)
+	}
+	for _, bad := range []string{"0", "1.5", "-1", "abc"} {
+		if _, _, code := run(t, "", "config", "set", "saveSimilarMin", bad); code != 1 {
+			t.Fatalf("%q accepted: %d", bad, code)
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.SaveSimilarMin != 0.7 {
+		t.Fatalf("bad value changed the file: %v", cfg.SaveSimilarMin)
 	}
 }

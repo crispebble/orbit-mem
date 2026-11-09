@@ -5,15 +5,18 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestHook_subagent_start는_user_핵심만_넣는다(t *testing.T) {
@@ -104,5 +107,71 @@ func TestPlace_지금_폴더의_제품을_보인다(t *testing.T) {
 	}
 	if out, _, code := run(t, "", "place", "--cwd", draft); code != 0 || !strings.Contains(out, "orbit-code-desktop") {
 		t.Fatalf("text: %d %s", code, out)
+	}
+}
+
+// 설계 · orbit-mem 5.2절·L-4: 한 접두에 기억이 많아도 도구 훅 글은 2,500자 이하이고, 같은 세션의 기억 줄 합은
+// 2,000자에서 멈춘다. 넣지 못한 기억은 첫 호출에 제목·id로 가리킨다(5개까지, 나머지는 「외 N개」, 1-6 b6r).
+// 도구 이름이 아주 길어도 넘지 않는다.
+func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에서_멈춘다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	const n = 20
+	for i := 0; i < n; i++ {
+		title := fmt.Sprintf("문서 도구 규칙 %d", i)
+		if _, err := s.Save(memory.SaveInput{Kind: "rule", Title: title, Body: strings.Repeat("길다 ", 300), Topic: title, Scope: memory.ScopeGlobal,
+			Tools: []string{"mcp__docs__*"}, Source: memory.Source{Kind: "quote", Excerpt: title}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pre := func(session, tool string) string {
+		b, _ := json.Marshal(map[string]string{"session_id": session, "cwd": "/tmp", "hook_event_name": "PreToolUse", "tool_name": tool})
+		out, _, code := run(t, string(b), "hook", "pre-tool", "--host", "claude")
+		if code != 0 {
+			t.Fatalf("pre-tool exit %d", code)
+		}
+		ctx := eventContext(t, out, "PreToolUse")
+		if c := utf8.RuneCountInString(ctx); c > 2500 {
+			t.Fatalf("tool hook %d runes", c)
+		}
+		return ctx
+	}
+	// 세션 합계는 훅 글 전체(머리말·기억 줄·가리키기 줄)다(1-6 b6r 2차). 같은 기억은 세션에 한 번 가리킨다.
+	total, shown, empty := 0, 0, 0
+	pointed := map[string]bool{}
+	for call := 0; call < 12; call++ {
+		ctx := pre("S", "mcp__docs__write_page")
+		if ctx == "" {
+			empty++
+			continue
+		}
+		total += utf8.RuneCountInString(ctx)
+		var more string
+		for _, line := range strings.Split(ctx, "\n")[1:] {
+			switch {
+			case strings.HasPrefix(line, "- 이 도구에 걸린 기억 더 — "):
+				more = line
+			case strings.HasPrefix(line, "- "):
+				shown++
+			}
+		}
+		if total > 2000 {
+			t.Fatalf("call %d: session tool text %d runes", call, total)
+		}
+		for _, id := range regexp.MustCompile(`\((m-[0-9a-f]+)\)`).FindAllStringSubmatch(more, -1) {
+			if pointed[id[1]] {
+				t.Fatalf("call %d: %s pointed twice\n%s", call, id[1], ctx)
+			}
+			pointed[id[1]] = true
+		}
+		if call == 0 && (strings.Count(more, "(m-") != 5 || !strings.Contains(more, fmt.Sprintf("외 %d개 — memory_find", n-shown-5))) {
+			t.Fatalf("call %d: pointer %q\n%s", call, more, ctx)
+		}
+	}
+	if shown >= n || total+120 <= 2000 || empty < 2 {
+		t.Fatalf("did not stop at the session sum: shown=%d total=%d empty=%d", shown, total, empty)
+	}
+	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "외 13개 — memory_find") {
+		t.Fatalf("long tool name:\n%.300s", ctx)
 	}
 }

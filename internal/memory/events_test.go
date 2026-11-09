@@ -39,30 +39,6 @@ func TestEvent_기록하고_기간과_종류로_읽는다(t *testing.T) {
 	}
 }
 
-func TestEvent_세션에_그_기억을_넣었는지_안다(t *testing.T) {
-	s, _ := newTestStore(t)
-	s.RecordEvent(Event{Kind: EventInjectSessionStart, Session: "s1"}, map[string]any{"memoryIds": []string{"m-a"}})
-	s.RecordEvent(Event{Kind: EventInjectPrompt, Session: "s1"}, map[string]any{"memoryIds": []string{"m-b"}})
-	s.RecordEvent(Event{Kind: EventInjectPrompt, Session: "s2"}, map[string]any{"memoryIds": []string{}})
-	cases := []struct {
-		session, id     string
-		injected, known bool
-	}{
-		{"s1", "m-a", true, true},
-		{"s1", "m-b", true, true},
-		{"s1", "m-c", false, true},
-		{"s2", "m-a", false, true},
-		{"s3", "m-a", false, false}, // 주입 사건이 없는 세션
-		{"", "m-a", false, false},
-	}
-	for _, c := range cases {
-		injected, known := s.InjectedIn(c.session, c.id)
-		if injected != c.injected || known != c.known {
-			t.Errorf("%s/%s = %v,%v", c.session, c.id, injected, known)
-		}
-	}
-}
-
 func TestDecide_결정을_사건으로_남긴다(t *testing.T) {
 	s, c := newTestStore(t)
 	a, _ := s.Save(SaveInput{Kind: KindFact, Title: "가", Source: Source{Kind: SourceSession}})

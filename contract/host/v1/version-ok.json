@@ -1,0 +1,21 @@
+{
+  "name": "version-ok",
+  "op": "version",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test"
+  },
+  "exit": 0,
+  "output": {
+    "binary": "$string",
+    "contract": 1,
+    "schema": "$number",
+    "db": {
+      "schema": "$number",
+      "state": "ok"
+    }
+  }
+}

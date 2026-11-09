@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // productConfig is a hand-written config.json with a product map and a key orbit-mem does not know.

@@ -12,7 +12,7 @@ package memory
 import (
 	"fmt"
 
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // ProductRename is what a product rename moved (or, in a dry run, would move).
@@ -82,6 +82,9 @@ func (s *Store) RenameProduct(from, to string, dry bool, between func() error) (
 		// writeTx는 쓰지 않는다: 승격을 다시 판정하지 않고 범위만 바꾼다(같은 기억들이 같은 한도 안에서 옮겨 간다).
 		m.Scope, m.Version, m.UpdatedAt = res.To, m.Version+1, now
 		if _, err := tx.Exec(`UPDATE memories SET scope=?, version=?, updated_at=? WHERE id=?`, m.Scope, m.Version, m.UpdatedAt, m.ID); err != nil {
+			return res, err
+		}
+		if err := indexTx(tx, m.ID); err != nil { // updated_at이 바뀌었으니 색인 줄도 맞춘다
 			return res, err
 		}
 		if err := versionTx(tx, m, "rename", reason, now); err != nil {

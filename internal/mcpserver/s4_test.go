@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestS4_적용_대상_옮기기는_원장에_남고_되돌리면_핵심도_돌아온다(t *testing.T) {

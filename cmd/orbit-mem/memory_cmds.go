@@ -2,25 +2,27 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/crispebble/orbit-mem/internal/config"
+	hooks "github.com/crispebble/orbit-mem/internal/hook" // 시험의 hook 도우미와 이름이 겹치지 않게
+	"github.com/crispebble/orbit-mem/internal/hook/claudecode"
+	"github.com/crispebble/orbit-mem/internal/hook/codex"
+	"github.com/crispebble/orbit-mem/internal/host"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/mcpserver"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/project"
+	"github.com/crispebble/orbit-mem/internal/update"
+	"github.com/crispebble/orbit-mem/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/inject"
-	"github.com/onidot-labs/orbit-mem/internal/mcpserver"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
-	"github.com/onidot-labs/orbit-mem/internal/project"
-	"github.com/onidot-labs/orbit-mem/internal/version"
 )
 
 func paths() config.Paths { return config.Paths{Home: config.Home()} }
@@ -44,10 +46,17 @@ func policyOf(cfg config.Config) memory.Policy {
 	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
 }
 
-// actorOf is who writes through a command: inside a retrospective run always
-// automation, else the flag, else ORBIT_ACTOR, else def.
+// 통로마다 출처 등급의 상한(결정 D6): 조립 지점이 값으로 넣는다. 도메인은 호스트 이름을 모르고, 상한은
+// actor(ORBIT_ACTOR·--actor)에서 끌어내지 않는다.
+const (
+	mcpTrustLimit   = memory.TrustAgent // MCP 서버: 호스트 AI
+	hostTrustLimit  = memory.TrustAgent // host call·tool 별칭: 호스트 AI
+	humanTrustLimit = memory.TrustOwner // 사람이 터미널에서 부르는 thin CLI
+)
+
+// actorOf is who writes through a command: the flag, else ORBIT_ACTOR, else def.
 func actorOf(flag, def string) string {
-	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), os.Getenv("ORBIT_RETRO_ID"), def)
+	return mcpserver.ResolveActor(flag, os.Getenv("ORBIT_ACTOR"), def)
 }
 
 func cmdVersion(a *app, args []string) error {
@@ -65,16 +74,6 @@ func whereOf(p project.Project) string {
 	return p.Scope
 }
 
-// sessionDir is the folder a hook reads the session's place from: the folder the session started in
-// (CLAUDE_PROJECT_DIR, which Claude Code gives hooks and the MCP server alike), else the hook input's cwd
-// (Codex). So recall and memory_find look from the same folder even after the session moves (S3-R1).
-func sessionDir(cwd string) string {
-	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
-		return dir
-	}
-	return cwd
-}
-
 func sessionProject() project.Project {
 	dir := os.Getenv("CLAUDE_PROJECT_DIR")
 	if dir == "" {
@@ -85,19 +84,12 @@ func sessionProject() project.Project {
 
 func cmdMCP(a *app, args []string) error {
 	fs := a.flags("mcp")
-	retroID := fs.String("retro", "", i18n.T("flag.mcp.retro"))
-	reader := fs.Bool("reader", false, i18n.T("flag.mcp.reader"))
 	actor := fs.String("actor", "", i18n.T("flag.mcp.actor"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
 	// MCP 응답 글은 AI가 읽는다(ONID-61 대상 아님). 공유 오류(기억·제안)도 언어 설정과 무관하게 한국어로 낸다.
 	i18n.Set(i18n.KO)
-	if *reader { // 기억 그래프만(Orbit Studio 같은 앱)
-		ctx, cancel := signalContext()
-		defer cancel()
-		return mcpserver.NewReader(paths().DB(), version.Version).Run(ctx, &mcp.StdioTransport{})
-	}
 	if _, err := loadConfig(); err != nil {
 		return err
 	}
@@ -109,266 +101,112 @@ func cmdMCP(a *app, args []string) error {
 	defer s.Close()
 	ctx, cancel := signalContext()
 	defer cancel()
-	var srv *mcp.Server
-	if *retroID != "" {
-		srv = mcpserver.NewRetro(s, paths(), *retroID, version.Version)
-	} else {
-		srv = mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version, WorkDB: paths().WorkDB(),
-			Actor: actorOf(*actor, memory.ActorAI), LoadProducts: func() (place.Map, error) {
-				cfg, err := loadConfig()
-				return cfg.Products, err
-			}})
-	}
+	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version,
+		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
+			cfg, err := loadConfig()
+			return cfg.Products, err
+		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
-type hookInput struct {
-	Cwd            string `json:"cwd"`
-	Prompt         string `json:"prompt"`
-	SessionID      string `json:"session_id"`
-	Event          string `json:"hook_event_name"`
-	TranscriptPath string `json:"transcript_path"`
-	Source         string `json:"source"`    // SessionStart: startup·resume·clear·compact·fork
-	ToolName       string `json:"tool_name"` // PreToolUse
-	// AgentID is the subagent a hook fires in (SubagentStart, and tool hooks inside a subagent).
-	AgentID   string `json:"agent_id"`
-	AgentType string `json:"agent_type"`
-}
-
-// sessionKey is the session the injection marks are kept under: a subagent has its own context, so it is
-// told what the main session was told once more (설계 · orbit-mem 2판 6절 「중복 제거」, S3 명세 2.9).
-func (in hookInput) sessionKey() string {
-	if in.AgentID == "" || in.SessionID == "" {
-		return in.SessionID
-	}
-	return in.SessionID + "/" + in.AgentID
-}
-
-// cmdHook never fails the host: any problem, wrong arguments included, prints
-// nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
-// session-start, prompt and pre-tool give the memory context; session-start, prompt
-// and session-end keep the activity log. session-end only ends the activity row: the
-// retrospectives (and their session-end queue) are orbit-code's.
-func cmdHook(a *app, args []string) error {
-	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
-	fs := a.flags("hook")
-	fs.SetOutput(io.Discard)
-	host := fs.String("host", "claude", "claude | codex")
-	fs.Bool("skip-lists", false, "") // 옛 작업 기록 훅의 인자: 받고 버린다
-	runtime := fs.String("runtime", "", i18n.T("flag.hook.runtime"))
-	launcher := fs.String("launcher", "", i18n.T("flag.hook.launcher"))
-	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
-	// AU-7: 지시에 단계 회상이 이미 든 실행(orbit-pi claude 엔진)의 요청 훅. 활동만 남기고
-	// 기억을 찾지도, 「넣음」 사건(inject.prompt)을 남기지도 않는다.
-	recordOnly := fs.Bool("record-only", false, i18n.T("flag.hook.record_only"))
-	pos, err := parse(fs, args)
-	if err == nil && len(pos) == 1 && pos[0] == "work" {
-		// 옛 플러그인·옛 런타임의 작업 기록 훅. 작업 기록은 orbit-code로 옮겼다: 입력을 버리고 끝낸다.
-		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
-		return nil
-	}
-	if err != nil || len(pos) != 1 || !slices.Contains([]string{"session-start", "prompt", "pre-tool", "subagent-start", "session-end"}, pos[0]) || (*host != "claude" && *host != "codex") ||
-		(*runtime != "" && *runtime != runtimeOrbitPi) || (*recordOnly && pos[0] != "prompt") {
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
-		return nil
-	}
-	// 설계 · Studio 4차 「Claude 엔진 중복 규칙」: orbit-pi가 띄운 세션에서는 기억 주입·활동 기록을
-	// orbit-pi가 맡는다. 플러그인 훅(--runtime 없음)은 아무것도 하지 않고,
-	// orbit-pi가 같은 입력으로 --runtime orbit-pi를 붙여 부른 훅만 기록한다.
-	if *runtime == "" && os.Getenv(runtimeEnv) == runtimeOrbitPi {
-		_, _ = io.Copy(io.Discard, io.LimitReader(a.stdin, 4<<20))
-		return nil
-	}
-	who := launcherOf(*runtime, *launcher)
-	deadline := time.After(hookDeadline)
-	done := make(chan string, 1)
-	finished := make(chan struct{}) // 사건·활동 기록까지 남겼다
-	go func() {
-		defer close(finished)
-		defer func() {
-			if recover() != nil {
-				select {
-				case done <- "":
-				default:
-				}
-			}
-		}()
-		b, _ := io.ReadAll(io.LimitReader(a.stdin, 4<<20))
-		cfg, err := loadConfig()
-		if err != nil {
-			fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.config_failed", err))
-			done <- ""
-			return
-		}
-		var in hookInput
-		_ = json.Unmarshal(b, &in)
-		if _, err := os.Stat(paths().DB()); err != nil { // 설치 전: 기억 DB를 만들지 않는다
-			done <- ""
-			return
-		}
-		s, err := openStore()
-		if err != nil {
-			done <- ""
-			return
-		}
-		defer s.Close()
-		var p project.Project
-		if dir := sessionDir(in.Cwd); dir != "" {
-			p = project.Resolve(dir)
-		}
-		if *recordOnly {
-			done <- ""
-		} else {
-			memoryHook(a, s, done, pos[0], *host, in, p, cfg, *pluginVersion, who)
-		}
-		if pos[0] != "pre-tool" && pos[0] != "subagent-start" { // 도구 호출·서브에이전트 시작은 활동 기록이 아니다
-			recordActivity(s, pos[0], *host, in, p, who, at)
-		}
-		if pos[0] == "session-start" {
-			autoBackup(cfg)
-		}
-	}()
-	select {
-	case out := <-done:
-		if out != "" {
-			fmt.Fprintln(a.stdout, out)
-		}
-		// 사건·활동 기록은 문맥을 낸 뒤에 쓴다. 시간 안에 끝나지 않으면 프로세스와 함께 사라진다.
-		select {
-		case <-finished:
-		case <-deadline:
-		}
-	case <-deadline:
-		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+// hookAdapter is the adapter of a hook's --host: how that host's hook input becomes contract
+// requests and how its context is printed (ORBIT-23 D5). nil for a host with no hooks.
+func hookAdapter(name string) hooks.Adapter {
+	switch name {
+	case claudecode.Host:
+		return claudecode.New(os.Getenv)
+	case codex.Host:
+		return codex.New()
 	}
 	return nil
 }
 
-// hookDeadline is how long a hook may take before it gives up without output.
+// cmdHook never fails the host: any problem, wrong arguments, a timeout, a locked or unreadable
+// DB included, prints nothing to stdout and exits 0 (exit 2 would block a Claude Code prompt).
+// It is the assembly point of the hooks: it picks the host's adapter and runs the hook's contract
+// operations on the host port (session-start → context, compact·clear → reset first, prompt →
+// recall, pre-tool → tool-context, subagent-start → context for a subagent, session-end →
+// session-end). Each operation keeps its own time limit; the context is printed as soon as it is
+// computed and its records follow within that limit.
+func cmdHook(a *app, args []string) error {
+	at := time.Now().UnixMilli() // 입력을 읽기 전에 찍는다
+	fs := a.flags("hook")
+	fs.SetOutput(io.Discard)
+	hostName := fs.String("host", "claude", "claude | codex")
+	pluginVersion := fs.String("plugin-version", "", "") // 플러그인 훅이 붙이는 플러그인 판: 시작 훅만 본다
+	pos, err := parse(fs, args)
+	var ev hooks.Event
+	ok := err == nil && len(pos) == 1
+	if ok {
+		ev, ok = hooks.ParseEvent(pos[0])
+	}
+	adapter := hookAdapter(*hostName)
+	if !ok || adapter == nil {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.bad_args"))
+		return nil
+	}
+	defer func() { _ = recover() }() // 어떤 panic도 호스트를 막지 않는다
+	in, err := hooks.ReadInput(a.stdin, 4<<20, hookInputWait)
+	if errors.Is(err, hooks.ErrInputWait) {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.config_failed", err))
+		return nil
+	}
+	timedOut := false
+	var check update.Cache
+	if ev == hooks.SessionStart { // 새 판 확인은 세션 시작마다(resume 포함), 유지보수(사본·정리)보다 먼저 띄운다
+		check = startUpdateCheck(cfg)
+	}
+	hooks.Runner{
+		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, launcherHuman),
+		Options: host.Options{At: at},
+		// 세션 묶음의 판·새 판·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다). 묶음을 새로 만들 때만
+		// 불리고 묶음과 함께 저장된다(설계 보완 T-20).
+		Notes: func(ev hooks.Event, plan hooks.Plan) []string {
+			if ev != hooks.SessionStart {
+				return nil
+			}
+			return []string{versionNote(*pluginVersion), updateNote(check), hostMemoryNote(cfg, plan.Cwd)}
+		},
+		Failed: func(op string, e *host.Error) {
+			if e.Code == host.CodeTimeout && !timedOut {
+				timedOut = true
+				fmt.Fprintln(a.stderr, "orbit-mem hook: "+i18n.T("cli.hook.timeout"))
+			}
+		},
+	}.Run(adapter, ev, in, a.stdout)
+	return nil
+}
+
+// hookDeadline is how long a hook waits for its input to end before it gives up without output.
 const hookDeadline = 4 * time.Second
 
-// Runtime marks (설계 · Studio 4차 「Claude 엔진 중복 규칙」). orbit-pi puts
-// ORBIT_RUNTIME=orbit-pi into the claude it starts and calls the hooks itself
-// with --runtime orbit-pi and --launcher (ORBIT_LAUNCHER) for the activity log.
-const (
-	runtimeEnv     = "ORBIT_RUNTIME"
-	runtimeOrbitPi = "orbit-pi"
-	launcherEnv    = "ORBIT_LAUNCHER"
-	parentEnv      = "ORBIT_PARENT" // 이 세션을 띄운 세션(활동 기록의 parent)
-)
+// hookInputWait is how long a hook waits for its input to end (tests shorten it).
+var hookInputWait = hookDeadline
 
-// hookCaller is who called a hook: a person's own session or orbit-pi.
-type hookCaller struct {
-	launcher string
-	runtime  bool
-}
-
-// askable says whether a person is in the session to answer a question: their own session,
-// or one orbit-pi started for Studio or Telegram (not a workflow, not an unknown launcher).
-func (c hookCaller) askable() bool {
-	return c.launcher == "human" || c.launcher == "studio" || c.launcher == "telegram"
-}
-
-// launcherOf is the activity log's launcher: human for a person's own session; for
-// orbit-pi the launcher it names (studio·telegram·workflow…), else orbit-pi.
-func launcherOf(runtime, launcher string) hookCaller {
-	if runtime == "" {
-		return hookCaller{launcher: "human"}
-	}
-	if launcher == "" {
-		launcher = os.Getenv(launcherEnv)
-	}
-	switch launcher {
-	case "studio", "telegram", "workflow":
-	default:
-		launcher = runtimeOrbitPi // 모르는 값은 짐작하지 않는다
-	}
-	return hookCaller{launcher: launcher, runtime: true}
-}
-
-// recordActivity keeps the session in the activity log (설계 · orbit-code 4차 M5). Sessions
-// inside a retrospective run are not activity.
-func recordActivity(s *memory.Store, which, host string, in hookInput, p project.Project, who hookCaller, at int64) {
-	if os.Getenv("ORBIT_RETRO_ID") != "" || in.SessionID == "" {
-		return
-	}
-	kind := map[string]string{"session-start": memory.ActivityStart, "prompt": memory.ActivityPrompt, "session-end": memory.ActivityEnd}[which]
-	_ = s.RecordActivity(memory.ActivityEvent{Kind: kind, Host: host, Session: in.SessionID, Cwd: in.Cwd, ProjectScope: p.Scope, ProjectLabel: p.Label,
-		Launcher: who.launcher, Parent: os.Getenv(parentEnv), Prompt: in.Prompt, At: at})
-}
-
-// memoryHook is the memory context of session-start and prompt (설계 1차 「호스트에 붙는 방식」).
-func memoryHook(a *app, s *memory.Store, done chan<- string, which, host string, in hookInput, p project.Project, cfg config.Config, pluginVersion string, who hookCaller) {
-	scope, where := p.Scope, whereOf(p)
-	if which == "session-end" {
-		done <- ""
-		return
-	}
-	var inj inject.Injection
-	kind := memory.EventInjectSessionStart
-	switch which {
-	case "session-start":
-		if renewsBundle(in.Source) {
-			inject.ResetSession(s, host, in.SessionID)
-		}
-		inj = inject.SessionBundle(s, cfg, where, host, in.SessionID)
-		text := withVersionNote(inj.Text, pluginVersion)
-		text = withUpdateNote(text, cfg)
-		if who.askable() {
-			text = withHostMemoryNote(text, cfg, in.Cwd)
-		}
-		done <- inject.HookOutput("SessionStart", text)
-	case "pre-tool":
-		kind = memory.EventInjectTool
-		inj = inject.ToolInjection(s, cfg, where, host, in.sessionKey(), in.ToolName)
-		done <- inject.HookOutput("PreToolUse", inj.Text)
-	case "subagent-start":
-		kind = memory.EventInjectSubagent
-		inj = inject.SubagentStart(s, cfg)
-		done <- inject.HookOutput("SubagentStart", inj.Text)
-	default:
-		kind = memory.EventInjectPrompt
-		inj = inject.PromptInjectionFor(s, cfg, where, in.Prompt, host, in.SessionID, inject.Options{})
-		done <- inject.HookOutput("UserPromptSubmit", inj.Text)
-	}
-	// 문맥을 먼저 내보내고 세션 표시와 지표용 사건을 남긴다(설계 「측정」).
-	inject.RecordShown(s, host, in.sessionKey(), inj)
-	recordInjection(s, cfg, kind, host, in.sessionKey(), scope, in.Prompt, inj)
-}
+// parentEnv names the session that started this one (the activity log's parent).
+const parentEnv = "ORBIT_PARENT"
 
 // renewsBundle says whether a session start makes the session's bundle anew: after a
 // compaction or /clear the earlier context is gone, so the cache it kept is too
 // (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle.
 func renewsBundle(source string) bool { return source == "compact" || source == "clear" }
 
-// withVersionNote adds one line at the end of the session-start context when the plugin
-// that called the hook is another version than this orbit-mem (the plugin from GitHub and
-// the installed binary can drift apart). The context is for the AI, so it is Korean like
-// the rest of it.
-func withVersionNote(text, pluginVersion string) string {
+// versionNote is the session-start note line when the plugin that called the hook is another
+// version than this orbit-mem (the plugin from GitHub and the installed binary can drift apart),
+// else "". The context is for the AI, so it is Korean like the rest of it.
+func versionNote(pluginVersion string) string {
 	if pluginVersion == "" || pluginVersion == version.Version {
-		return text
+		return ""
 	}
-	line := fmt.Sprintf("orbit-mem 판(%s)과 플러그인 판(%s)이 다릅니다: `orbit-mem install`로 맞추세요.", version.Version, pluginVersion) // i18n:keep AI가 읽는 세션 문맥
-	if text = strings.TrimRight(text, "\n"); text == "" {
-		return line
-	}
-	return text + "\n" + line
-}
-
-// recordInjection counts one injection as a use event. Levels that inject nothing,
-// empty requests and hooks inside a retrospective run are not use, so they are not counted.
-func recordInjection(s *memory.Store, cfg config.Config, kind, host, session, scope, prompt string, inj inject.Injection) {
-	if os.Getenv("ORBIT_RETRO_ID") != "" || cfg.Inject == config.InjectOff ||
-		(kind == memory.EventInjectPrompt && (cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "")) ||
-		((kind == memory.EventInjectTool || kind == memory.EventInjectSubagent) && len(inj.MemoryIDs) == 0) { // 도구 호출·서브에이전트마다 부르므로 넣은 것이 있을 때만 센다
-		return
-	}
-	data := map[string]any{"memoryIds": inj.MemoryIDs, "chars": inj.Chars}
-	if kind == memory.EventInjectSessionStart {
-		data["omitted"] = inj.Omitted
-	}
-	_ = s.RecordEvent(memory.Event{Kind: kind, Host: host, Session: session, Scope: scope}, data)
+	return fmt.Sprintf("orbit-mem 판(%s)과 플러그인 판(%s)이 다릅니다: `orbit-mem install`로 맞추세요.", version.Version, pluginVersion) // i18n:keep AI가 읽는 세션 문맥
 }
 
 // kindName and stateName are the names a person reads; an unknown code is shown as is.
@@ -633,17 +471,24 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("config.err.language", val)
 		}
 		cfg.Language, val = string(l), string(l)
-	case "retroHost":
-		cfg.RetroHost = val
-	case "retroModel":
-		cfg.RetroModel = val
-	case "retroHour":
-		_, err := fmt.Sscanf(val, "%d", &cfg.RetroHour)
-		if err != nil {
-			return err
-		}
 	case "inject":
+		// 두 키를 함께 맞춘다(옛 inject 값 full·rules·off는 recall의 auto·on_demand·off와 같은 뜻).
 		cfg.Inject = val
+		switch val {
+		case config.InjectFull:
+			cfg.Recall = config.RecallAuto
+		case config.InjectRules:
+			cfg.Recall = config.RecallOnDemand
+		case config.InjectOff:
+			cfg.Recall = config.RecallOff
+		}
+	case "recall":
+		switch val {
+		case config.RecallAuto, config.RecallOnDemand, config.RecallOff:
+			cfg.Recall, cfg.Inject = val, config.InjectOfRecall(val)
+		default:
+			return i18n.Errorf("config.err.recall", val)
+		}
 	case "recentDecisions":
 		if _, err := fmt.Sscanf(val, "%d", &cfg.RecentDecisions); err != nil {
 			return err
@@ -651,17 +496,6 @@ func cmdConfig(a *app, args []string) error {
 	case "backupKeep":
 		if _, err := fmt.Sscanf(val, "%d", &cfg.BackupKeep); err != nil {
 			return err
-		}
-	case "applyTargets":
-		cfg.ApplyTargets = nil
-		for _, p := range strings.Split(val, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return err
-				}
-				cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
-			}
 		}
 	case "updateCheck":
 		b, err := strconv.ParseBool(val)
@@ -675,36 +509,44 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.AutoBackup = b
-	case "sessionRetro":
+	case "autoTidy":
 		b, err := strconv.ParseBool(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
-		cfg.SessionRetro = b
-	case "sessionRetroModel":
-		cfg.SessionRetroModel = val
+		cfg.AutoTidy = b
 	case "hostMemory":
 		cfg.HostMemory = val
-	case "retiredNames":
-		cfg.RetiredNames = nil
-		for _, n := range strings.Split(val, ",") {
-			if n = strings.TrimSpace(n); n != "" {
-				cfg.RetiredNames = append(cfg.RetiredNames, n)
-			}
-		}
-	case "sessionRetroDailyMax", "recallChars", "ledgerWindowDays", "graphTidyMemories", "graphTidyUntagged", "graphTidyProposals", "legacyMemories", "legacyBatches",
-		"confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays":
+	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays", "taskRecallMinWords":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
-		*map[string]*int{"sessionRetroDailyMax": &cfg.SessionRetroDailyMax, "recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
-			"graphTidyMemories": &cfg.GraphTidyMemories, "graphTidyUntagged": &cfg.GraphTidyUntagged, "graphTidyProposals": &cfg.GraphTidyProposals,
-			"legacyMemories": &cfg.LegacyMemories, "legacyBatches": &cfg.LegacyBatches,
+		*map[string]*int{"recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
-			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
+			"candidateExpiryDays": &cfg.CandidateExpiryDays, "taskRecallMinWords": &cfg.TaskRecallMinWords}[key] = n
+	case "saveSimilarMin":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
+	case "saveNearMin":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		cfg.SaveNearMin = f // 범위·NaN은 config.Save의 검증이 거절한다
+	case "recallMinScore", "recallMinCoverage", "recallMinRelative", "recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinRelative", "taskRecallMinTitleShare":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		*map[string]*float64{"recallMinScore": &cfg.RecallMinScore, "recallMinCoverage": &cfg.RecallMinCoverage, "recallMinRelative": &cfg.RecallMinRelative,
+			"recallMinCoverageOneWord": &cfg.RecallMinCoverageOneWord, "taskRecallMinScore": &cfg.TaskRecallMinScore, "taskRecallMinRelative": &cfg.TaskRecallMinRelative,
+			"taskRecallMinTitleShare": &cfg.TaskRecallMinTitleShare}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·retroHost·retroModel·retroHour·inject·recentDecisions·backupKeep·autoBackup·applyTargets·sessionRetro·sessionRetroModel·sessionRetroDailyMax·recallChars·ledgerWindowDays·graphTidyMemories·graphTidyUntagged·graphTidyProposals·legacyMemories·legacyBatches·retiredNames·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err
@@ -712,10 +554,6 @@ func cmdConfig(a *app, args []string) error {
 	if key == "language" {
 		i18n.Set(i18n.Resolve(os.Getenv(i18n.EnvVar), cfg.Language))
 	}
-	fmt.Fprint(a.stdout, i18n.T("cli.config.saved", key, val))
-	if key == "retroHour" {
-		fmt.Fprint(a.stdout, " "+i18n.T("cli.config.retro_hour_note"))
-	}
-	fmt.Fprintln(a.stdout)
+	fmt.Fprintln(a.stdout, i18n.T("cli.config.saved", key, val))
 	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // 기억끼리의 명시 연결(설계 「Orbit 2차 — 기억 그래프」). 연결은 방향이 없고 양 끝을 id 순(a < b)으로 둔다.

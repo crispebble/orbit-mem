@@ -1,0 +1,21 @@
+{
+  "name": "call-memory_search-unknown-tool",
+  "op": "call",
+  "setup": {
+    "db": "empty"
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_search",
+    "args": {}
+  },
+  "exit": 1,
+  "output": {
+    "error": "$string",
+    "code": "unknown-tool",
+    "name": "memory_search"
+  }
+}

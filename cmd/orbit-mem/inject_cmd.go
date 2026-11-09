@@ -1,23 +1,27 @@
 package main
 
 import (
-	"io"
-	"os"
+	"errors"
+	"fmt"
+	"slices"
 	"strings"
+	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/inject"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/project"
+	hooks "github.com/crispebble/orbit-mem/internal/hook"
+	"github.com/crispebble/orbit-mem/internal/host"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
-// cmdInject gives orbit-pi the memory context the hooks give a host: the session bundle or the
-// memories of one request (stdin), as JSON. It records the same use events as the hooks.
+// cmdInject gives a host without hooks (one that calls orbit-mem itself) the memory context the
+// hooks give Claude Code and Codex: the session bundle or the memories of one request (stdin),
+// as JSON. --host names the host and is required. It is the older name of the host contract's
+// context, recall and delivered operations, with the output it always had.
 func cmdInject(a *app, args []string) error {
+	at := time.Now().UnixMilli()
 	fs := a.flags("inject")
 	cwd := fs.String("cwd", "", i18n.T("flag.inject.cwd"))
 	session := fs.String("session", "", i18n.T("flag.inject.session"))
-	host := fs.String("host", runtimeOrbitPi, i18n.T("flag.inject.host"))
+	hostName := fs.String("host", "", i18n.T("flag.inject.host"))
 	rules := fs.String("rules", "", i18n.T("flag.inject.rules"))
 	ids := fs.String("ids", "", i18n.T("flag.inject.ids"))
 	source := fs.String("source", "", i18n.T("flag.inject.source"))
@@ -25,68 +29,66 @@ func cmdInject(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
+	if *hostName == "" { // 호스트 이름이 빠지면 주입 진단(why)이 틀린 결과를 낸다
+		return errUsage
+	}
 	if len(pos) == 1 && pos[0] == "delivered" {
-		return a.injectDelivered(*host, *session, *ids)
+		return a.injectDelivered(*hostName, *session, *ids, at)
 	}
 	if len(pos) != 1 || (pos[0] != "session-start" && pos[0] != "prompt") {
 		return errUsage
 	}
-	// Orbit Code는 확정 규칙을 짧은 꼴로 받는다(규칙마다 한 줄, 전문은 memory_get과 요청 회상). 다른 호스트는 전문 꼴 그대로다.
-	var opts inject.Options
+	var opts host.Options
+	opts.At = at
 	switch *rules {
-	case "":
-		opts.Brief = *host == hostOrbitCode
-	case "brief":
-		opts.Brief = true
-	case "full":
+	case "", "full", "brief": // 짧은 꼴(brief)은 없어졌다(T-27): 옛 호출이 깨지지 않게 받기만 하고 전문 꼴이다
 	default:
 		return errUsage
 	}
-	out := map[string]any{"text": "", "memoryIds": []string{}}
-	if _, err := os.Stat(paths().DB()); err != nil {
-		return a.json(out)
-	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
-	s, err := openStore()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	scope, where := "", ""
-	if *cwd != "" {
-		p := project.Resolve(*cwd)
-		scope, where = p.Scope, whereOf(p)
-	}
-	var inj inject.Injection
-	kind, prompt := memory.EventInjectSessionStart, ""
+	req := host.Request{Host: *hostName, Session: *session, Cwd: *cwd}
+	var res any
+	var herr *host.Error
 	if pos[0] == "session-start" {
-		if renewsBundle(*source) {
-			inject.ResetSession(s, *host, *session)
+		if renewsBundle(*source) { // 압축·/clear 뒤에는 앞선 문맥이 없으니 표시를 먼저 비운다
+			hostDo(host.OpReset, req, opts)
 		}
-		inj = inject.SessionBundleWith(s, cfg, where, *host, *session, opts)
+		if slices.Contains([]string{host.SourceStartup, host.SourceResume, host.SourceFork, host.SourceCompact, host.SourceClear}, *source) {
+			req.Source = *source
+		}
+		res, herr = hostDo(host.OpContext, req, opts)
 	} else {
-		b, _ := io.ReadAll(io.LimitReader(a.stdin, 1<<20))
-		kind, prompt = memory.EventInjectPrompt, string(b)
-		inj = inject.PromptInjectionFor(s, cfg, where, prompt, *host, *session, opts)
+		b, err := readRequest(a.stdin)
+		if errors.Is(err, hooks.ErrInputWait) {
+			return errors.New(inputWaitMessage())
+		}
+		req.Prompt = string(b)
+		res, herr = hostDo(host.OpRecall, req, opts)
 	}
-	inject.RecordShown(s, *host, *session, inj)
-	recordInjection(s, cfg, kind, *host, *session, scope, prompt, inj)
-	out["text"] = inj.Text
-	if inj.MemoryIDs != nil {
-		out["memoryIds"] = inj.MemoryIDs
+	if herr != nil {
+		return hostFailure(herr)
+	}
+	out := map[string]any{"text": "", "memoryIds": []string{}}
+	// 읽지 못하는 DB(없음·새 판·옛 판)는 `skipped` 칸 대신 지금까지의 빈 문맥이다. 판이 맞지 않는 것은 「기억 없음」과
+	// 구분되도록 stderr에 한 줄 남긴다(DB 없음은 기억이 없는 것이니 조용하다).
+	if r, ok := res.(host.Recall); ok {
+		switch r.Skipped {
+		case "":
+			out["text"] = r.Text
+			if r.MemoryIDs != nil {
+				out["memoryIds"] = r.MemoryIDs
+			}
+		case host.CodeSchemaNewer:
+			fmt.Fprintln(a.stderr, "orbit-mem inject: "+i18n.T("cli.inject.schema_newer"))
+		case host.CodeSchemaOlder:
+			fmt.Fprintln(a.stderr, "orbit-mem inject: "+i18n.T("cli.inject.schema_older"))
+		}
 	}
 	return a.json(out)
 }
 
-// hostOrbitCode is the host name the Orbit Code extension gives orbit-mem.
-const hostOrbitCode = "orbit-code"
-
 // injectDelivered records that a host put recalled memories into a model
 // request (inject.delivered): the 「delivered」 stage of orbit-mem why.
-func (a *app) injectDelivered(host, session, ids string) error {
+func (a *app) injectDelivered(hostName, session, ids string, at int64) error {
 	var list []string
 	for _, id := range strings.Split(ids, ",") {
 		if id = strings.TrimSpace(id); id != "" {
@@ -96,13 +98,12 @@ func (a *app) injectDelivered(host, session, ids string) error {
 	if session == "" || len(list) == 0 {
 		return errUsage
 	}
-	if _, err := os.Stat(paths().DB()); err != nil {
-		return nil
+	_, herr := hostDo(host.OpDelivered, host.Request{Host: hostName, Session: session, MemoryIDs: list}, host.Options{At: at})
+	switch {
+	case herr == nil, herr.Code == host.CodeNoDB, herr.Code == host.CodeSchemaNewer, herr.Code == host.CodeSchemaOlder:
+		return nil // DB가 아직 없거나 읽지 못하는 판이면 남길 것이 없다(조용히 0)
+	case herr.Code == host.CodeUsage:
+		return errUsage
 	}
-	s, err := openStore()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	return s.RecordEvent(memory.Event{Kind: memory.EventInjectDelivered, Host: host, Session: session}, map[string]any{"memoryIds": list})
+	return hostFailure(herr)
 }

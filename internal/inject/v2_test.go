@@ -10,8 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // thousand fills a store with 1,000 memories shaped like this PC's DB (2026-11-03): many
@@ -47,18 +48,16 @@ func thousand(t *testing.T, s *memory.Store) []memory.Memory {
 func TestAC1_어떤_주입도_한도를_넘지_않고_제목만_목록이_없다(t *testing.T) {
 	s := store(t)
 	thousand(t, s)
-	for _, opts := range []Options{{}, {Brief: true}} {
-		inj := SessionStartInjectionWith(s, config.Default(), here, opts)
-		if inj.Chars > MaxSessionStartRunes || utf8.RuneCountInString(inj.Text) > MaxSessionStartRunes {
-			t.Fatalf("brief=%v: session start %d > %d", opts.Brief, inj.Chars, MaxSessionStartRunes)
-		}
-		if strings.Contains(inj.Text, "제목만") {
-			t.Fatalf("brief=%v: the title-only list is back:\n%s", opts.Brief, inj.Text)
-		}
-		// 상시 핵심 밖 규칙은 넣지 않고 이 폴더에서 보이는 수와 먼저 찾을 곳을 알린다(S3-R6): 전역 300 + 이 앱 100.
-		if inj.Omitted != 0 || !strings.Contains(inj.Text, "확정 규칙 400개") || !strings.Contains(inj.Text, "memory_find") {
-			t.Fatalf("brief=%v: omitted=%d, find line:\n%s", opts.Brief, inj.Omitted, inj.Text)
-		}
+	inj := SessionStartInjection(s, config.Default(), here)
+	if inj.Chars > MaxSessionStartRunes || utf8.RuneCountInString(inj.Text) > MaxSessionStartRunes {
+		t.Fatalf("session start %d > %d", inj.Chars, MaxSessionStartRunes)
+	}
+	if strings.Contains(inj.Text, "제목만") {
+		t.Fatalf("the title-only list is back:\n%s", inj.Text)
+	}
+	// 상시 핵심 밖 규칙은 넣지 않고 먼저 찾을 곳을 개수 없는 한 줄로 알린다(S3-R6, 7판 4절).
+	if inj.Omitted != 0 || !strings.Contains(inj.Text, wantFindLine) || strings.Contains(inj.Text, "400개") {
+		t.Fatalf("omitted=%d, find line:\n%s", inj.Omitted, inj.Text)
 	}
 	cfg := config.Default()
 	cfg.RecallChars = 50000 // 설정이 커도 훅 문맥 한도는 넘지 않는다
@@ -75,7 +74,7 @@ func TestAC5_세션_시작에_못_들어간_확정_규칙은_요청_회상_후�
 		t.Fatal(err)
 	}
 	bundle := SessionBundle(s, config.Default(), here, "claude", "s1")
-	byID, why, err := CandidatesFor(s, here, Options{}, bundle.MemoryIDs)
+	byID, why, err := CandidatesAt(s, place.Place{Scope: here}, Options{}, bundle.MemoryIDs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +198,8 @@ func TestToolInjection_접두_트리거와_개수_글자_한도(t *testing.T) {
 		}
 	}
 	got := ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlas__write_page")
-	if len(got.MemoryIDs) == 0 || len(got.MemoryIDs) > MaxToolMemories || got.Chars > MaxToolRunes {
+	// 줄은 2개까지, 나머지 셋은 가리키기 줄로(1-6 b6r).
+	if len(got.MemoryIDs) != 5 || strings.Count(got.Text, "\n  길다") != MaxToolMemories || got.Chars > MaxToolRunes {
 		t.Fatalf("ids=%d chars=%d:\n%s", len(got.MemoryIDs), got.Chars, got.Text)
 	}
 	if ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlassian__x").Text != "" {
@@ -243,8 +243,10 @@ func TestAC2_알약_재현_옛_결정은_어디에도_나오지_않는다(t *tes
 	if seen != 0 {
 		t.Fatalf("old decisions came back %d times", seen)
 	}
-	if p := PromptInjectionFor(s, config.Default(), scopes[0], "상단바 상태는 알약으로 하지 않는다", "claude", "", Options{}); !slices.Contains(p.MemoryIDs, cur.ID) {
-		t.Fatalf("the new decision is not recalled:\n%s", p.Text)
+	// 새 결정은 세션 시작 「최근 결정」 줄(A층, 1-6 b6r)이나 요청 회상으로 온다.
+	start := SessionStartInjection(s, config.Default(), scopes[0])
+	if p := PromptInjectionFor(s, config.Default(), scopes[0], "상단바 상태는 알약으로 하지 않는다", "claude", "", Options{}); !slices.Contains(append(p.MemoryIDs, start.MemoryIDs...), cur.ID) {
+		t.Fatalf("the new decision is not recalled:\n%s\n%s", start.Text, p.Text)
 	}
 }
 

@@ -183,17 +183,6 @@ func Clusters(ms []Memory, minNew int) Clustering {
 // The count follows each person's memories instead of a fixed number.
 func ClusterMinNew(memories int) int { return max(2, (memories+50)/100) }
 
-// Members lists the memories of one cluster in the order of ms.
-func (c Clustering) Members(ms []Memory, key string) []Memory {
-	var out []Memory
-	for _, m := range ms {
-		if c.Of[m.ID] == key {
-			out = append(out, m)
-		}
-	}
-	return out
-}
-
 // TagCount is a topic tag and how many memories carry it.
 type TagCount struct {
 	Key   string `json:"key"`

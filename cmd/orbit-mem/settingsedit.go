@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // TOML (no library: only bare top-level tables and key = value lines are needed). Lines

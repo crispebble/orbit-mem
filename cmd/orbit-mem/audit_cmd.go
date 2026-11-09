@@ -5,14 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // cmdAudit is the audit list (A2): recent automatic confirmations and
 // clean-ups, conflict marks, repeated corrections over the threshold. The
-// person reverts or dismisses only what is wrong. `audit harness --json` is
-// what the orbit-code lab (a developer tool) reads; it only reads.
+// person reverts or dismisses only what is wrong.
 func cmdAudit(a *app, args []string) error {
 	sub := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -51,24 +50,6 @@ func cmdAudit(a *app, args []string) error {
 			return a.json(au)
 		}
 		a.printAudit(au, *days)
-		return nil
-	case "harness":
-		hc, err := s.HarnessCandidates()
-		if err != nil {
-			return err
-		}
-		if hc == nil {
-			hc = []memory.RepeatedCorrection{}
-		}
-		if *asJSON {
-			return a.json(hc)
-		}
-		for _, r := range hc {
-			a.printCorrection(r)
-		}
-		if len(hc) == 0 {
-			fmt.Fprintln(a.stdout, i18n.T("cli.audit.none"))
-		}
 		return nil
 	case "revert":
 		if len(pos) != 1 {

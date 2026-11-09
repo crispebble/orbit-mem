@@ -14,16 +14,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onidot-labs/orbit-mem/internal/activity"
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
-	"github.com/onidot-labs/orbit-mem/internal/install"
-	"github.com/onidot-labs/orbit-mem/internal/memplugin"
-	"github.com/onidot-labs/orbit-mem/internal/migrate"
-	"github.com/onidot-labs/orbit-mem/internal/retro"
-	"github.com/onidot-labs/orbit-mem/internal/transcript"
-	"github.com/onidot-labs/orbit-mem/internal/update"
-	"github.com/onidot-labs/orbit-mem/internal/version"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/install"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/memplugin"
+	"github.com/crispebble/orbit-mem/internal/migrate"
+	"github.com/crispebble/orbit-mem/internal/transcript"
+	"github.com/crispebble/orbit-mem/internal/update"
+	"github.com/crispebble/orbit-mem/internal/version"
 )
 
 func selfPath() string {
@@ -41,12 +40,22 @@ func cmdMigrate(a *app, args []string) error {
 	fs := a.flags("migrate")
 	from := fs.String("from", "", i18n.T("flag.migrate.from"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.migrate.dry_run"))
+	reindex := fs.Bool("reindex", false, i18n.T("flag.migrate.reindex"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	if _, err := parse(fs, args); err != nil {
 		return err
 	}
+	if *reindex {
+		if *from != "" || *dry {
+			return errUsage
+		}
+		return migrateReindex(a, *asJSON)
+	}
 	if *from == "" {
-		return errUsage
+		if *dry {
+			return errUsage
+		}
+		return migrateSchema(a, *asJSON)
 	}
 	s, err := openStore()
 	if err != nil {
@@ -79,6 +88,56 @@ func cmdMigrate(a *app, args []string) error {
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.by_state_kind", counts(rep.ByState), counts(rep.ByKind)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.sources", rep.Sources, rep.FilesSame, rep.FilesChanged, rep.FilesUnknown, rep.ToJudge, rep.Absorbed))
+	return nil
+}
+
+// migrateSchema is orbit-mem migrate without --from: the schema migration doctor points to
+// (copy first, then migrate; a DB a newer orbit-mem made is left alone and is an error).
+func migrateSchema(a *app, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	info, err := s.Schema()
+	if err != nil {
+		return err
+	}
+	filled, err := s.FillIndex(0) // 열기가 이전하며 채운 뒤에도 남은 늦은 줄(옛 실행 파일이 쓴 기억)을 다 채운다
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return a.json(struct {
+			memory.SchemaInfo
+			IndexFilled int `json:"indexFilled"`
+		}{info, filled})
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.schema_done", info.DB, info.Binary))
+	if filled > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.migrate.index_filled", filled))
+	}
+	return nil
+}
+
+// migrateReindex is orbit-mem migrate --reindex: it opens the DB for writing (which migrates it) and builds
+// the search index again from every memory. Running it again gives the same index.
+func migrateReindex(a *app, asJSON bool) error {
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	n, err := s.Reindex()
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return a.json(struct {
+			Reindexed int `json:"reindexed"`
+		}{n})
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.migrate.reindexed", n))
 	return nil
 }
 
@@ -143,23 +202,15 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB,
-// takes out the retrospective schedule an earlier orbit-mem registered (unless --no-schedule:
-// the retrospectives and their schedule are orbit-code's orb install) and registers
-// orbit-mem's plugin in the hosts: Claude Code
+// cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB
+// and registers orbit-mem's plugin in the hosts: Claude Code
 // from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
 // the local folder it builds.
 func cmdInstall(a *app, args []string) (err error) {
 	fs := a.flags("install")
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), i18n.T("flag.install.bin_dir"))
-	retroHost := fs.String("retro-host", "", i18n.T("flag.install.retro_host"))
-	retroModel := fs.String("retro-model", "", i18n.T("flag.install.retro_model"))
-	pluginSource := fs.String("plugin-source", "", i18n.T("flag.install.plugin_source"))
-	var targets multiFlag
-	fs.Var(&targets, "apply-target", i18n.T("flag.install.apply_target"))
 	localPlugin := fs.Bool("local-plugin", false, i18n.T("flag.install.local_plugin"))
 	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
-	noSchedule := fs.Bool("no-schedule", false, i18n.T("flag.install.no_schedule"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.install.json"))
 	res := installResult{AskUser: []askUser{}, Warnings: []hostWarning{}, Steps: []string{}}
@@ -232,12 +283,6 @@ func cmdInstall(a *app, args []string) (err error) {
 		i18n.T("cli.install.step_copy", selfPath(), dst),
 		i18n.T("cli.install.step_home", p.Home),
 	}
-	if *pluginSource != "" {
-		steps = append(steps, i18n.T("cli.install.step_source", *pluginSource))
-	}
-	if !*noSchedule {
-		steps = append(steps, i18n.T("cli.install.step_legacy_schedule"))
-	}
 	if !*noHosts {
 		if needLocal {
 			steps = append(steps, i18n.T("cli.install.step_build", memplugin.ID, dir))
@@ -275,42 +320,18 @@ func cmdInstall(a *app, args []string) (err error) {
 	if err != nil {
 		return err
 	}
-	if *retroHost != "" {
-		cfg.RetroHost = *retroHost
-	} else if h.Claude == "" && h.Codex != "" {
-		cfg.RetroHost = "codex"
-	}
-	if *retroModel != "" {
-		cfg.RetroModel = *retroModel
-	}
-	cfg.ClaudePath, cfg.CodexPath = h.Claude, h.Codex
-	if *pluginSource != "" {
-		abs, _ := filepath.Abs(*pluginSource)
-		if _, err := os.Stat(filepath.Join(abs, "plugin.json")); err != nil {
-			return i18n.Errorf("cli.install.err.not_source", abs)
-		}
-		cfg.PluginSource = abs
-		if !contains(cfg.ApplyTargets, abs) {
-			cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
-		}
-	}
-	for _, t := range targets {
-		abs, _ := filepath.Abs(t)
-		if !contains(cfg.ApplyTargets, abs) {
-			cfg.ApplyTargets = append(cfg.ApplyTargets, abs)
-		}
-	}
 	if err := config.Save(p.Config(), cfg); err != nil {
 		return err
 	}
-	s, err := openStore()
+	s, err := openStore() // 열기가 판을 올리고 색인을 채운다
 	if err != nil {
 		return err
 	}
-	s.Close()
-	if !*noSchedule {
-		a.removeLegacySchedule(p)
+	if _, err := s.FillIndex(0); err != nil { // 옛 실행 파일이 남긴 늦은 줄
+		s.Close()
+		return err
 	}
+	s.Close()
 	if *noHosts {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
@@ -390,23 +411,6 @@ func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource s
 	return nil
 }
 
-// scheduleRun runs the OS schedule commands (launchctl, schtasks); tests replace it.
-var scheduleRun = install.RunCommand
-
-// removeLegacySchedule takes out the retrospective schedule an earlier orbit-mem install
-// registered for this home. A failure is reported and does not stop the caller.
-func (a *app) removeLegacySchedule(p config.Paths) bool {
-	removed, err := install.RemoveLegacySchedule(runtime.GOOS, p.Home, config.DefaultHome(), scheduleRun)
-	if err != nil {
-		fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.schedule_error", err))
-		return false
-	}
-	if removed {
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.legacy_schedule_removed"))
-	}
-	return true
-}
-
 func samePath(a, b string) bool {
 	ra, err1 := filepath.EvalSymlinks(a)
 	rb, err2 := filepath.EvalSymlinks(b)
@@ -416,14 +420,13 @@ func samePath(a, b string) bool {
 	return ra == rb
 }
 
-// cmdUninstall takes the retrospective schedule an earlier orbit-mem registered and
-// orbit-mem's plugin and marketplace out of the hosts. The data and the local plugin folder
-// stay; orbit-code's own schedule is orb uninstall's.
+// cmdUninstall takes orbit-mem's plugin and marketplace out of the hosts. The data and the
+// local plugin folder stay.
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
 	}
-	failed := !a.removeLegacySchedule(paths())
+	failed := false
 	h := install.FindHosts()
 	if h.Claude != "" {
 		if err := h.UnregisterClaude(memplugin.Name, memplugin.Market); err != nil {
@@ -448,23 +451,23 @@ func cmdUninstall(a *app, args []string) error {
 
 // doctorReport is orbit-mem doctor --json. orbit-code's orb doctor reads it: keep the keys.
 type doctorReport struct {
-	Version      string              `json:"version"`
-	Binary       string              `json:"binary"`     // this orbit-mem
-	PathBinary   string              `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
-	Home         string              `json:"home"`
-	DB           bool                `json:"db"` // memory.db exists
-	Config       config.Config       `json:"config"`
-	Memories     map[string]int      `json:"memories"`
-	Pending      int                 `json:"pendingProposals"`
-	SessionQueue int                 `json:"sessionQueue"`
-	Activity     activityStatus      `json:"activity"`
-	LastRetros   []retro.RetroStatus `json:"lastRetros"`
-	LastBackup   string              `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
-	Backups      backupStatus        `json:"backups"`
-	Claude       claudeStatus        `json:"claude"`
-	Codex        codexStatus         `json:"codex"`
-	Update       updateStatus        `json:"update"`
-	Problems     []problem           `json:"problems"`
+	Version    string             `json:"version"`
+	Binary     string             `json:"binary"`     // this orbit-mem
+	PathBinary string             `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
+	Home       string             `json:"home"`
+	DB         bool               `json:"db"` // memory.db exists
+	Config     config.Config      `json:"config"`
+	Memories   map[string]int     `json:"memories"`
+	Pending    int                `json:"pendingProposals"`
+	Activity   activityStatus     `json:"activity"`
+	Tidy       tidyStatus         `json:"tidy"`
+	LastBackup string             `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
+	Backups    backupStatus       `json:"backups"`
+	Claude     claudeStatus       `json:"claude"`
+	Codex      codexStatus        `json:"codex"`
+	Update     updateStatus       `json:"update"`
+	Schema     *memory.SchemaInfo `json:"schema,omitempty"` // 기억 DB의 판과 이 실행 파일의 판(DB가 없으면 빠진다)
+	Problems   []problem          `json:"problems"`
 }
 
 // updateStatus is the version part of doctor: the newest version is the cached answer of the
@@ -477,9 +480,14 @@ type updateStatus struct {
 	Enabled   bool   `json:"enabled"` // config updateCheck
 }
 
+// tidyStatus is the daily model-free tidy the session-start hook starts (orbit-mem tidy auto).
+type tidyStatus struct {
+	Auto    bool   `json:"auto"`              // config autoTidy
+	LastDay string `json:"lastDay,omitempty"` // 마지막으로 정리한 날(YYYY-MM-DD)
+}
+
 type activityStatus struct {
-	Sessions       int `json:"sessions"`       // 활동 기록(memory.db)의 세션 수
-	LegacySessions int `json:"legacySessions"` // 옛 작업 기록(work.db, 읽기 전용)의 세션 수
+	Sessions int `json:"sessions"` // 활동 기록(memory.db)의 세션 수
 }
 
 // Plugin states in claudeStatus.Plugin and codexStatus.Plugin.
@@ -525,7 +533,7 @@ func cmdDoctor(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	rep := doctorReport{Version: version.Version, Binary: selfPath(), Home: p.Home, Config: cfg, Memories: map[string]int{}, Problems: []problem{}}
+	rep := doctorReport{Version: version.Version, Binary: selfPath(), Home: p.Home, Config: cfg, Memories: map[string]int{}, Tidy: tidyStatus{Auto: cfg.AutoTidy}, Problems: []problem{}}
 	add := func(id, fix string, args ...any) {
 		rep.Problems = append(rep.Problems, problem{ID: id, Message: i18n.T("cli.doctor.problem."+id, args...), Fix: fix})
 	}
@@ -536,11 +544,29 @@ func cmdDoctor(a *app, args []string) error {
 	}
 	if _, err := os.Stat(p.DB()); err == nil { // 설치 전이면 DB를 만들지 않는다
 		rep.DB = true
-		s, err := openStore()
+		s, info, err := memory.OpenReadOnly(p.DB()) // doctor는 DB를 이전하지 않고 판 문제를 보인다
 		if err != nil {
 			return err
 		}
 		defer s.Close()
+		rep.Schema = &info
+		switch info.State {
+		case memory.SchemaNewer:
+			add("binary-older-than-db", "orbit-mem update", info.DB, info.Binary)
+		case memory.SchemaOlder:
+			add("migration-needed", "orbit-mem migrate")
+		case memory.SchemaOK:
+			// 늦은 줄(옛 실행 파일이 쓴 기억, 검색은 맞다)은 다음 쓰기나 migrate가 채운다. 표시 없이 깨진 색인은 검색이
+			// 전체를 훑어 느려지거나 놓칠 수 있어 따로 알리고 --reindex로 고친다(internal/memory/index.go 보호 장치).
+			if h, err := s.IndexHealth(); err == nil {
+				if h.Late > 0 {
+					add("index-stale", "orbit-mem migrate", h.Late)
+				}
+				if h.Broken > 0 {
+					add("index-broken", "orbit-mem migrate --reindex", h.Broken)
+				}
+			}
+		}
 		all, _ := s.List()
 		for _, m := range all {
 			rep.Memories[m.State]++
@@ -549,15 +575,11 @@ func cmdDoctor(a *app, args []string) error {
 		if rep.Pending > 0 { // 사람 승인 대기열은 0.13.0에서 없앴다: 남은 옛 제안은 drain으로 닫는다
 			add("old-proposals", "orbit-mem backup && orbit-mem proposals drain", rep.Pending)
 		}
-		if waiting, err := retro.Pending(s); err == nil {
-			rep.SessionQueue = len(waiting)
-		}
-		rep.LastRetros, _ = retro.Recent(s, 3)
+		rep.Tidy.LastDay = s.Meta(memory.MetaTidyDay)
 		rep.Activity.Sessions = s.ActivityCount()
 	} else {
 		add("db-missing", "orbit-mem install")
 	}
-	rep.Activity.LegacySessions, _ = activity.LegacyCount(p.WorkDB())
 	rep.Update = updateStatus{Current: version.Version, Enabled: cfg.UpdateCheck}
 	if c, ok := update.ReadCache(p.Home); ok {
 		rep.Update.Latest, rep.Update.CheckedAt = c.Latest, c.CheckedAt.Format(time.RFC3339)
@@ -648,14 +670,11 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.path_binary", orNone(rep.PathBinary)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.language", i18n.Current()))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.memories", rep.Memories["confirmed"], rep.Memories["candidate"], rep.Memories["stale"], rep.Memories["hidden"], rep.Pending))
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.retro", cfg.Inject, rep.SessionQueue, cfg.RecallChars))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.recall", cfg.RecallMode(), cfg.PromptRecallChars(), onOff(rep.Tidy.Auto), orNone(rep.Tidy.LastDay)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.update", rep.Update.Current, orNone(rep.Update.Latest), yes(rep.Update.Available), onOff(rep.Update.Enabled)))
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions, rep.Activity.LegacySessions))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex", orNone(rep.Codex.Path), memplugin.ID, rep.Codex.Plugin, yes(rep.Codex.Marketplace), yes(rep.Codex.HooksTrusted)))
-	for _, r := range rep.LastRetros {
-		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.last_retro", r.Period, r.Kind, r.Status, oneLine(r.Summary+" "+r.Error, 80)))
-	}
 	if b := rep.Backups; b.Last != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.backups", timeText(b.LastAt), b.Last, b.Count, b.Keep, onOff(b.Auto)))
 	}

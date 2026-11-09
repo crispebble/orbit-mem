@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/onidot-labs/orbit-mem/internal/config"
-	"github.com/onidot-labs/orbit-mem/internal/memory"
-	"github.com/onidot-labs/orbit-mem/internal/place"
+	"github.com/crispebble/orbit-mem/internal/config"
+	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 func TestR6_세션_시작에는_상시_핵심만_넣고_먼저_찾는_곳을_알린다(t *testing.T) {
@@ -29,24 +29,22 @@ func TestR6_세션_시작에는_상시_핵심만_넣고_먼저_찾는_곳을_알
 			t.Fatal(err)
 		}
 	}
-	for _, brief := range []bool{false, true} {
-		in := SessionStartInjectionWith(s, cfg, f["시안 폴더"], Options{Brief: brief})
-		for _, r := range rules {
-			if strings.Contains(in.Text, r.ID) {
-				t.Fatalf("brief %v: non-core rule %s in session start:\n%s", brief, r.Title, in.Text)
-			}
+	in := SessionStartInjection(s, cfg, f["시안 폴더"])
+	for _, r := range rules {
+		if strings.Contains(in.Text, r.ID) {
+			t.Fatalf("non-core rule %s in session start:\n%s", r.Title, in.Text)
 		}
-		if !strings.Contains(in.Text, userCore.ID) || !strings.Contains(in.Text, deskCore.ID) || !strings.Contains(in.Text, dec.ID) {
-			t.Fatalf("brief %v: core or decision titles missing:\n%s", brief, in.Text)
-		}
-		// 먼저 찾는 곳: 이 폴더에서 보이는 핵심 밖 확정 규칙 30개·결정 1개(핵심 결정은 뺌), memory_find를 가장 먼저.
-		if !strings.Contains(in.Text, "먼저 찾는 곳") || !strings.Contains(in.Text, "확정 규칙 30개") || !strings.Contains(in.Text, "결정 1개") ||
-			!strings.Contains(in.Text, "memory_find") || strings.Contains(in.Text, "확정 규칙 30개 더") {
-			t.Fatalf("brief %v: find line:\n%s", brief, in.Text)
-		}
-		if in.Omitted != 0 || in.Chars > MaxSessionStartRunes-sessionNoteRunes {
-			t.Fatalf("brief %v: omitted %d chars %d", brief, in.Omitted, in.Chars)
-		}
+	}
+	// 핵심 밖 결정은 「최근 결정」 제목 줄로만 온다(1-6 b6r): 본문은 없다.
+	if !strings.Contains(in.Text, userCore.ID) || !strings.Contains(in.Text, deskCore.ID) || !strings.Contains(in.Text, recentHead+" 본문은 memory_get — "+dec.Title+"("+dec.ID+")") {
+		t.Fatalf("core missing or no decision title line in:\n%s", in.Text)
+	}
+	// 먼저 찾는 곳: 개수 없는 고정 글 한 줄(7판 4절).
+	if !strings.Contains(in.Text, wantFindLine) || strings.Contains(in.Text, "30개") {
+		t.Fatalf("find line:\n%s", in.Text)
+	}
+	if in.Omitted != 0 || in.Chars > MaxSessionStartRunes {
+		t.Fatalf("omitted %d chars %d", in.Omitted, in.Chars)
 	}
 	// 세션 시작에 없는 확정 규칙은 모두 요청 회상 후보다(R7, AC-5).
 	bundle := SessionStartInjection(s, cfg, f["시안 폴더"]).MemoryIDs
@@ -76,8 +74,8 @@ func TestR6_inject_rules는_규칙을_채운다(t *testing.T) {
 	}
 }
 
-// 검토 지적(2026-11-04): 여러 제품 폴더에서 묶음에 들지 않은 제품 핵심도 「먼저 찾는 곳」 수에 든다.
-func TestR6_묶음에_들지_않은_핵심도_찾는_곳_수에_든다(t *testing.T) {
+// 검토 지적(2026-11-04): 여러 제품 폴더에서 묶음에 들지 않은 제품 핵심도 「먼저 찾는 곳」 줄을 부른다.
+func TestR6_묶음에_들지_않은_핵심도_찾는_곳_줄을_부른다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
 	d := saveIn(t, s, memory.KindDecision, "핵심: 레일 유지", "product:orbit-code-desktop", "", "레일")
@@ -85,7 +83,7 @@ func TestR6_묶음에_들지_않은_핵심도_찾는_곳_수에_든다(t *testin
 		t.Fatal(err)
 	}
 	in := SessionStartInjection(s, cfg, s3Folders(t)["상위 폴더"])
-	if strings.Contains(in.Text, d.ID) || !strings.Contains(in.Text, "결정 1개") {
+	if strings.Contains(in.Text, d.ID) || in.Text != wantFindLine+"\n기억은 "+Label+" MCP(memory_find·memory_get·memory_save)로 찾고 남긴다." {
 		t.Fatalf("multi folder:\n%s", in.Text)
 	}
 }
@@ -121,11 +119,9 @@ func TestR6_가장_긴_세션_시작도_한도_안이다(t *testing.T) {
 		s.Now().UnixMilli(), s.Now().UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	for _, brief := range []bool{false, true} {
-		in := SessionStartInjectionWith(s, cfg, "project:github.com/me/app", Options{Brief: brief})
-		// 핵심이 가득하면 꼬리(결정 제목·회고 줄)는 빠질 수 있다. 찾는 곳 줄과 한도는 지킨다.
-		if in.Chars > MaxSessionStartRunes-sessionNoteRunes || !strings.Contains(in.Text, "먼저 찾는 곳") {
-			t.Fatalf("brief %v: %d chars\n%s", brief, in.Chars, in.Text)
-		}
+	in := SessionStartInjection(s, cfg, "project:github.com/me/app")
+	// 핵심이 가득하면 꼬리(자동 되돌림 줄)는 빠질 수 있다. 찾는 곳 줄과 한도는 지킨다.
+	if in.Chars > MaxSessionStartRunes || !strings.Contains(in.Text, wantFindLine) {
+		t.Fatalf("%d chars\n%s", in.Chars, in.Text)
 	}
 }

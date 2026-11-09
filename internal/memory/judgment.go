@@ -3,7 +3,7 @@ package memory
 import (
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // Write verdicts a retrospective gives each candidate memory (설계 「쓰기 판정 기록」).
@@ -45,6 +45,8 @@ func scanJudgment(row interface{ Scan(...any) error }) (Judgment, error) {
 
 // RecordJudgment keeps a retrospective's write verdict. A rejection needs a
 // reason: it is what keeps the same wrong candidate from coming back.
+// No orbit-mem path writes it since the retrospectives were removed (2026-11-08, ORBIT-13);
+// orbit-mem stats still counts the old verdicts.
 func (s *Store) RecordJudgment(j Judgment) (Judgment, error) {
 	j.Reason = strings.TrimSpace(j.Reason)
 	if !contains(WriteVerdicts, j.Verdict) || strings.TrimSpace(j.Title) == "" {
@@ -68,24 +70,6 @@ func (s *Store) insertJudgment(j *Judgment) error {
 		j.ID, j.At, j.RetroID, j.Session, j.MemoryID, j.Kind, j.Title, j.Excerpt, j.Verdict, j.Reason,
 		j.ProposalID, j.UserDecision, j.UserNote, j.DecidedAt)
 	return err
-}
-
-// LinkJudgment ties a memory's latest judgment to the proposal it led to.
-func (s *Store) LinkJudgment(memoryID, proposalID string) error {
-	_, err := s.db.Exec(`UPDATE judgments SET proposal_id=? WHERE id=(SELECT id FROM judgments WHERE memory_id=? ORDER BY at DESC, rowid DESC LIMIT 1)`,
-		proposalID, memoryID)
-	return err
-}
-
-// JudgmentsFor lists a memory's judgments, oldest first.
-func (s *Store) JudgmentsFor(memoryID string) ([]Judgment, error) {
-	return s.judgments(`WHERE memory_id=? ORDER BY at, rowid`, memoryID)
-}
-
-// RecentRejections lists the newest n rejections — by a retrospective, or by
-// the user rejecting or editing a proposal — newest first.
-func (s *Store) RecentRejections(n int) ([]Judgment, error) {
-	return s.judgments(`WHERE verdict='reject' OR user_decision IN ('reject','edit') ORDER BY MAX(at, decided_at) DESC, rowid DESC LIMIT ?`, n)
 }
 
 // JudgmentCounts counts the verdicts and user decisions recorded between two times (ms).

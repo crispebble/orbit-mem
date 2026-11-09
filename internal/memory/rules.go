@@ -7,19 +7,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/onidot-labs/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/i18n"
 )
 
 // 확정 규칙(A2, 설계 · orbit-code 자율 완수와 학습 「확정 규칙」, 계획 · AU-6). 규칙은 이 저장 계층에 있다:
 // 회고든 다른 자동화든 이 API를 거치면 같은 규칙을 지킨다.
 
-// Who writes: the person (CLI, Orbit Studio), the AI in a host conversation,
-// or an automation such as a retrospective. A tool argument never sets it; the
+// Who writes: the person (CLI), the AI in a host conversation,
+// or an automation such as the daily tidy. A tool argument never sets it; the
 // server option or the process environment does.
 const (
-	ActorUser       = "user"       // 사람: CLI, Orbit Studio 화면
+	ActorUser       = "user"       // 사람: CLI
 	ActorAI         = "ai"         // 호스트 대화 중의 AI
-	ActorAutomation = "automation" // 회고·정리 같은 자동화
+	ActorAutomation = "automation" // 하루 정리 같은 자동화(옛 회고도)
 )
 
 // Actors are the writers the store knows.
@@ -144,6 +144,12 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // conflict mark, the person put it back to candidate (hold), or the person
 // undid an automatic confirmation of it before.
 func (s *Store) confirmBlocked(id string) (string, error) {
+	// 출처가 믿을 수 없는 것뿐이면 증거가 쌓여도 스스로 확정하지 않는다(D7, 확정 길 ①).
+	if t, err := memoryTrustTx(s.db, id); err != nil {
+		return "", err
+	} else if Untrusted(t) {
+		return "untrusted", nil
+	}
 	var kind string
 	err := s.db.QueryRow(`SELECT kind FROM audit_flags WHERE memory_id=? AND resolved_at=0 LIMIT 1`, id).Scan(&kind)
 	if err == nil {
@@ -281,7 +287,8 @@ func (s *Store) ConfirmByEvidence(id string) (DecideResult, bool, error) {
 	return res, err == nil, err
 }
 
-// ConfirmCandidates confirms every candidate that has evidence and returns how many.
+// ConfirmCandidates confirms every candidate that has evidence and returns how many. A candidate
+// holding the user's words is left for the user, not counted as an error.
 func (s *Store) ConfirmCandidates() (int, error) {
 	cands, err := s.list([]string{StateCandidate})
 	if err != nil {
@@ -291,6 +298,9 @@ func (s *Store) ConfirmCandidates() (int, error) {
 	var errs []error
 	for _, m := range cands {
 		_, ok, err := s.ConfirmByEvidence(m.ID)
+		if errors.Is(err, ErrProtected) { // 사용자 말을 품은 후보는 사람을 기다린다: 실패가 아니다
+			continue
+		}
 		if err != nil {
 			errs = append(errs, err)
 			continue
