@@ -57,7 +57,7 @@ func TestBench공개_묶음은_두_회상_보고를_낸다(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("종료 %d: %s", code, errb)
 	}
-	for _, want := range []string{"== hostpath ==", "== legacy-87ab0fb ==", "[train]", "[test]", "[all]", "find-proxy", "test part"} {
+	for _, want := range []string{"== hostpath ==", "== legacy-87ab0fb ==", "[train]", "[test]", "[all]", "save-check", "find-proxy", "test part"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("보고에 %q가 없다", want)
 		}
@@ -317,5 +317,62 @@ func TestBench_extract와_recall은_닫힌_WAL_DB_옆에_파일을_만들지_않
 	defer cp.Close()
 	if list, err := cp.List(); err != nil || len(list) != 1 {
 		t.Errorf("the copy has %d memories (%v), want 1", len(list), err)
+	}
+}
+
+// --set은 설정 키를 덮어써 잰다: 같은 사례 파일도 문턱을 바꾸면 중복 지표가 달라지고, 옛 회상은 설정을 읽지 않아 그대로다.
+func TestBench_set은_설정을_덮어써_지금_경로만_움직인다(t *testing.T) {
+	home(t)
+	base, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json")
+	if code != 0 {
+		t.Fatalf("종료 %d: %s", code, errb)
+	}
+	strict, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1")
+	if code != 0 {
+		t.Fatalf("종료 %d: %s", code, errb)
+	}
+	type dup struct {
+		Hit struct{ Num, Den int }
+	}
+	type rep struct {
+		Runs []struct {
+			Name string
+			All  struct{ Duplicates dup }
+		}
+	}
+	var a, b rep
+	if err := json.Unmarshal([]byte(base), &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(strict), &b); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Runs) != 2 || len(b.Runs) != 2 {
+		t.Fatalf("runs %d %d", len(a.Runs), len(b.Runs))
+	}
+	if a.Runs[0].All.Duplicates == b.Runs[0].All.Duplicates {
+		t.Errorf("saveSimilarMin=1 did not move the current duplicates: %+v", a.Runs[0].All.Duplicates)
+	}
+	if a.Runs[1].All.Duplicates != b.Runs[1].All.Duplicates {
+		t.Errorf("the frozen recall moved: %+v -> %+v", a.Runs[1].All.Duplicates, b.Runs[1].All.Duplicates)
+	}
+	// 같은 덮어쓰기는 같은 숫자를 낸다. 덮어쓴 값은 글 보고에 밝힌다.
+	again, _, _ := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1")
+	if again != strict {
+		t.Error("the same --set gave another report")
+	}
+	text, _, code := run(t, "", "bench", "recall", "--cases", publicSet, "--set", "saveSimilarMin=0.8", "--set", "recallChars=900")
+	if code != 0 || !strings.Contains(text, "saveSimilarMin=0.8") || !strings.Contains(text, "recallChars=900") {
+		t.Errorf("종료 %d, 보고에 덮어쓴 값이 없다:\n%s", code, text)
+	}
+}
+
+func TestBench_set은_틀린_키와_값을_실행_전에_거절한다(t *testing.T) {
+	home(t)
+	for _, set := range []string{"nope=1", "saveSimilarMin=2", "saveSimilarMin=abc", "saveSimilarMin", "=1", "products={}", "recallChars=5"} {
+		_, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--set", set)
+		if code != 1 || !strings.Contains(errb, strings.SplitN(set, "=", 2)[0]) && set != "=1" {
+			t.Errorf("--set %s: 종료 %d, 오류 %q", set, code, errb)
+		}
 	}
 }

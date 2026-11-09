@@ -42,6 +42,8 @@ func benchRecall(a *app, args []string) error {
 	split := fs.String("split", "all", i18n.T("flag.bench.split"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	report := fs.String("report", "", i18n.T("flag.bench.report"))
+	var sets setFlags
+	fs.Var(&sets, "set", i18n.T("flag.bench.set"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return benchFlagErr(err)
@@ -52,7 +54,14 @@ func benchRecall(a *app, args []string) error {
 	if !slices.Contains([]string{bench.PartAll, bench.PartTrain, bench.PartTest}, *split) {
 		return i18n.Errorf("cli.bench.split_bad", *split)
 	}
-	factories, err := benchpaths.Factories(strings.Split(*recalls, ","))
+	override, err := sets.parse()
+	if err != nil {
+		return err
+	}
+	if err := hostpath.CheckSet(override); err != nil {
+		return i18n.Errorf("cli.bench.set_bad", strings.Join(sets, " "), err)
+	}
+	factories, err := benchpaths.FactoriesWith(strings.Split(*recalls, ","), benchpaths.Options{Set: override})
 	if u := (benchpaths.UnknownError{}); errors.As(err, &u) {
 		return i18n.Errorf("cli.bench.recall_bad", u.Name)
 	} else if err != nil {
@@ -92,10 +101,36 @@ func benchRecall(a *app, args []string) error {
 	}
 	fmt.Fprint(a.stdout, rep.Text(*split, benchWording{}))
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.similar", hostpath.SimilarName))
+	if len(sets) > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.set", strings.Join(sets, " ")))
+	}
 	if *report != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.bench.report_written", *report))
 	}
 	return nil
+}
+
+// setFlags are the --set key=value flags, in the order given.
+type setFlags []string
+
+func (s *setFlags) String() string { return strings.Join(*s, ",") }
+
+func (s *setFlags) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// parse splits the flags into key and value; a key given twice keeps the last value.
+func (s setFlags) parse() (map[string]string, error) {
+	out := map[string]string{}
+	for _, kv := range s {
+		k, v, ok := strings.Cut(kv, "=")
+		if k = strings.TrimSpace(k); !ok || k == "" {
+			return nil, i18n.Errorf("cli.bench.set_form", kv)
+		}
+		out[k] = v
+	}
+	return out, nil
 }
 
 // benchFlagErr turns a flag error (already printed with the usage) into a usage error.

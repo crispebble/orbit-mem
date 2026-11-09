@@ -13,8 +13,9 @@ import (
 )
 
 // -update-golden rewrites only baseline-current.json. The legacy baseline is compared strictly and
-// never rewritten: a missing one fails, and -write-legacy-baseline writes it only when it is missing
-// (to make it on purpose, the first time or after removing it on purpose).
+// never rewritten over: a missing one fails, and -write-legacy-baseline writes it only when it is missing
+// (to make it on purpose: the first time, or after removing it because the definition of a metric or the
+// cases changed; the legacy recall code stays as it is).
 var (
 	updateGolden = flag.Bool("update-golden", false, "rewrite internal/bench/testdata/baseline-current.json")
 	writeLegacy  = flag.Bool("write-legacy-baseline", false, "write internal/bench/testdata/baseline-legacy.json when it is missing (never over one that exists)")

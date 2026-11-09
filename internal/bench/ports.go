@@ -7,10 +7,17 @@ package bench
 
 // Shown is what one recall step put in front of the model: the memory ids in the
 // order shown, the characters of the text, and the text itself.
+//
+// A delegation bundle has two shares: the always-on title lines (the user's core, the guidance of the
+// role) and the recall for the task. The path says which ids are the first with Lead (a subset of IDs)
+// and how many of the characters they are with LeadChars; the rest is the recall share. A path with no
+// such split leaves both empty and all of it counts as recall.
 type Shown struct {
-	IDs   []string
-	Chars int
-	Text  string
+	IDs       []string
+	Chars     int
+	Text      string
+	Lead      []string
+	LeadChars int
 }
 
 // Recaller is the recall path under test. The origin of a case is the answer key and is

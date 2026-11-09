@@ -58,8 +58,8 @@ func (benchWording) CharsSession(dist string) string {
 
 func (benchWording) CharsStart(dist string) string { return i18n.T("bench.report.chars_start", dist) }
 
-func (benchWording) Subagent(cases int, hit, wrong string, forbid int, empty, chars string) string {
-	return i18n.T("bench.report.subagent", cases, hit, wrong, forbid, empty, chars)
+func (benchWording) Subagent(cases int, hit string, byLead int, wrong string, forbid int, empty, chars, leadChars string) string {
+	return i18n.T("bench.report.subagent", cases, hit, byLead, wrong, forbid, empty, chars, leadChars)
 }
 
 func (benchWording) Duplicate(cases int, hit, offered string, forbid int) string {

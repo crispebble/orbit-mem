@@ -192,6 +192,10 @@ func TestLegacy_위임은_위임_글을_보지_않고_사용자_상시_핵심만
 	if !slices.Equal(s.IDs, ids(p, "core-user")) {
 		t.Fatalf("subagent %v, want [core-user] only", keysOf(p, s))
 	}
+	// 옛 위임은 핵심뿐이라 모두 핵심 제목 줄 몫이고 회상 몫은 없다.
+	if !slices.Equal(s.Lead, s.IDs) || s.LeadChars != s.Chars || s.Chars == 0 {
+		t.Fatalf("subagent lead %v (%d of %d chars), want all of it", keysOf(p, bench.Shown{IDs: s.Lead}), s.LeadChars, s.Chars)
+	}
 }
 
 func TestLegacy_새_기억_줄은_세션에_한_번만_나온다(t *testing.T) {

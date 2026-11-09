@@ -62,6 +62,16 @@ type Requests struct {
 	StartChars    Dist `json:"startChars"`
 }
 
+// Subagents is the measure of the delegation cases. A delegation bundle is the always-on title lines
+// (Lead) and the recall for the task: the hit counts both, and HitByLead tells the hits the title lines
+// gave. The wrong recall, the left empty and Chars measure the recall share alone; LeadChars is the
+// characters of the title lines.
+type Subagents struct {
+	Group
+	HitByLead int  `json:"hitByLead"`
+	LeadChars Dist `json:"leadChars"`
+}
+
 // Duplicates is the measure of the duplicate save cases.
 type Duplicates struct {
 	Cases   int  `json:"cases"`
@@ -73,7 +83,7 @@ type Duplicates struct {
 // Metrics is the measure of a part of the set.
 type Metrics struct {
 	Requests   Requests   `json:"requests"`
-	Subagent   Group      `json:"subagent"`
+	Subagent   Subagents  `json:"subagent"`
 	Duplicates Duplicates `json:"duplicates"`
 }
 
@@ -151,6 +161,43 @@ func idsOf(s *Shown) []string {
 	return s.IDs
 }
 
+func leadOf(s *Shown) []string {
+	if s == nil {
+		return nil
+	}
+	return s.Lead
+}
+
+// leadCharsOf is the characters of the title lines, never more than the whole.
+func leadCharsOf(s *Shown) int {
+	if s == nil {
+		return 0
+	}
+	return min(max(s.LeadChars, 0), s.Chars)
+}
+
+// intersect keeps the ids of a that b has.
+func intersect(a, b []string) []string {
+	out := []string{}
+	for _, id := range a {
+		if slices.Contains(b, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// minus keeps the ids of a that b does not have.
+func minus(a, b []string) []string {
+	out := []string{}
+	for _, id := range a {
+		if !slices.Contains(b, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 func charsOf(s *Shown) int {
 	if s == nil {
 		return 0
@@ -196,6 +243,8 @@ func (g *groupAcc) group() Group {
 // Compute measures outcomes (see the plan: shown = layer A + the first 3 of B1 + B2).
 func Compute(outs []Outcome) Metrics {
 	var req, sub groupAcc
+	var subLead []int
+	var hitByLead int
 	var b2Chars, startChars, sessionChars []int
 	var hitByStart, recNum, recDen, missNum, missDen int
 	var dupCases, dupHitNum, dupHitDen, dupOfferNum, dupOfferDen, dupForbid int
@@ -251,20 +300,26 @@ func Compute(outs []Outcome) Metrics {
 			}
 			sessions[o.Key] += charsOf(o.B1) + charsOf(o.B2)
 		case KindSubagent:
-			ids := union(idsOf(o.Sub))
-			sub.add(c, ids)
+			lead := intersect(idsOf(o.Sub), leadOf(o.Sub))
+			recall := minus(idsOf(o.Sub), lead)
+			recallChars := charsOf(o.Sub) - leadCharsOf(o.Sub)
+			sub.add(c, recall)
 			if len(c.Expect) > 0 {
 				sub.hitDen++
-				if covers(ids, c.Expect) {
+				if covers(union(lead, recall), c.Expect) {
 					sub.hitNum++
+					if !covers(recall, c.Expect) {
+						hitByLead++
+					}
 				}
 			} else {
 				sub.emptyDen++
-				if charsOf(o.Sub) == 0 {
+				if len(recall) == 0 && recallChars == 0 {
 					sub.emptyNum++
 				}
 			}
-			sub.chars = append(sub.chars, charsOf(o.Sub))
+			sub.chars = append(sub.chars, recallChars)
+			subLead = append(subLead, leadCharsOf(o.Sub))
 		case KindDuplicate:
 			dupCases++
 			similar := union(top(o.Similar, SimilarLimit))
@@ -295,7 +350,7 @@ func Compute(outs []Outcome) Metrics {
 	return Metrics{
 		Requests: Requests{Group: req.group(), HitByStart: hitByStart, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
 			B2Chars: dist(b2Chars), SessionChars: dist(sessionChars), StartChars: dist(startChars)},
-		Subagent:   sub.group(),
+		Subagent:   Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
 		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), Offered: rate(dupOfferNum, dupOfferDen), Forbid: dupForbid},
 	}
 }

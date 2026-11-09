@@ -124,7 +124,7 @@ type Wording interface {
 	CharsTool(dist string) string
 	CharsSession(dist string) string
 	CharsStart(dist string) string
-	Subagent(cases int, hit, wrong string, forbid int, empty, chars string) string
+	Subagent(cases int, hit string, byLead int, wrong string, forbid int, empty, chars, leadChars string) string
 	Duplicate(cases int, hit, offered string, forbid int) string
 	ZeroDen() string
 	Dist(mean, median float64, max, n int) string
@@ -183,7 +183,7 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 		w.CharsTool(distText(w, q.B2Chars)),
 		w.CharsSession(distText(w, q.SessionChars)),
 		w.CharsStart(distText(w, q.StartChars)),
-		w.Subagent(g.Cases, pct(w, g.Hit), pct(w, g.Wrong), g.Forbid, pct(w, g.Empty), distText(w, g.Chars)),
+		w.Subagent(g.Cases, pct(w, g.Hit), g.HitByLead, pct(w, g.Wrong), g.Forbid, pct(w, g.Empty), distText(w, g.Chars), distText(w, g.LeadChars)),
 		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.Offered), d.Forbid),
 	} {
 		b.WriteString("  " + line + "\n")

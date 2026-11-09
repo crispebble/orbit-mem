@@ -130,8 +130,8 @@ func (tagWording) CharsRequest(d string) string { return tag("charsRequest", d) 
 func (tagWording) CharsTool(d string) string    { return tag("charsTool", d) }
 func (tagWording) CharsSession(d string) string { return tag("charsSession", d) }
 func (tagWording) CharsStart(d string) string   { return tag("charsStart", d) }
-func (tagWording) Subagent(c int, h, w string, f int, e, ch string) string {
-	return tag("subagent", c, h, w, f, e, ch)
+func (tagWording) Subagent(c int, h string, bl int, w string, f int, e, ch, lc string) string {
+	return tag("subagent", c, h, bl, w, f, e, ch, lc)
 }
 func (tagWording) Duplicate(c int, h, o string, f int) string { return tag("duplicate", c, h, o, f) }
 func (tagWording) ZeroDen() string                            { return "<zeroDen>" }

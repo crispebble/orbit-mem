@@ -146,3 +146,39 @@ func TestSubagent와_Duplicate는_요청과_섞지_않고_따로_잰다(t *testi
 		}
 	}
 }
+
+// 위임 묶음은 핵심 제목 줄(Lead) 몫과 위임 회상 몫으로 나눠 센다. 틀린 회상·넣지 않음·글자는 회상 몫으로만 잰다.
+var core = lead{[]string{"i"}, 40}
+
+func TestSubagent는_핵심_제목_줄_몫과_위임_회상_몫을_나눠_잰다(t *testing.T) {
+	rep, _ := runFakeLead(t, `
+	 {"id":"sa1","session":"s1","kind":"subagent","task":"T1","expect":["a"],"allow":["b"],"forbid":["c"]},
+	 {"id":"sa2","session":"s2","kind":"subagent","task":"T2"},
+	 {"id":"sa3","session":"s3","kind":"subagent","task":"T3","expect":["i"]},
+	 {"id":"sa4","session":"s4","kind":"subagent","task":"T4","expect":["a"]}`, script{
+		"sub:T1": {[]string{"a", "b", "c"}, 120},
+		"sub:T2": {nil, 40},
+		"sub:T3": {nil, 40},
+		"sub:T4": {[]string{"b"}, 50},
+	}, leads{"sub:T1": core, "sub:T2": core, "sub:T3": core, "sub:T4": core}, keyed{})
+	s := rep.Runs[0].All.Subagent
+	wantRate(t, "hit", s.Hit, 2, 3, f64(0.6667)) // sa1은 회상, sa3은 핵심 제목 줄 덕에 맞았다
+	if s.HitByLead != 1 {
+		t.Errorf("hitByLead = %d, want 1", s.HitByLead)
+	}
+	if s.Injected != 4 || s.Correct != 1 || s.Neutral != 1 || s.Forbid != 1 || s.ForbidCases != 1 {
+		t.Errorf("subagent %+v", s)
+	}
+	wantRate(t, "wrong", s.Wrong, 2, 4, f64(0.5)) // 핵심 id i는 틀린 회상이 아니다
+	wantRate(t, "empty", s.Empty, 1, 1, f64(1))   // 제목 줄 40자는 넣은 것이 아니다
+	wantDist(t, "recall chars", s.Chars, 4, 22.5, 5, 80)
+	wantDist(t, "lead chars", s.LeadChars, 4, 40, 40, 40)
+}
+
+// 회상 몫에 든 핵심이 아닌 기억이 있으면 넣지 않음이 깨진다.
+func TestSubagent는_회상_몫이_글자를_넣으면_넣지_않음이_아니다(t *testing.T) {
+	rep, _ := runFakeLead(t, `{"id":"sa1","session":"s1","kind":"subagent","task":"T1"}`, script{
+		"sub:T1": {[]string{"a"}, 90},
+	}, leads{"sub:T1": core}, keyed{})
+	wantRate(t, "empty", rep.Runs[0].All.Subagent.Empty, 0, 1, f64(0))
+}

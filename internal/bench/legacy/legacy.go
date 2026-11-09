@@ -13,6 +13,7 @@ package legacy
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
@@ -112,5 +113,7 @@ func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
 // user core only. The task is not read: 87ab0fb matched nothing against it.
 func (r *recaller) Subagent(session, cwd, task string) (bench.Shown, error) {
 	r.where(cwd)
-	return r.shown(session, subagentStart(r.s)), nil
+	out := r.shown(session, subagentStart(r.s))
+	out.Lead, out.LeadChars = slices.Clone(out.IDs), out.Chars // the core alone: the whole bundle is the title lines
+	return out, nil
 }

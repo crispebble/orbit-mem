@@ -164,3 +164,27 @@ func TestLegacy는_지금_경로를_열지_않고_자기가_연_것만_닫는다
 		t.Errorf("legacy opened %d, closed %d, want each once", opened["legacy"], closed["legacy"])
 	}
 }
+
+// 설정 덮어쓰기는 지금 경로에만 닿는다. 옛 회상은 얼린 사본이라 설정을 읽지 않는다.
+func TestFactoriesWith는_덮어쓰기를_지금_경로에만_건다(t *testing.T) {
+	p := prepared(t)
+	opts := paths.Options{Set: map[string]string{"saveSimilarMin": "2"}}
+	fs, err := paths.FactoriesWith([]string{paths.Legacy}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bench.Run(p, fs...); err != nil {
+		t.Fatalf("legacy must ignore the overrides: %v", err)
+	}
+	fs, err = paths.FactoriesWith([]string{paths.Current}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bench.Run(p, fs...); err == nil {
+		t.Fatal("the current path accepted saveSimilarMin=2")
+	}
+	fs, _ = paths.FactoriesWith([]string{paths.Current}, paths.Options{Set: map[string]string{"saveSimilarMin": "0.9"}})
+	if _, err := bench.Run(p, fs...); err != nil {
+		t.Fatalf("saveSimilarMin=0.9: %v", err)
+	}
+}

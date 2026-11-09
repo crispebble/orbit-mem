@@ -89,22 +89,30 @@
             "den": 5,
             "value": 0
           },
-          "injected": 24,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 24,
-            "den": 24,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 1,
             "den": 1,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 6,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 6,
             "mean": 230,
             "median": 230,
@@ -192,22 +200,30 @@
             "den": 2,
             "value": 0
           },
-          "injected": 12,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 12,
-            "den": 12,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 1,
             "den": 1,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 3,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 3,
             "mean": 230,
             "median": 230,
@@ -295,22 +311,30 @@
             "den": 7,
             "value": 0
           },
-          "injected": 36,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 36,
-            "den": 36,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 2,
             "den": 2,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 9,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 9,
             "mean": 230,
             "median": 230,

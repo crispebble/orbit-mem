@@ -89,22 +89,30 @@
             "den": 5,
             "value": 0
           },
-          "injected": 24,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 24,
-            "den": 24,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 1,
             "den": 1,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 6,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 6,
             "mean": 230,
             "median": 230,
@@ -114,16 +122,16 @@
         "duplicates": {
           "cases": 8,
           "hit": {
-            "num": 3,
+            "num": 4,
             "den": 5,
-            "value": 0.6
+            "value": 0.8
           },
           "offered": {
-            "num": 3,
+            "num": 0,
             "den": 3,
-            "value": 1
+            "value": 0
           },
-          "forbid": 2
+          "forbid": 0
         }
       },
       "test": {
@@ -192,22 +200,30 @@
             "den": 2,
             "value": 0
           },
-          "injected": 12,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 12,
-            "den": 12,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 1,
             "den": 1,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 3,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 3,
             "mean": 230,
             "median": 230,
@@ -295,22 +311,30 @@
             "den": 7,
             "value": 0
           },
-          "injected": 36,
+          "injected": 0,
           "correct": 0,
           "neutral": 0,
           "wrong": {
-            "num": 36,
-            "den": 36,
-            "value": 1
+            "num": 0,
+            "den": 0,
+            "value": 0,
+            "zeroDen": true
           },
           "forbid": 0,
           "forbidCases": 0,
           "empty": {
-            "num": 0,
+            "num": 2,
             "den": 2,
-            "value": 0
+            "value": 1
           },
           "chars": {
+            "n": 9,
+            "mean": 0,
+            "median": 0,
+            "max": 0
+          },
+          "hitByLead": 0,
+          "leadChars": {
             "n": 9,
             "mean": 230,
             "median": 230,
@@ -320,16 +344,16 @@
         "duplicates": {
           "cases": 9,
           "hit": {
-            "num": 4,
+            "num": 5,
             "den": 6,
-            "value": 0.6667
+            "value": 0.8333
           },
           "offered": {
-            "num": 3,
+            "num": 0,
             "den": 3,
-            "value": 1
+            "value": 0
           },
-          "forbid": 2
+          "forbid": 0
         }
       },
       "sessions": [
@@ -3426,8 +3450,7 @@
           "part": "train",
           "similar": [
             "m-000000000003",
-            "m-000000000004",
-            "m-000000000132"
+            "m-000000000004"
           ]
         },
         {
@@ -3436,9 +3459,8 @@
           "kind": "duplicate",
           "part": "test",
           "similar": [
-            "m-000000000018",
             "m-000000000017",
-            "m-000000000015"
+            "m-000000000018"
           ]
         },
         {
@@ -3447,21 +3469,14 @@
           "kind": "duplicate",
           "part": "train",
           "similar": [
-            "m-000000000001",
-            "m-000000000018",
-            "m-000000000019"
+            "m-000000000001"
           ]
         },
         {
           "id": "dup-paging",
           "session": "dup-paging",
           "kind": "duplicate",
-          "part": "train",
-          "similar": [
-            "m-000000000130",
-            "m-000000000124",
-            "m-000000000190"
-          ]
+          "part": "train"
         },
         {
           "id": "dup-lockout",
@@ -3469,9 +3484,7 @@
           "kind": "duplicate",
           "part": "train",
           "similar": [
-            "m-000000000010",
-            "m-000000000009",
-            "m-000000000125"
+            "m-000000000047"
           ]
         },
         {
@@ -3480,43 +3493,26 @@
           "kind": "duplicate",
           "part": "train",
           "similar": [
-            "m-000000000149",
-            "m-000000000164",
-            "m-000000000152"
+            "m-000000000149"
           ]
         },
         {
           "id": "new-chart",
           "session": "new-chart",
           "kind": "duplicate",
-          "part": "train",
-          "similar": [
-            "m-000000000037",
-            "m-000000000028",
-            "m-000000000100"
-          ]
+          "part": "train"
         },
         {
           "id": "new-server-time",
           "session": "new-server-time",
           "kind": "duplicate",
-          "part": "train",
-          "similar": [
-            "m-000000000109",
-            "m-000000000183",
-            "m-000000000102"
-          ]
+          "part": "train"
         },
         {
           "id": "new-login-copy",
           "session": "new-login-copy",
           "kind": "duplicate",
-          "part": "train",
-          "similar": [
-            "m-000000000083",
-            "m-000000000020",
-            "m-000000000199"
-          ]
+          "part": "train"
         }
       ]
     }

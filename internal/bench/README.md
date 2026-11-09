@@ -98,7 +98,13 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 - 글자: 요청당 B1(평균·중앙값·최댓값), 도구 호출당 B2, 세션당(A층 1회 + 그 세션 B1 합 + B2 합, 중앙값·최댓값), A층 따로.
 - 빈 분모: 넣은 id가 0이면 틀린 회상은 0이고 `zeroDen`을 함께 낸다. 정답 있는 사례가 0이면 적중은 `null`이다.
 
-위임 사례(`subagent`)는 같은 적중·틀린 회상·글자를 `Subagent` 결과로 따로 묶는다. 중복 사례(`duplicate`)는 비슷한 기억 상위 3의 적중과, 비슷한 것이 없어야 할 때 무언가를 내민 비율을 따로 낸다. 둘 다 요청 지표에 섞지 않는다. 지금 판의 중복 후보는 `memory_find`로 대신한다(`find-proxy`).
+위임 사례(`subagent`)는 `Subagent` 결과로 따로 묶는다. 위임 묶음은 두 몫이다. 늘 들어가는 핵심 **제목 줄**(역할 지침, `Shown.Lead`·`LeadChars`)과 위임 글에 맞춰 고른 **위임 회상**(나머지 id)이다. 어댑터가 두 몫을 가르고, 도메인은 회상 구현을 모른 채 `Lead`만 본다. 요청 지표가 A층을 `hitByStart`로 따로 세듯 위임 지표도 나눠 센다.
+
+- 적중: `expect` 전부가 (제목 줄 ∪ 위임 회상)에 든 비율. 제목 줄 덕에 맞은 수는 `hitByLead`로 따로 센다.
+- 틀린 회상·`forbid`·넣지 않음·글자(`chars`): **위임 회상 몫으로만** 잰다. 제목 줄 id는 틀린 회상이 아니고, 회상 몫이 0자일 때 「넣지 않음」이 맞다. 제목 줄 글자는 `leadChars`로 따로 낸다.
+- 어댑터가 가르지 않으면(`Lead` 비움) 묶음 전체가 회상 몫이다. 지금 경로와 옛 회상은 핵심만 내므로 위임 회상 몫이 0이다. 위임 회상이 생기면(요청 회상 개편) 어댑터가 그 id를 `Lead`에서 빼 넘긴다.
+
+중복 사례(`duplicate`)는 비슷한 기억 상위 3의 적중과, 비슷한 것이 없어야 할 때 무언가를 내민 비율을 따로 낸다. 위임·중복 모두 요청 지표에 섞지 않는다. 지금 경로의 중복 후보는 저장 때 실제로 보는 판정이다(`memory.Store.SaveCheck`, `save-check`). 같은 제목·같은 주제로 걸린 `Existing`도 후보로 센다: 저장하면 그 기억에 출처가 더해지거나 대체되어 같은 내용 기억이 둘 생기지 않고(설계 L-16), 틀린 `Existing`은 다른 기억을 말없이 합치거나 갈아 끼우기 때문이다. 문턱은 설정 `saveSimilarMin`이고 `--set`으로 바꿔 잰다. 옛 회상의 후보는 87ab0fb `memory_find` 위의 `find-proxy`를 얼린 그대로다.
 
 우선순위는 적중, 틀린 회상, 글자 수 순이다. 문턱을 정하는 일은 이 묶음이 아니라 회상을 고치는 작업이 한다.
 
@@ -115,7 +121,7 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 | 파일 | 뜻 | 갱신 |
 | --- | --- | --- |
 | `internal/bench/testdata/baseline-current.json` | 지금 경로(호스트 계약)의 점수와 사례별 보인 id·글자 | 갱신 명령으로만 다시 쓴다 |
-| `internal/bench/testdata/baseline-legacy.json` | 옛 회상(87ab0fb 시점을 얼린 사본)의 점수 | 없으면 시험이 실패한다. 처음 만들 때만 `-write-legacy-baseline`(파일이 없을 때만 쓰고, 있으면 덮어쓰지 않는다). 그 뒤는 엄격 비교만 한다 |
+| `internal/bench/testdata/baseline-legacy.json` | 옛 회상(87ab0fb 시점을 얼린 사본)의 점수 | 없으면 시험이 실패한다. 지표 정의나 사례가 바뀔 때만 파일을 지우고 `-write-legacy-baseline`으로 다시 쓴다(파일이 없을 때만 쓰고 있으면 덮어쓰지 않는다). 옛 회상 코드는 그대로 둔다. 그 밖에는 엄격 비교만 한다 |
 
 지금 경로의 기준선을 다시 쓰는 명령은 저장소 루트에서 실행한다.
 
@@ -123,7 +129,7 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 go test ./internal/bench -run TestPublicSet -update-golden
 ```
 
-`-update-golden` 깃발은 `internal/bench` 시험 패키지에만 있다. 다시 쓴 뒤 `git diff`로 어느 사례의 값이 움직였는지 눈으로 본다. 회상을 일부러 바꾼 때가 아니면 이 파일이 바뀌어서는 안 된다. 옛 회상 기준선은 회상을 고쳐 나가며 비교하는 출발점이라 고치지 않는다. 처음 만들 때만 아래를 쓴다.
+`-update-golden` 깃발은 `internal/bench` 시험 패키지에만 있다. 다시 쓴 뒤 `git diff`로 어느 사례의 값이 움직였는지 눈으로 본다. 회상을 일부러 바꾼 때가 아니면 이 파일이 바뀌어서는 안 된다. 옛 회상 기준선은 회상을 고쳐 나가며 비교하는 출발점이라 옛 회상 코드가 바뀌었다는 이유로는 고치지 않는다. 지표 정의나 사례가 바뀐 때만, 옛 회상 코드는 그대로 두고 파일을 지운 뒤 아래로 다시 쓴다. 다시 쓴 뒤 `git diff`로 옛 회상의 값 가운데 정의 변경 밖의 것이 움직이지 않았는지 본다.
 
 ```sh
 go test ./internal/bench -run TestPublicSet -write-legacy-baseline
@@ -137,6 +143,9 @@ go test ./internal/bench -run TestPublicSet -write-legacy-baseline
 # 사례 파일을 DB 사본에 돌려 지표를 낸다. --db 파일은 열지 않고, bench.CopyDB(internal/bench/copy.go)가 원본 .db·-wal·-journal을 임시 폴더로 바이트 복사한 사본에서 돈다(-shm은 복사하지 않음). 복사 중 원본이 바뀌면 다시 뜨고 5번 실패하면 오류.
 orbit-mem bench recall --db <기억 DB 파일> --cases <사례 파일>
 
+# 지금 회상 경로의 설정을 덮어써 잰다(--set key=value, 여러 번). 키와 값은 설정 파일이 거르는 검사(config.Config.Validate)로 실행 전에 거른다. 얼린 옛 회상은 설정을 읽지 않는다.
+orbit-mem bench recall --cases <사례 파일> --set saveSimilarMin=0.7 --set recallChars=800
+
 # 이 PC의 대화 기록에서 재생 자료를 뽑는다. 쓰기는 --out에만 하고, git 작업 트리 안은 거절한다.
 orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일> --out <폴더>
 ```
@@ -147,10 +156,10 @@ orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일
 
 ## 1-3·1-4를 합친 뒤
 
-`internal/memory`(1-3)와 `internal/inject`·`internal/host`(1-4)를 이 브랜치에 합치면 아래를 차례로 한다. 기본 `go test ./...`는 깨지지 않게 두었고, 깨지는 것이 정상인 시험은 `benchequiv` 태그 뒤에 있다.
+`internal/memory`(1-3)와 `internal/inject`·`internal/host`(1-4)를 이 브랜치에 합친 뒤 한 일과, 앞으로 합칠 때 하는 일이다.
 
 1. `go test ./internal/bench -run TestPublicSet -update-golden`으로 `baseline-current.json`을 다시 재고, 바뀐 지표를 이슈에 남긴다. 조립은 `internal/bench/paths`의 `Factories`(`current`·`legacy`) 한 곳이고, 깃발은 `-update-golden`이다.
-2. `baseline-legacy.json`은 바뀌면 안 된다. 깨지면 legacy 사본이 기대는 `memory`·`place`·`project` 심볼(목록은 `internal/bench/legacy/symbols_test.go`)이 바뀐 것이니 사본을 고친다. 0.17 통합 때 1-3이 `Store.Find`를 FTS5 색인으로 바꿔(`272b9ca`) 지금 경로의 찾기를 빌려 쓰던 옛 기준선이 움직였고, 그 뒤로 찾기도 사본에 얼렸다.
-3. `-tags benchequiv` 시험(`hostpath`·`legacy` 둘 다)은 87ab0fb 같음 증거라 1-3·1-4를 합친 뒤에는 깨지는 것이 정상이다. 옛 회상이 그대로인지는 기본 시험의 `baseline-legacy.json` 엄격 비교가 지킨다.
-4. 기대는 바깥 모양이 바뀌었는지 본다. `internal/bench/load.go`는 `memory.Import`·`Pin`·`RecordEvent`를, `internal/bench/hostpath`는 `host.Request`·`host.Setup`·op 이름·`memory_find` 결과 id를 기대한다. 1-3·1-4가 바꾸면 여기를 고친다.
-5. 지금 경로의 Similar는 `find-proxy`다(1-3의 저장 때 비슷한 기억 고르기가 생기면 1-6에서 잇는다). 옛 회상의 Similar는 87ab0fb 찾기 위의 `find-proxy`를 얼린 것이다. 둘 다 회상이 아니라 찾기를 재므로 중복 묶음은 두 회상 비교에 쓰지 않는다.
+2. `baseline-legacy.json`은 옛 회상 코드가 바뀌면 안 된다. 깨지면 legacy 사본이 기대는 `memory`·`place`·`project` 심볼(목록은 `internal/bench/legacy/symbols_test.go`)이 바뀐 것이니 사본을 고친다. 0.17 통합 때 1-3이 `Store.Find`를 FTS5 색인으로 바꿔(`272b9ca`) 지금 경로의 찾기를 빌려 쓰던 옛 기준선이 움직였고, 그 뒤로 찾기도 사본에 얼렸다. 지표 정의나 사례가 바뀌면 위 「기준선 파일」 규칙대로 다시 쓴다.
+3. `-tags benchequiv` 대조 시험(`hostpath`·`legacy` 둘 다)은 지웠다. 「87ab0fb 판과 같다」는 일회성 증거였고 증거 시점은 87ab0fb다. 1-4가 inject 시그니처와 사람 요청 판정을 바꿔 컴파일이 깨지고 값이 달라지는 것이 정상이었다. 옛 회상이 그대로인지는 기본 시험의 `baseline-legacy.json` 엄격 비교가 지킨다. 지금 코드끼리의 어댑터 대조(호스트 계약 `Request`가 `inject`를 직접 부른 것과 같은 id를 낸다, 사람이 아닌 글은 회상하지 않는다)는 태그 없이 기본 시험(`hostpath/hostpath_test.go`)으로 살렸다. `go vet -tags benchequiv ./internal/bench/...`는 태그를 쓰는 파일이 없어 그대로 통과한다.
+4. 기대는 바깥 모양이 바뀌었는지 본다. `internal/bench/load.go`는 `memory.Import`·`Pin`·`RecordEvent`를, `internal/bench/hostpath`는 `host.Request`·`host.Setup`·op 이름·`memory_find` 결과 id·`memory.Store.SaveCheck`를 기대한다. 바뀌면 여기를 고친다.
+5. 지금 경로의 Similar는 저장 때 판정(`SaveCheck`)이다(`save-check`). 옛 회상의 Similar는 87ab0fb 찾기 위의 `find-proxy`를 얼린 것이라 중복 묶음의 두 회상 비교에는 판정 차이와 찾기 차이가 함께 든다.

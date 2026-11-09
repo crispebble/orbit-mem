@@ -42,7 +42,7 @@ func TestRun은_회상마다_새_DB_사본에서_연다(t *testing.T) {
 		}
 		paths = append(paths, db)
 		var calls []string
-		return bench.Env{Recaller: fake{"r", script{}, p.IDOf, &calls}, Close: func() error { closed++; return nil }}, nil
+		return bench.Env{Recaller: fake{"r", script{}, nil, p.IDOf, &calls}, Close: func() error { closed++; return nil }}, nil
 	}
 	if _, err := bench.Run(p, f, f); err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestRun은_회상이_오류를_내면_사례_id와_함께_멈춘다(t *test
 	p := prepare(t, `{"id":"c1","session":"s1","prompt":"p1"},{"id":"c2","session":"s1","kind":"duplicate","save":{"kind":"fact","title":"x"}}`)
 	f := func(db string, set *bench.Set) (bench.Env, error) {
 		var calls []string
-		return bench.Env{Recaller: fake{"r", script{}, p.IDOf, &calls}}, nil // Similar가 없다
+		return bench.Env{Recaller: fake{"r", script{}, nil, p.IDOf, &calls}}, nil // Similar가 없다
 	}
 	if _, err := bench.Run(p, f); err == nil {
 		t.Fatal("duplicate cases need a Similar")
