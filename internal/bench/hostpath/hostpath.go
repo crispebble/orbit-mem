@@ -239,7 +239,7 @@ func (s similar) Similar(cwd string, d bench.Draft) ([]string, error) {
 	at := s.at.now()
 	st.Now = func() time.Time { return at }
 	res, err := st.SaveCheck(memory.SaveInput{Kind: d.Kind, Title: d.Title, Body: d.Body, Topic: d.Topic, Scope: d.Scope,
-		Source: memory.Source{Kind: memory.SourceQuote}}, s.min)
+		Source: memory.Source{Kind: memory.SourceQuote}}, memory.CheckMins{Similar: s.min})
 	if err != nil {
 		return nil, fmt.Errorf("hostpath: save check: %w", err)
 	}

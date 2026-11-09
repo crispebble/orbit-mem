@@ -105,7 +105,7 @@ func cmdMCP(a *app, args []string) error {
 		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err
-		}, LoadSaveSimilarMin: saveSimilarMinOf})
+		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -531,6 +531,12 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
+	case "saveNearMin":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		cfg.SaveNearMin = f // 범위·NaN은 config.Save의 검증이 거절한다
 	case "recallMinScore", "recallMinCoverage", "recallMinRelative", "recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinRelative", "taskRecallMinTitleShare":
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
@@ -540,7 +546,7 @@ func cmdConfig(a *app, args []string) error {
 			"recallMinCoverageOneWord": &cfg.RecallMinCoverageOneWord, "taskRecallMinScore": &cfg.TaskRecallMinScore, "taskRecallMinRelative": &cfg.TaskRecallMinRelative,
 			"taskRecallMinTitleShare": &cfg.TaskRecallMinTitleShare}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

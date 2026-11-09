@@ -10,6 +10,7 @@
   "config.err.host_memory": "hostMemory는 ask 또는 keep입니다: %q",
   "config.err.ledger_window": "ledgerWindowDays는 1~90입니다",
   "config.err.save_similar_min": "saveSimilarMin은 0보다 크고 1 이하인 수입니다(저장할 때 비슷한 기억으로 보는 저장 때 비슷함 점수, 두 기억의 낱말이 서로를 덮는 비율의 기하 평균, 기본 0.45): %v",
+  "config.err.save_near_min": "saveNearMin은 0보다 크고 1 이하인 수입니다(막지 않고 저장할 때 「가까운 기억」으로 id·제목을 최대 3개 붙이는 저장 때 비슷함 점수의 하한, saveSimilarMin 이상이면 붙는 것이 없음, 기본 0.22): %v",
   "config.err.recall_min_score": "recallMinScore는 0보다 크고 1 이하인 수입니다(요청 회상에 드는 찾기 점수의 문턱): %v",
   "config.err.recall_min_coverage": "recallMinCoverage는 0보다 크고 1 이하인 수입니다(요청 회상에 드는, 요청의 뜻 있는 낱말 중 맞은 비율의 문턱): %v",
   "config.err.recall_min_relative": "recallMinRelative는 0보다 크고 1 이하인 수입니다(요청 회상에서 1위 찾기 점수의 몇 배 이상인 기억만 남기는 상대 문턱): %v",

@@ -407,7 +407,7 @@ func (m dupMemory) args() map[string]any {
 func scoreOf(t *testing.T, s *memory.Store, m dupMemory, id string) float64 {
 	t.Helper()
 	r, err := s.SaveCheck(memory.SaveInput{Kind: m.Kind, Scope: memory.ScopeGlobal, Title: m.Title, Body: m.Body, Topic: m.Topic,
-		Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, 1e-9)
+		Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, memory.CheckMins{Similar: 1e-9})
 	if err != nil {
 		t.Fatal(err)
 	}

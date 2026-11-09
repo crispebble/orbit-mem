@@ -492,6 +492,24 @@ func TestConfig_한_낱말_비율과_위임_회상_문턱을_설정한다(t *tes
 	}
 }
 
+func TestConfig_saveNearMin을_설정한다(t *testing.T) {
+	home(t)
+	if _, errOut, code := run(t, "", "config", "set", "saveNearMin", "0.3"); code != 0 {
+		t.Fatalf("set: %s", errOut)
+	}
+	if cfg, err := loadConfig(); err != nil || cfg.SaveNearMin != 0.3 {
+		t.Fatalf("cfg = %v %v", cfg.SaveNearMin, err)
+	}
+	for _, bad := range []string{"0", "1.5", "abc"} {
+		if _, _, code := run(t, "", "config", "set", "saveNearMin", bad); code != 1 {
+			t.Fatalf("%q accepted: %d", bad, code)
+		}
+	}
+	if saveNearMinOf() != 0.3 {
+		t.Fatalf("saveNearMinOf = %v", saveNearMinOf())
+	}
+}
+
 func TestConfig_saveSimilarMin을_설정한다(t *testing.T) {
 	home(t)
 	if _, errOut, code := run(t, "", "config", "set", "saveSimilarMin", "0.7"); code != 0 {

@@ -53,14 +53,24 @@ type Options struct {
 	// server follows config.json like LoadProducts).
 	SaveSimilarMin     float64
 	LoadSaveSimilarMin func() float64
+	// SaveNearMin is the floor (0~1, the same score) of the close memories memory_save shows beside a save it
+	// does not stop (config saveNearMin, 1-6 b6dn). 0 or less is memory.DefaultNearMin. LoadSaveNearMin, when
+	// set, reads it on every save instead.
+	SaveNearMin     float64
+	LoadSaveNearMin func() float64
 }
 
-// similarMin is the threshold of memory_save's similar memories now.
-func (o Options) similarMin() float64 {
+// checkMins are the scores of memory_save's judgment now: the threshold of its similar memories and the floor
+// of its close ones.
+func (o Options) checkMins() memory.CheckMins {
+	m := memory.CheckMins{Similar: o.SaveSimilarMin, Near: o.SaveNearMin}
 	if o.LoadSaveSimilarMin != nil {
-		return o.LoadSaveSimilarMin()
+		m.Similar = o.LoadSaveSimilarMin()
 	}
-	return o.SaveSimilarMin
+	if o.LoadSaveNearMin != nil {
+		m.Near = o.LoadSaveNearMin()
+	}
+	return m
 }
 
 // products is the product map now, and why it could not be read.
@@ -125,7 +135,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다. 저장됐는데 near가 있으면 같은 주장인지 보고 하나만 남긴다.", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out SaveOut) map[string]any {
 			return saveData(in, out)
 		}))
@@ -624,6 +634,9 @@ type SaveOut struct {
 	Resolve string       `json:"resolve,omitempty"`
 	Similar []SimilarOut `json:"similar,omitempty"`
 	Choices []string     `json:"choices,omitempty"`
+	// Near is one line of the close memories (id and title, at most memory.SimilarLimit) beside a save that was
+	// not stopped, so the caller may merge or fix them (1-6 b6dn). Empty when there are none.
+	Near string `json:"near,omitempty"`
 }
 
 // SimilarOut is a memory like the one about to be saved. Its score stays inside (M5).
@@ -639,7 +652,7 @@ type SimilarOut struct {
 func saveData(in SaveIn, out SaveOut) map[string]any {
 	action, _, _ := parseResolve(in.Resolve)
 	return map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": out.Memory.State, "memoryId": out.Memory.ID,
-		"saved": out.Saved, "similar": len(out.Similar), "resolve": action}
+		"saved": out.Saved, "similar": len(out.Similar), "near": out.Near != "", "resolve": action}
 }
 
 // parseResolve splits resolve into its choice and the memory it names: add, update:<id>, supersede:<id>,
@@ -692,13 +705,20 @@ func (h handlers) tidy(in SaveIn, si memory.SaveInput) (SaveOut, error) {
 	}
 	switch choice {
 	case "":
-		chk, err := h.s.SaveCheck(si, h.o.similarMin())
+		chk, err := h.s.SaveCheck(si, h.o.checkMins())
 		if err != nil {
 			return SaveOut{}, err
 		}
 		if chk.Verdict == memory.CheckSimilar {
 			return similarOut(chk.Similar), nil
 		}
+		out, err := h.saveNow(si, in.Links)
+		if err != nil {
+			return SaveOut{}, err
+		}
+		// 막지 않은 저장에만 가까운 기억을 붙인다: 같은 내용이면 부른 AI가 합치거나 고친다(1-6 b6dn).
+		out.Near = nearLine(nearOf(chk.Near, out))
+		return out, nil
 	case resolveUpdate:
 		return h.saveAsUpdate(target, in, si)
 	case resolveSupersede:
@@ -814,7 +834,7 @@ func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveO
 // recorded so the same call comes back the same.
 func (h handlers) skip(id string, si memory.SaveInput) (SaveOut, error) {
 	if id == "" {
-		chk, err := h.s.SaveCheck(si, h.o.similarMin())
+		chk, err := h.s.SaveCheck(si, h.o.checkMins())
 		if err != nil {
 			return SaveOut{}, err
 		}
