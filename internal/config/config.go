@@ -102,6 +102,28 @@ type Config struct {
 	// 저장 때 정리(설계 6.1, 계획 D8): memory_save가 같은 범위의 기억을 「비슷하다」고 보고 저장 전에 고르게 하는
 	// 저장 때 비슷함 점수(0~1, 두 기억 사이 토큰 양쪽 덮음)의 문턱. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
 	SaveSimilarMin float64 `json:"saveSimilarMin"`
+	// 요청 회상의 두 문턱(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계): 기억은 찾기 점수(0~1, memory.RecallQuery로 찾은
+	// 점수)가 recallMinScore 이상이고 요청의 뜻 있는 낱말 중 맞은 비율(0~1)이 recallMinCoverage 이상일 때만 요청 회상에 든다.
+	// 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
+	RecallMinScore    float64 `json:"recallMinScore"`
+	RecallMinCoverage float64 `json:"recallMinCoverage"`
+}
+
+// 요청 회상 문턱의 기본값. 평가 묶음 학습용 사례로 맞추기 전의 임시값이다.
+const (
+	DefaultRecallMinScore    = 0.4
+	DefaultRecallMinCoverage = 0.3
+)
+
+// MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
+const MaxPromptRecallChars = 500
+
+// PromptRecallChars is the length the work recall of one request may use: recallChars, at most MaxPromptRecallChars.
+func (c Config) PromptRecallChars() int {
+	if c.RecallChars <= 0 {
+		return MaxPromptRecallChars
+	}
+	return min(c.RecallChars, MaxPromptRecallChars)
 }
 
 // defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
@@ -143,8 +165,8 @@ const (
 	HostMemoryKeep = "keep"
 )
 
-// maxRecallChars keeps the per-request context under the hosts' hook context
-// limit (about 10,000 characters in Claude Code).
+// maxRecallChars is the largest recallChars a file may hold (files written before the work recall
+// was bounded keep loading). The work recall itself uses PromptRecallChars, MaxPromptRecallChars at most.
 const maxRecallChars = 9000
 
 // Default is the starting configuration.
@@ -152,7 +174,7 @@ func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
 		RecallChars: 1000, LedgerWindowDays: 7,
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
-		SaveSimilarMin: memory.DefaultSimilarMin}
+		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -183,6 +205,12 @@ func (c Config) Validate() error {
 	}
 	if !(c.SaveSimilarMin > 0 && c.SaveSimilarMin <= 1) { // NaN도 거절한다
 		return i18n.Errorf("config.err.save_similar_min", c.SaveSimilarMin)
+	}
+	if !(c.RecallMinScore > 0 && c.RecallMinScore <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.recall_min_score", c.RecallMinScore)
+	}
+	if !(c.RecallMinCoverage > 0 && c.RecallMinCoverage <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage", c.RecallMinCoverage)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {
