@@ -46,6 +46,15 @@ var delegationTools = []string{"Agent", "Task"}
 // defaultAgentType is the subagent Claude Code starts when the Agent tool names none.
 const defaultAgentType = "general-purpose"
 
+// agentKind is the kind both hooks put in a request, by one rule so a delegation and its subagent pair up:
+// the type given, the default subagent when it is empty.
+func agentKind(agentType string) string {
+	if strings.TrimSpace(agentType) == "" {
+		return defaultAgentType
+	}
+	return agentType
+}
+
 // delegation is the part of a delegation tool's input the hooks read (Claude Code hooks 문서, 2.1.319 확인).
 type delegation struct {
 	Prompt       string `json:"prompt"`
@@ -67,10 +76,7 @@ func delegate(req *host.Request, in input) {
 	if desc := strings.TrimSpace(d.Description); desc != "" && !strings.HasPrefix(d.Prompt, desc) {
 		req.Task = desc + "\n" + d.Prompt
 	}
-	req.AgentKind = d.SubagentType
-	if req.AgentKind == "" {
-		req.AgentKind = defaultAgentType
-	}
+	req.AgentKind = agentKind(d.SubagentType)
 }
 
 // sources are the session start sources the contract takes; another one is left out.
@@ -114,7 +120,7 @@ func steps(ev hook.Event, req host.Request, in input) []hook.Step {
 		return []hook.Step{{Op: host.OpToolContext, Request: req}}
 	case hook.SubagentStart: // 입력에 위임 글이 없다: 같은 세션·같은 종류의 먼저 온 위임 글과 짝을 맞춘다(host)
 		req.Audience = host.AudienceSubagent
-		req.AgentKind = in.AgentType
+		req.AgentKind = agentKind(in.AgentType)
 		return []hook.Step{{Op: host.OpContext, Request: req}}
 	case hook.SessionEnd:
 		return []hook.Step{{Op: host.OpSessionEnd, Request: req}}

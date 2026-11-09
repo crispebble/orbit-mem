@@ -44,6 +44,12 @@ var delegations = []hooktest.Case{
 	{Name: "pre-tool Agent without a prompt", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "Agent",
 		"tool_input": map[string]any{"subagent_type": "worker"}}),
 		Want: []hooktest.Want{{Pair: "tool-context-delegation", Set: map[string]any{"task": nil, "agentKind": nil}}}},
+	// 서브에이전트 시작 쪽도 같은 규칙이다: 종류가 없으면 general-purpose로 맞춰 위임 도구 쪽 종류와 짝이 맞는다.
+	{Name: "subagent-start without a type", Event: hook.SubagentStart, Input: hooktest.In(map[string]any{"hook_event_name": "SubagentStart", "agent_id": "a-1"}),
+		Want: []hooktest.Want{{Pair: "context-subagent", Set: map[string]any{"agentKind": "general-purpose"}}}},
+	{Name: "pre-tool Agent blank type", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "Agent",
+		"tool_input": map[string]any{"prompt": delegationTask, "subagent_type": " "}}),
+		Want: []hooktest.Want{{Pair: "tool-context-delegation", Set: map[string]any{"agentKind": "general-purpose"}}}},
 	{Name: "pre-tool another tool with a prompt", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "Bash",
 		"tool_input": map[string]any{"prompt": delegationTask, "subagent_type": "worker"}}),
 		Want: []hooktest.Want{{Pair: "tool-context-bash"}}},
