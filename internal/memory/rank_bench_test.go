@@ -83,3 +83,14 @@ func BenchmarkFind_옛_훑기_3000건(b *testing.B) {
 		sort.Slice(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
 	}
 }
+
+// 쓰기 끝(syncIndexTx)이 매번 도는 늦은 줄 훑기(staleSQL)의 값이다.
+func BenchmarkStaleIndexCount_3000건(b *testing.B) {
+	s := benchStore(b, 3000)
+	b.ResetTimer()
+	for range b.N {
+		if n, err := s.StaleIndexCount(); err != nil || n != 0 {
+			b.Fatal(n, err)
+		}
+	}
+}

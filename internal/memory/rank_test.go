@@ -385,7 +385,7 @@ func TestFind_색인_표가_없는_판4_DB는_모두_훑어서_찾는다(t *test
 		t.Fatal(err)
 	}
 	defer r.Close()
-	if ok, _ := r.IndexReady(); ok {
+	if hasIndexTables(t, r) {
 		t.Fatal("색인 표가 있다")
 	}
 	got, err := r.Find(FindInput{Query: "배포", AllProjects: true})

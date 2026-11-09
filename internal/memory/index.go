@@ -17,6 +17,7 @@ import (
 //
 // indexed_at은 색인할 때의 memories.updated_at(10진 글)이다. 줄이 없거나 indexed_at ≠ updated_at이면 늦은
 // 기억이다: 색인을 모르는 옛 실행 파일(0.16 이하)이 판 5 DB에 쓴 기억이고, 그 쓰기는 모두 updated_at을 올린다.
+// memory_index 줄은 있는데 그 rowid의 memory_fts 줄이 없는 기억(깨진 색인)도 늦은 기억이다.
 // 늦은 줄은 쓰기 트랜잭션 끝(writeTx·save)에서 한 번에 staleFillLimit개까지 채운다. 열기·읽기 op는 채우지 않는다.
 
 const indexSchema = `
@@ -30,9 +31,12 @@ PRAGMA user_version=5;
 // staleFillLimit is how many late index rows one write transaction fills besides its own.
 const staleFillLimit = 200
 
-// staleSQL lists the memories whose index row is missing or older than the memory, newest first.
+// staleSQL lists the memories whose index row is missing or older than the memory, or whose FTS row is gone
+// (a broken index: the search would miss it with no late row to say so), newest first. The FTS check is a
+// rowid lookup per memory.
 const staleSQL = `SELECT m.id FROM memories m LEFT JOIN memory_index i ON i.memory_id = m.id
-	WHERE i.memory_id IS NULL OR i.indexed_at <> CAST(m.updated_at AS TEXT) ORDER BY m.updated_at DESC, m.id`
+	WHERE i.memory_id IS NULL OR i.indexed_at <> CAST(m.updated_at AS TEXT)
+	OR NOT EXISTS (SELECT 1 FROM memory_fts f WHERE f.rowid = i.rowid) ORDER BY m.updated_at DESC, m.id`
 
 type execQuerier interface {
 	querier
@@ -145,26 +149,9 @@ func staleIDs(q querier, limit int) ([]string, error) {
 	return ids, rows.Err()
 }
 
-// IndexReady says whether the DB has the search index tables. A DB a schema 4 copy was restored into
-// while this store was open has none until the next write open migrates it.
-func (s *Store) IndexReady() (bool, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('memory_index','memory_fts')`).Scan(&n)
-	return n == 2, err
-}
-
-// StaleIndexIDs lists the late memories, newest first: those with no index row or one older than the
-// memory. A search reads them by scanning, beside the index. Without the index tables every memory is
-// late. It only reads, so it works on a read-only store.
-func (s *Store) StaleIndexIDs() ([]string, error) {
-	ids, err := staleIDs(s.db, 0)
-	if noIndexTable(err) {
-		return s.allIDs()
-	}
-	return ids, err
-}
-
-// StaleIndexCount is how many memories are late (see StaleIndexIDs).
+// StaleIndexCount is how many memories are late: those with no index row, one older than the memory, or
+// one whose FTS row is gone (staleSQL). A search reads them by scanning, beside the index. Without the index
+// tables every memory is late. It only reads, so it works on a read-only store.
 func (s *Store) StaleIndexCount() (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM (` + staleSQL + `)`).Scan(&n)
@@ -172,23 +159,6 @@ func (s *Store) StaleIndexCount() (int, error) {
 		return s.Count()
 	}
 	return n, err
-}
-
-func (s *Store) allIDs() ([]string, error) {
-	rows, err := s.db.Query(`SELECT id FROM memories ORDER BY updated_at DESC, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 // FillIndex indexes up to limit late memories (all when limit is 0 or less) in one write transaction and

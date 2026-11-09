@@ -632,6 +632,7 @@ type SimilarOut struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary,omitempty"` // 본문 한 줄, 200자 이하
 	Topic   string `json:"topic,omitempty"`
+	Trust   string `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
 }
 
 // saveData is the use event data of a memory_save call.
@@ -712,7 +713,7 @@ func (h handlers) tidy(in SaveIn, si memory.SaveInput) (SaveOut, error) {
 func similarOut(sim []memory.Similar) SaveOut {
 	out := SaveOut{Choices: []string{resolveAdd}}
 	for _, m := range sim {
-		out.Similar = append(out.Similar, SimilarOut{ID: m.ID, Title: m.Title, Summary: m.Summary, Topic: m.Topic})
+		out.Similar = append(out.Similar, SimilarOut{ID: m.ID, Title: m.Title, Summary: m.Summary, Topic: m.Topic, Trust: untrustedOf(memory.Memory{Trust: m.Trust})})
 		out.Choices = append(out.Choices, resolveUpdate+":"+m.ID)
 	}
 	for _, m := range sim {
@@ -756,7 +757,7 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 
 // saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic and tools of
 // the save (what the save leaves empty stays) by the Update path, so the user's words are kept by the same
-// guard; the save's source is added to it as one more ground. A source that is the user's own words is
+// guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
 // the userQuote of the change (D1).
 func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveOut, error) {
 	cur, err := h.s.Get(id)
@@ -769,7 +770,10 @@ func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveO
 	}
 	who := h.o.who(quote, "")
 	title, body := si.Title, cur.Body
-	u := memory.UpdateInput{ID: id, Title: &title, Reason: "memory_save resolve update", Who: who, Idem: si.Idem}
+	// 저장의 출처는 고침과 같은 트랜잭션에 근거로 붙는다: 등급은 통로 상한 아래에서 정하고, 믿을 수 없는 출처뿐이면
+	// 도메인이 owner·agent 기억의 고침을 거절한다(D7).
+	u := memory.UpdateInput{ID: id, Title: &title, Reason: "memory_save resolve update", Who: who, Idem: si.Idem,
+		Sources: []memory.Source{si.Source}, TrustLimit: h.o.TrustLimit}
 	if si.Body != "" {
 		body = si.Body
 		u.Body = &body
@@ -789,15 +793,6 @@ func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveO
 	m, replay, err := h.s.UpdateWith(u)
 	if err != nil {
 		return SaveOut{}, err
-	}
-	if replay == nil {
-		src := si.Source
-		if src.Trust, err = memory.ResolveTrust(h.o.TrustLimit, src.Kind, src.Trust); err != nil {
-			return SaveOut{}, err
-		}
-		if err := h.s.AddSource(id, src); err != nil {
-			return SaveOut{}, err
-		}
 	}
 	var warns []string
 	if replay == nil && in.Pin && !m.Pinned { // 고침은 이미 적용·기록됐다: 승격하지 못한 것은 오류가 아니라 알림이다

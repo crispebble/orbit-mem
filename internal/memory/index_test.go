@@ -180,8 +180,8 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 	if err := s.DB().QueryRow(`SELECT trust FROM sources WHERE id='s-x'`).Scan(&trust); err != nil || trust != "" {
 		t.Fatalf("trust %q %v", trust, err)
 	}
-	if ok, err := s.IndexReady(); err != nil || !ok {
-		t.Fatalf("IndexReady %v %v", ok, err)
+	if ok := hasIndexTables(t, s); !ok {
+		t.Fatalf("index tables %v", ok)
 	}
 	// 판 4 DB는 색인 표가 없어 older다(쓰기 열기가 이전한다).
 	old := filepath.Join(t.TempDir(), "old.db")
@@ -194,8 +194,8 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 	if info != (SchemaInfo{Binary: 5, DB: 4, State: SchemaOlder}) {
 		t.Fatalf("v4 info %+v", info)
 	}
-	if ok, err := r.IndexReady(); err != nil || ok {
-		t.Fatalf("v4 IndexReady %v %v", ok, err)
+	if ok := hasIndexTables(t, r); ok {
+		t.Fatalf("v4 index tables %v", ok)
 	}
 }
 
@@ -333,7 +333,7 @@ func TestIndex_옛_실행_파일이_쓴_기억은_늦은_기억으로_잡히고_
 	if info, _ := s.Schema(); info.DB != 5 || info.State != SchemaOK {
 		t.Fatalf("schema %+v", info)
 	}
-	ids, err := s.StaleIndexIDs()
+	ids, err := staleIDs(s.DB(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,8 +495,8 @@ func TestIndex_판4_사본으로_복구된_DB에서도_열려_있던_저장소�
 		t.Fatal(err)
 	}
 	b.Close()
-	if ok, err := a.IndexReady(); err != nil || ok {
-		t.Fatalf("IndexReady after restore %v %v", ok, err)
+	if ok := hasIndexTables(t, a); ok {
+		t.Fatalf("index tables after restore %v", ok)
 	}
 	m, err := a.Save(SaveInput{Kind: KindFact, Title: "복구 뒤 저장", Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "s"}})
 	if err != nil {
@@ -507,9 +507,8 @@ func TestIndex_판4_사본으로_복구된_DB에서도_열려_있던_저장소�
 		t.Fatalf("update after restore: %v", err)
 	}
 	// 색인 표가 없으면 기억 모두가 늦은 기억이다(읽기는 훑기로 본다).
-	ids, err := a.StaleIndexIDs()
-	if err != nil || len(ids) != 2 {
-		t.Fatalf("stale ids %v %v", ids, err)
+	if n, err := a.StaleIndexCount(); err != nil || n != 2 {
+		t.Fatalf("stale %d %v", n, err)
 	}
 	if n, err := a.Reindex(); err == nil {
 		t.Fatalf("reindex without the tables = %d, want an error", n)
@@ -722,5 +721,48 @@ func TestFillIndex_늦은_줄을_한도만큼_채우고_0이면_전부_채운다
 	}
 	if n, err := s.FillIndex(0); err != nil || n != 0 {
 		t.Fatalf("fill again: %d %v", n, err)
+	}
+}
+
+// hasIndexTables says whether s's DB has the search index tables (a schema 4 copy restored into it has none).
+func hasIndexTables(t *testing.T, s *Store) bool {
+	t.Helper()
+	var n int
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('memory_index','memory_fts')`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n == 2
+}
+
+func TestIndex_FTS_줄이_빠진_기억은_늦은_줄이고_채우면_다시_찾는다(t *testing.T) {
+	s := supStore(t)
+	gone, _ := mustSave(t, s, aiLearns(KindFact, "배포 전에 드라이런을 돌린다", ""))
+	mustSave(t, s, aiLearns(KindFact, "커밋 전에 시험을 돌린다", ""))
+	if n, err := s.StaleIndexCount(); err != nil || n != 0 {
+		t.Fatalf("stale before %d %v", n, err)
+	}
+	// memory_index 줄은 있는데 그 rowid의 memory_fts 줄이 없다(색인이 깨진 DB).
+	if _, err := s.DB().Exec(`DELETE FROM memory_fts WHERE rowid=(SELECT rowid FROM memory_index WHERE memory_id=?)`, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.StaleIndexCount(); err != nil || n != 1 {
+		t.Fatalf("stale %d %v, want 1", n, err)
+	}
+	// 고치기 전에도 찾기는 늦은 줄을 훑어 찾는다.
+	if got, err := s.Find(FindInput{Query: "드라이런", AllProjects: true}); err != nil || len(got) != 1 || got[0].ID != gone.ID {
+		t.Fatalf("find before fill %v %v", titlesOf(got), err)
+	}
+	if n, err := s.FillIndex(0); err != nil || n != 1 {
+		t.Fatalf("fill %d %v", n, err)
+	}
+	if n, err := s.StaleIndexCount(); err != nil || n != 0 {
+		t.Fatalf("stale after %d %v", n, err)
+	}
+	var fts int
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM memory_fts WHERE rowid=(SELECT rowid FROM memory_index WHERE memory_id=?)`, gone.ID).Scan(&fts); err != nil || fts != 1 {
+		t.Fatalf("fts rows %d %v", fts, err)
+	}
+	if got, err := s.Find(FindInput{Query: "드라이런", AllProjects: true}); err != nil || len(got) != 1 || got[0].ID != gone.ID {
+		t.Fatalf("find after fill %v %v", titlesOf(got), err)
 	}
 }

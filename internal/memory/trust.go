@@ -114,12 +114,9 @@ func higherTrust(a, b string) string {
 	return a
 }
 
-// TrustNote is the mark a recall line of m carries when m is not to be believed (its sources are all
-// untrusted or system), or "".
-func TrustNote(m Memory) string { return TrustNoteIn(i18n.Current(), m) }
-
-// TrustNoteIn is TrustNote in the language lang, for a text that is written in one language whatever the
-// setting is (the recall text).
+// TrustNoteIn is the mark, in the language lang, a recall line of m carries when m is not to be believed
+// (its sources are all untrusted or system), or "". The recall text is written in one language whatever the
+// setting is, so the caller names it.
 func TrustNoteIn(lang i18n.Lang, m Memory) string {
 	if !Untrusted(m.Trust) {
 		return ""
@@ -220,6 +217,34 @@ func trustOfAll(q querier, ids []string) (string, error) {
 		out = higherTrust(out, t)
 	}
 	return out, nil
+}
+
+// mayOverride says whether what stands on trust next may replace or write over a memory of trust cur: what
+// is all untrusted or system does not touch a memory of the owner or an agent (D7) unless the user's words
+// (userWords) come with it. Supersede, a save's Replaces and an update's new sources all ask here.
+func mayOverride(next, cur, userWords string) bool {
+	return !Untrusted(next) || Untrusted(cur) || strings.TrimSpace(userWords) != ""
+}
+
+// resolveTrusts gives srcs their trust under limit (as a save's sources) and says the highest of them ("" for
+// none). A kind this version does not know is ErrInvalid.
+func resolveTrusts(limit string, srcs []Source) ([]Source, string, error) {
+	if len(srcs) == 0 {
+		return nil, "", nil
+	}
+	out, top := make([]Source, len(srcs)), ""
+	for i, src := range srcs {
+		if !contains(SourceKinds, src.Kind) {
+			return nil, "", ErrInvalid
+		}
+		t, err := ResolveTrust(limit, src.Kind, src.Trust)
+		if err != nil {
+			return nil, "", err
+		}
+		src.Trust = t
+		out[i], top = src, higherTrust(top, t)
+	}
+	return out, top, nil
 }
 
 // resolveSources gives the sources of a save their trust under the save's limit.

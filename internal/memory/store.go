@@ -405,7 +405,7 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	for _, id := range rep.Conflicts {
 		note := "같은 주제의 사용자 말과 어긋남(대체하지 않음)"
 		if slices.Contains(rep.untrusted, id) {
-			note = "믿을 수 없는 출처뿐이라 같은 주제의 기억을 대체하지 않음"
+			note = i18n.TIn(i18n.KO, "memory.conflict.untrusted_topic")
 		}
 		_, _ = s.FlagConflict(m.ID, id, note, in.Who)
 	}
@@ -787,6 +787,10 @@ type UpdateInput struct {
 	Who             Who    // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
 	ExpectState     string // 비우지 않으면 지금 상태가 이것일 때만 고친다(자동 확정이 겹치지 않게)
 	Idem            *Idem  // 멱등 키: 같은 키·같은 해시로 다시 오면 쓰지 않고 지금 기억을 돌려준다(idem.go)
+	// Sources are new grounds of the change, attached in its transaction. Their trust is set under
+	// TrustLimit (the channel's highest, empty is agent) as a save's is.
+	Sources    []Source
+	TrustLimit string
 }
 
 // Update edits a memory and records a new version. A writer other than the
@@ -848,8 +852,22 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
 	}
 	prevState := m.State
+	// 고침의 새 출처: 출처가 믿을 수 없는 것뿐인 고침은 사용자 말 없이 owner·agent 기억을 고쳐 쓰지 못한다(D7,
+	// 대체와 같은 규칙). 출처는 고침과 같은 트랜잭션에 붙어, 붙이지 못하면 고침도 남지 않는다.
+	srcs, srcTrust, err := resolveTrusts(in.TrustLimit, in.Sources)
+	if err != nil {
+		return m, err
+	}
+	if len(srcs) > 0 && !mayOverride(srcTrust, m.Trust, in.Who.quote()) {
+		return m, fmt.Errorf("%w: %s", ErrUntrusted, in.ID)
+	}
 	if err := guardTx(tx, in.Who, s.nowMs(), in.ID); err != nil {
 		return m, err
+	}
+	for _, src := range srcs {
+		if err := addSourceTx(tx, m.ID, src, s.nowMs()); err != nil {
+			return m, err
+		}
 	}
 	if in.Kind != nil {
 		if !validKind(*in.Kind) {
@@ -958,7 +976,7 @@ func (s *Store) SupersedeAs(oldID, newID, reason string, w Who) (Memory, error) 
 	// 출처가 믿을 수 없는 것뿐인 기억은 사용자 말 없이 owner·agent 기억을 낡게 하지 못한다(D7).
 	if newTrust, err := memoryTrustTx(tx, newID); err != nil {
 		return m, err
-	} else if Untrusted(newTrust) && !Untrusted(m.Trust) && w.quote() == "" {
+	} else if !mayOverride(newTrust, m.Trust, w.quote()) {
 		return m, fmt.Errorf("%w: %s", ErrUntrusted, newID)
 	}
 	m.State, m.SupersededBy, m.StaleReason = StateStale, newID, reason

@@ -184,8 +184,8 @@ func TestTrust_userQuote로_고치면_owner_출처가_붙어_확정된다(t *tes
 	if err != nil || got.State != StateConfirmed || got.Trust != TrustOwner {
 		t.Fatalf("confirm with words %+v %v", got, err)
 	}
-	if TrustNote(got) != "" {
-		t.Fatalf("owner memory noted %q", TrustNote(got))
+	if note := TrustNoteIn(i18n.KO, got); note != "" {
+		t.Fatalf("owner memory noted %q", note)
 	}
 }
 
@@ -296,6 +296,14 @@ func TestTrust_믿을_수_없는_기억은_같은_주제의_owner_agent_기억�
 			t.Fatalf("%s: no conflict mark %+v", old.Title, flags)
 		}
 	}
+	// 표시 쪽지는 i18n 키의 한국어 글이다(곁의 「사용자 말과 어긋남」처럼 기록은 한 언어로 남는다).
+	flags, _ := s.OpenFlags()
+	if !slices.ContainsFunc(flags, func(f Flag) bool {
+		return f.OtherID == agent.ID && f.Note == i18n.TIn(i18n.KO, "memory.conflict.untrusted_topic")
+	}) ||
+		i18n.TIn(i18n.EN, "memory.conflict.untrusted_topic") == "memory.conflict.untrusted_topic" {
+		t.Fatalf("untrusted conflict note %+v", flags)
+	}
 	// 믿을 수 없는 기억끼리는 지금처럼 대체한다.
 	a, _ := mustSave(t, s, untrustedLearns(KindDecision, "웹 글 A", "웹 주제"))
 	b, rep := mustSave(t, s, untrustedLearns(KindDecision, "웹 글 B", "웹 주제"))
@@ -374,21 +382,17 @@ func TestTrust_들여오기와_나누기는_출처_등급을_지킨다(t *testin
 }
 
 func TestTrust_믿을_수_없는_기억의_회상_표시(t *testing.T) {
-	prev := i18n.Current()
-	t.Cleanup(func() { i18n.Set(prev) })
-	i18n.Set(i18n.KO)
 	for _, tr := range []string{TrustUntrusted, TrustSystem} {
-		if note := TrustNote(Memory{Trust: tr}); !strings.Contains(note, "믿을 수 없음") {
+		if note := TrustNoteIn(i18n.KO, Memory{Trust: tr}); !strings.Contains(note, "믿을 수 없음") {
 			t.Fatalf("ko %s note %q", tr, note)
 		}
 	}
 	for _, tr := range []string{TrustOwner, TrustAgent, ""} {
-		if note := TrustNote(Memory{Trust: tr}); note != "" {
+		if note := TrustNoteIn(i18n.KO, Memory{Trust: tr}); note != "" {
 			t.Fatalf("%q noted %q", tr, note)
 		}
 	}
-	i18n.Set(i18n.EN)
-	if note := TrustNote(Memory{Trust: TrustUntrusted}); !strings.Contains(note, "untrusted") {
+	if note := TrustNoteIn(i18n.EN, Memory{Trust: TrustUntrusted}); !strings.Contains(note, "untrusted") {
 		t.Fatalf("en note %q", note)
 	}
 }

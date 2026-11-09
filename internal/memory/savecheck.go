@@ -42,6 +42,7 @@ type Similar struct {
 	Summary string // 본문 한 줄, similarSummaryRunes자 이하
 	Topic   string
 	Score   float64 // 0~1
+	Trust   string  // 기억의 등급(출처 가운데 가장 높은 것, trust.go)
 }
 
 // SaveCheckResult is what SaveCheck found.
@@ -94,7 +95,7 @@ func (s *Store) SaveCheck(in SaveInput, min float64) (SaveCheckResult, error) {
 		m := h.Memory
 		if sc := similarity(n, memoryTokens(m.Title, m.Topic, m.Tags, m.Body)); sc >= min {
 			r.Similar = append(r.Similar, Similar{ID: m.ID, Kind: m.Kind, Title: m.Title, Summary: summaryOf(m.Body),
-				Topic: m.Topic, Score: sc})
+				Topic: m.Topic, Score: sc, Trust: m.Trust})
 		}
 	}
 	// 비교용으로 반올림한다: 같은 값의 부동소수점 오차가 순서를 가르지 않게(FindScored와 같다).

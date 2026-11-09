@@ -65,7 +65,7 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		} else if id == in.Replaces {
 			// 고른 옛 판(Replaces)은 SupersedeAs처럼 막는다: 사용자 말 보호는 save가 guardTx로 이미 거쳤고,
 			// 믿을 수 없는 출처뿐인 새 판은 owner·agent 판을 낡게 하지 못한다(D7) — 어긋남으로 두지 않고 거절한다.
-			if Untrusted(newTrust) && !Untrusted(old.Trust) && in.Who.quote() == "" {
+			if !mayOverride(newTrust, old.Trust, in.Who.quote()) {
 				return rep, fmt.Errorf("%w: %s", ErrUntrusted, m.ID)
 			}
 		} else if p, err := protectedTx(tx, id); err != nil {
@@ -73,7 +73,7 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		} else if p {
 			rep.Conflicts = append(rep.Conflicts, id) // AI·자동화는 사용자 말을 대체하지 않는다
 			continue
-		} else if Untrusted(newTrust) && !Untrusted(old.Trust) {
+		} else if !mayOverride(newTrust, old.Trust, "") {
 			rep.Conflicts = append(rep.Conflicts, id)
 			rep.untrusted = append(rep.untrusted, id)
 			continue
