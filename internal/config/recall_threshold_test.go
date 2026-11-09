@@ -71,3 +71,54 @@ func TestPromptRecallChars는_recallChars와_500자_중_작은_값이다(t *test
 		t.Fatalf("0 → %d", got)
 	}
 }
+
+// 맞은 낱말이 하나뿐인 기억의 맞은 비율 문턱 recallMinCoverageOneWord(설계 보완, 1-6 b6 R1)와 위임 회상의 세 문턱
+// taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative(T1). 비율·점수는 0 < x ≤ 1, 낱말 수는 1~40(요청 낱말 상한)만
+// 받고, 키가 없는 옛 파일은 기본값으로 읽는다.
+func TestRecallThresholds_한_낱말_비율과_위임_문턱의_기본값과_범위(t *testing.T) {
+	d := Default()
+	if d.RecallMinCoverageOneWord != DefaultRecallMinCoverageOneWord || d.TaskRecallMinScore != DefaultTaskRecallMinScore ||
+		d.TaskRecallMinWords != DefaultTaskRecallMinWords || d.TaskRecallMinRelative != DefaultTaskRecallMinRelative {
+		t.Fatalf("default = %+v", d)
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"inject":"full","recallMinCoverage":0.25}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.RecallMinCoverageOneWord != DefaultRecallMinCoverageOneWord || c.TaskRecallMinWords != DefaultTaskRecallMinWords ||
+		c.TaskRecallMinScore != DefaultTaskRecallMinScore || c.TaskRecallMinRelative != DefaultTaskRecallMinRelative {
+		t.Fatalf("old file = %+v %v", c, err)
+	}
+	floats := map[string]func(*Config) *float64{
+		"recallMinCoverageOneWord": func(c *Config) *float64 { return &c.RecallMinCoverageOneWord },
+		"taskRecallMinScore":       func(c *Config) *float64 { return &c.TaskRecallMinScore },
+		"taskRecallMinRelative":    func(c *Config) *float64 { return &c.TaskRecallMinRelative },
+	}
+	for key, field := range floats {
+		for _, bad := range []float64{0, -0.1, 1.01, math.NaN()} {
+			c := Default()
+			*field(&c) = bad
+			if err := c.Validate(); err == nil || !strings.Contains(err.Error(), key) {
+				t.Errorf("%s %v accepted or unclear: %v", key, bad, err)
+			}
+		}
+		c := Default()
+		*field(&c) = 1
+		if err := c.Validate(); err != nil {
+			t.Errorf("%s 1: %v", key, err)
+		}
+	}
+	for _, bad := range []int{0, -1, 41} {
+		c := Default()
+		c.TaskRecallMinWords = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "taskRecallMinWords") {
+			t.Errorf("taskRecallMinWords %d accepted or unclear: %v", bad, err)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"recallMinCoverageOneWord":0.5,"taskRecallMinScore":0.2,"taskRecallMinWords":4,"taskRecallMinRelative":0.6}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.RecallMinCoverageOneWord != 0.5 || c.TaskRecallMinScore != 0.2 || c.TaskRecallMinWords != 4 || c.TaskRecallMinRelative != 0.6 {
+		t.Fatalf("file = %+v %v", c, err)
+	}
+}

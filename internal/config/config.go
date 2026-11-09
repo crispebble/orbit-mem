@@ -105,22 +105,45 @@ type Config struct {
 	// 요청 회상의 두 문턱(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계): 기억은 찾기 점수(0~1, memory.RecallQuery로 찾은
 	// 점수)가 recallMinScore 이상이고 요청의 뜻 있는 낱말 중 맞은 비율(0~1)이 recallMinCoverage 이상일 때만 요청 회상에 든다.
 	// 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
-	RecallMinScore    float64 `json:"recallMinScore"`
-	RecallMinCoverage float64 `json:"recallMinCoverage"`
+	// recallMinCoverage는 맞은 낱말이 둘 이상인 기억의 비율 문턱이고, 맞은 낱말이 하나뿐인 기억은 recallMinCoverageOneWord를
+	// 넘어야 한다(설계 보완, 계획 1-6 b6 R1): 「낱말 넷 중 하나」처럼 흔한 낱말 하나로 맞은 주제 밖 기억을 막는다.
+	RecallMinScore           float64 `json:"recallMinScore"`
+	RecallMinCoverage        float64 `json:"recallMinCoverage"`
+	RecallMinCoverageOneWord float64 `json:"recallMinCoverageOneWord"`
 	// 요청 회상의 상대 문턱(설계 보완, 계획 1-6 b6): 두 문턱을 넘은 기억 가운데 찾기 점수가 1위의 recallMinRelative배
 	// 미만인 것은 뺀다. 확정을 앞에 두는 순서 때문에 약하게 맞은 기억이 3줄에 끼는 것을 막는다. 0 < x ≤ 1. 이 키가 없는 옛
 	// 파일은 기본값이다.
 	RecallMinRelative float64 `json:"recallMinRelative"`
+	// 위임 회상의 문턱(설계 보완, 계획 1-6 b6 T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 위임 글의 내용 낱말
+	// (명령형 어미·위임 머리 낱말·항목 번호를 뺀 것, memory.TaskWords) 가운데 taskRecallMinWords개 이상이 맞고, 찾기 점수가
+	// taskRecallMinScore 이상이며, 1위 점수의 taskRecallMinRelative배 이상인 기억만 넣는다. 점수·배는 0 < x ≤ 1, 낱말 수는
+	// 1~40이다. 이 키가 없는 옛 파일은 기본값이다.
+	TaskRecallMinScore    float64 `json:"taskRecallMinScore"`
+	TaskRecallMinWords    int     `json:"taskRecallMinWords"`
+	TaskRecallMinRelative float64 `json:"taskRecallMinRelative"`
 }
 
-// 요청 회상 문턱의 기본값(계획 1-6 b6). 공개 평가 묶음 학습용(internal/bench/testdata/public_set.json)을 훑어, 틀린 회상
-// ≤10%·넣지 않음 ≥90% 안에서 적중이 가장 높고(57/64), 그중 틀린 회상이 가장 적고(6/79), 그중 가장 낮은 값이다. 학습용을
-// 세션 단위로 반씩 나눠도 두 반 모두 틀린 회상 ≤10%다. 위임 회상도 같은 값을 쓴다(위임 전용 값은 학습용에서 나아지지 않았다).
+// 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
+// 개발 자료)로 골랐다: 요청 적중 77/91·틀린 회상 7/104·넣지 않음 42/46, 위임 적중 4/21·틀린 0/19·넣지 않음 6/6.
+//   - recallMinScore 0.3: 저장소가 모르는 낱말을 빼고 재는 회상 점수에서 0.2~0.35가 같은 결과인 평탄 구간의 가운데다(0.4부터
+//     적중이 준다).
+//   - recallMinCoverage 0.25·recallMinCoverageOneWord 0.3: 한 낱말 비율을 0.25로 내리면 틀린 회상이 14.7%로, 0.35로 올리면
+//     적중이 73/91로 바뀐다.
+//   - recallMinRelative 0.9: 0.85와 같은 결과다.
+//   - 위임 taskRecallMinWords 3: 2면 틀린 회상 35%, 4면 적중 1/21. taskRecallMinScore 0.1(0.05~0.15 같음)·
+//     taskRecallMinRelative 0.3(0.25~0.35 같음).
 const (
-	DefaultRecallMinScore    = 0.35
-	DefaultRecallMinCoverage = 0.25
-	DefaultRecallMinRelative = 0.9
+	DefaultRecallMinScore           = 0.3
+	DefaultRecallMinCoverage        = 0.25
+	DefaultRecallMinCoverageOneWord = 0.3
+	DefaultRecallMinRelative        = 0.9
+	DefaultTaskRecallMinScore       = 0.1
+	DefaultTaskRecallMinWords       = 3
+	DefaultTaskRecallMinRelative    = 0.3
 )
+
+// MaxTaskRecallMinWords is the largest taskRecallMinWords: a request has at most 40 meaningful words.
+const MaxTaskRecallMinWords = 40
 
 // MaxPromptRecallChars is the length of the work recall of one request (설계 4절 B1 ≤500자). recallChars can only lower it.
 const MaxPromptRecallChars = 500
@@ -182,7 +205,8 @@ func Default() Config {
 		RecallChars: 1000, LedgerWindowDays: 7,
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
 		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
-		RecallMinRelative: DefaultRecallMinRelative}
+		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
+		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -222,6 +246,18 @@ func (c Config) Validate() error {
 	}
 	if !(c.RecallMinRelative > 0 && c.RecallMinRelative <= 1) {
 		return i18n.Errorf("config.err.recall_min_relative", c.RecallMinRelative)
+	}
+	if !(c.RecallMinCoverageOneWord > 0 && c.RecallMinCoverageOneWord <= 1) {
+		return i18n.Errorf("config.err.recall_min_coverage_one_word", c.RecallMinCoverageOneWord)
+	}
+	if !(c.TaskRecallMinScore > 0 && c.TaskRecallMinScore <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_score", c.TaskRecallMinScore)
+	}
+	if c.TaskRecallMinWords < 1 || c.TaskRecallMinWords > MaxTaskRecallMinWords {
+		return i18n.Errorf("config.err.task_recall_min_words", MaxTaskRecallMinWords, c.TaskRecallMinWords)
+	}
+	if !(c.TaskRecallMinRelative > 0 && c.TaskRecallMinRelative <= 1) {
+		return i18n.Errorf("config.err.task_recall_min_relative", c.TaskRecallMinRelative)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

@@ -110,3 +110,15 @@ func TestRecallHits_어느_기억에도_없는_낱말은_점수를_깎지_않고
 		t.Fatalf("찾기 점수는 없는 낱말도 분모에 넣어야 함: %v ≥ %v", g, f)
 	}
 }
+
+// 낱말 앞뒤의 구두점·괄호는 낱말이 아니다: 「보고하라.」「m2:」「변경(pr」이 그대로 남으면 어느 기억에도 맞지 않는 낱말로
+// 셈해 맞은 비율을 낮춘다. 낱말 안의 점·붙임표(node.js, api-key)는 남긴다.
+func TestMeaningfulWords_낱말_앞뒤의_구두점과_괄호를_뗀다(t *testing.T) {
+	got := MeaningfulWords("m2: 변경(pr 초안)을 「설계안」에 node.js·api-key와 함께 보고하라.")
+	if want := []string{"m2", "변경", "pr", "초안", "설계안", "node.js", "api-key", "함께", "보고하라"}; !slices.Equal(got, want) {
+		t.Fatalf("뜻 있는 낱말 %v, want %v", got, want)
+	}
+	if q := RecallQuery("(a) 7. 배포!"); q != "a 7 배포" {
+		t.Fatalf("찾기 질의 %q", q)
+	}
+}

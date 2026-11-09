@@ -563,34 +563,88 @@ func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
 	return memory.Memory{}, false
 }
 
-// thresholds are the three thresholds of a recall: find score, share of words, share of the best score.
-type thresholds struct{ score, cover, relative float64 }
-
-// requestThresholds are the thresholds of the work recall of a request (B1).
-func requestThresholds(cfg config.Config) thresholds {
-	score, cover := recallThresholds(cfg)
-	return thresholds{score, cover, recallRelative(cfg)}
+// thresholds are the gate of a recall (설계 5.1 4단계, 설계 보완 1-6 b6).
+//
+//   - 요청 회상(B1, R1): 찾기 점수 ≥ score, 맞은 비율 ≥ cover(맞은 낱말이 둘 이상) 또는 ≥ coverOne(하나뿐), 1위 점수의
+//     relative배 이상. 한 낱말 문턱을 따로 두는 까닭: 맞은 비율은 낱말 수에 따라 1/3·1/4처럼 띄엄띄엄한 값이고, 「낱말 넷 중
+//     흔한 낱말 하나」는 주제 밖 요청과 가를 수 없다.
+//   - 위임 회상(T1): 위임 글은 길고 여러 주제라 맞은 비율을 쓰지 않는다. 시키는 말을 뺀 내용 낱말(memory.TaskWords)
+//     minWords개 이상이 맞고, 찾기 점수 ≥ score, 1위 점수의 relative배 이상(5개까지 넣으니 둘째·셋째 주제를 살리게 낮다).
+type thresholds struct {
+	score, cover, coverOne, relative float64
+	minWords                         int
+	task                             bool
 }
 
-// recallThresholds are the two thresholds of the work recall, the defaults where the settings carry none.
+// requestThresholds are the thresholds of the work recall of a request (B1), the defaults where the settings carry none.
+func requestThresholds(cfg config.Config) thresholds {
+	score, cover := recallThresholds(cfg)
+	return thresholds{score: score, cover: cover, coverOne: orDefault(cfg.RecallMinCoverageOneWord, config.DefaultRecallMinCoverageOneWord),
+		relative: recallRelative(cfg)}
+}
+
+// taskThresholds are the thresholds of the recall of a delegated task (T1), the defaults where the settings carry none.
+func taskThresholds(cfg config.Config) thresholds {
+	words := cfg.TaskRecallMinWords
+	if words <= 0 {
+		words = config.DefaultTaskRecallMinWords
+	}
+	return thresholds{score: orDefault(cfg.TaskRecallMinScore, config.DefaultTaskRecallMinScore), minWords: words,
+		relative: orDefault(cfg.TaskRecallMinRelative, config.DefaultTaskRecallMinRelative), task: true}
+}
+
+func orDefault(v, d float64) float64 {
+	if v <= 0 {
+		return d
+	}
+	return v
+}
+
+// pass says whether a hit passes the gate, before the relative floor.
+func (th thresholds) pass(h memory.RecallHit) bool {
+	if h.Score <= 0 || h.Score < th.score {
+		return false
+	}
+	if th.task {
+		return len(h.Matched) >= th.minWords
+	}
+	return h.Coverage >= th.coverFor(len(h.Matched))
+}
+
+// coverFor is the share-of-words threshold of a request hit with n matched words.
+func (th thresholds) coverFor(n int) float64 {
+	if n == 1 {
+		return th.coverOne
+	}
+	return th.cover
+}
+
+// words are the words of text the recall matches: a request's meaningful words, a task's content words.
+func (th thresholds) words(text string) []string {
+	if th.task {
+		return memory.TaskWords(text)
+	}
+	return memory.MeaningfulWords(text)
+}
+
+// hits are the memories in states that text matches, measured as this recall measures them.
+func (th thresholds) hits(s *memory.Store, text string, states ...string) ([]memory.RecallHit, error) {
+	if th.task {
+		return s.TaskRecallHitsIn(text, states...)
+	}
+	return s.RecallHitsIn(text, states...)
+}
+
+// recallThresholds are the score and share thresholds of the work recall of a request (matched words two or
+// more), the defaults where the settings carry none.
 func recallThresholds(cfg config.Config) (score, cover float64) {
-	score, cover = cfg.RecallMinScore, cfg.RecallMinCoverage
-	if score <= 0 {
-		score = config.DefaultRecallMinScore
-	}
-	if cover <= 0 {
-		cover = config.DefaultRecallMinCoverage
-	}
-	return score, cover
+	return orDefault(cfg.RecallMinScore, config.DefaultRecallMinScore), orDefault(cfg.RecallMinCoverage, config.DefaultRecallMinCoverage)
 }
 
 // recallRelative is the relative threshold of the work recall (설계 보완, 1-6 b6), the default where the
 // settings carry none.
 func recallRelative(cfg config.Config) float64 {
-	if cfg.RecallMinRelative <= 0 {
-		return config.DefaultRecallMinRelative
-	}
-	return cfg.RecallMinRelative
+	return orDefault(cfg.RecallMinRelative, config.DefaultRecallMinRelative)
 }
 
 // recallHits are the memories of byID, less those the session was told, that pass both thresholds
@@ -608,15 +662,15 @@ func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Plac
 	return rankHits(s, cfg, pl, prompt, kept)
 }
 
-// recallFloor is the hits of byID that pass both thresholds, and the relative floor (설계 보완, 1-6 b6):
+// recallFloor is the hits of byID that pass the gate (thresholds.pass), and the relative floor (설계 보완, 1-6 b6):
 // recallMinRelative times the best of their find scores, less a rounding margin. The best counts the memories
 // the session was already told: a memory weak next to the best match of the request stays out when that one
 // was told before (L-2: the same request again is 0 characters).
 func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
-	if len(memory.MeaningfulWords(prompt)) < minRecallWords {
+	if len(th.words(prompt)) < max(minRecallWords, th.minWords) {
 		return nil, 0
 	}
-	found, err := s.RecallHits(prompt)
+	found, err := th.hits(s, prompt)
 	if err != nil {
 		return nil, 0
 	}
@@ -624,7 +678,7 @@ func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]
 	top := 0.0
 	for _, h := range found {
 		m, ok := byID[h.Memory.ID]
-		if !ok || h.Score < th.score || h.Coverage < th.cover {
+		if !ok || !th.pass(h) {
 			continue
 		}
 		h.Memory = m

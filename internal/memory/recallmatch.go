@@ -10,7 +10,7 @@ import (
 //
 //   - 점수(Score): 요청의 찾기 질의(RecallQuery)를 찾기(FindScored)와 같은 함수로 매긴 0~1 값이다(rank.go). 다만 어느
 //     기억에도 없는 토큰은 분모에서 뺀다(SkipUnknownTokens, 설계 보완 1-6 b6). 그 토큰은 모든 기억에 같은 몫이라 순위는
-//     memory_find와 거의 같고 값만 오른다. 질의는 뜻 있는 낱말(조사·어미를 뗀 것, stem.go)에 한 글자 숫자·라틴 낱말을
+//     memory_find와 거의 같고 값만 오른다. 이 빼기는 회상에만 있다: 찾기 점수는 순위용, 회상 점수는 문 여닫기용이다(rank.go). 질의는 뜻 있는 낱말(조사·어미를 뗀 것, stem.go)에 한 글자 숫자·라틴 낱말을
 //     더한 것이다: 「확정 규칙 7」의 7이 빠지면 제목만 다른 「확정 규칙 N」들이 모두 같은 점수가 된다.
 //   - 맞은 비율(Coverage): 뜻 있는 낱말 중 기억(제목·주제·태그·본문)에 나온 낱말 수 ÷ 뜻 있는 낱말 수다(IDF 무게 없음).
 //     세 글자 이상 한글 낱말은 두 글자 이상 앞부분이 나와도 맞은 것으로 센다(조사·어미: 「설치해」는 「설치한다」에 맞는다).
@@ -60,11 +60,15 @@ func (s *Store) RecallHits(prompt string) ([]RecallHit, error) { return s.Recall
 // RecallHitsIn is RecallHits over the memories in states (none: candidate and confirmed), so a caller can
 // see the stale versions a request also matches.
 func (s *Store) RecallHitsIn(prompt string, states ...string) ([]RecallHit, error) {
-	words := MeaningfulWords(prompt)
+	return s.recallHitsOf(MeaningfulWords(prompt), RecallQuery(prompt), states)
+}
+
+// recallHitsOf are the memories in states that the find query matches, with the share of words each has.
+func (s *Store) recallHitsOf(words []string, query string, states []string) ([]RecallHit, error) {
 	if len(words) == 0 {
 		return nil, nil
 	}
-	found, err := s.FindScored(FindInput{Query: RecallQuery(prompt), States: states, AllProjects: true, Limit: math.MaxInt32, SkipUnknownTokens: true})
+	found, err := s.FindScored(FindInput{Query: query, States: states, AllProjects: true, Limit: math.MaxInt32, SkipUnknownTokens: true})
 	if err != nil {
 		return nil, err
 	}

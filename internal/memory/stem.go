@@ -18,6 +18,11 @@ import (
 //   - 떼고 남는 어간이 두 글자 이상일 때만 뗀다. 한 글자로 남는 것은 은·는·을·를·이만 뗀다(「꼴이」→꼴, 「키를」→키).
 //     「가·도·로·에」는 「추가·속도·경로」처럼 두 글자 명사의 끝 글자와 겹쳐 한 글자 어간으로는 떼지 않는다.
 //   - 라틴·숫자로 시작하는 어절은 뒤 한글이 통째로 목록에 있을 때만 그 한글을 뗀다(「pnpm으로」→pnpm).
+//   - 굳은 부사(fixedAdverbs)는 떼지 않는다: 「제대로」「대체로」는 명사+조사가 아니라 한 낱말이라, 떼면 「제대」「대체(바꿈)」
+//     처럼 다른 낱말이 된다. 목록은 표준국어대사전의 부사 표제어 가운데 「-로」로 끝나 조사 「로」로 잘못 떼이는 것이다.
+//
+// 낱말 앞뒤의 구두점·괄호·따옴표는 낱말이 아니다(splitWordMarks): 「보고하라.」「m2:」「변경(pr」을 그대로 두면 어느
+// 기억에도 없는 낱말로 셈한다. 낱말 안의 점·붙임표·밑줄·빗금·더하기·샵(node.js, api-key, c++, c#)은 남긴다.
 
 // tailRule says which syllable a tail may follow.
 type tailRule int
@@ -37,6 +42,9 @@ var stemTailOrder []string
 
 // oneSyllableStemTails are the tails taken off even when one syllable is left.
 var oneSyllableStemTails = map[string]bool{"은": true, "는": true, "을": true, "를": true, "이": true}
+
+// fixedAdverbs are adverbs that end in 로 without a particle (see above). Stemming leaves them whole.
+var fixedAdverbs = map[string]bool{}
 
 // functionSyllables are one-syllable words of closed classes (대명사·관형사·부사·의존명사·조사·흔한 용언 활용) that say
 // nothing about a topic. Other one-syllable Hangul words (앱·키·꼴) are nouns and stay.
@@ -59,6 +67,10 @@ func init() {
 		하나 하나요 하는지 했는지 할지 할까 합니다 했습니다
 		되다 된다 돼 돼요 되는 된 될 되면 되고 됐 됐다 됐어 되나 되는지 됐는지 됩니다
 		는지 은지 을지 려면 으려면 는데 은데 으면 면 어야 아야 어도 아도 어서 아서 고 지 죠 다 요 나요 을까 냐 니 서`)
+	for _, w := range strings.Fields(`제대로 그대로 이대로 저대로 멋대로 제멋대로 마음대로 저절로 스스로 함부로 대체로 때때로 날로 홀로
+		새로 따로 별로 서로 절로 주로`) {
+		fixedAdverbs[w] = true
+	}
 	for t := range stemTails {
 		stemTailOrder = append(stemTailOrder, t)
 	}
@@ -111,7 +123,7 @@ func tailFits(rule tailRule, before rune) bool {
 // stemWord takes a closed particle or ending off a word (see the rules above). Other words are unchanged.
 func stemWord(w string) string {
 	rs := []rune(w)
-	if len(rs) < 2 {
+	if len(rs) < 2 || fixedAdverbs[w] {
 		return w
 	}
 	if kindOf(rs[0]) != kindHangul {
@@ -153,7 +165,11 @@ func stemWord(w string) string {
 func requestWords(prompt string, withShort bool) []string {
 	var out []string
 	seen := map[string]bool{}
+	var terms []string
 	for _, t := range Terms(prompt, 64) {
+		terms = append(terms, splitWordMarks(t)...)
+	}
+	for _, t := range terms {
 		if stopwords[t] {
 			continue
 		}
@@ -176,6 +192,22 @@ func requestWords(prompt string, withShort bool) []string {
 		out = append(out, w)
 		if len(out) == 40 {
 			break
+		}
+	}
+	return out
+}
+
+// wordJoiners are the marks a word keeps inside it (node.js, api-key, snake_case, a/b, c++, c#).
+const wordJoiners = ".-_/+#"
+
+// splitWordMarks splits a term at the marks that are not part of a word (brackets, quotes, colons, the
+// middle dot) and trims the joiners off the ends of each part: 「변경(pr」 → 변경, pr; 「보고하라.」 → 보고하라.
+func splitWordMarks(t string) []string {
+	parts := strings.FieldsFunc(t, func(r rune) bool { return !isTokenRune(r) && !strings.ContainsRune(wordJoiners, r) })
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.Trim(p, wordJoiners); p != "" {
+			out = append(out, p)
 		}
 	}
 	return out

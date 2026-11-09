@@ -50,3 +50,15 @@ func TestMeaningfulWords_뗀_뒤_같은_낱말은_한_번만(t *testing.T) {
 		t.Fatalf("뜻 있는 낱말 %v, want %v", got, want)
 	}
 }
+
+// 굳은 부사(표준국어대사전 부사 표제어)는 「-로」로 끝나도 조사가 아니다: 떼면 「제대」「대체(바꿈)」처럼 다른 낱말이 된다.
+func TestStemWord_굳은_부사는_떼지_않는다(t *testing.T) {
+	for _, w := range []string{"제대로", "그대로", "이대로", "저절로", "스스로", "함부로", "대체로", "때때로", "멋대로", "마음대로"} {
+		if got := stemWord(w); got != w {
+			t.Errorf("stemWord(%q) = %q, want %q", w, got, w)
+		}
+	}
+	if got := MeaningfulWords("백업을 제대로 확인"); !slices.Equal(got, []string{"백업", "제대로", "확인"}) {
+		t.Fatalf("뜻 있는 낱말 %v", got)
+	}
+}

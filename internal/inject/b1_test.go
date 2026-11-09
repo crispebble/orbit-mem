@@ -292,7 +292,8 @@ func TestB1_상대_문턱_밑은_빠진다(t *testing.T) {
 		{"1위의 배수에 모자라면 빠진다", ws/ss + 1e-6, false},
 	} {
 		cfg := config.Default()
-		cfg.RecallMinScore, cfg.RecallMinCoverage, cfg.RecallMinRelative = 0.01, 0.01, c.rel
+		// 약한 기억은 낱말 넷 중 하나(캐시)만 맞으니 한 낱말 비율 문턱(R1)도 낮춰 상대 문턱만 본다.
+		cfg.RecallMinScore, cfg.RecallMinCoverage, cfg.RecallMinCoverageOneWord, cfg.RecallMinRelative = 0.01, 0.01, 0.01, c.rel
 		text := PromptInjection(s, cfg, here, prompt).Text
 		if got := strings.Contains(text, weak.ID); got != c.want || !strings.Contains(text, strong.ID) {
 			t.Errorf("%s: 약한 기억 나옴 %v, want %v (강한 기억은 늘)\n%s", c.name, got, c.want, text)

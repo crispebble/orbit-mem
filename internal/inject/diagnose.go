@@ -149,10 +149,10 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		}
 	} else if strings.TrimSpace(in.Prompt) == "" {
 		add(StageSelected, Unknown, "no_prompt")
-	} else if score, cover, matched := recallMeasures(s, m, in.Prompt); !passes(cfg, in.Prompt, score, cover) {
-		minScore, minCover := recallThresholds(cfg)
+	} else if score, cover, matched := recallMeasures(s, m, in.Prompt); !passes(cfg, in.Prompt, score, cover, matched) {
+		th := requestThresholds(cfg)
 		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(memory.MeaningfulWords(in.Prompt), " "),
-			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", minScore), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", minCover))
+			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", th.score), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", th.coverFor(len(matched))))
 	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID); score < floor {
 		add(StageSelected, No, "below_top", fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", floor), fmt.Sprintf("%.2f", recallRelative(cfg)))
 	} else {
@@ -278,10 +278,10 @@ func recallMeasures(s *memory.Store, m memory.Memory, prompt string) (score, cov
 	return score, cover, matched
 }
 
-// passes says whether both measures reach their thresholds.
-func passes(cfg config.Config, prompt string, score, cover float64) bool {
-	minScore, minCover := recallThresholds(cfg)
-	return len(memory.MeaningfulWords(prompt)) >= minRecallWords && score > 0 && score >= minScore && cover >= minCover
+// passes says whether the measures pass the gate of the work recall of a request (thresholds.pass).
+func passes(cfg config.Config, prompt string, score, cover float64, matched []string) bool {
+	return len(memory.MeaningfulWords(prompt)) >= minRecallWords &&
+		requestThresholds(cfg).pass(memory.RecallHit{Score: score, Coverage: cover, Matched: matched})
 }
 
 func day(ms int64) string { return time.UnixMilli(ms).Local().Format("2006-01-02") }

@@ -37,9 +37,10 @@ func TestDiagnose_요청과_약하게_겹치면_선택_단계에서_멈춘다(t 
 	if d.StoppedAt != StageSelected || d.LastProven != StageEligible || st.Code != "weak_match" || st.Args[0] != "codex" {
 		t.Fatalf("%+v", d)
 	}
-	// 두 문턱의 값과 재료: 맞은 낱말, 요청 낱말, 점수(문턱), 맞은 비율(문턱).
+	// 두 문턱의 값과 재료: 맞은 낱말, 요청 낱말, 점수(문턱), 맞은 비율(문턱). 맞은 낱말이 하나뿐이라 비율 문턱은 한 낱말
+	// 문턱(recallMinCoverageOneWord, 설계 보완 1-6 b6 R1)이다.
 	if len(st.Args) != 6 || st.Args[1] != "codex 설치 방법 정리 순서" || st.Args[3] != fmt.Sprintf("%.2f", config.DefaultRecallMinScore) || st.Args[4] != "0.20" ||
-		st.Args[5] != fmt.Sprintf("%.2f", config.DefaultRecallMinCoverage) {
+		st.Args[5] != fmt.Sprintf("%.2f", config.DefaultRecallMinCoverageOneWord) {
 		t.Fatalf("args %v", st.Args)
 	}
 }

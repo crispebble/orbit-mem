@@ -27,40 +27,40 @@
         "requests": {
           "cases": 96,
           "hit": {
-            "num": 57,
+            "num": 56,
             "den": 64,
-            "value": 0.8906
+            "value": 0.875
           },
-          "injected": 79,
-          "correct": 70,
+          "injected": 78,
+          "correct": 69,
           "neutral": 3,
           "wrong": {
             "num": 6,
-            "den": 79,
-            "value": 0.0759
+            "den": 78,
+            "value": 0.0769
           },
-          "forbid": 0,
-          "forbidCases": 0,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
-            "num": 30,
+            "num": 29,
             "den": 32,
-            "value": 0.9375
+            "value": 0.9063
           },
           "chars": {
             "n": 82,
-            "mean": 63.7683,
+            "mean": 63.1341,
             "median": 81,
-            "max": 134
+            "max": 132
           },
           "hitByStart": 0,
           "recover": {
-            "num": 1,
-            "den": 1,
+            "num": 2,
+            "den": 2,
             "value": 1
           },
           "recoverMissed": {
-            "num": 7,
-            "den": 7,
+            "num": 8,
+            "den": 8,
             "value": 1
           },
           "b2Chars": {
@@ -71,7 +71,7 @@
           },
           "sessionChars": {
             "n": 62,
-            "mean": 439.4677,
+            "mean": 438.629,
             "median": 414,
             "max": 777
           },
@@ -85,30 +85,30 @@
         "subagent": {
           "cases": 16,
           "hit": {
-            "num": 1,
+            "num": 2,
             "den": 12,
-            "value": 0.0833
+            "value": 0.1667
           },
-          "injected": 8,
-          "correct": 6,
+          "injected": 10,
+          "correct": 10,
           "neutral": 0,
           "wrong": {
-            "num": 2,
-            "den": 8,
-            "value": 0.25
+            "num": 0,
+            "den": 10,
+            "value": 0
           },
-          "forbid": 1,
-          "forbidCases": 1,
+          "forbid": 0,
+          "forbidCases": 0,
           "empty": {
-            "num": 2,
+            "num": 4,
             "den": 4,
-            "value": 0.5
+            "value": 1
           },
           "chars": {
             "n": 16,
-            "mean": 82.0625,
-            "median": 63,
-            "max": 211
+            "mean": 87.75,
+            "median": 0,
+            "max": 331
           },
           "hitByLead": 0,
           "leadChars": {
@@ -137,40 +137,40 @@
         "requests": {
           "cases": 41,
           "hit": {
-            "num": 22,
+            "num": 21,
             "den": 27,
-            "value": 0.8148
+            "value": 0.7778
           },
-          "injected": 33,
-          "correct": 25,
+          "injected": 26,
+          "correct": 24,
           "neutral": 1,
           "wrong": {
-            "num": 7,
-            "den": 33,
-            "value": 0.2121
+            "num": 1,
+            "den": 26,
+            "value": 0.0385
           },
-          "forbid": 2,
-          "forbidCases": 2,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
-            "num": 11,
+            "num": 13,
             "den": 14,
-            "value": 0.7857
+            "value": 0.9286
           },
           "chars": {
             "n": 39,
-            "mean": 69.5385,
-            "median": 82,
-            "max": 211
+            "mean": 55.2051,
+            "median": 80,
+            "max": 131
           },
           "hitByStart": 0,
           "recover": {
-            "num": 3,
-            "den": 3,
+            "num": 5,
+            "den": 5,
             "value": 1
           },
           "recoverMissed": {
-            "num": 5,
-            "den": 5,
+            "num": 6,
+            "den": 6,
             "value": 1
           },
           "b2Chars": {
@@ -181,9 +181,9 @@
           },
           "sessionChars": {
             "n": 26,
-            "mean": 446.5385,
-            "median": 423,
-            "max": 804
+            "mean": 425.0385,
+            "median": 414.5,
+            "max": 686
           },
           "startChars": {
             "n": 26,
@@ -195,16 +195,16 @@
         "subagent": {
           "cases": 11,
           "hit": {
-            "num": 1,
+            "num": 2,
             "den": 9,
-            "value": 0.1111
+            "value": 0.2222
           },
-          "injected": 4,
-          "correct": 4,
+          "injected": 9,
+          "correct": 9,
           "neutral": 0,
           "wrong": {
             "num": 0,
-            "den": 4,
+            "den": 9,
             "value": 0
           },
           "forbid": 0,
@@ -216,9 +216,9 @@
           },
           "chars": {
             "n": 11,
-            "mean": 49,
-            "median": 0,
-            "max": 201
+            "mean": 109.2727,
+            "median": 137,
+            "max": 247
           },
           "hitByLead": 0,
           "leadChars": {
@@ -247,40 +247,40 @@
         "requests": {
           "cases": 137,
           "hit": {
-            "num": 79,
+            "num": 77,
             "den": 91,
-            "value": 0.8681
+            "value": 0.8462
           },
-          "injected": 112,
-          "correct": 95,
+          "injected": 104,
+          "correct": 93,
           "neutral": 4,
           "wrong": {
-            "num": 13,
-            "den": 112,
-            "value": 0.1161
+            "num": 7,
+            "den": 104,
+            "value": 0.0673
           },
           "forbid": 2,
           "forbidCases": 2,
           "empty": {
-            "num": 41,
+            "num": 42,
             "den": 46,
-            "value": 0.8913
+            "value": 0.913
           },
           "chars": {
             "n": 121,
-            "mean": 65.6281,
+            "mean": 60.5785,
             "median": 81,
-            "max": 211
+            "max": 132
           },
           "hitByStart": 0,
           "recover": {
-            "num": 4,
-            "den": 4,
+            "num": 7,
+            "den": 7,
             "value": 1
           },
           "recoverMissed": {
-            "num": 12,
-            "den": 12,
+            "num": 14,
+            "den": 14,
             "value": 1
           },
           "b2Chars": {
@@ -291,9 +291,9 @@
           },
           "sessionChars": {
             "n": 88,
-            "mean": 441.5568,
-            "median": 415,
-            "max": 804
+            "mean": 434.6136,
+            "median": 414,
+            "max": 777
           },
           "startChars": {
             "n": 88,
@@ -305,30 +305,30 @@
         "subagent": {
           "cases": 27,
           "hit": {
-            "num": 2,
+            "num": 4,
             "den": 21,
-            "value": 0.0952
+            "value": 0.1905
           },
-          "injected": 12,
-          "correct": 10,
+          "injected": 19,
+          "correct": 19,
           "neutral": 0,
           "wrong": {
-            "num": 2,
-            "den": 12,
-            "value": 0.1667
+            "num": 0,
+            "den": 19,
+            "value": 0
           },
-          "forbid": 1,
-          "forbidCases": 1,
+          "forbid": 0,
+          "forbidCases": 0,
           "empty": {
-            "num": 4,
+            "num": 6,
             "den": 6,
-            "value": 0.6667
+            "value": 1
           },
           "chars": {
             "n": 27,
-            "mean": 68.5926,
+            "mean": 96.5185,
             "median": 0,
-            "max": 211
+            "max": 331
           },
           "hitByLead": 0,
           "leadChars": {
@@ -2719,8 +2719,10 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000040"
+            ],
+            "chars": 82
           }
         },
         {
@@ -3377,12 +3379,13 @@
           "subagent": {
             "ids": [
               "m-000000000064",
+              "m-000000000062",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 404
+            "chars": 490
           }
         },
         {
@@ -3409,13 +3412,12 @@
           "part": "train",
           "subagent": {
             "ids": [
-              "m-000000000149",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 365
+            "chars": 220
           }
         },
         {
@@ -3425,13 +3427,14 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000001",
               "m-000000000014",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 413
+            "chars": 551
           }
         },
         {
@@ -3441,13 +3444,12 @@
           "part": "test",
           "subagent": {
             "ids": [
-              "m-000000000077",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 365
+            "chars": 220
           }
         },
         {
@@ -3457,13 +3459,12 @@
           "part": "train",
           "subagent": {
             "ids": [
-              "m-000000000198",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 346
+            "chars": 220
           }
         },
         {
@@ -3558,11 +3559,8 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [
-              "m-000000000146",
-              "m-000000000213"
-            ],
-            "chars": 211
+            "ids": [],
+            "chars": 0
           },
           "found": [
             "m-000000000120",
@@ -3602,12 +3600,8 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [
-              "m-000000000123",
-              "m-000000000018",
-              "m-000000000098"
-            ],
-            "chars": 185
+            "ids": [],
+            "chars": 0
           },
           "found": [
             "m-000000000018",
@@ -3771,11 +3765,8 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [
-              "m-000000000103",
-              "m-000000000192"
-            ],
-            "chars": 134
+            "ids": [],
+            "chars": 0
           },
           "found": [
             "m-000000000103",
@@ -3848,10 +3839,8 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [
-              "m-000000000140"
-            ],
-            "chars": 86
+            "ids": [],
+            "chars": 0
           }
         },
         {
@@ -3860,10 +3849,8 @@
           "kind": "request",
           "part": "test",
           "request": {
-            "ids": [
-              "m-000000000090"
-            ],
-            "chars": 77
+            "ids": [],
+            "chars": 0
           }
         },
         {
@@ -3930,12 +3917,14 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000047",
+              "m-000000000046",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 459
           }
         },
         {
@@ -3945,12 +3934,14 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000157",
+              "m-000000000156",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 467
           }
         },
         {
@@ -3976,12 +3967,13 @@
           "subagent": {
             "ids": [
               "m-000000000149",
+              "m-000000000152",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 369
+            "chars": 441
           }
         },
         {
@@ -3991,12 +3983,13 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000020",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 372
           }
         },
         {
@@ -4027,7 +4020,7 @@
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 413
+            "chars": 446
           }
         },
         {
@@ -4052,12 +4045,14 @@
           "part": "train",
           "subagent": {
             "ids": [
+              "m-000000000035",
+              "m-000000000092",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 426
           }
         },
         {
@@ -4097,13 +4092,12 @@
           "part": "train",
           "subagent": {
             "ids": [
-              "m-000000000089",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 360
+            "chars": 220
           }
         },
         {
@@ -4113,12 +4107,13 @@
           "part": "test",
           "subagent": {
             "ids": [
+              "m-000000000063",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 220
+            "chars": 357
           }
         },
         {

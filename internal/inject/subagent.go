@@ -115,7 +115,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	if err != nil {
 		return ""
 	}
-	hits := recallHits(s, cfg, requestThresholds(cfg), pl, task, byID, nil)
+	hits := recallHits(s, cfg, taskThresholds(cfg), pl, task, byID, nil)
 	if len(hits) > maxTaskRecall {
 		hits = hits[:maxTaskRecall]
 	}
@@ -177,16 +177,16 @@ func reasonLine(h memory.RecallHit) string {
 	return "  고른 까닭: " + strings.Join(parts, " · ") + "\n"
 }
 
-// oldVersions counts the old versions in reach that a task matches by both thresholds: stale memories,
-// and live ones recall leaves out as an older value of their topic or past their days.
+// oldVersions counts the old versions in reach that a task matches by the task gate (taskThresholds.pass):
+// stale memories, and live ones recall leaves out as an older value of their topic or past their days.
 func oldVersions(s *memory.Store, cfg config.Config, pl place.Place, task string, now time.Time) int {
-	minScore, minCover := recallThresholds(cfg)
+	th := taskThresholds(cfg)
 	heads, _ := s.TopicHeads()
 	n := 0
 	count := func(found []memory.RecallHit, stale bool) {
 		for _, h := range found {
 			m := h.Memory
-			if h.Score < minScore || h.Coverage < minCover || !inScope(m, pl) || m.Kind == memory.KindJournal {
+			if !th.pass(h) || !inScope(m, pl) || m.Kind == memory.KindJournal {
 				continue
 			}
 			if stale || excluded(m, now, heads) != "" {
@@ -194,10 +194,10 @@ func oldVersions(s *memory.Store, cfg config.Config, pl place.Place, task string
 			}
 		}
 	}
-	if live, err := s.RecallHits(task); err == nil {
+	if live, err := th.hits(s, task); err == nil {
 		count(live, false)
 	}
-	if old, err := s.RecallHitsIn(task, memory.StateStale); err == nil {
+	if old, err := th.hits(s, task, memory.StateStale); err == nil {
 		count(old, true)
 	}
 	return n

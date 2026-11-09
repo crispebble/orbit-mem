@@ -517,28 +517,29 @@ func cmdConfig(a *app, args []string) error {
 		cfg.AutoTidy = b
 	case "hostMemory":
 		cfg.HostMemory = val
-	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays":
+	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays", "taskRecallMinWords":
 		n, err := strconv.Atoi(val)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		*map[string]*int{"recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
-			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
+			"candidateExpiryDays": &cfg.CandidateExpiryDays, "taskRecallMinWords": &cfg.TaskRecallMinWords}[key] = n
 	case "saveSimilarMin":
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
 		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
-	case "recallMinScore", "recallMinCoverage", "recallMinRelative":
+	case "recallMinScore", "recallMinCoverage", "recallMinRelative", "recallMinCoverageOneWord", "taskRecallMinScore", "taskRecallMinRelative":
 		f, err := strconv.ParseFloat(val, 64)
 		if err != nil {
 			return i18n.Errorf("cli.config.err.number", key, val)
 		}
-		*map[string]*float64{"recallMinScore": &cfg.RecallMinScore, "recallMinCoverage": &cfg.RecallMinCoverage, "recallMinRelative": &cfg.RecallMinRelative}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
+		*map[string]*float64{"recallMinScore": &cfg.RecallMinScore, "recallMinCoverage": &cfg.RecallMinCoverage, "recallMinRelative": &cfg.RecallMinRelative,
+			"recallMinCoverageOneWord": &cfg.RecallMinCoverageOneWord, "taskRecallMinScore": &cfg.TaskRecallMinScore, "taskRecallMinRelative": &cfg.TaskRecallMinRelative}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·recallMinScore·recallMinCoverage·recallMinRelative·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

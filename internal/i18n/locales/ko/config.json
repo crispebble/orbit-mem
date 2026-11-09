@@ -13,5 +13,9 @@
   "config.err.recall_min_score": "recallMinScore는 0보다 크고 1 이하인 수입니다(요청 회상에 드는 찾기 점수의 문턱): %v",
   "config.err.recall_min_coverage": "recallMinCoverage는 0보다 크고 1 이하인 수입니다(요청 회상에 드는, 요청의 뜻 있는 낱말 중 맞은 비율의 문턱): %v",
   "config.err.recall_min_relative": "recallMinRelative는 0보다 크고 1 이하인 수입니다(요청 회상에서 1위 찾기 점수의 몇 배 이상인 기억만 남기는 상대 문턱): %v",
+  "config.err.recall_min_coverage_one_word": "recallMinCoverageOneWord는 0보다 크고 1 이하인 수입니다(요청의 뜻 있는 낱말 중 하나만 맞은 기억이 요청 회상에 드는 맞은 비율의 문턱): %v",
+  "config.err.task_recall_min_score": "taskRecallMinScore는 0보다 크고 1 이하인 수입니다(위임 회상에 드는 찾기 점수의 문턱): %v",
+  "config.err.task_recall_min_words": "taskRecallMinWords는 1부터 %d까지의 정수입니다(위임 회상에 들려면 기억이 맞혀야 하는 위임 글 내용 낱말 수. 명령형 어미·머리 낱말·항목 번호는 빼고 셈): %v",
+  "config.err.task_recall_min_relative": "taskRecallMinRelative는 0보다 크고 1 이하인 수입니다(위임 회상에서 1위 찾기 점수의 몇 배 이상인 기억만 남기는 상대 문턱): %v",
   "config.err.host_timeout": "hostTimeouts.%s는 \"1.5s\" 같은 양의 Go 기간입니다: %q"
 }
