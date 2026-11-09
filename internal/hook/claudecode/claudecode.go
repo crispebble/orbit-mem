@@ -6,6 +6,7 @@ package claudecode
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 
 	"github.com/crispebble/orbit-mem/internal/hook"
 	"github.com/crispebble/orbit-mem/internal/host"
@@ -30,10 +31,46 @@ func New(getenv func(string) string) Adapter { return Adapter{getenv: getenv} }
 type input struct {
 	SessionID string `json:"session_id"`
 	Cwd       string `json:"cwd"`
-	Prompt    string `json:"prompt"`    // UserPromptSubmit
-	Source    string `json:"source"`    // SessionStart: startup·resume·fork·clear·compact
-	ToolName  string `json:"tool_name"` // PreToolUse
-	AgentID   string `json:"agent_id"`  // SubagentStart, 서브에이전트 안의 훅
+	Prompt    string `json:"prompt"`     // UserPromptSubmit
+	Source    string `json:"source"`     // SessionStart: startup·resume·fork·clear·compact
+	ToolName  string `json:"tool_name"`  // PreToolUse
+	AgentID   string `json:"agent_id"`   // SubagentStart, 서브에이전트 안의 훅
+	AgentType string `json:"agent_type"` // SubagentStart: 서브에이전트 종류
+	// ToolInput is the tool's input (PreToolUse). Only a delegation tool's is read, never changed.
+	ToolInput json.RawMessage `json:"tool_input"`
+}
+
+// delegationTools are Claude Code's tools that start a subagent: Agent, and Task, its name before 2.1.
+var delegationTools = []string{"Agent", "Task"}
+
+// defaultAgentType is the subagent Claude Code starts when the Agent tool names none.
+const defaultAgentType = "general-purpose"
+
+// delegation is the part of a delegation tool's input the hooks read (Claude Code hooks 문서, 2.1.319 확인).
+type delegation struct {
+	Prompt       string `json:"prompt"`
+	Description  string `json:"description"`
+	SubagentType string `json:"subagent_type"`
+}
+
+// delegate puts the task of a delegation tool call into the request: the description, then the prompt.
+// A call without a prompt hands no task.
+func delegate(req *host.Request, in input) {
+	if !slices.Contains(delegationTools, in.ToolName) {
+		return
+	}
+	var d delegation
+	if json.Unmarshal(in.ToolInput, &d) != nil || strings.TrimSpace(d.Prompt) == "" {
+		return
+	}
+	req.Task = d.Prompt
+	if desc := strings.TrimSpace(d.Description); desc != "" && !strings.HasPrefix(d.Prompt, desc) {
+		req.Task = desc + "\n" + d.Prompt
+	}
+	req.AgentKind = d.SubagentType
+	if req.AgentKind == "" {
+		req.AgentKind = defaultAgentType
+	}
 }
 
 // sources are the session start sources the contract takes; another one is left out.
@@ -72,10 +109,12 @@ func steps(ev hook.Event, req host.Request, in input) []hook.Step {
 		req.Prompt = in.Prompt // 사람 글 후보는 prompt 칸이다. 이 훅은 예약 작업·서브에이전트 보고·다른 세션 메시지에도 돌고 입력에 출처 칸이 없어, 사람 요청인지는 recall op가 판정한다(origin은 비운다)
 		return []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
-		req.Tool = in.ToolName // 도구 입력은 읽지도 바꾸지도 않는다
+		req.Tool = in.ToolName // 도구 입력은 바꾸지 않는다(위임 도구의 위임 글만 읽는다)
+		delegate(&req, in)
 		return []hook.Step{{Op: host.OpToolContext, Request: req}}
-	case hook.SubagentStart:
+	case hook.SubagentStart: // 입력에 위임 글이 없다: 같은 세션·같은 종류의 먼저 온 위임 글과 짝을 맞춘다(host)
 		req.Audience = host.AudienceSubagent
+		req.AgentKind = in.AgentType
 		return []hook.Step{{Op: host.OpContext, Request: req}}
 	case hook.SessionEnd:
 		return []hook.Step{{Op: host.OpSessionEnd, Request: req}}

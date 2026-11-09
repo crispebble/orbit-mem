@@ -207,6 +207,21 @@ func TestRecallGoldenSubagentStartClaude(t *testing.T) {
 	w.check("hook-subagent-start-claude.golden", w.hook("subagent-start", "claude", w.hookIn("g4", "", "", "", "sub1")))
 }
 
+// 위임(설계 4.1·11절): PreToolUse(Agent)는 위임 글을 적고 그 도구의 기억만 낸다(출력은 도구 기억 그대로). 바로 뒤
+// SubagentStart(같은 종류)는 그 글로 위임 회상과 핵심 제목 줄을, 짝이 없는 서브에이전트는 핵심 제목 줄만 받는다.
+func TestRecallGoldenSubagentDelegatedClaude(t *testing.T) {
+	w := newGoldenWorld(t)
+	w.claudeEnv()
+	pre := jsonString(t, map[string]any{"session_id": "g5", "cwd": w.dir, "hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "tu-1",
+		"tool_input": map[string]any{"description": "배포 점검", "prompt": "배포 스크립트를 처음 돌리기 전에 드라이런과 스모크 시험을 확인한다", "subagent_type": "worker"}})
+	w.check("hook-pre-tool-claude-delegate.golden", w.hook("pre-tool", "claude", pre))
+	start := func(agent string) string {
+		return jsonString(t, map[string]any{"session_id": "g5", "cwd": w.dir, "hook_event_name": "SubagentStart", "agent_id": agent, "agent_type": "worker"})
+	}
+	w.check("hook-subagent-start-claude-delegated.golden", w.hook("subagent-start", "claude", start("sub1")))
+	w.check("hook-subagent-start-claude-unpaired.golden", w.hook("subagent-start", "claude", start("sub2")))
+}
+
 func TestRecallGoldenCodex(t *testing.T) {
 	w := newGoldenWorld(t) // Codex는 CLAUDE_PROJECT_DIR를 주지 않는다: 폴더는 훅 입력의 cwd다
 	w.check("hook-session-start-codex.golden", w.hook("session-start", "codex", w.hookIn("c1", "startup", "", "", "")))

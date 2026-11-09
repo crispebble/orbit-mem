@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"github.com/crispebble/orbit-mem/internal/hook"
 	"testing"
 
 	"github.com/crispebble/orbit-mem/internal/hook/hooktest"
@@ -19,4 +20,30 @@ func TestCodex_세션_폴더는_입력_cwd다(t *testing.T) {
 
 func TestCodex_훅_출력은_지금과_같은_바이트다(t *testing.T) {
 	hooktest.Output(t, New(), hooktest.Names)
+}
+
+// 위임 도구(spawn_agent) 직전: 도구 입력의 message(없거나 글이 아니면 task_name)와 agent_type을 tool-context의 task·agentKind로
+// 옮긴다. 입력 칸은 Codex 소스 기준이다(실제 훅 입력은 확인하지 못했다).
+const delegationTask = "결제 모듈 동시성 시험을 고친다. 경합을 실제로 일으키는 시험을 쓴다"
+
+var delegations = []hooktest.Case{
+	{Name: "pre-tool spawn_agent message", Event: hook.PreTool, Input: hooktest.In(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "spawn_agent",
+		"tool_input": map[string]any{"message": delegationTask, "agent_type": "worker"}}),
+		Want: []hooktest.Want{{Pair: "tool-context-delegation", Set: map[string]any{"tool": "spawn_agent"}}}},
+	{Name: "pre-tool spawn_agent task_name (v2)", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "spawn_agent",
+		"tool_input": map[string]any{"task_name": delegationTask, "agent_type": "worker"}}),
+		Want: []hooktest.Want{{Pair: "tool-context-delegation", Set: map[string]any{"tool": "spawn_agent"}}}},
+	{Name: "pre-tool spawn_agent items, no message text", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "spawn_agent",
+		"tool_input": map[string]any{"message": []any{map[string]any{"type": "text"}}, "items": []any{}, "task_name": delegationTask, "agent_type": "worker"}}),
+		Want: []hooktest.Want{{Pair: "tool-context-delegation", Set: map[string]any{"tool": "spawn_agent"}}}},
+	{Name: "pre-tool Agent", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "Agent",
+		"tool_input": map[string]any{"message": delegationTask, "agent_type": "worker"}}),
+		Want: []hooktest.Want{{Pair: "tool-context-delegation"}}},
+	{Name: "pre-tool another tool with a message", Event: hook.PreTool, Input: hooktest.In(map[string]any{"tool_name": "Bash",
+		"tool_input": map[string]any{"message": delegationTask, "agent_type": "worker"}}),
+		Want: []hooktest.Want{{Pair: "tool-context-bash"}}},
+}
+
+func TestCodex_위임_도구의_입력은_task와_agentKind가_된다(t *testing.T) {
+	hooktest.Plan(t, New(), "codex", "", delegations...)
 }
