@@ -7,14 +7,17 @@ import (
 	"github.com/crispebble/orbit-mem/internal/bench/paths"
 )
 
-// 수용 기준을 공개 고정 묶음의 판정용(30%)으로 단언한다(계획 1-6 b6). 판정용은 문턱을 고른 뒤 한 번만 잰 값이고, 판정용을
-// 보고 규칙이나 문턱을 고치지 않는다. 기준에 못 미친 지표(L-5 적중·틀린 회상·넣지 않음)는 시험으로 덮지 않고 보고에 미달로
-// 적는다: 지금 단언하는 것은 이미 기준을 넘은 L-7 놓침 복구뿐이다.
+// 수용 기준을 판정 전용 묶음(holdout_set.json)의 한 번 판정으로 단언한다(계획 1-6 b6 2차). 판정은 d62c9ea의 규칙·기본값으로
+// 한 번 쟀고, 그 뒤 값을 고치지 않았다. 기준을 넘은 지표만 단언한다: L-5의 넣지 않음(33/34). 미달인 L-5 적중(55/99)·틀린
+// 회상(9/68)과 L-7 놓침 복구(25/35·33/44)는 시험으로 덮지 않고 판정 기록(README.md 「판정 기록」)에 미달로 둔다.
+//
+// 1차의 공개 묶음 판정용 L-7 단언은 뺐다: 2차에서 공개 묶음 전체를 문턱 고르기에 썼으니 그 판정용은 개발 자료이고, 개발
+// 자료의 값은 baseline-current.json이 그대로 지킨다.
 
-// L-7: 회상이 아무것도 넣지 않은 정답 있는 요청 가운데 원문 찾기(Find(요청, 8))로 정답을 모두 되찾는 비율 ≥90%.
-func TestAcceptance_L7_판정용_놓침_복구는_90퍼센트_이상이다(t *testing.T) {
+// L-5: 정답이 없는 요청(사람 아닌 글 포함)에 아무것도 넣지 않는 비율 ≥90%.
+func TestHoldoutAcceptance_L5_넣지_않음은_90퍼센트_이상이다(t *testing.T) {
 	fixHome(t)
-	set, err := bench.Read(publicSet)
+	set, err := bench.Read(holdoutSet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,15 +30,8 @@ func TestAcceptance_L7_판정용_놓침_복구는_90퍼센트_이상이다(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range []struct {
-		name string
-		rate bench.Rate
-	}{
-		{"아무것도 넣지 않은 사례", rep.Runs[0].Test.Requests.Recover},
-		{"적중 실패 전부", rep.Runs[0].Test.Requests.RecoverMissed},
-	} {
-		if r.rate.Den == 0 || r.rate.Value == nil || *r.rate.Value < 0.9 {
-			t.Errorf("판정용 놓침 복구(%s) %d/%d, 기준 ≥90%%", r.name, r.rate.Num, r.rate.Den)
-		}
+	r := rep.Runs[0].All.Requests.Empty
+	if r.Den == 0 || r.Value == nil || *r.Value < 0.9 {
+		t.Errorf("판정 묶음 넣지 않음 %d/%d, 기준 ≥90%%", r.Num, r.Den)
 	}
 }
