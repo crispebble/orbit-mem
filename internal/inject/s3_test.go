@@ -71,7 +71,8 @@ func TestAC3_제품_범위_기억은_그_제품의_폴더에서만_회상된다(
 	}
 	all := []memory.Memory{desk, atlas, unsure, repo, user}
 	for name, scope := range f {
-		text := PromptInjection(s, cfg, scope, "상단바 시안 결정 다시 보자").Text
+		// 확정 결정은 세션 시작 「최근 결정」 줄(A층)이나 요청 회상(B1)으로 온다(1-6 b6r): 둘 다 같은 범위 규칙을 따른다.
+		text := SessionStart(s, cfg, scope) + "\n" + PromptInjection(s, cfg, scope, "상단바 시안 결정 다시 보자").Text
 		for _, m := range all {
 			shown := strings.Contains(text, m.ID)
 			exp := false
@@ -137,6 +138,7 @@ func TestS3_여러_제품_폴더는_요청에_이름이_나온_제품을_앞에_
 	s := store(t)
 	cfg := s3Config()
 	cfg.RecallMinScore, cfg.RecallMinCoverage = 0.1, 0.1 // 순서만 본다: 제품 이름 낱말은 기억 글에 없어 점수를 낮춘다
+	cfg.RecentDecisions = 0                              // 요청 회상의 순서를 본다: 결정을 세션 시작 줄로 빼지 않는다
 	parent := s3Folders(t)["상위 폴더"]
 	desk := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 레일", "product:orbit-code-desktop", "", "상단바")
 	atlas := saveIn(t, s, memory.KindDecision, "상단바 시안 결정은 탭줄", "product:atlas", "", "상단바")

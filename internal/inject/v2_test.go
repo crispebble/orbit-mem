@@ -242,8 +242,10 @@ func TestAC2_알약_재현_옛_결정은_어디에도_나오지_않는다(t *tes
 	if seen != 0 {
 		t.Fatalf("old decisions came back %d times", seen)
 	}
-	if p := PromptInjectionFor(s, config.Default(), scopes[0], "상단바 상태는 알약으로 하지 않는다", "claude", "", Options{}); !slices.Contains(p.MemoryIDs, cur.ID) {
-		t.Fatalf("the new decision is not recalled:\n%s", p.Text)
+	// 새 결정은 세션 시작 「최근 결정」 줄(A층, 1-6 b6r)이나 요청 회상으로 온다.
+	start := SessionStartInjection(s, config.Default(), scopes[0])
+	if p := PromptInjectionFor(s, config.Default(), scopes[0], "상단바 상태는 알약으로 하지 않는다", "claude", "", Options{}); !slices.Contains(append(p.MemoryIDs, start.MemoryIDs...), cur.ID) {
+		t.Fatalf("the new decision is not recalled:\n%s\n%s", start.Text, p.Text)
 	}
 }
 

@@ -1,7 +1,7 @@
 package inject
 
-// 설계 · orbit-mem 지연 회상 7판 4절 A층·T-3·T-20·T-27, ORBIT-26 G3: 세션 시작 묶음은 상시 핵심과 개수 없는 찾기 안내
-// 한 줄이고 「최근 결정」 줄은 없다. 판·업데이트·호스트 기억 안내 줄은 묶음을 새로 만들 때 한 번 넣어 함께 저장한다. 주입은
+// 설계 · orbit-mem 지연 회상 7판 4절 A층·T-20·T-27, ORBIT-26 G3: 세션 시작 묶음은 상시 핵심과 개수 없는 찾기 안내
+// 한 줄, 그리고 최근 결정의 제목 줄이다(T-3이 뺀 줄을 1-6 b6r에서 사용자 결정으로 제목만 다시 넣음). 판·업데이트·호스트 기억 안내 줄은 묶음을 새로 만들 때 한 번 넣어 함께 저장한다. 주입은
 // 새 설정 recall(auto·on_demand·off)로 돌고 옛 키 inject는 같은 뜻으로 읽는다.
 
 import (
@@ -21,16 +21,19 @@ func recallCfg(recall string) config.Config {
 	return cfg
 }
 
-func TestA층_auto_묶음에_최근_결정_줄이_없고_찾는_곳_줄은_개수_없는_고정_글이다(t *testing.T) {
+func TestA층_auto_묶음의_최근_결정_줄은_제목뿐이고_찾는_곳_줄은_개수_없는_고정_글이다(t *testing.T) {
 	s := store(t)
 	save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
-	dec := save(t, s, memory.KindDecision, "Orbit 먼저 만든다", "본문", memory.ScopeGlobal, true)
+	dec := save(t, s, memory.KindDecision, "Orbit 먼저 만든다", "결정 본문", memory.ScopeGlobal, true)
 	cfg := config.Default()
 	if cfg.RecentDecisions == 0 {
-		t.Fatal("the default must still ask for recent decisions: the bundle ignores the key")
+		t.Fatal("the default must ask for recent decisions")
 	}
 	first := SessionStartInjection(s, cfg, here)
-	for _, bad := range []string{"[최근 결정]", "최근 결정", dec.ID, dec.Title, "1개", "2개"} {
+	if !strings.Contains(first.Text, recentHead+" 본문은 memory_get — "+dec.Title+"("+dec.ID+")\n") {
+		t.Fatalf("recent decisions line missing:\n%s", first.Text)
+	}
+	for _, bad := range []string{"결정 본문", "1개", "2개"} {
 		if strings.Contains(first.Text, bad) {
 			t.Fatalf("bundle carries %q:\n%s", bad, first.Text)
 		}
@@ -38,12 +41,11 @@ func TestA층_auto_묶음에_최근_결정_줄이_없고_찾는_곳_줄은_개�
 	if !strings.Contains(first.Text, wantFindLine+"\n") {
 		t.Fatalf("find line missing:\n%s", first.Text)
 	}
-	// 기억 수가 바뀌어도 같은 글이다(세션 안에서 바이트가 바뀌지 않는다).
+	// 규칙 수가 바뀌어도 같은 글이다(개수를 말하지 않는다). 결정 줄의 바이트는 세션 묶음이 지킨다(recent_test.go).
 	for i := 0; i < 4; i++ {
 		save(t, s, memory.KindRule, fmt.Sprintf("규칙 %d", i), "", memory.ScopeGlobal, true)
-		save(t, s, memory.KindDecision, fmt.Sprintf("결정 %d", i), "", here, true)
 	}
-	if again := SessionStartInjection(s, cfg, here); again.Text != first.Text || len(again.MemoryIDs) != 0 {
+	if again := SessionStartInjection(s, cfg, here); again.Text != first.Text || len(again.MemoryIDs) != 1 {
 		t.Fatalf("bundle changed with the counts:\n%s\n---\n%s\nids=%v", first.Text, again.Text, again.MemoryIDs)
 	}
 }

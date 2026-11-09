@@ -88,7 +88,9 @@ func TestRecallFixtures(t *testing.T) {
 	}
 	for _, c := range fx.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			inj := PromptInjectionWith(s, config.Default(), fx.Scope, c.Prompt, Options{})
+			cfg := config.Default()
+			cfg.RecentDecisions = 0 // 요청 회상(B1) 줄의 고정 사례다: 결정이 세션 시작 「최근 결정」 줄로 빠지지 않게 한다
+			inj := PromptInjectionWith(s, cfg, fx.Scope, c.Prompt, Options{})
 			var got []string
 			for _, id := range inj.MemoryIDs {
 				got = append(got, keyOf[id])

@@ -45,6 +45,10 @@ const (
 	// minRecallWords is how many meaningful words a request needs for the work recall: one word scores
 	// every memory that has it 1 on both measures, so it says too little (공개 묶음 old-weak-word).
 	minRecallWords = 2
+	// maxDecisionRunes bounds the recent decisions line of the session start (heading included), and
+	// decisionTitleRunes one title in it: five titles of the usual length fit (1-6 b6r).
+	maxDecisionRunes   = 500
+	decisionTitleRunes = 60
 )
 
 // Headings of the request hook's two parts.
@@ -273,7 +277,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 	for _, id := range inj.MemoryIDs {
 		inCore[id] = true
 	}
-	var rules []memory.Memory
+	var rules, decisions []memory.Memory
 	// 묶음 핵심 층 밖에 이 폴더에서 보이는 확정 규칙·결정(여러 제품 폴더의 제품 핵심 포함)이 있는가: 찾는 곳 줄을 붙인다.
 	others := false
 	for _, m := range confirmed {
@@ -285,8 +289,12 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 			continue
 		}
 		others = true
-		if m.Kind == memory.KindRule && !m.Pinned { // 승격 규칙은 규칙 채우기에 넣지 않는다(요청 회상으로 온다)
+		switch {
+		case m.Pinned: // 핵심 층에 들지 않은 승격 기억(여러 제품 폴더의 제품 핵심)은 규칙 채우기·결정 제목 줄에 넣지 않는다
+		case m.Kind == memory.KindRule:
 			rules = append(rules, m)
+		default:
+			decisions = append(decisions, m) // 최근에 고친 것부터(List 순서)
 		}
 	}
 	if mode == config.RecallOnDemand {
@@ -319,8 +327,9 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		}
 		return inj.done(&b)
 	}
-	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 먼저 찾을 곳만 알리고, 나머지는 요청 회상·도구 직전·memory_find로
-	// 들어온다(S3-R7). 「최근 결정」 줄은 없다(T-3). 찾는 곳 줄·꼬리 줄은 한도 안에 들 때만 쓴다.
+	// 상시 핵심 밖 본문은 세션 시작에 넣지 않는다(S3-R6). 먼저 찾을 곳과 최근 결정의 제목만 알리고, 나머지는 요청 회상·
+	// 도구 직전·memory_find로 들어온다(S3-R7). 「최근 결정」 줄은 1-6 b6r에서 제목 줄로만 다시 넣었다(87ab0fb의 고르는 법,
+	// maxDecisionRunes 안). 찾는 곳 줄·결정 줄·꼬리 줄은 한도 안에 들 때만 쓴다.
 	footer := "기억은 " + Label + " MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
 	room := limit - runes(core.String()) - runes(footer)
 	find := ""
@@ -334,8 +343,15 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 	reverts := revertLine(s)
 	if reverts == "" || runes(reverts)+1 > room {
 		reverts = ""
+	} else {
+		room -= runes(reverts) + 1
 	}
+	recent, recentIDs := recentDecisionsLine(decisions, cfg.RecentDecisions, room-1)
 	b.WriteString(find)
+	if recent != "" {
+		b.WriteString(recent + "\n")
+		inj.MemoryIDs = append(inj.MemoryIDs, recentIDs...)
+	}
 	if reverts != "" {
 		b.WriteString(reverts + "\n")
 	}
@@ -346,6 +362,30 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 }
 
 func runes(s string) int { return utf8.RuneCountInString(s) }
+
+// recentDecisionsLine is the titles and ids of up to n decisions, in the order given, on one line of at
+// most min(maxDecisionRunes, room) runes, each title cut to decisionTitleRunes. No body: memory_get has it.
+// It is "" when not even the first fits.
+func recentDecisionsLine(decisions []memory.Memory, n, room int) (string, []string) {
+	limit := min(maxDecisionRunes, room)
+	line := "[" + Label + " 기억 · 최근 결정] 본문은 memory_get — "
+	var ids []string
+	for i := 0; i < len(decisions) && i < n; i++ {
+		entry := fmt.Sprintf("%s(%s)", clipTitle(decisions[i].Title, decisionTitleRunes), decisions[i].ID)
+		if i > 0 {
+			entry = " · " + entry
+		}
+		if runes(line)+runes(entry) > limit {
+			break
+		}
+		line += entry
+		ids = append(ids, decisions[i].ID)
+	}
+	if len(ids) == 0 {
+		return "", nil
+	}
+	return line, ids
+}
 
 // revertLine says how many harmful automatic changes the daily tidy undid lately (효과 원장이
 // 해로움으로 판정해 스스로 되돌림, A2). Nothing waits for the person, so it does not count

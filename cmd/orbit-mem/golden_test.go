@@ -225,7 +225,8 @@ func TestRecallGoldenSubagentDelegatedClaude(t *testing.T) {
 func TestRecallGoldenCodex(t *testing.T) {
 	w := newGoldenWorld(t) // Codex는 CLAUDE_PROJECT_DIR를 주지 않는다: 폴더는 훅 입력의 cwd다
 	w.check("hook-session-start-codex.golden", w.hook("session-start", "codex", w.hookIn("c1", "startup", "", "", "")))
-	w.check("hook-prompt-codex.golden", w.hook("prompt", "codex", w.hookIn("c1", "", "배포 전에 스모크 시험을 돌린다", "", "")))
+	// 결정은 세션 시작 「최근 결정」 줄로 이미 들어가 요청 회상에서 빠진다(1-6 b6r): 출력 꼴은 결정이 아닌 기억으로 본다.
+	w.check("hook-prompt-codex.golden", w.hook("prompt", "codex", w.hookIn("c1", "", "배포 스크립트는 드라이런으로 본다", "", "")))
 }
 
 func TestRecallGoldenPluginVersionNote(t *testing.T) {
