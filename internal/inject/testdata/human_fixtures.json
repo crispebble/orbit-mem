@@ -56,10 +56,34 @@
    "words": ""
   },
   {
-   "name": "닫는 표시 없는 태그 틀",
+   "name": "닫는 표시 없는 태그 틀은 사람이 잘라 붙인 글",
    "prompt": "<task-notification>\nnever closed",
+   "person": true,
+   "words": "<task-notification>\nnever closed"
+  },
+  {
+   "name": "scheduled-task만",
+   "prompt": "<scheduled-task name=\"daily-check\" file=\"/x/task.md\">\nrun the daily check\n</scheduled-task>",
    "person": false,
    "words": ""
+  },
+  {
+   "name": "scheduled-task 닫은 뒤 질문",
+   "prompt": "<scheduled-task name=\"daily-check\" file=\"/x/task.md\">\nrun the daily check\n</scheduled-task>\n이 작업은 왜 실패했어?",
+   "person": true,
+   "words": "이 작업은 왜 실패했어?"
+  },
+  {
+   "name": "scheduled-task 앞에 글",
+   "prompt": "이거 봐 줘\n<scheduled-task name=\"daily-check\" file=\"/x/task.md\">\nrun the daily check\n</scheduled-task>",
+   "person": true,
+   "words": "이거 봐 줘\n<scheduled-task name=\"daily-check\" file=\"/x/task.md\">\nrun the daily check\n</scheduled-task>"
+  },
+  {
+   "name": "닫힌 틀 뒤 닫히지 않은 틀은 그 뒤 글 전체가 사람",
+   "prompt": "<task-notification>\n<status>completed</status>\n</task-notification>\n<agent-message from=\"s\">\npasted half",
+   "person": true,
+   "words": "<agent-message from=\"s\">\npasted half"
   },
   {
    "name": "틀 뒤에 질문이 있으면 사람",

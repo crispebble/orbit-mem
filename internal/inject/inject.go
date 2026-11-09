@@ -119,8 +119,9 @@ func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 // SessionBundleWith is SessionBundle with the note lines of the session (the version, update and
 // overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew; its
 // lines go at the end of the bundle and are saved with it, so a resumed session gets the same bytes.
-// The bundle keeps to MaxSessionStartRunes with them. notes may be nil; with recall off nothing is
-// put in and notes is not called.
+// The bundle keeps to MaxSessionStartRunes with them. notes may be nil. With recall off no memory is
+// put in, but the note lines still are (as with the old inject=off). A notes that panics leaves only
+// the note lines out; the bundle is made and saved as usual (원칙 6).
 func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
 	if session != "" {
 		if text, ids, ok := s.SessionBundle(host, session); ok && runes(text) <= MaxSessionStartRunes {
@@ -131,11 +132,7 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			_ = s.ResetSession(host, session)
 		}
 	}
-	var lines []string
-	if notes != nil && cfg.RecallMode() != config.RecallOff {
-		lines = notes()
-	}
-	note := noteText(lines)
+	note := noteText(noteLines(notes))
 	limit := MaxSessionStartRunes
 	if note != "" {
 		limit -= runes(note) + 1 // 묶음과 안내 줄 사이 줄바꿈
@@ -159,6 +156,19 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
 	return inj
+}
+
+// noteLines calls notes, if any; one that panics gives no lines.
+func noteLines(notes func() []string) (lines []string) {
+	if notes == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			lines = nil
+		}
+	}()
+	return notes()
 }
 
 // noteText is the non-empty note lines, one per line.

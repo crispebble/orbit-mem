@@ -80,7 +80,8 @@ func TestRecall_on_demand는_세션_시작을_규칙으로_채우고_요청_회�
 	}
 }
 
-func TestRecall_off는_어디에도_넣지_않는다(t *testing.T) {
+// off에서도 판·새 판 안내 줄은 시작 문맥으로 나간다(예전 inject=off와 같다). 기억 층만 0자다.
+func TestRecall_off는_어디에도_기억을_넣지_않고_안내_줄만_남긴다(t *testing.T) {
 	off := config.Default()
 	off.Inject = config.InjectOff
 	for name, cfg := range map[string]config.Config{"recall=off": recallCfg(config.RecallOff), "inject=off": off} {
@@ -93,20 +94,39 @@ func TestRecall_off는_어디에도_넣지_않는다(t *testing.T) {
 			saveTool(t, s, "문서는 개인 공간에 발행한다", "발행 위치 본문", memory.ScopeGlobal, []string{docsTool}, true)
 			called := 0
 			notes := func() []string { called++; return []string{"판 안내"} }
+			start := SessionBundleWith(s, cfg, here, "claude", "s1", notes)
+			if start.Text != "판 안내" || len(start.MemoryIDs) != 0 || called != 1 {
+				t.Errorf("session start: %q ids=%v notes asked %d times", start.Text, start.MemoryIDs, called)
+			}
 			for what, n := range map[string]int{
-				"session start": SessionBundleWith(s, cfg, here, "claude", "s1", notes).Chars,
-				"prompt":        PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "s1", Options{}).Chars,
-				"tool":          ToolInjection(s, cfg, here, "claude", "s1", docsTool).Chars,
-				"subagent":      SubagentStart(s, cfg).Chars,
+				"session start without notes": SessionBundleWith(s, cfg, here, "claude", "s2", nil).Chars,
+				"prompt":                      PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "s1", Options{}).Chars,
+				"tool":                        ToolInjection(s, cfg, here, "claude", "s1", docsTool).Chars,
+				"subagent":                    SubagentStart(s, cfg).Chars,
 			} {
 				if n != 0 {
 					t.Errorf("%s: %d chars", what, n)
 				}
 			}
-			if called != 0 {
-				t.Errorf("notes asked %d times while recall is off", called)
-			}
 		})
+	}
+}
+
+// 안내 줄 만들개가 panic하면 안내 줄만 비우고 핵심 묶음은 만들어 저장한다(원칙 6).
+func TestBundle_안내_줄이_panic해도_핵심_묶음은_만들고_저장한다(t *testing.T) {
+	s := store(t)
+	m := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말을 쓰지 않는다", memory.ScopeGlobal, true)
+	if _, err := s.Pin(m.ID, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	want := SessionStartInjection(s, cfg, here)
+	got := SessionBundleWith(s, cfg, here, "claude", "s1", func() []string { panic("notes") })
+	if got.Text == "" || got.Text != want.Text || !strings.Contains(got.Text, "답은 한글 존댓말") {
+		t.Fatalf("got:\n%s\nwant:\n%s", got.Text, want.Text)
+	}
+	if text, _, ok := s.SessionBundle("claude", "s1"); !ok || text != got.Text {
+		t.Fatalf("saved %v %q", ok, text)
 	}
 }
 

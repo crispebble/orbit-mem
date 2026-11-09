@@ -29,12 +29,19 @@ const (
 	minToolBodyRunes = 20
 )
 
+// markToolMore marks, per session key, the tool memories the "N개 더" line has counted: the session is
+// told about the same memories once (설계 · orbit-mem 5.2절, 원칙 3). They stay candidates: a later call
+// within the call limits, or one after a reset once the session sum is full, can still bring them.
+// ResetSession drops these marks with the others.
+const markToolMore = "tool.more"
+
 // ToolInjection is what a tool call brings right before it runs (PreToolUse, 설계 · orbit-mem 5.2절):
 // the live current values in scope whose tool triggers name the tool or a prefix of it, each once per
 // session key (RecordShown). Exact names come first, then confirmed, this product, newest. One call
 // brings at most MaxToolMemories memory lines within MaxToolCallRunes, and the session key stops at
 // MaxToolSessionRunes, counted over the memories it was given, drawn as they are now. Memories it
-// could not bring stay unmarked and are counted in one line, so a later call can bring them.
+// could not bring stay candidates for a later call; the ones the session has not been told about are
+// counted in one line, once (markToolMore). With nothing to bring and nothing new to count it adds nothing.
 func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
 	var inj Injection
 	var b strings.Builder
@@ -48,6 +55,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	heads, _ := s.TopicHeads()
 	now := s.Now()
 	given := s.SessionMarks(host, session, memory.MarkTool)
+	told := s.SessionMarks(host, session, markToolMore)
 	pl := at(cfg, scope)
 	type hit struct {
 		m     memory.Memory
@@ -100,7 +108,13 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		inj.MemoryIDs = append(inj.MemoryIDs, h.m.ID)
 		inj.mark(memory.MarkTool, h.m.ID)
 	}
-	left := len(hits) - len(inj.MemoryIDs)
+	left := 0
+	for _, h := range hits[len(inj.MemoryIDs):] { // 넣은 것은 hits 앞에서부터다
+		if !told[h.m.ID] {
+			left++
+			inj.mark(markToolMore, h.m.ID)
+		}
+	}
 	if len(inj.MemoryIDs) == 0 && left == 0 {
 		return inj.done(&b)
 	}

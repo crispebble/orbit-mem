@@ -1,7 +1,8 @@
 package inject
 
 // 설계 · orbit-mem 5.2절(B2 도구 직전)·11절 L-4, ORBIT-26 G6: 호출당 기억 2개·기억 줄 합 800자(기억마다 ≤400자),
-// 세션 합계 2,000자, 정확 일치 → 확정 → 이 제품 → 최신 순, 남으면 「이 도구에 걸린 기억 N개 더 — memory_find」 한 줄.
+// 세션 합계 2,000자, 정확 일치 → 확정 → 이 제품 → 최신 순, 남으면 「이 도구에 걸린 기억 N개 더 — memory_find」 한 줄
+// (같은 기억들은 세션에 한 번, 원칙 3).
 
 import (
 	"fmt"
@@ -119,7 +120,8 @@ func TestToolInjection_정확_일치_확정_이_제품_최신_순이고_넣지_�
 	saveTool(t, s, "다른 제품 확정", "f", "product:other", []string{"mcp__docs__*"}, true)
 
 	want := [][]string{{exact.ID, localNew.ID}, {localOld.ID, globalConfirmed.ID}, {candidate.ID}}
-	wantMore := []string{moreLine(3), moreLine(1), ""}
+	// 「N개 더」는 알리지 않은 기억만 센다: 첫 호출이 남은 셋을 알렸으니 둘째 호출은 다시 알리지 않는다.
+	wantMore := []string{moreLine(3), "", ""}
 	for i := range want {
 		got := ToolInjection(s, cfg, here, "claude", "S", docsTool)
 		_, _, more := toolParts(t, got.Text)
@@ -133,14 +135,14 @@ func TestToolInjection_정확_일치_확정_이_제품_최신_순이고_넣지_�
 	}
 }
 
-func TestToolInjection_세션_합계_2000자에서_멈추고_reset_뒤와_서브에이전트는_따로다(t *testing.T) {
+func TestToolInjection_세션_합계_2000자에서_멈추고_같은_N은_한_번_새로_걸린_기억이_생기면_다시_알린다(t *testing.T) {
 	s := store(t)
 	all := manyDocs(t, s, 10)
 	if MaxToolSessionRunes != 2000 {
 		t.Fatalf("session limit %d", MaxToolSessionRunes)
 	}
 	total, shown := 0, 0
-	stopped := false
+	stopped := 0
 	for call := 0; call < 8; call++ {
 		got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
 		_, blocks, more := toolParts(t, got.Text)
@@ -151,32 +153,51 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_reset_뒤와_서브
 		if total > MaxToolSessionRunes {
 			t.Fatalf("call %d: session total %d", call, total)
 		}
-		if n := len(all) - shown; (n > 0) != (more != "") || (n > 0 && more != moreLine(n)) {
-			t.Fatalf("call %d: more %q, %d left", call, more, n)
+		// 첫 호출만 남은 수를 알리고, 같은 기억들은 다시 알리지 않는다.
+		wantMore := ""
+		if call == 0 {
+			wantMore = moreLine(len(all) - shown)
+		}
+		if more != wantMore {
+			t.Fatalf("call %d: more %q, want %q\n%s", call, more, wantMore, got.Text)
 		}
 		if got.Chars > MaxToolRunes {
 			t.Fatalf("call %d: %d runes", call, got.Chars)
 		}
 		if len(got.MemoryIDs) == 0 {
-			stopped = true
-			if !strings.Contains(got.Text, docsTool+" 호출 직전") || len(blocks) != 0 {
-				t.Fatalf("stopped call must be the head and the more line:\n%s", got.Text)
+			stopped++
+			if got.Text != "" {
+				t.Fatalf("call %d: stopped call with nothing new to tell must be empty:\n%s", call, got.Text)
 			}
 		}
 		RecordShown(s, "claude", "S", got)
 	}
-	if !stopped || shown >= len(all) || total+MaxToolMemoryRunes <= MaxToolSessionRunes {
-		t.Fatalf("stopped=%v shown=%d total=%d", stopped, shown, total)
+	if stopped < 2 || shown >= len(all) || total+MaxToolMemoryRunes <= MaxToolSessionRunes {
+		t.Fatalf("stopped=%d shown=%d total=%d", stopped, shown, total)
+	}
+
+	// 새로 걸린 기억이 생기면 그것만 한 번 알린다.
+	later(s, time.Minute)
+	saveTool(t, s, "새로 걸린 문서 규칙", strings.Repeat("길다 ", 300), memory.ScopeGlobal, []string{"mcp__docs__*"}, true)
+	fresh := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	if _, blocks, more := toolParts(t, fresh.Text); len(fresh.MemoryIDs) != 0 || len(blocks) != 0 || more != moreLine(1) ||
+		!strings.Contains(fresh.Text, docsTool+" 호출 직전") {
+		t.Fatalf("new memory must be told once as the head and one more line:\n%s", fresh.Text)
+	}
+	RecordShown(s, "claude", "S", fresh)
+	if again := ToolInjection(s, config.Default(), here, "claude", "S", docsTool); again.Text != "" {
+		t.Fatalf("told again:\n%s", again.Text)
 	}
 
 	// 서브에이전트 키는 주 세션 합계와 따로 센다.
 	if sub := ToolInjection(s, config.Default(), here, "claude", "S/a1", docsTool); len(sub.MemoryIDs) != 2 {
 		t.Fatalf("subagent: %v\n%s", sub.MemoryIDs, sub.Text)
 	}
-	// reset이 표시를 지우면 다시 허용된다.
+	// reset이 표시(넣음·알림)를 지우면 다시 허용되고 남은 수도 다시 알린다.
 	ResetSession(s, "claude", "S")
-	if again := ToolInjection(s, config.Default(), here, "claude", "S", docsTool); len(again.MemoryIDs) != 2 {
-		t.Fatalf("after reset: %v\n%s", again.MemoryIDs, again.Text)
+	again := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	if _, _, more := toolParts(t, again.Text); len(again.MemoryIDs) != 2 || more != moreLine(len(all)+1-2) {
+		t.Fatalf("after reset: %v more=%q\n%s", again.MemoryIDs, more, again.Text)
 	}
 }
 

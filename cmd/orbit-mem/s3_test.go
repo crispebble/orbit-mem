@@ -134,9 +134,13 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		}
 		return ctx
 	}
-	total, shown := 0, 0
+	total, shown, empty := 0, 0, 0
 	for call := 0; call < 6; call++ {
 		ctx := pre("S", "mcp__docs__write_page")
+		if ctx == "" {
+			empty++
+			continue
+		}
 		var more string
 		for _, line := range strings.Split(ctx, "\n")[1:] {
 			switch {
@@ -152,12 +156,17 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		if total > 2000 {
 			t.Fatalf("call %d: session memory lines %d runes", call, total)
 		}
-		if want := fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find", n-shown); more != want {
+		// 같은 기억들은 세션에 한 번 알린다: 첫 호출만 남은 수를 센다.
+		want := ""
+		if call == 0 {
+			want = fmt.Sprintf("- 이 도구에 걸린 기억 %d개 더 — memory_find", n-shown)
+		}
+		if more != want {
 			t.Fatalf("call %d: more %q, want %q\n%s", call, more, want, ctx)
 		}
 	}
-	if shown >= n || total+400 <= 2000 {
-		t.Fatalf("did not stop at the session sum: shown=%d total=%d", shown, total)
+	if shown >= n || total+400 <= 2000 || empty < 2 {
+		t.Fatalf("did not stop at the session sum once told: shown=%d total=%d empty=%d", shown, total, empty)
 	}
 	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "기억 8개 더") {
 		t.Fatalf("long tool name:\n%.300s", ctx)

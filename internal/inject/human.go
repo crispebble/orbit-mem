@@ -10,6 +10,9 @@ import (
 // sub-agent reports, messages from other sessions, scheduled-task events and
 // system notices arrive as prompts too. Recall for the request must not run on
 // those. All the shapes that mark such a message live in this file.
+//
+// Keeping the host's message shapes here, in the domain, is where issue ORBIT-26
+// put them: when the host adds a shape, this one file is all that changes.
 
 // hostHeaders are plain-text openers with no closing mark: a message that
 // starts with one is entirely the host's own.
@@ -27,6 +30,7 @@ var hostTags = []string{
 	"task-notification",
 	"side-sessions-event",
 	"ci-monitor-event",
+	"scheduled-task",
 }
 
 // reminderBlock is a system notice the host appends to a prompt.
@@ -52,6 +56,9 @@ const maxTrivialDigits = 3
 // pasted host message followed by a question is a person's, and the words are
 // what follows the pasted blocks. A host shape that is not at the very start
 // (text before it, or inside pasted content) does not make the prompt the host's.
+// A host tag that is never closed is a person's cut paste, and the words are the
+// rest from that tag on: the host always closes its blocks (some 2,500 prompts of
+// one PC's records, none without the closing tag).
 func PersonWords(prompt string) (words string, ok bool) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", true
@@ -71,8 +78,8 @@ func PersonWords(prompt string) (words string, ok bool) {
 			return rest, true
 		}
 		end := strings.Index(rest, "</"+name+">")
-		if end < 0 {
-			return "", false
+		if end < 0 { // 호스트는 늘 닫는다: 닫히지 않은 틀은 사람이 잘라 붙인 글이다
+			return rest, true
 		}
 		rest = strings.TrimSpace(reminderBlock.ReplaceAllString(rest[end+len("</"+name+">"):], ""))
 	}

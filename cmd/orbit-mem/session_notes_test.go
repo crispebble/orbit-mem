@@ -106,3 +106,17 @@ func TestHook_새_판_확인은_resume에서도_띄우고_줄은_묶음의_것�
 		t.Fatalf("compact calls=%v\n%s", *calls, renewed)
 	}
 }
+
+// (5) recall=off여도 판 안내 줄은 시작 문맥으로 나간다(예전 inject=off와 같다). 기억은 넣지 않는다.
+func TestHook_recall_off여도_판_안내_줄은_나가고_기억은_없다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	pinSave(t, s, memory.SaveInput{Kind: "rule", Title: "답은 존댓말", Body: "반말 금지", Source: memory.Source{Kind: "quote", Excerpt: "존댓말로"}})
+	if _, errOut, code := run(t, "", "config", "set", "recall", "off"); code != 0 {
+		t.Fatalf("config set: %s", errOut)
+	}
+	ctx := eventContext(t, startHook(t, "off-1", "startup", "--plugin-version", "0.3.9"), "SessionStart")
+	if ctx != versionLine("0.3.9") {
+		t.Fatalf("recall off start %q", ctx)
+	}
+}

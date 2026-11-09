@@ -222,10 +222,14 @@ func TestRunner_어댑터가_panic해도_아무것도_내지_않고_panic을_넘
 	if f := w.failed(); !slices.Equal(f, []string{":internal"}) {
 		t.Fatalf("failed %v", f)
 	}
-	// 안내 줄이 panic해도 같다.
-	out.Reset()
+}
+
+// 안내 줄 만들개가 panic하면 안내 줄만 빠지고 핵심 묶음은 그대로 나간다(원칙 6).
+func TestRunner_안내_줄이_panic해도_핵심_문맥은_나간다(t *testing.T) {
+	w := newWorld(t, true)
+	var out bytes.Buffer
 	w.runner(func(hook.Event, hook.Plan) []string { panic("note") }).Run(fake{plan: startPlan()}, hook.SessionStart, nil, &out)
-	if out.Len() != 0 || !slices.Contains(w.failed(), "context:internal") {
+	if !strings.Contains(out.String(), "답은 존댓말") || len(w.failed()) != 0 {
 		t.Fatalf("output after a note panic %q failed %v", out.String(), w.failed())
 	}
 }

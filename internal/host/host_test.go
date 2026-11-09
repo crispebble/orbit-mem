@@ -1252,22 +1252,29 @@ func TestContext_안내_줄은_묶음을_만들_때만_불리고_함께_저장�
 	e.cfg.Recall = config.RecallOff
 	off := e.adapter("n-2")
 	off.opts.SessionNotes = a.opts.SessionNotes
-	if got := off.recall(host.OpContext, map[string]any{"source": "startup"}); calls != 2 || got.Text != "" {
+	// recall=off: 기억은 0자이고 안내 줄만 나간다(예전 inject=off와 같다).
+	if got := off.recall(host.OpContext, map[string]any{"source": "startup"}); calls != 3 || got.Text != "다른 판 안내" {
 		t.Fatalf("recall off calls %d %q", calls, got.Text)
 	}
 }
 
-// 안내 줄 만들개가 panic해도 문맥 op는 internal 오류로 끝나고 묶음을 남기지 않는다(훅은 아무것도 내지 않는다).
-func TestContext_안내_줄이_panic하면_internal이고_묶음을_남기지_않는다(t *testing.T) {
+// 안내 줄 만들개가 panic해도 문맥 op는 핵심 묶음을 내고 남긴다. 안내 줄만 없다(원칙 6: 실패하면 빈 결과로 넘어간다).
+func TestContext_안내_줄이_panic해도_핵심은_나오고_안내_줄만_없다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
 	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Scope: memory.ScopeGlobal})
 	a := e.adapter("p-1")
 	a.opts.SessionNotes = func() []string { panic("notes") }
-	if out, err := a.do(host.OpContext, map[string]any{"source": "startup"}); err == nil || err.Code != host.CodeInternal || out != nil {
-		t.Fatalf("out %v err %v", out, err)
+	out, err := a.do(host.OpContext, map[string]any{"source": "startup"})
+	if err != nil {
+		t.Fatalf("err %v", err)
 	}
-	if _, _, ok := s.SessionBundle("host-x", "p-1"); ok {
-		t.Fatal("a bundle was saved")
+	res, ok := out.(host.Recall)
+	if !ok || !strings.Contains(res.Text, "답은 존댓말") || strings.Contains(res.Text, "notes") {
+		t.Fatalf("out %#v", out)
+	}
+	text, _, saved := s.SessionBundle("host-x", "p-1")
+	if !saved || text != res.Text {
+		t.Fatalf("saved %v %q", saved, text)
 	}
 }
