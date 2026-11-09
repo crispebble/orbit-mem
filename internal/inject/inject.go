@@ -597,6 +597,11 @@ func recallHits(s *memory.Store, cfg config.Config, pl place.Place, prompt strin
 		h.Memory = m
 		hits = append(hits, h)
 	}
+	return rankHits(s, cfg, pl, prompt, hits)
+}
+
+// rankHits orders the hits of a recall, best first (see recallHits).
+func rankHits(s *memory.Store, cfg config.Config, pl place.Place, prompt string, hits []memory.RecallHit) []memory.RecallHit {
 	if len(hits) == 0 {
 		return nil
 	}
@@ -751,42 +756,4 @@ func HookOutput(event, context string) string {
 	}
 	b, _ := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": context}})
 	return string(b)
-}
-
-// SubagentStart is what a subagent gets when it starts (설계 · orbit-mem 2판 6절, S3 명세 2.9): the user
-// core only, within memory.UserCoreRunes. A subagent's hook input carries no request, so nothing else is
-// matched; the tools it calls bring their own memories (ToolInjection, keyed by the subagent).
-func SubagentStart(s *memory.Store, cfg config.Config) Injection {
-	var inj Injection
-	var b strings.Builder
-	if cfg.RecallMode() == config.RecallOff {
-		return inj.done(&b)
-	}
-	core, err := s.Core(memory.ScopeGlobal)
-	if err != nil || len(core) == 0 {
-		return inj.done(&b)
-	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
-	var body strings.Builder
-	used := 0
-	for _, m := range core {
-		if excluded(m, now, heads) != "" {
-			continue
-		}
-		entry := memory.CoreEntry(m)
-		if used+runes(entry) > memory.UserCoreRunes {
-			continue
-		}
-		body.WriteString(entry)
-		used += runes(entry)
-		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-		inj.mark(memory.MarkShown, m.ID)
-	}
-	if used == 0 {
-		return inj.done(&b)
-	}
-	b.WriteString("[" + Label + " 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다. 다른 기억은 memory_find로 찾는다.\n")
-	b.WriteString(body.String())
-	return inj.done(&b)
 }

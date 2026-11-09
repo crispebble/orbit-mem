@@ -1,1 +1,1 @@
-{"hookSpecificOutput":{"additionalContext":"[orbit-mem 기억 · 상시 핵심] 모든 일에 늘 지키는 사용자의 방식이다. 다른 기억은 memory_find로 찾는다.\n- 답은 존댓말 (m-userpin     )\n  반말을 쓰지 않는다","hookEventName":"SubagentStart"}}
+{"hookSpecificOutput":{"additionalContext":"[orbit-mem 기억 · 상시 핵심] 사용자가 모든 일에 늘 지키는 방식이다. 본문은 memory_get\n- 답은 존댓말 — m-userpin     ","hookEventName":"SubagentStart"}}

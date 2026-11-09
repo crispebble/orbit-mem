@@ -262,8 +262,8 @@ func TestContext_subagent는_SubagentStart이고_서브에이전트_키로_센�
 	a := e.adapter("s-1")
 	a.agent = "ag-1"
 	got := a.recall(host.OpContext, map[string]any{"source": "startup", "audience": "subagent"})
-	want := inject.SubagentStart(s, e.cfg)
-	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" || got.Budget.Limit != memory.UserCoreRunes {
+	want := inject.SubagentStart(s, e.cfg, e.where(), "")
+	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" || got.Budget.Limit != inject.MaxSubagentRunes {
 		t.Fatalf("subagent = %+v want %+v", got, want)
 	}
 	if evs := events(t, s); len(evs) != 1 || evs[0].Kind != memory.EventInjectSubagent || evs[0].Session != "s-1/ag-1" {

@@ -66,12 +66,16 @@ func Coverage(m Memory, words []string) (float64, []string) {
 // RecallHits are the live memories (candidate or confirmed, any place) that share a token with prompt's
 // meaningful words, ordered by id. A prompt without meaningful words matches nothing. Which memories a
 // session may be given, and the thresholds, are the caller's.
-func (s *Store) RecallHits(prompt string) ([]RecallHit, error) {
+func (s *Store) RecallHits(prompt string) ([]RecallHit, error) { return s.RecallHitsIn(prompt) }
+
+// RecallHitsIn is RecallHits over the memories in states (none: candidate and confirmed), so a caller can
+// see the stale versions a request also matches.
+func (s *Store) RecallHitsIn(prompt string, states ...string) ([]RecallHit, error) {
 	words := MeaningfulWords(prompt)
 	if len(words) == 0 {
 		return nil, nil
 	}
-	found, err := s.FindScored(FindInput{Query: RecallQuery(prompt), AllProjects: true, Limit: math.MaxInt32})
+	found, err := s.FindScored(FindInput{Query: RecallQuery(prompt), States: states, AllProjects: true, Limit: math.MaxInt32})
 	if err != nil {
 		return nil, err
 	}

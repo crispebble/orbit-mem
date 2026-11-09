@@ -102,7 +102,7 @@ func TestRecall_off는_어디에도_기억을_넣지_않고_안내_줄만_남긴
 				"session start without notes": SessionBundleWith(s, cfg, here, "claude", "s2", nil).Chars,
 				"prompt":                      PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "s1", Options{}).Chars,
 				"tool":                        ToolInjection(s, cfg, here, "claude", "s1", docsTool).Chars,
-				"subagent":                    SubagentStart(s, cfg).Chars,
+				"subagent":                    SubagentStart(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요").Chars,
 			} {
 				if n != 0 {
 					t.Errorf("%s: %d chars", what, n)

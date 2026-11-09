@@ -74,3 +74,7 @@
 
 - `name`: `call`의 도구 오류(`tool`)·`unknown-tool`·DB 상태 오류(`no-db`·`schema-newer`·`schema-older`)에서 그 도구 이름.
 - `mayHaveApplied`: 쓰기 도구(`memory_save`·`memory_update`)의 `timeout`에만 `true`로 붙는다. 한도를 넘긴 계산도 끝까지 돌아 쓰기가 커밋될 수 있다는 뜻이다. 호출자는 다시 쓰기 전에 `memory_find`·`memory_get`으로 반영됐는지 본다. 읽기 도구와 다른 op의 `timeout`에는 이 칸이 없다. 한도를 넘긴 뒤 나온 결과는 늘 `timeout`이다(결정적).
+
+## 위임 글
+
+서브에이전트에게 일을 맡기는 도구 직전의 `tool-context`에 `task`(위임 글)와 `agentKind`(서브에이전트 종류)를 실으면, 결과는 `task`가 없을 때와 같고(그 도구에 걸린 기억) 위임 글의 앞 2,000자를 세션 상태에 적는다(`tool-context-delegation`). 서브에이전트가 시작할 때의 `context`(`audience` `subagent`)는 `task`가 없으면 같은 `session`·같은 `agentKind`에서 먼저 적힌, 아직 다른 `agent`가 가져가지 않은 위임 글을 가져가 그 글로 묶음을 만든다(`context-subagent-delegated`). 같은 `agent`가 다시 부르면 가져간 글을 다시 쓴다. `task`가 있으면 그 글을 쓰고 적힌 위임 글은 건드리지 않는다(`context-subagent-task`). 짝이 없으면 상시 핵심 제목 줄만이다(`context-subagent`). `reset`·`session-end`는 그 세션의 위임 글을 지운다. 묶음은 위임 회상(2,400자 이하) 뒤 상시 핵심 제목 줄(600자 이하)이고 `budget.limit`은 3,000이다.

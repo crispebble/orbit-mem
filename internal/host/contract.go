@@ -59,7 +59,7 @@ const (
 )
 
 // Request is one contract request: the common fields and those of every operation (an operation
-// reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed, Task and RequestID are taken
+// reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed and RequestID are taken
 // and not used yet. IdempotencyKey goes into the args of call memory_save that have none (callArgs).
 type Request struct {
 	Contract  int             `json:"contract,omitempty"` // 없으면 1
@@ -73,11 +73,15 @@ type Request struct {
 	ReadScope json.RawMessage `json:"readScope,omitempty"`
 	Sandboxed *bool           `json:"sandboxed,omitempty"`
 
-	Source         string          `json:"source,omitempty"`   // context
-	Audience       string          `json:"audience,omitempty"` // context, 없으면 main
-	Task           string          `json:"task,omitempty"`     // context
-	Prompt         string          `json:"prompt,omitempty"`   // recall
-	Origin         string          `json:"origin,omitempty"`   // recall, 없으면 user
+	Source   string `json:"source,omitempty"`   // context
+	Audience string `json:"audience,omitempty"` // context, 없으면 main
+	// Task is the work handed to a subagent. In tool-context it is kept for the subagent of AgentKind that
+	// starts next in the session (the call hands work over); in context (audience subagent) it is the
+	// subagent's own task, and without it the kept one of the session and AgentKind that came first.
+	Task           string          `json:"task,omitempty"`
+	AgentKind      string          `json:"agentKind,omitempty"` // tool-context with task, context(subagent): 서브에이전트 종류
+	Prompt         string          `json:"prompt,omitempty"`    // recall
+	Origin         string          `json:"origin,omitempty"`    // recall, 없으면 user
 	RequestID      string          `json:"requestId,omitempty"`
 	Tool           string          `json:"tool,omitempty"` // tool-context
 	Name           string          `json:"name,omitempty"` // call
