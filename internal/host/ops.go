@@ -387,10 +387,11 @@ const maxTaskRunes = 2000
 // delegate keeps the task of a tool-context request (a call that hands work to a subagent) for the
 // subagent of its kind that starts next in the session (설계 · orbit-mem 4.1). It is written before the
 // result, so a subagent that starts right after finds it. A task that cannot be kept is dropped: that
-// subagent gets the core title lines alone.
+// subagent gets the core title lines alone. Only the task recall reads it, and it runs at recall auto only:
+// at on_demand and off the task is not kept.
 func (c *call) delegate() {
 	task := strings.TrimSpace(c.req.Task)
-	if task == "" {
+	if task == "" || c.cfg.RecallMode() != config.RecallAuto {
 		return
 	}
 	if r := []rune(task); len(r) > maxTaskRunes {

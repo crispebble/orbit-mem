@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/host"
 	"github.com/crispebble/orbit-mem/internal/inject"
 	"github.com/crispebble/orbit-mem/internal/memory"
@@ -184,5 +185,20 @@ func TestDelegation_위임_글은_앞부분만_남고_다른_기록에_새지_�
 			}
 		}
 		rows.Close()
+	}
+}
+
+// 위임 글을 쓰는 곳은 위임 회상(recall auto)뿐이다: recall이 on_demand·off면 위임 도구 직전에도 위임 글을 남기지 않는다.
+func TestDelegation_recall이_auto가_아니면_위임_글을_남기지_않는다(t *testing.T) {
+	for _, mode := range []string{config.RecallOnDemand, config.RecallOff} {
+		t.Run(mode, func(t *testing.T) {
+			w := newDelegationWorld(t)
+			w.e.cfg.Recall = mode
+			w.delegate("s-1", "worker", payTask)
+			var n int
+			if err := w.s.DB().QueryRow(`SELECT COUNT(*) FROM session_bundles`).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("recall %s: 위임 기록 %d행 %v", mode, n, err)
+			}
+		})
 	}
 }
