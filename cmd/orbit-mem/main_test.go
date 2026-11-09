@@ -327,6 +327,18 @@ func TestConfig_2차_키를_설정한다(t *testing.T) {
 	if _, _, code := run(t, "", "config", "set", "recallChars", "50"); code != 1 {
 		t.Fatalf("out of range accepted: %d", code)
 	}
+	// doctor는 실제로 쓰는 작업 회상 글자 수(500 상한)를 보인다.
+	onTerminal(t) // 글 꼴(터미널이 아니면 JSON)
+	out, _, _ := run(t, "", "doctor")
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "작업 회상") || strings.Contains(l, "work recall") {
+			line = l
+		}
+	}
+	if !strings.Contains(line, " 500") || strings.Contains(line, "1500") {
+		t.Fatalf("doctor recall line %q:\n%s", line, out)
+	}
 }
 
 // 끝 기준: 시작 훅은 --plugin-version이 자기 판과 다르면 문맥 끝에 맞추라는 한 줄을 더한다. 같으면 없고,

@@ -72,6 +72,21 @@ func TestPromptRecallChars는_recallChars와_500자_중_작은_값이다(t *test
 	}
 }
 
+// 기본값은 실제로 쓰는 값(500)이고, 옛 기본값 1000을 적은 파일도 그대로 읽혀 500으로 동작한다(1-6 b10).
+func TestRecallChars_기본값은_실효_상한이고_옛_파일의_1000도_읽는다(t *testing.T) {
+	if d := Default(); d.RecallChars != MaxPromptRecallChars {
+		t.Fatalf("default recallChars %d, 실효 %d", d.RecallChars, d.PromptRecallChars())
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"recallChars":1000}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(p)
+	if err != nil || c.RecallChars != 1000 || c.PromptRecallChars() != MaxPromptRecallChars {
+		t.Fatalf("old file = %d → %d, %v", c.RecallChars, c.PromptRecallChars(), err)
+	}
+}
+
 // 맞은 낱말이 하나뿐인 기억의 맞은 비율 문턱 recallMinCoverageOneWord(설계 보완, 1-6 b6 R1)와 위임 회상의 세 문턱
 // taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative(T1). 비율·점수는 0 < x ≤ 1, 낱말 수는 2~40(요청 회상이 요구하는 낱말 수 2 ~ 요청
 // 낱말 상한)만 받고, 키가 없는 옛 파일은 기본값으로 읽는다.

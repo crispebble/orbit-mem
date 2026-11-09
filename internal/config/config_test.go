@@ -69,7 +69,7 @@ func TestLoad_작업_기록_키는_읽을_때_무시하고_저장할_때_보존�
 
 func TestDefault_2차_설정_기본값(t *testing.T) {
 	c := Default()
-	if c.RecallChars != 1000 || c.LedgerWindowDays != 7 || c.CandidateExpiryDays != 28 {
+	if c.RecallChars != MaxPromptRecallChars || c.LedgerWindowDays != 7 || c.CandidateExpiryDays != 28 {
 		t.Fatalf("defaults = %+v", c)
 	}
 }
@@ -80,7 +80,7 @@ func TestLoad_옛_설정_파일에는_2차_기본값이_채워진다(t *testing.
 		t.Fatal(err)
 	}
 	c, err := Load(p)
-	if err != nil || !c.AutoTidy || c.RecallChars != 1000 || c.LedgerWindowDays != 7 {
+	if err != nil || !c.AutoTidy || c.RecallChars != MaxPromptRecallChars || c.LedgerWindowDays != 7 {
 		t.Fatalf("got %+v %v", c, err)
 	}
 }

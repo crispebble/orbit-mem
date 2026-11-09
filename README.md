@@ -151,7 +151,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | `recallMinCoverage` | 0.25 | 0 초과 1 이하 | 맞은 낱말이 둘 이상일 때 맞은 비율 문턱 |
 | `recallMinCoverageOneWord` | 0.3 | 0 초과 1 이하 | 맞은 낱말이 하나뿐일 때 맞은 비율 문턱 |
 | `recallMinRelative` | 0.9 | 0 초과 1 이하 | 1위 점수의 몇 배 이상만 남길지 |
-| `recallChars` | 1000 | 100~9000 | 요청 회상 글자 상한. 실제로는 500을 넘지 않는다(더 작은 값만 효과가 있다) |
+| `recallChars` | 500 | 100~9000 | 요청 회상 글자 상한. 실제로는 500을 넘지 않는다(더 작은 값만 효과가 있다). 옛 기본값 1000을 적은 파일도 그대로 읽고 500으로 동작한다. `doctor`는 실제로 쓰는 값을 보인다 |
 | `taskRecallMinWords` | 3 | 2~40 | 위임 회상: 기억이 맞혀야 하는 위임 글 내용 낱말 수 |
 | `taskRecallMinScore` | 0.1 | 0 초과 1 이하 | 위임 회상의 찾기 점수 문턱 |
 | `taskRecallMinRelative` | 0.3 | 0 초과 1 이하 | 위임 회상: 1위 점수의 몇 배 이상만 남길지 |

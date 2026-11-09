@@ -128,7 +128,9 @@ type Config struct {
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
-// 개발 자료)로 골랐다: 요청 적중 77/91·틀린 회상 7/104·넣지 않음 42/46, 위임 적중 4/21·틀린 0/19·넣지 않음 6/6.
+// 개발 자료)로 골랐다. 지금 기본값으로 잰 공개 묶음 전체는 요청 적중 81/91·틀린 회상 7/104·넣지 않음 42/46, 위임 적중
+// 5/21·틀린 0/19·넣지 않음 6/6이다. 고를 때는 요청 적중 77/91·위임 적중 4/21이었고, deploy-fact를 6개 사례의 허용으로
+// 낮춘 라벨 변경(2026-11-09, 사용자 결정)과 위임 제목 몫 문턱(b7f)을 거쳐 지금 값이 됐다. 아래 비교 값은 고를 때의 것이다.
 //   - recallMinScore 0.3: 저장소가 모르는 낱말을 빼고 재는 회상 점수에서 0.2~0.35가 같은 결과인 평탄 구간의 가운데다(0.4부터
 //     적중이 준다).
 //   - recallMinCoverage 0.25·recallMinCoverageOneWord 0.3: 한 낱말 비율을 0.25로 내리면 틀린 회상이 14.7%로, 0.35로 올리면
@@ -210,13 +212,14 @@ const (
 )
 
 // maxRecallChars is the largest recallChars a file may hold (files written before the work recall
-// was bounded keep loading). The work recall itself uses PromptRecallChars, MaxPromptRecallChars at most.
+// was bounded keep loading, the old default 1000 among them). The work recall itself uses PromptRecallChars,
+// MaxPromptRecallChars at most, which is also the default.
 const maxRecallChars = 9000
 
 // Default is the starting configuration.
 func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
-		RecallChars: 1000, LedgerWindowDays: 7,
+		RecallChars: MaxPromptRecallChars, LedgerWindowDays: 7,
 		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
 		SaveSimilarMin: memory.DefaultSimilarMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
