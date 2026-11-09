@@ -27,9 +27,11 @@ const (
 const SimilarLimit = 3
 
 // DefaultSimilarMin is the score a memory needs to count as similar when the caller gives no threshold.
-// Measured on rewordings and on different memories (savecheck_test.go scoreCases, the L-16 duplicate set
-// in internal/mcpserver/testdata): the evaluation set of 1-6 tunes it again.
-const DefaultSimilarMin = 0.61
+// 1-6 b6d 2차에 낱말 단위 기하 평균(similar.go)과 함께 정했다. 개발 자료(internal/bench/testdata의 public·holdout·
+// holdout2 중복 사례)에서 0.42~0.45가 같은 적중을 내고 0.48부터 holdout2의 낱말 바꾼 짧은 제목을 놓친다: 그 가운데
+// 높은 쪽이다. 시험 쪽 값: 바꿔 쓴 것 최저 0.463(similar_test.go 낱말 둘 바꿈), L-16 변형 최저 0.667, 다른 기억 최고
+// 0.333(머리 낱말 하나만 겹침, 짧은 기억이 긴 글에 다 들어 있음 0.324).
+const DefaultSimilarMin = 0.45
 
 // similarSummaryRunes is the most characters of a similar memory's summary.
 const similarSummaryRunes = 200

@@ -135,9 +135,9 @@
         "duplicates": {
           "cases": 18,
           "hit": {
-            "num": 11,
+            "num": 12,
             "den": 15,
-            "value": 0.7333
+            "value": 0.8
           },
           "offered": {
             "num": 0,
@@ -383,9 +383,9 @@
         "duplicates": {
           "cases": 31,
           "hit": {
-            "num": 19,
+            "num": 20,
             "den": 25,
-            "value": 0.76
+            "value": 0.8
           },
           "offered": {
             "num": 0,
@@ -4021,7 +4021,10 @@
           "id": "dup-paging",
           "session": "dup-paging",
           "kind": "duplicate",
-          "part": "train"
+          "part": "train",
+          "similar": [
+            "m-000000000044"
+          ]
         },
         {
           "id": "dup-lockout",

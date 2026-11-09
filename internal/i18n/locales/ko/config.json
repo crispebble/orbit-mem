@@ -9,7 +9,7 @@
   "config.err.recent_backup": "recentDecisions(0-20)·backupKeep(1 이상)을 확인해 주세요",
   "config.err.host_memory": "hostMemory는 ask 또는 keep입니다: %q",
   "config.err.ledger_window": "ledgerWindowDays는 1~90입니다",
-  "config.err.save_similar_min": "saveSimilarMin은 0보다 크고 1 이하인 수입니다(저장할 때 비슷한 기억으로 보는 저장 때 비슷함 점수): %v",
+  "config.err.save_similar_min": "saveSimilarMin은 0보다 크고 1 이하인 수입니다(저장할 때 비슷한 기억으로 보는 저장 때 비슷함 점수, 두 기억의 낱말이 서로를 덮는 비율의 기하 평균, 기본 0.45): %v",
   "config.err.recall_min_score": "recallMinScore는 0보다 크고 1 이하인 수입니다(요청 회상에 드는 찾기 점수의 문턱): %v",
   "config.err.recall_min_coverage": "recallMinCoverage는 0보다 크고 1 이하인 수입니다(요청 회상에 드는, 요청의 뜻 있는 낱말 중 맞은 비율의 문턱): %v",
   "config.err.recall_min_relative": "recallMinRelative는 0보다 크고 1 이하인 수입니다(요청 회상에서 1위 찾기 점수의 몇 배 이상인 기억만 남기는 상대 문턱): %v",
