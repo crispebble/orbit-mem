@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/i18n"
+	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
 )
 
@@ -59,6 +60,9 @@ type Config struct {
 	// host 계약의 시간 한도(설계 · 지연 회상·호스트 계약 10.1): op 이름 → Go 기간 글(예 "1.5s"). 빠진 op는 기본값이다.
 	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
 	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
+	// 저장 때 정리(설계 6.1, 계획 D8): memory_save가 같은 범위의 기억을 「비슷하다」고 보고 저장 전에 고르게 하는
+	// 찾기 점수(0~1)의 문턱. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
+	SaveSimilarMin float64 `json:"saveSimilarMin"`
 }
 
 // defaultHostTimeouts are the time limits of the host contract operations (설계 10.1 op 표).
@@ -108,7 +112,8 @@ const maxRecallChars = 9000
 func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
 		RecallChars: 1000, LedgerWindowDays: 7,
-		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true}
+		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
+		SaveSimilarMin: memory.DefaultSimilarMin}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -133,6 +138,9 @@ func (c Config) Validate() error {
 	}
 	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
 		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)
+	}
+	if !(c.SaveSimilarMin > 0 && c.SaveSimilarMin <= 1) { // NaN도 거절한다
+		return i18n.Errorf("config.err.save_similar_min", c.SaveSimilarMin)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

@@ -58,8 +58,8 @@ const (
 )
 
 // Request is one contract request: the common fields and those of every operation (an operation
-// reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed, Task, RequestID and IdempotencyKey are taken
-// and not used yet.
+// reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed, Task and RequestID are taken
+// and not used yet. IdempotencyKey goes into the args of call memory_save that have none (callArgs).
 type Request struct {
 	Contract  int             `json:"contract,omitempty"` // 없으면 1
 	Host      string          `json:"host,omitempty"`     // 기록에만 쓴다
@@ -221,3 +221,27 @@ func (e *Error) Exit() int {
 
 // fail is an error whose message is its code (the CLI gives the words).
 func fail(code string) *Error { return &Error{Code: code, Message: code} }
+
+// callArgs are the call's args with the common idempotencyKey merged into those of memory_save when the
+// args do not have their own (the args win, 설계 6.1 · 계획 D9). Args that are not one JSON object stay as
+// they are: the tool refuses them.
+func (r Request) callArgs() json.RawMessage {
+	if r.Name != "memory_save" || strings.TrimSpace(r.IdempotencyKey) == "" {
+		return r.Args
+	}
+	args := map[string]json.RawMessage{}
+	if len(strings.TrimSpace(string(r.Args))) > 0 {
+		if err := json.Unmarshal(r.Args, &args); err != nil || args == nil {
+			return r.Args
+		}
+	}
+	if _, ok := args["idempotencyKey"]; ok {
+		return r.Args
+	}
+	args["idempotencyKey"], _ = json.Marshal(r.IdempotencyKey)
+	b, err := json.Marshal(args)
+	if err != nil {
+		return r.Args
+	}
+	return b
+}

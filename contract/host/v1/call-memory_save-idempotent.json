@@ -1,0 +1,53 @@
+{
+  "name": "call-memory_save-idempotent",
+  "op": "call",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "session": "s-1",
+          "cwd": "/tmp/orbit-contract",
+          "name": "memory_save",
+          "idempotencyKey": "k-contract-1",
+          "args": {
+            "kind": "lesson",
+            "appliesTo": "user",
+            "title": "배포 스크립트는 드라이런을 먼저 돌린다",
+            "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다",
+            "source": {
+              "kind": "session",
+              "ref": "test:s-1"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "name": "memory_save",
+    "idempotencyKey": "k-contract-1",
+    "args": {
+      "kind": "lesson",
+      "appliesTo": "user",
+      "title": "배포 스크립트는 드라이런을 먼저 돌린다",
+      "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다",
+      "source": {
+        "kind": "session",
+        "ref": "test:s-1"
+      }
+    }
+  },
+  "exit": 0,
+  "output": {
+    "name": "memory_save",
+    "result": "$any"
+  }
+}

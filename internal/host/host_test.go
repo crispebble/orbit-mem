@@ -478,7 +478,7 @@ func TestCall_쓰는_쪽은_Go_선택지다(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := out.(host.CallOut).Result.(mcpserver.MemoryOut).Memory.ID
+	id := out.(host.CallOut).Result.(mcpserver.SaveOut).Memory.ID
 	edit := map[string]any{"name": "memory_update", "args": json.RawMessage(`{"id":"` + id + `","title":"보고는 영어로"}`)}
 	if _, err := a.do(host.OpCall, edit); err == nil || err.Code != host.CodeTool {
 		t.Fatalf("AI가 사용자 말 기억을 고쳤다: %v", err)
@@ -801,7 +801,7 @@ func TestLock_기록이_잠금으로_실패해도_결과는_나온다(t *testing
 }
 
 // 계약 입력: contract가 없으면 1, 1이 아니면 contract 오류(종료 1). 깨진 JSON·모르는 op·틀린 값은 usage(종료 2).
-// profile·readScope·sandboxed·task·requestId·idempotencyKey는 받기만 한다. trust는 글 하나(owner·agent·untrusted·system)만 받는다.
+// profile·readScope·sandboxed·task·requestId는 받기만 한다(idempotencyKey는 call memory_save의 args에 합친다). trust는 글 하나(owner·agent·untrusted·system)만 받는다.
 func TestDecode_계약과_사용법(t *testing.T) {
 	e := newEnv(t)
 	e.store()
@@ -1123,7 +1123,8 @@ func TestCall_trust는_이번_호출의_상한을_낮추기만_한다(t *testing
 	s := e.store()
 	save := func(limit, trust, title string) string {
 		t.Helper()
-		args, _ := json.Marshal(map[string]any{"kind": "fact", "appliesTo": "user", "title": title, "body": "본문 " + title, "source": map[string]any{"kind": "session", "ref": "x:s"}})
+		// 서로 비슷한 제목의 다른 기억을 일부러 만든다: 저장 때 정리의 고르기 없이 새로 저장한다(resolve add).
+		args, _ := json.Marshal(map[string]any{"kind": "fact", "appliesTo": "user", "title": title, "body": "본문 " + title, "source": map[string]any{"kind": "session", "ref": "x:s"}, "resolve": "add"})
 		fields := map[string]any{"name": "memory_save", "args": json.RawMessage(args)}
 		if trust != "" {
 			fields["trust"] = trust
@@ -1137,7 +1138,7 @@ func TestCall_trust는_이번_호출의_상한을_낮추기만_한다(t *testing
 		if err != nil {
 			t.Fatalf("%s: %v", title, err)
 		}
-		id := out.(host.CallOut).Result.(mcpserver.MemoryOut).Memory.ID
+		id := out.(host.CallOut).Result.(mcpserver.SaveOut).Memory.ID
 		m, gerr := s.Get(id)
 		if gerr != nil {
 			t.Fatal(gerr)

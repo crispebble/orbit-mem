@@ -105,7 +105,7 @@ func cmdMCP(a *app, args []string) error {
 		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err
-		}})
+		}, LoadSaveSimilarMin: saveSimilarMinOf})
 	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 

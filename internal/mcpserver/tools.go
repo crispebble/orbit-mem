@@ -159,9 +159,9 @@ func (t Tools) Call(name string, input []byte, host, session string) (any, error
 	case "memory_save":
 		var in SaveIn
 		if err = decode(input, &in); err == nil {
-			var r MemoryOut
+			var r SaveOut
 			if r, err = t.Save(in); err == nil {
-				out, data = r, map[string]any{"kind": in.Kind, "sourceKind": in.Source.Kind, "state": r.Memory.State, "memoryId": r.Memory.ID}
+				out, data = r, saveData(in, r)
 			}
 		}
 	case "memory_update":
@@ -210,7 +210,7 @@ func decode(b []byte, v any) error {
 	return nil
 }
 
-func (t Tools) Save(in SaveIn) (MemoryOut, error) {
+func (t Tools) Save(in SaveIn) (SaveOut, error) {
 	res, out, _ := t.h.save(context.Background(), nil, in)
 	return out, asError(res)
 }

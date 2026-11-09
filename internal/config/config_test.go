@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 func TestHome_ORBIT_HOME가_우선(t *testing.T) {
@@ -310,5 +312,47 @@ func TestValidate_hostTimeouts는_아는_op의_잘못된_기간만_거절하고_
 	}
 	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"ingest-session": "2s"`) {
 		t.Fatalf("모르는 op 키를 잃었다: %s", b)
+	}
+}
+
+// 저장 때 정리(설계 6.1, 계획 D8)의 비슷한 기억 문턱: 기본은 도메인 기본값, 0 < x ≤ 1만 받는다.
+// 이 키가 없는 옛 설정 파일은 기본값으로 읽히고, 옛 판 실행 파일은 이 키를 모르는 키로 두고 저장할 때 남긴다.
+func TestSaveSimilarMin_기본값과_범위(t *testing.T) {
+	if got := Default().SaveSimilarMin; got != memory.DefaultSimilarMin {
+		t.Fatalf("default = %v, want %v", got, memory.DefaultSimilarMin)
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"inject":"full"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.SaveSimilarMin != memory.DefaultSimilarMin {
+		t.Fatalf("old file = %v %v", c.SaveSimilarMin, err)
+	}
+	for _, bad := range []float64{0, -0.1, 1.01, 2} {
+		c := Default()
+		c.SaveSimilarMin = bad
+		err := c.Validate()
+		if err == nil || !strings.Contains(err.Error(), "saveSimilarMin") {
+			t.Errorf("%v accepted or unclear: %v", bad, err)
+		}
+	}
+	for _, good := range []float64{0.01, 0.5, 1} {
+		c := Default()
+		c.SaveSimilarMin = good
+		if err := c.Validate(); err != nil {
+			t.Errorf("%v: %v", good, err)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"saveSimilarMin":0}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err == nil {
+		t.Fatal("saveSimilarMin 0 in the file was accepted")
+	}
+	if err := os.WriteFile(p, []byte(`{"saveSimilarMin":0.75}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.SaveSimilarMin != 0.75 {
+		t.Fatalf("0.75 = %v %v", c.SaveSimilarMin, err)
 	}
 }

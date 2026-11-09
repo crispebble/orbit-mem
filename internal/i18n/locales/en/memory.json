@@ -95,5 +95,8 @@
   "memory.err.trust_not_stored": "this memory DB has no column for source trust (a schema 4 copy was restored), so the untrusted source was not saved. Open the memory DB again (it migrates) and save it then",
   "memory.trust.note": "untrusted",
   "memory.err.idempotency_conflict": "this idempotencyKey was already used for a write with other arguments; use a new key for a new request",
-  "memory.err.idempotency_key": "%w: the idempotencyKey must not be empty (up to %d bytes) and comes with the hash of its arguments"
+  "memory.err.idempotency_key": "%w: the idempotencyKey must not be empty (up to %d bytes) and comes with the hash of its arguments",
+  "memory.save.resolve": "%w: resolve is one of add, update:<id>, supersede:<id> and skip (the choices memory_save gave): %q",
+  "memory.save.not_replaced": "supersede:%s replaced nothing: that memory is already out of date or rejected, or it has the same title and took the new source",
+  "memory.save.not_pinned": "update:%s was applied but the memory was not put into the core: %v"
 }

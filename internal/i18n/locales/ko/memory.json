@@ -95,5 +95,8 @@
   "memory.err.trust_not_stored": "이 기억 DB에는 출처 등급 칸이 없어(판 4 사본으로 복구됨) 믿을 수 없는 출처를 저장하지 않았습니다. 기억 DB를 다시 열면(이전) 저장됩니다",
   "memory.trust.note": "믿을 수 없음",
   "memory.err.idempotency_conflict": "이 idempotencyKey는 이미 다른 인자의 쓰기에 썼습니다. 새 요청에는 새 키를 주세요",
-  "memory.err.idempotency_key": "%w: idempotencyKey는 비우지 않고(%d바이트 이하) 인자 해시와 함께 줍니다"
+  "memory.err.idempotency_key": "%w: idempotencyKey는 비우지 않고(%d바이트 이하) 인자 해시와 함께 줍니다",
+  "memory.save.resolve": "%w: resolve는 add·update:<id>·supersede:<id>·skip 가운데 하나입니다(memory_save가 준 choices): %q",
+  "memory.save.not_replaced": "supersede:%s는 아무것도 대체하지 않았습니다: 그 기억은 이미 낡았거나 거절된 판이거나, 같은 제목이라 새 출처를 그 기억에 더했습니다",
+  "memory.save.not_pinned": "update:%s는 적용했으나 상시 핵심에 올리지 못했습니다: %v"
 }

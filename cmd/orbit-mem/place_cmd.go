@@ -27,6 +27,16 @@ func productsOf() place.Map {
 	return cfg.Products
 }
 
+// saveSimilarMinOf is the similar-memory threshold of memory_save in the configuration (config saveSimilarMin).
+// An unreadable configuration gives 0, which the handler reads as the default (memory.DefaultSimilarMin).
+func saveSimilarMinOf() float64 {
+	cfg, err := loadConfig()
+	if err != nil {
+		return 0
+	}
+	return cfg.SaveSimilarMin
+}
+
 // cmdPlace shows where a folder stands in the product map: its scope key, its products and whether it is a
 // folder of several products, so a person can check the map and fix a wrong line (S3 명세 2.2).
 func cmdPlace(a *app, args []string) error {

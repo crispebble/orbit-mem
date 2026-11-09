@@ -322,14 +322,14 @@ func (c *call) tool() (any, *Error) {
 		actor = memory.ActorAI
 	}
 	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp,
-		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products})
+		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin})
 	if lvl, _ := c.req.trustLevel(); lvl != "" { // check가 이미 걸러 냈다
 		var lerr error
 		if t, lerr = t.Lower(lvl); lerr != nil {
 			return nil, &Error{Code: CodeInternal, Message: lerr.Error()}
 		}
 	}
-	out, terr := t.Call(name, c.req.Args, c.req.Host, c.req.key())
+	out, terr := t.Call(name, c.req.callArgs(), c.req.Host, c.req.key())
 	if terr != nil {
 		return nil, &Error{Code: CodeTool, Message: terr.Error(), Name: name}
 	}
