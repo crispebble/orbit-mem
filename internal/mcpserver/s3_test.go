@@ -48,6 +48,12 @@ const (
 	other    = "project:github.com/someone/unrelated"
 )
 
+// distinctTitles are titles that share no word, one per save of a test that looks at where a memory goes, not
+// at similar memories: titles that differ in one word (「사실 가」「사실 나」) are similar to each other at the
+// save threshold (1-6 b6d 2차), and memory_save would ask to choose instead of saving.
+var distinctTitles = []string{"회의록은 금요일에 정리한다", "배포 창은 화요일 오후다", "빌드 캐시는 주마다 비운다", "로그 보관 기간은 30일이다",
+	"모의 데이터는 생성기로 만든다"}
+
 func TestSave_적용_대상_기본값은_지금_폴더의_제품이고_모르면_product_물음표(t *testing.T) {
 	s := s3Store(t)
 	cases := []struct {
@@ -60,7 +66,7 @@ func TestSave_적용_대상_기본값은_지금_폴더의_제품이고_모르면
 	}
 	for i, c := range cases {
 		var out MemoryOut
-		res := call(t, connectAt(t, s, c.where), "memory_save", map[string]any{"kind": "fact", "title": "사실 " + string(rune('가'+i)), "source": quote("x")}, &out)
+		res := call(t, connectAt(t, s, c.where), "memory_save", map[string]any{"kind": "fact", "title": distinctTitles[i], "source": quote("x")}, &out)
 		if res.IsError || out.Memory.AppliesTo != c.applies {
 			t.Fatalf("%s: %v %s %+v", c.where, res.IsError, text(res), out.Memory)
 		}
