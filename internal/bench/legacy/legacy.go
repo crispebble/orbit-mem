@@ -90,7 +90,7 @@ func (r *recaller) where(cwd string) string {
 // activity the host also kept are not read by the recall, so they are not written.
 func (r *recaller) shown(session string, in injection) bench.Shown {
 	recordShown(r.s, Host, session, in)
-	return bench.Shown{IDs: in.memoryIDs, Chars: in.chars, Text: in.text}
+	return bench.Shown{IDs: in.memoryIDs, Chars: in.chars, Text: in.text, News: slices.Clone(in.memoryIDs[:in.news]), NewsChars: in.newsChars}
 }
 
 // Start is the session start bundle (internal/host/ops.go:251-263 at 87ab0fb).

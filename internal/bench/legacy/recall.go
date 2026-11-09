@@ -111,6 +111,10 @@ type injection struct {
 	memoryIDs []string
 	chars     int
 	marks     map[string][]string
+	// news and newsChars are the session news share of a request hook (the first news ids, its characters):
+	// not in 87ab0fb, kept for the measure that tells the news apart from the recall (1-6 b6r 3차).
+	news      int
+	newsChars int
 }
 
 // mark is internal/inject/inject.go:97-102 at 87ab0fb.
@@ -347,6 +351,7 @@ func promptInjectionFor(s *memory.Store, products place.Map, scope, prompt, host
 		news = sessionNews(s, &inj, host, session, bundleIDs, byID)
 	}
 	b.WriteString(news)
+	inj.news, inj.newsChars = len(inj.memoryIDs), runes(strings.TrimSpace(news))
 	recall := recallEntries(s, pl, prompt, byID, &inj, maxHookRunes-runes(news))
 	b.WriteString(recall)
 	return inj.done(&b)

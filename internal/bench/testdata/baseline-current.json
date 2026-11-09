@@ -54,6 +54,19 @@
           },
           "hitByStart": 3,
           "hitByEarlier": 0,
+          "hitByNews": 0,
+          "news": {
+            "requests": 0,
+            "ids": 0,
+            "expected": 0,
+            "allowed": 0,
+            "chars": {
+              "n": 0,
+              "mean": 0,
+              "median": 0,
+              "max": 0
+            }
+          },
           "recover": {
             "num": 5,
             "den": 5,
@@ -165,6 +178,19 @@
           },
           "hitByStart": 3,
           "hitByEarlier": 0,
+          "hitByNews": 0,
+          "news": {
+            "requests": 0,
+            "ids": 0,
+            "expected": 0,
+            "allowed": 0,
+            "chars": {
+              "n": 0,
+              "mean": 0,
+              "median": 0,
+              "max": 0
+            }
+          },
           "recover": {
             "num": 7,
             "den": 7,
@@ -276,6 +302,19 @@
           },
           "hitByStart": 6,
           "hitByEarlier": 0,
+          "hitByNews": 0,
+          "news": {
+            "requests": 0,
+            "ids": 0,
+            "expected": 0,
+            "allowed": 0,
+            "chars": {
+              "n": 0,
+              "mean": 0,
+              "median": 0,
+              "max": 0
+            }
+          },
           "recover": {
             "num": 12,
             "den": 12,

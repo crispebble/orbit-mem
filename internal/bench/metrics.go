@@ -60,11 +60,25 @@ type Requests struct {
 	Group
 	HitByStart    int  `json:"hitByStart"`   // hits that needed layer A
 	HitByEarlier  int  `json:"hitByEarlier"` // hits that needed what an earlier request of the session put in (B1)
+	HitByNews     int  `json:"hitByNews"`    // hits that needed this request's session news (B3)
+	News          News `json:"news"`
 	Recover       Rate `json:"recover"`
 	RecoverMissed Rate `json:"recoverMissed"`
 	B2Chars       Dist `json:"b2Chars"`
 	SessionChars  Dist `json:"sessionChars"`
 	StartChars    Dist `json:"startChars"`
+}
+
+// News is the session news (B3) of the request hooks: the lines that tell a session what changed since its
+// bundle. It is not a recall of the request, so it stays out of the wrong recall and the characters per request:
+// Requests counts the requests that had news, IDs the ids it named, Expected and Allowed how many of them the case
+// expected or allowed, Chars its characters per request that had news.
+type News struct {
+	Requests int  `json:"requests"`
+	IDs      int  `json:"ids"`
+	Expected int  `json:"expected"`
+	Allowed  int  `json:"allowed"`
+	Chars    Dist `json:"chars"`
 }
 
 // Subagents is the measure of the delegation cases. A delegation bundle is the always-on title lines
@@ -203,6 +217,22 @@ func minus(a, b []string) []string {
 	return out
 }
 
+// newsOf is the session news ids of a request step (those of IDs that News names).
+func newsOf(s *Shown) []string {
+	if s == nil || len(s.News) == 0 {
+		return nil
+	}
+	return intersect(s.IDs, s.News)
+}
+
+// newsCharsOf is the characters of the session news, never more than the whole.
+func newsCharsOf(s *Shown) int {
+	if s == nil {
+		return 0
+	}
+	return min(max(s.NewsChars, 0), s.Chars)
+}
+
 func charsOf(s *Shown) int {
 	if s == nil {
 		return 0
@@ -245,10 +275,12 @@ func (g *groupAcc) group() Group {
 		Wrong: wrongRate(g.wrong, g.injected), Forbid: g.forbid, ForbidCases: g.forbidCases, Empty: rate(g.emptyNum, g.emptyDen), Chars: dist(g.chars), NotYet: g.notYet}
 }
 
-// Compute measures outcomes. Shown is layer A of the session + what the work recall (B1) of the
-// session's earlier requests put in + the first 3 of this request's B1 + its B2: a memory is told a
-// session once (설계 L-2), so one put in earlier is still in front of the model. The wrong recall
-// counts only what this request put in.
+// Compute measures outcomes. Shown is layer A of the session + what the request hooks (B1, B3) of the
+// session's earlier requests put in + this request's session news (B3) + the first 3 of its work recall (B1)
+// + its B2: a memory is told a session once (설계 L-2), so one put in earlier is still in front of the model,
+// and a news line names the memory with its id like a recall line. The wrong recall, the put in, the left
+// empty and the characters per request count only what this request recalled (B1 without the news, B2): the
+// news is measured apart (News, 1-6 b6r 3차).
 func Compute(outs []Outcome) Metrics {
 	var req, sub groupAcc
 	var subLead []int
@@ -258,15 +290,34 @@ func Compute(outs []Outcome) Metrics {
 	var dupCases, dupHitNum, dupHitDen, dupOfferNum, dupOfferDen, dupForbid int
 	sessions := map[string]int{}     // key → characters so far
 	earlier := map[string][]string{} // key → what the work recall (B1) of the session's earlier requests put in
-	var hitByEarlier int
+	var hitByEarlier, hitByNews int
+	var news News
+	var newsChars []int
 	var order []string
 	for _, o := range outs {
 		c := o.Case
 		switch c.CaseKind() {
 		case KindRequest:
-			injected := union(idsOf(o.B1), idsOf(o.B2))
+			told := newsOf(o.B1)
+			recall := minus(idsOf(o.B1), told)
+			recallChars := charsOf(o.B1) - newsCharsOf(o.B1)
+			injected := union(recall, idsOf(o.B2))
 			req.add(c, injected)
-			own := union(top(idsOf(o.B1), RequestTop), idsOf(o.B2))
+			if len(told) > 0 || newsCharsOf(o.B1) > 0 {
+				news.Requests++
+				news.IDs += len(told)
+				for _, id := range told {
+					switch {
+					case slices.Contains(c.Expect, id):
+						news.Expected++
+					case slices.Contains(c.Allow, id):
+						news.Allowed++
+					}
+				}
+				newsChars = append(newsChars, newsCharsOf(o.B1))
+			}
+			recalled := union(top(recall, RequestTop), idsOf(o.B2))
+			own := union(told, recalled)
 			shown := union(o.Start.IDs, earlier[o.Key], own)
 			if len(c.Expect) > 0 {
 				req.hitDen++
@@ -282,10 +333,13 @@ func Compute(outs []Outcome) Metrics {
 					if !covers(union(o.Start.IDs, own), c.Expect) {
 						hitByEarlier++
 					}
+					if !covers(union(o.Start.IDs, earlier[o.Key], recalled), c.Expect) {
+						hitByNews++
+					}
 				}
 				if c.Prompt != "" && o.Found8 {
 					found := covers(top(o.Found, FindLimit), c.Expect)
-					if len(injected) == 0 && charsOf(o.B1)+charsOf(o.B2) == 0 {
+					if len(injected) == 0 && recallChars+charsOf(o.B2) == 0 {
 						recDen++
 						if found {
 							recNum++
@@ -300,12 +354,12 @@ func Compute(outs []Outcome) Metrics {
 				}
 			} else {
 				req.emptyDen++
-				if charsOf(o.B1)+charsOf(o.B2) == 0 {
+				if len(injected) == 0 && recallChars+charsOf(o.B2) == 0 {
 					req.emptyNum++
 				}
 			}
 			if o.B1 != nil {
-				req.chars = append(req.chars, o.B1.Chars)
+				req.chars = append(req.chars, recallChars)
 			}
 			if o.B2 != nil {
 				b2Chars = append(b2Chars, o.B2.Chars)
@@ -365,11 +419,12 @@ func Compute(outs []Outcome) Metrics {
 			}
 		}
 	}
+	news.Chars = dist(newsChars)
 	for _, k := range order {
 		sessionChars = append(sessionChars, sessions[k])
 	}
 	return Metrics{
-		Requests: Requests{Group: req.group(), HitByStart: hitByStart, HitByEarlier: hitByEarlier, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
+		Requests: Requests{Group: req.group(), HitByStart: hitByStart, HitByEarlier: hitByEarlier, HitByNews: hitByNews, News: news, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
 			B2Chars: dist(b2Chars), SessionChars: dist(sessionChars), StartChars: dist(startChars)},
 		Subagent:   Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
 		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), Offered: rate(dupOfferNum, dupOfferDen), Forbid: dupForbid},

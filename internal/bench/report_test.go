@@ -120,13 +120,16 @@ func (tagWording) Header(a, n, s string) string                    { return tag(
 func (tagWording) Units(c, u, tr, te int) string                   { return tag("units", c, u, tr, te) }
 func (tagWording) TestSize(b bench.Bundles, p bench.Points) string { return tag("testSize", b, p) }
 func (tagWording) Requests(n int) string                           { return tag("requests", n) }
-func (tagWording) Hit(r string, n, e int) string                   { return tag("hit", r, n, e) }
+func (tagWording) Hit(r string, n, e, s int) string                { return tag("hit", r, n, e, s) }
 func (tagWording) NotYet(q, g int) string                          { return tag("notYet", q, g) }
 func (tagWording) Wrong(r string, i, c, n, w, f, fc int) string {
 	return tag("wrong", r, i, c, n, w, f, fc)
 }
-func (tagWording) Recover(r, m string) string   { return tag("recover", r, m) }
-func (tagWording) Empty(r string) string        { return tag("empty", r) }
+func (tagWording) Recover(r, m string) string { return tag("recover", r, m) }
+func (tagWording) Empty(r string) string      { return tag("empty", r) }
+func (tagWording) News(q, i, e, a, o int, d string) string {
+	return tag("news", q, i, e, a, o, d)
+}
 func (tagWording) CharsRequest(d string) string { return tag("charsRequest", d) }
 func (tagWording) CharsTool(d string) string    { return tag("charsTool", d) }
 func (tagWording) CharsSession(d string) string { return tag("charsSession", d) }

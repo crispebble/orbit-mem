@@ -55,13 +55,17 @@ type RunReport struct {
 	Cases    []CaseResult    `json:"cases"`
 }
 
-// Seen is what a step showed: the ids in order and the characters.
+// Seen is what a step showed: the ids in order and the characters, and of them the session news of a request.
 type Seen struct {
-	IDs   []string `json:"ids"`
-	Chars int      `json:"chars"`
+	IDs       []string `json:"ids"`
+	Chars     int      `json:"chars"`
+	News      []string `json:"news,omitempty"`
+	NewsChars int      `json:"newsChars,omitempty"`
 }
 
-func seen(s Shown) Seen { return Seen{IDs: nonNil(s.IDs), Chars: s.Chars} }
+func seen(s Shown) Seen {
+	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s)}
+}
 
 func seenPtr(s *Shown) *Seen {
 	if s == nil {
@@ -117,11 +121,14 @@ type Wording interface {
 	Units(cases, units, train, test int) string
 	TestSize(b Bundles, p Points) string
 	Requests(n int) string
-	Hit(rate string, byStart, byEarlier int) string
+	Hit(rate string, byStart, byEarlier, byNews int) string
 	NotYet(requests, subagents int) string // answered cases whose answer was made after the case
 	Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string
 	Recover(rate, everyMissed string) string
 	Empty(rate string) string
+	// News is the session news (B3) of the request hooks: requests that had it, the ids it named (expected,
+	// allowed, other) and its characters per such request.
+	News(requests, ids, expected, allowed, other int, chars string) string
 	CharsRequest(dist string) string
 	CharsTool(dist string) string
 	CharsSession(dist string) string
@@ -177,10 +184,11 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 	q, g, d := m.Requests, m.Subagent, m.Duplicates
 	fmt.Fprintf(b, "[%s] %s\n", w.Part(part), w.Requests(q.Cases))
 	for _, line := range []string{
-		w.Hit(pct(w, q.Hit), q.HitByStart, q.HitByEarlier),
+		w.Hit(pct(w, q.Hit), q.HitByStart, q.HitByEarlier, q.HitByNews),
 		w.Wrong(pct(w, q.Wrong), q.Injected, q.Correct, q.Neutral, q.Injected-q.Correct-q.Neutral, q.Forbid, q.ForbidCases),
 		w.Recover(pct(w, q.Recover), pct(w, q.RecoverMissed)),
 		w.Empty(pct(w, q.Empty)),
+		w.News(q.News.Requests, q.News.IDs, q.News.Expected, q.News.Allowed, q.News.IDs-q.News.Expected-q.News.Allowed, distText(w, q.News.Chars)),
 		w.CharsRequest(distText(w, q.Chars)),
 		w.CharsTool(distText(w, q.B2Chars)),
 		w.CharsSession(distText(w, q.SessionChars)),

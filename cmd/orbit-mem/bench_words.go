@@ -32,8 +32,8 @@ func (benchWording) TestSize(b bench.Bundles, p bench.Points) string {
 
 func (benchWording) Requests(n int) string { return i18n.T("bench.report.requests", n) }
 
-func (benchWording) Hit(rate string, byStart, byEarlier int) string {
-	return i18n.T("bench.report.hit", rate, byStart, byEarlier)
+func (benchWording) Hit(rate string, byStart, byEarlier, byNews int) string {
+	return i18n.T("bench.report.hit", rate, byStart, byEarlier, byNews)
 }
 
 func (benchWording) NotYet(requests, subagents int) string {
@@ -49,6 +49,10 @@ func (benchWording) Recover(rate, everyMissed string) string {
 }
 
 func (benchWording) Empty(rate string) string { return i18n.T("bench.report.empty", rate) }
+
+func (benchWording) News(requests, ids, expected, allowed, other int, chars string) string {
+	return i18n.T("bench.report.news", requests, ids, expected, allowed, other, chars)
+}
 
 func (benchWording) CharsRequest(dist string) string {
 	return i18n.T("bench.report.chars_request", dist)

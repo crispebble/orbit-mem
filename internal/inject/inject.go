@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -590,6 +591,27 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		return ""
 	}
 	return head + lines.String()
+}
+
+// NewsShare is the session news (B3) share of a request hook's text and ids (PromptInjectionFor): the ids its
+// lines name and the characters of the block. The block leads the text and names one memory a line, in the order
+// of the ids; the work recall (B1) follows it. A text with no news gives none. A measure that tells the news
+// apart from the recall uses it (internal/bench, 1-6 b6r 3차).
+func NewsShare(text string, ids []string) ([]string, int) {
+	if !strings.HasPrefix(text, newsHead) {
+		return nil, 0
+	}
+	block := text
+	if i := strings.Index(text, "\n"+recallHead); i >= 0 {
+		block = text[:i]
+	}
+	n := 0
+	for _, line := range strings.Split(block, "\n")[1:] {
+		if strings.HasPrefix(line, "- ") {
+			n++
+		}
+	}
+	return slices.Clone(ids[:min(n, len(ids))]), runes(block)
 }
 
 // liveSuccessor follows superseded_by from old to the live (candidate or confirmed)

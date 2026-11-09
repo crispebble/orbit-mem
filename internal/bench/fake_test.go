@@ -20,7 +20,8 @@ type lead struct {
 	chars int
 }
 
-// leads answers the lead of the steps, by the same names as script.
+// leads answers the lead of the steps, by the same names as script. The lead of a request step ("req:")
+// is its session news (Shown.News): the lines of what changed in the session, put before the recall.
 type leads map[string]lead
 
 // script answers the fake steps: "start:<session>", "req:<prompt>", "tool:<tool>", "sub:<task>".
@@ -44,6 +45,9 @@ func (f fake) show(call string) (bench.Shown, error) {
 	}
 	for _, k := range o.keys {
 		ids = append(ids, f.idOf(k))
+	}
+	if strings.HasPrefix(call, "req:") {
+		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars}, nil
 	}
 	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars}, nil
 }

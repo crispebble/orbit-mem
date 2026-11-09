@@ -14,12 +14,19 @@ import "time"
 // role) and the recall for the task. The path says which ids are the first with Lead (a subset of IDs)
 // and how many of the characters they are with LeadChars; the rest is the recall share. A path with no
 // such split leaves both empty and all of it counts as recall.
+//
+// A request hook has two shares too: the session news (B3, what changed in the session since its bundle: a
+// replaced memory, one confirmed elsewhere) and the work recall (B1). The path says which ids are the news with
+// News (a subset of IDs) and how many characters they take with NewsChars. The news is not a recall of the
+// request: the measure counts its ids as shown but not as put in (설계 5.1 B3, 1-6 b6r 3차).
 type Shown struct {
 	IDs       []string
 	Chars     int
 	Text      string
 	Lead      []string
 	LeadChars int
+	News      []string
+	NewsChars int
 }
 
 // Recaller is the recall path under test. The origin of a case is the answer key and is

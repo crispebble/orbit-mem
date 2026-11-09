@@ -137,7 +137,11 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	if rec.Skipped != "" || len(rec.MemoryIDs) == 0 {
 		return bench.Shown{IDs: []string{}}, nil
 	}
-	return bench.Shown{IDs: rec.MemoryIDs, Chars: len([]rune(rec.Text)), Text: rec.Text}, nil
+	shown := bench.Shown{IDs: rec.MemoryIDs, Chars: len([]rune(rec.Text)), Text: rec.Text}
+	if op == host.OpRecall { // 요청 훅: 앞의 「이 세션 중 바뀐 것」(B3) 몫을 회상(B1)과 나눈다
+		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, rec.MemoryIDs)
+	}
+	return shown, nil
 }
 
 func (r *recaller) Start(session, cwd string) (bench.Shown, error) {

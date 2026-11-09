@@ -218,3 +218,43 @@ func TestHit는_같은_세션_앞_요청들의_B1이_넣은_것도_보인_것으
 	}
 	wantRate(t, "wrong", m.Wrong, 3, 6, f64(0.5))
 }
+
+// 1-6 b6r 3차: 요청 훅의 「이 세션 중 바뀐 것」(B3, 세션 소식) 줄은 관련 기억 회상(B1)이 아니다. 소식 줄의 기억은 모델 앞에
+// 놓였으니 적중의 「보인 것」에는 들지만, 틀린 회상·넣은 것·넣지 않음·요청당 글자는 B1 몫(+B2)만 센다. 소식은 따로 낸다.
+// 소식 줄이 B1 앞자리를 차지해도 B1의 앞 3개는 회상 몫에서 센다.
+func TestB3_세션_소식은_적중의_보인_것에만_들고_틀린_회상과_글자는_B1_몫만_센다(t *testing.T) {
+	rep, _ := runFakeLead(t, `
+	 {"id":"n1","session":"s1","prompt":"p1","expect":["a"]},
+	 {"id":"n2","session":"s1","prompt":"p2","expect":["c"]},
+	 {"id":"n3","session":"s1","prompt":"p3"}`, script{
+		"req:p1": {[]string{"f", "g"}, 200},
+		"req:p2": {[]string{"f", "g", "c"}, 300}, // c는 회상 몫 셋째: 소식 줄 셋 뒤에 와도 보인 것이다
+		"req:p3": {[]string{}, 30},
+	}, leads{
+		"req:p1": {[]string{"d", "a", "e"}, 90},
+		"req:p2": {[]string{"h", "i", "j"}, 60},
+		"req:p3": {[]string{"b"}, 30},
+	}, keyed{})
+	m := rep.Runs[0].All.Requests
+	wantRate(t, "hit", m.Hit, 2, 2, f64(1))
+	if m.HitByNews != 1 || m.HitByStart != 0 || m.HitByEarlier != 0 {
+		t.Errorf("hitByNews %d byStart %d byEarlier %d, want 1/0/0 (n1 needs the news line of a)", m.HitByNews, m.HitByStart, m.HitByEarlier)
+	}
+	// 넣은 것은 회상 몫만: f g + f g c. 맞음은 c 하나.
+	if m.Injected != 5 || m.Correct != 1 || m.Neutral != 0 {
+		t.Errorf("injected %d correct %d neutral %d, want 5/1/0", m.Injected, m.Correct, m.Neutral)
+	}
+	wantRate(t, "wrong", m.Wrong, 4, 5, f64(0.8))
+	wantRate(t, "empty", m.Empty, 1, 1, f64(1)) // n3은 소식 줄만 넣었다: 회상은 넣지 않았다
+	wantDist(t, "b1 chars", m.Chars, 3, 116.6667, 110, 240)
+	n := m.News
+	if n.Requests != 3 || n.IDs != 7 || n.Expected != 1 || n.Allowed != 0 {
+		t.Errorf("news %+v, want 3 requests, 7 ids, 1 expected", n)
+	}
+	wantDist(t, "news chars", n.Chars, 3, 60, 60, 90)
+	wantDist(t, "session chars", m.SessionChars, 1, 530, 530, 530) // 세션 누적에는 소식 글자도 든다
+	c := rep.Runs[0].Cases[0].Request
+	if c == nil || len(c.News) != 3 || c.NewsChars != 90 {
+		t.Errorf("case n1 request %+v, want its 3 news ids and 90 news chars", c)
+	}
+}
