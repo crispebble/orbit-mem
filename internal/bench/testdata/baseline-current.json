@@ -27,9 +27,9 @@
         "requests": {
           "cases": 96,
           "hit": {
-            "num": 56,
+            "num": 59,
             "den": 64,
-            "value": 0.875
+            "value": 0.9219
           },
           "injected": 78,
           "correct": 69,
@@ -59,8 +59,8 @@
             "value": 1
           },
           "recoverMissed": {
-            "num": 8,
-            "den": 8,
+            "num": 5,
+            "den": 5,
             "value": 1
           },
           "b2Chars": {
@@ -137,9 +137,9 @@
         "requests": {
           "cases": 41,
           "hit": {
-            "num": 21,
+            "num": 22,
             "den": 27,
-            "value": 0.7778
+            "value": 0.8148
           },
           "injected": 26,
           "correct": 24,
@@ -169,8 +169,8 @@
             "value": 1
           },
           "recoverMissed": {
-            "num": 6,
-            "den": 6,
+            "num": 5,
+            "den": 5,
             "value": 1
           },
           "b2Chars": {
@@ -195,9 +195,9 @@
         "subagent": {
           "cases": 11,
           "hit": {
-            "num": 2,
+            "num": 3,
             "den": 9,
-            "value": 0.2222
+            "value": 0.3333
           },
           "injected": 9,
           "correct": 9,
@@ -247,9 +247,9 @@
         "requests": {
           "cases": 137,
           "hit": {
-            "num": 77,
+            "num": 81,
             "den": 91,
-            "value": 0.8462
+            "value": 0.8901
           },
           "injected": 104,
           "correct": 93,
@@ -279,8 +279,8 @@
             "value": 1
           },
           "recoverMissed": {
-            "num": 14,
-            "den": 14,
+            "num": 10,
+            "den": 10,
             "value": 1
           },
           "b2Chars": {
@@ -305,9 +305,9 @@
         "subagent": {
           "cases": 27,
           "hit": {
-            "num": 4,
+            "num": 5,
             "den": 21,
-            "value": 0.1905
+            "value": 0.2381
           },
           "injected": 19,
           "correct": 19,

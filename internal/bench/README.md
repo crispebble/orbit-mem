@@ -22,6 +22,8 @@ flowchart LR
 
 공개 고정 묶음의 정답은 현재 회상 코드가 맞히는지가 아니라 참을 기준으로 적는다. 그래서 지금 판은 일부 사례에서 틀리고, 그 점수가 기준선으로 기록된다.
 
+공개 고정 묶음의 라벨 변경(2026-11-09, 사용자 결정): 기억 `deploy-fact`(「운영 배포는 main 병합으로 일어난다」)를 6개 사례(old-deploy-check·other-deploy-where·slash-arg-deploy·paste-report-ask·sy-1·sub-deploy-audit)의 `expect`에서 `allow`로 옮겼다. 다른 정답과 판정 전용 묶음은 그대로다.
+
 ## 사례 파일 꼴
 
 JSON 하나다. 맨 위 칸은 다음과 같다.

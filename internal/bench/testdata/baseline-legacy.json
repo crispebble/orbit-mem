@@ -32,8 +32,8 @@
             "value": 0.7813
           },
           "injected": 164,
-          "correct": 68,
-          "neutral": 18,
+          "correct": 64,
+          "neutral": 22,
           "wrong": {
             "num": 78,
             "den": 164,
@@ -143,8 +143,8 @@
             "value": 0.7037
           },
           "injected": 68,
-          "correct": 24,
-          "neutral": 13,
+          "correct": 23,
+          "neutral": 14,
           "wrong": {
             "num": 31,
             "den": 68,
@@ -254,8 +254,8 @@
             "value": 0.7582
           },
           "injected": 232,
-          "correct": 92,
-          "neutral": 31,
+          "correct": 87,
+          "neutral": 36,
           "wrong": {
             "num": 109,
             "den": 232,
