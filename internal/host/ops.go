@@ -215,13 +215,36 @@ func (c *call) activity(kind string) {
 		if c.req.Session == "" {
 			return
 		}
-		parent := c.req.Parent
-		if parent == "" {
-			parent = c.svc.setup.Parent
-		}
-		_ = c.store.RecordActivity(memory.ActivityEvent{Kind: kind, Host: c.req.Host, Session: c.req.Session, Cwd: c.req.Cwd,
-			ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: c.req.Prompt, At: c.opts.At})
+		_ = c.store.RecordActivity(c.activityEvent(kind))
 	})
+}
+
+// endActivity keeps the end of the session in the activity log. A session whose row the start
+// made gets only its end time (no project resolving: git stays out of the end's time limit);
+// a session whose start was missed resolves its project here and gets its row.
+func (c *call) endActivity() {
+	c.after = append(c.after, func() {
+		if c.req.Session == "" {
+			return
+		}
+		e := c.activityEvent(memory.ActivityEnd)
+		if found, err := c.store.EndActivity(e); err != nil || found {
+			return
+		}
+		c.locate()
+		e.ProjectScope, e.ProjectLabel = c.p.Scope, c.p.Label
+		_ = c.store.RecordActivity(e)
+	})
+}
+
+// activityEvent is this call as an activity log event, with the session's project as located.
+func (c *call) activityEvent(kind string) memory.ActivityEvent {
+	parent := c.req.Parent
+	if parent == "" {
+		parent = c.svc.setup.Parent
+	}
+	return memory.ActivityEvent{Kind: kind, Host: c.req.Host, Session: c.req.Session, Cwd: c.req.Cwd,
+		ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: c.req.Prompt, At: c.opts.At}
 }
 
 func (c *call) version() (any, *Error) {
@@ -361,7 +384,6 @@ func (c *call) sessionEnd() (any, *Error) {
 	if err := c.openRead(); err != nil {
 		return nil, err
 	}
-	c.locate()
-	c.activity(memory.ActivityEnd)
+	c.endActivity()
 	return OK{OK: true}, nil
 }

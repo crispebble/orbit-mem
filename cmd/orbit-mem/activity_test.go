@@ -2,9 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
@@ -27,13 +32,49 @@ func activities(t *testing.T) []memory.Activity {
 	return as
 }
 
+// hook runs a hook that must finish in time. A hook over its time limit still ends 0 with an empty
+// result (fail-open) and drops its records; this helper fails on that notice so the cause shows
+// as itself, not as a missing record. 일부러 한도를 넘기는 fail-open 시험은 run을 바로 쓴다.
 func hook(t *testing.T, stdin string, args ...string) string {
 	t.Helper()
 	out, errOut, code := run(t, stdin, append([]string{"hook"}, args...)...)
 	if code != 0 {
 		t.Fatalf("hook %v: 종료 %d %s", args, code, errOut)
 	}
+	if strings.Contains(errOut, i18n.T("cli.hook.timeout")) {
+		t.Fatalf("hook %v: 시간 한도를 넘겨 결과와 기록을 버렸다: %s", args, errOut)
+	}
 	return out
+}
+
+// countingGit puts a git in front of PATH that writes one line per run to a file and then runs the
+// real git. It gives the file's line count so far (시간에 기대지 않고 git 실행 수를 센다).
+func countingGit(t *testing.T) func() int {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("가짜 git이 셸 스크립트라 Windows에서는 돌지 않는다(실행 수 세기는 unix에서 본다)")
+	}
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git 없음")
+	}
+	bin := t.TempDir()
+	log := filepath.Join(bin, "runs")
+	script := "#!/bin/sh\necho run >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// macOS는 새로 쓴 실행 파일을 처음 돌 때 검사한다(0.3초 넘게, 부하 때 더): 한 번 돌려 둔 뒤 세기 시작한다.
+	// 그러지 않으면 시험 대상의 첫 git이 그 시간을 떠안아 훅 한도를 넘긴다.
+	if err := exec.Command(filepath.Join(bin, "git"), "--version").Run(); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(log)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return func() int {
+		b, _ := os.ReadFile(log)
+		return strings.Count(string(b), "\n")
+	}
 }
 
 // 끝 기준(M5): 세션 시작은 줄을 만들고, 요청은 수·시각·첫/마지막 글을, 세션 끝은 끝 시각을 남긴다.
@@ -71,6 +112,41 @@ func TestHook_활동_기록_세_훅(t *testing.T) {
 	hook(t, hookIn("S1", dir, "codex 요청"), "prompt", "--host", "codex")
 	if as = activities(t); len(as) != 2 {
 		t.Fatalf("호스트+세션이 열쇠다: %+v", as)
+	}
+}
+
+// 간헐 실패 a8b: 세션 끝 훅의 한도(0.5초) 안에서 git이 돌아 부하 때 끝 기록이 버려졌다. 시작 훅이 줄을 만든 세션의
+// 끝은 그 줄의 끝 시각만 고치고 프로젝트를 다시 판정하지 않는다(git 0번). 시작이 빠진 세션의 끝만 판정해 새 줄을 만든다.
+func TestHook_세션_끝은_시작된_세션에서_git을_부르지_않는다(t *testing.T) {
+	home(t)
+	seed(t)
+	runs := countingGit(t)
+	dir := t.TempDir()
+	hook(t, hookIn("S1", dir, ""), "session-start", "--host", "claude")
+	if runs() == 0 {
+		t.Fatal("가짜 git이 불리지 않았다: 시험이 git 실행을 세지 못한다")
+	}
+	before := runs()
+	hook(t, hookIn("S1", dir, ""), "session-end", "--host", "claude")
+	if n := runs() - before; n != 0 {
+		t.Fatalf("세션 끝 git 실행 %d번, 0번이어야 한다", n)
+	}
+	as := activities(t)
+	if len(as) != 1 || as[0].EndedAt == 0 || as[0].ProjectScope == "" || as[0].ProjectLabel == "" || as[0].Cwd != dir {
+		t.Fatalf("끝 %+v", as)
+	}
+	// 시작 훅이 빠진 세션: 끝이 프로젝트를 판정해 줄을 만든다(전과 같은 줄)
+	other := t.TempDir()
+	hook(t, hookIn("S2", other, ""), "session-end", "--host", "claude")
+	as = activities(t)
+	var got *memory.Activity
+	for i := range as {
+		if as[i].Session == "S2" {
+			got = &as[i]
+		}
+	}
+	if got == nil || got.EndedAt == 0 || got.StartedAt == 0 || got.Cwd != other || got.ProjectScope == "" || got.ProjectLabel == "" || got.Launcher != "human" {
+		t.Fatalf("시작 없는 끝 %+v", as)
 	}
 }
 
