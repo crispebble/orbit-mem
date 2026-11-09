@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // 요청 회상의 두 문턱 재료(설계 · 지연 회상·호스트 계약·어댑터 5.1 4단계). 문턱 값은 설정이 정하고 여기서는 재기만 한다.
@@ -14,6 +15,8 @@ import (
 //     더한 것이다: 「확정 규칙 7」의 7이 빠지면 제목만 다른 「확정 규칙 N」들이 모두 같은 점수가 된다.
 //   - 맞은 비율(Coverage): 뜻 있는 낱말 중 기억(제목·주제·태그·본문)에 나온 낱말 수 ÷ 뜻 있는 낱말 수다(IDF 무게 없음).
 //     세 글자 이상 한글 낱말은 두 글자 이상 앞부분이 나와도 맞은 것으로 센다(조사·어미: 「설치해」는 「설치한다」에 맞는다).
+//     한 글자 한글 낱말은 기억의 낱말(조사·어미를 뗀 것 포함)과 통째로 같을 때만 맞는다(1-6 b6r 2차): 「밥」이 「비빔밥」의
+//     한 글자로 맞으면 짧은 요청의 맞은 비율이 우연히 오른다.
 
 // MeaningfulWords are the words of a request worth matching, in request order, at most 40: words of two or
 // more characters and one-syllable Hangul nouns, less filler words, with closed particles and endings taken
@@ -46,12 +49,35 @@ func Coverage(m Memory, words []string) (float64, []string) {
 	}
 	all := strings.Join(parts, "\n")
 	var matched []string
+	var whole map[string]bool // 기억의 낱말과 그 뗀 꼴, 한 글자 낱말이 있을 때만 만든다
 	for _, w := range words {
+		if utf8.RuneCountInString(w) == 1 && isHangulStart(w) {
+			if whole == nil {
+				whole = wholeWords(all)
+			}
+			if whole[w] {
+				matched = append(matched, w)
+			}
+			continue
+		}
 		if termScore(w, all) > 0 {
 			matched = append(matched, w)
 		}
 	}
 	return float64(len(matched)) / float64(len(words)), matched
+}
+
+// wholeWords are the words of a normalized text, split as a request's words are (splitWordMarks), each as
+// written and with its particles and endings taken off (stemWord).
+func wholeWords(text string) map[string]bool {
+	out := map[string]bool{}
+	for _, t := range Terms(text, math.MaxInt32) {
+		for _, w := range splitWordMarks(t) {
+			out[w] = true
+			out[stemWord(w)] = true
+		}
+	}
+	return out
 }
 
 // RecallHits are the live memories (candidate or confirmed, any place) that share a token with prompt's

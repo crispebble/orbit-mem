@@ -30,6 +30,19 @@ func TestCoverage_맞은_낱말의_비율이고_한글은_앞부분이_맞아도
 	}
 }
 
+// 1-6 b6r 2차 규칙 e: 한 글자 한글 낱말은 기억의 낱말(조사·어미를 뗀 것 포함)과 통째로 같을 때만 맞는다. 「밥」이 「밥값」·
+// 「비빔밥」의 한 글자로 맞으면 짧은 요청의 맞은 비율이 우연히 오른다.
+func TestCoverage_한_글자_한글_낱말은_기억의_낱말과_통째로_같을_때만_맞는다(t *testing.T) {
+	whole := Memory{Title: "점심 밥은 12시에 먹는다", Body: "문(門)은 닫는다"}
+	if _, matched := Coverage(whole, []string{"밥", "문", "점심"}); !slices.Equal(matched, []string{"밥", "문", "점심"}) {
+		t.Fatalf("통째 낱말·조사 뗀 낱말·괄호 앞 낱말이 맞아야 함: %v", matched)
+	}
+	inside := Memory{Title: "비빔밥 밥값은 문서로 남긴다", Tags: []string{"문서함"}}
+	if _, matched := Coverage(inside, []string{"밥", "문", "문서"}); !slices.Equal(matched, []string{"문서"}) {
+		t.Fatalf("낱말 안의 한 글자는 맞지 않아야 함: %v", matched)
+	}
+}
+
 func TestRecallHits_점수는_뜻_있는_낱말로_찾은_찾기_점수와_같다(t *testing.T) {
 	s, _ := newTestStore(t)
 	a := saveDoc(t, s, "이 앱은 pnpm으로 설치한다", "npm install을 쓰지 않는다", "패키지 관리자")
