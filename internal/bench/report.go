@@ -88,11 +88,12 @@ type CaseResult struct {
 	Sub     *Seen    `json:"subagent,omitempty"`
 	Similar []string `json:"similar,omitempty"`
 	Found   []string `json:"found,omitempty"`
+	NotYet  []string `json:"notYet,omitempty"`
 }
 
 func caseResult(o Outcome) CaseResult {
 	return CaseResult{ID: o.Case.ID, Session: o.Key, Kind: o.Case.CaseKind(), Part: o.Part,
-		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Found: o.Found}
+		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Found: o.Found, NotYet: o.NotYet}
 }
 
 // JSON is the report as indented JSON with a final newline.
@@ -117,6 +118,7 @@ type Wording interface {
 	TestSize(b Bundles, p Points) string
 	Requests(n int) string
 	Hit(rate string, byStart, byEarlier int) string
+	NotYet(requests, subagents int) string // answered cases whose answer was made after the case
 	Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string
 	Recover(rate, everyMissed string) string
 	Empty(rate string) string
@@ -187,5 +189,8 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.Offered), d.Forbid),
 	} {
 		b.WriteString("  " + line + "\n")
+	}
+	if q.NotYet+g.NotYet > 0 {
+		b.WriteString("  " + w.NotYet(q.NotYet, g.NotYet) + "\n")
 	}
 }

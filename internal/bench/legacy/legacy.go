@@ -59,7 +59,10 @@ func Env(dbPath string, set *bench.Set) (bench.Env, error) {
 	}
 	rc := r.(*recaller)
 	f := finder{s: rc.s, products: rc.products}
-	return bench.Env{Recaller: r, Finder: f, Similar: similar{f}, Close: closeFn}, nil
+	// SetNow moves the clock of the one store the recall, the search and the similar search share (cases
+	// that carry their times).
+	setNow := func(t time.Time) { rc.s.Now = func() time.Time { return t } }
+	return bench.Env{Recaller: r, Finder: f, Similar: similar{f}, SetNow: setNow, Close: closeFn}, nil
 }
 
 type recaller struct {

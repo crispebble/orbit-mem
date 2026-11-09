@@ -121,6 +121,7 @@ func (tagWording) Units(c, u, tr, te int) string                   { return tag(
 func (tagWording) TestSize(b bench.Bundles, p bench.Points) string { return tag("testSize", b, p) }
 func (tagWording) Requests(n int) string                           { return tag("requests", n) }
 func (tagWording) Hit(r string, n, e int) string                   { return tag("hit", r, n, e) }
+func (tagWording) NotYet(q, g int) string                          { return tag("notYet", q, g) }
 func (tagWording) Wrong(r string, i, c, n, w, f, fc int) string {
 	return tag("wrong", r, i, c, n, w, f, fc)
 }
@@ -175,5 +176,16 @@ func TestReport_Text는_분모_0을_밝힌다(t *testing.T) {
 	r, _ := runFake(t, `{"id":"c3","session":"s2","prompt":"p3"}`, script{}, keyed{})
 	if text := r.Text(bench.PartAll, tagWording{}); !strings.Contains(text, "<zeroDen>") {
 		t.Errorf("no zero denominator mark:\n%s", text)
+	}
+}
+
+func TestReport_그_시각엔_없던_정답이_있을_때만_그_줄을_낸다(t *testing.T) {
+	r := &bench.Report{Runs: []bench.RunReport{{Name: "x"}}}
+	if strings.Contains(r.Text(bench.PartAll, tagWording{}), "notYet") {
+		t.Fatal("a set with no such case must not show the line")
+	}
+	r.Runs[0].All.Requests.NotYet = 2
+	if !strings.Contains(r.Text(bench.PartAll, tagWording{}), "<notYet [2 0]>") {
+		t.Fatalf("line missing:\n%s", r.Text(bench.PartAll, tagWording{}))
 	}
 }

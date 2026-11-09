@@ -18,6 +18,7 @@ type Prepared struct {
 	Keys map[string]string // id → key, only for a DB made from the memories of the file
 
 	ids      map[string]string // key → id
+	history  *memory.History   // what the DB held over time, for a set whose cases carry their times
 	template string
 	dir      string
 	n        int
@@ -32,7 +33,9 @@ const (
 // Prepare makes the DB of a set. With memories in the file it builds a temporary DB
 // with fixed ids (m-000000000001 in file order). With a DB path it copies that DB with
 // a read only connection (the file, its -wal and its -shm are not written) and checks
-// that every id the cases name is in it. Exactly one of the two is given.
+// that every id the cases name is in it. Exactly one of the two is given. When the cases
+// carry their times it also reads the history of the DB (memory.History), so a run can put
+// its copy at the state of each case's time.
 func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	switch {
 	case len(set.Memories) > 0 && dbPath != "":
@@ -60,6 +63,11 @@ func Prepare(set *Set, dbPath string) (p *Prepared, err error) {
 	}
 	if p.Set, err = p.resolve(set); err != nil {
 		return nil, err
+	}
+	if set.Timed() {
+		if p.history, err = memory.ReadHistory(p.template); err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }

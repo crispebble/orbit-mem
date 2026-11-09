@@ -5,6 +5,8 @@
 // by the caller.
 package bench
 
+import "time"
+
 // Shown is what one recall step put in front of the model: the memory ids in the
 // order shown, the characters of the text, and the text itself.
 //
@@ -59,7 +61,10 @@ type Env struct {
 	Recaller Recaller
 	Finder   Finder
 	Similar  Similar
-	Close    func() error
+	// SetNow moves the clock of the path (recall, search, similar) to t. A set whose cases carry their times
+	// (Set.Timed) needs it: the run calls it before a case whose time differs from the last one.
+	SetNow func(t time.Time)
+	Close  func() error
 }
 
 // Factory opens a recall path on a fresh copy of the prepared DB; every recall path

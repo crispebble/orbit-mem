@@ -75,8 +75,9 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 | `allow` | 넣어도 틀리지 않는 것(같은 분야의 다른 기억, 상시 핵심 등) |
 | `forbid` | 넣으면 안 되는 것. 제목이 비슷한 짝, 옛 판, 기한 지난 것, 다른 프로젝트·일지 |
 | `note` | 왜 그 정답인지 한 줄 |
+| `at` | 그 일이 있던 시각(RFC3339). 재생 사례처럼 나중에 뜬 DB로 잴 때 쓴다. 파일의 모든 사례에 있거나 모두에 없어야 한다. 있으면 실행이 사례마다 DB 사본을 그 시각 상태로 맞추고 회상 경로의 시계를 그 시각으로 옮긴다(아래 「사례 시각」) |
 
-불러올 때 이런 사례는 오류다. 없는 기억 키, `expect` 4개 이상, `prompt` 사례에서 `origin`이 `user`가 아닌데 `expect`가 있는 사례, 같은 `id`.
+불러올 때 이런 사례는 오류다. 일부 사례에만 있거나 RFC3339가 아닌 `at`, 없는 기억 키, `expect` 4개 이상, `prompt` 사례에서 `origin`이 `user`가 아닌데 `expect`가 있는 사례, 같은 `id`.
 
 사람 요청 판정은 이렇게 본다. 서브에이전트 보고 머리말, `<task-notification>`, 시스템 알림만 있는 메시지는 사람 요청이 아니다(`origin` `agent`·`system`, `expect` 비움). 사람이 그런 글을 붙여 넣고 질문을 덧붙이면 사람 요청이다. 인사, 「ㅇㅇ」 같은 짧은 답, 인자 없는 슬래시 명령(`/clear`)은 사소한 요청이라 `expect`가 비고, 인자 있는 슬래시 명령(`/review …`)은 인자를 요청으로 본다.
 
@@ -124,6 +125,17 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 중복 사례(`duplicate`)는 비슷한 기억 상위 3의 적중과, 비슷한 것이 없어야 할 때 무언가를 내민 비율을 따로 낸다. 위임·중복 모두 요청 지표에 섞지 않는다. 지금 경로의 중복 후보는 저장 때 실제로 보는 판정이다(`memory.Store.SaveCheck`, `save-check`). 같은 제목·같은 주제로 걸린 `Existing`도 후보로 센다: 저장하면 그 기억에 출처가 더해지거나 대체되어 같은 내용 기억이 둘 생기지 않고(설계 L-16), 틀린 `Existing`은 다른 기억을 말없이 합치거나 갈아 끼우기 때문이다. 문턱은 설정 `saveSimilarMin`이고 `--set`으로 바꿔 잰다. 옛 회상의 후보는 87ab0fb `memory_find` 위의 `find-proxy`를 얼린 그대로다.
 
 우선순위는 적중, 틀린 회상, 글자 수 순이다. 문턱을 정하는 일은 이 묶음이 아니라 회상을 고치는 작업이 한다.
+
+### 사례 시각(재생 묶음의 시각 누수)
+
+재생 자료의 DB 사본은 대화보다 나중에 뜬 것이라, 사례 시각을 무시하면 그 요청 **뒤에** 만든 기억도 후보에 있고 그 뒤에 낡거나 대체된 기억은 새 상태로 보인다(1-6 b6r 2차에서 찾은 측정 결함, 옛 회상·지금 경로 모두). 사례에 `at`이 있으면:
+
+- 준비할 때 DB 사본의 이력(`memory.History`: 기억마다의 판 스냅숏, 출처·다시 나옴·연결·사건의 시각)을 한 번 읽는다.
+- 회상 경로마다의 사본을 사례 시각이 바뀔 때마다 그 시각의 상태로 맞춘다(`memory.Rewinder`, 쓰기 연결 따로): `created_at` ≤ 시각인 기억만 있고, 내용·상태는 그 시각 이전 마지막 판이다(스냅숏에 없는 주제·도구·보존·검토 칸은 지금 값). 출처·다시 나옴·연결·틀에 있던 사건도 그 시각 이전 것만이다. 실행이 쓴 사건·세션 표시·활동 기록은 건드리지 않는다. 앞뒤로 오가도 지금으로 맞추면 원래 사본과 같다(`TestRewind_*`).
+- 회상 경로의 시계(`Env.SetNow`)를 사례 시각으로 옮긴다. 세션 시작은 그 세션 첫 사례의 시각이다. 시계를 못 옮기는 경로는 거절한다.
+- 정답 기억이 사례 시각 뒤에 만들어졌으면 라벨은 그대로 두고 그 사례를 「그 시각엔 없던 정답」(`notYet`, 사례별 `notYet` id)으로 따로 센다. 적중 분모에는 남는다.
+
+공개·판정 전용 묶음은 `at`이 없어 고정 `now` 그대로다. `bench extract`는 단계 시각을 `at`으로 남긴다. 그 전에 뽑은 재생 사례는 같은 추출의 `sessions.json`을 `--steps`로 주면 사례 id의 단계 번호(`<세션>-<n>`, 1부터)가 가리키는 단계가 같은 종류·같은 글(요청 글·도구 이름·위임 글)일 때만 그 시각을 붙이고, 아니면 「시각 모름」으로 빼고 그 수를 알린다.
 
 ### 알려진 한계
 
@@ -184,6 +196,8 @@ go test ./internal/bench -run TestPublicSet -write-legacy-baseline
 # 사례 파일을 DB 사본에 돌려 지표를 낸다. --db 파일은 열지 않고, bench.CopyDB(internal/bench/copy.go)가 원본 .db·-wal·-journal을 임시 폴더로 바이트 복사한 사본에서 돈다(-shm은 복사하지 않음). 복사 중 원본이 바뀌면 다시 뜨고 5번 실패하면 오류.
 # 옛 판 orbit-mem이 남긴 DB(예: 재생 자료의 memory-copy.db)도 받는다: 임시 사본만 지금 판 스키마로 올려 쓰고(사본이라 백업은 만들지 않는다, memory.MigrateCopy) 원본은 그대로다. 새 판이 만든 DB와 표가 없는 DB는 거절한다.
 orbit-mem bench recall --db <기억 DB 파일> --cases <사례 파일>
+# 시각(at) 없이 뽑은 옛 재생 사례: 같은 추출의 sessions.json으로 사례 시각을 붙여 그 시각의 DB 상태로 잰다.
+orbit-mem bench recall --db <memory-copy.db> --cases <answers-draft.json> --steps <sessions.json>
 
 # 지금 회상 경로의 설정을 덮어써 잰다(--set key=value, 여러 번). 키와 값은 설정 파일이 거르는 검사(config.Config.Validate)로 실행 전에 거른다. 얼린 옛 회상은 설정을 읽지 않는다.
 orbit-mem bench recall --cases <사례 파일> --set saveSimilarMin=0.7 --set recallChars=800
@@ -193,7 +207,7 @@ orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일
 ```
 
 - `bench recall`은 `--cases`에 `memories`가 없을 때 `--db`가 필요하고, 사례는 키 대신 DB의 실제 기억 id로 정답을 가리킨다.
-- `bench extract`의 기본값은 `--projects`가 Claude 설정 폴더의 `projects`, `--out`이 `$ORBIT_HOME/bench/replay`다. 결과는 DB 사본 `memory-copy.db`, `sessions.json`, 정답 칸이 빈 `cases.json`이다. 정답표는 사람이나 AI가 `cases.json`을 고쳐 `answers-draft.json`으로 만든다.
+- `bench extract`의 기본값은 `--projects`가 Claude 설정 폴더의 `projects`, `--out`이 `$ORBIT_HOME/bench/replay`다. 결과는 DB 사본 `memory-copy.db`, `sessions.json`, 정답 칸이 빈 `cases.json`이다(사례마다 단계 시각 `at`). 정답표는 사람이나 AI가 `cases.json`을 고쳐 `answers-draft.json`으로 만든다.
 - 재생 자료에는 이 PC의 기억과 대화가 들어 있다. 저장소에 넣거나 공개하지 않는다.
 
 ## 1-3·1-4를 합친 뒤

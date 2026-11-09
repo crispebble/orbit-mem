@@ -33,7 +33,8 @@ type Outcome struct {
 	Sub     *Shown
 	Similar []string
 	Found   []string
-	Found8  bool // Find ran
+	Found8  bool     // Find ran
+	NotYet  []string // expected memories made after the case's time (timed sets)
 }
 
 // Group is the measure of a group of cases that show something to the model.
@@ -48,6 +49,9 @@ type Group struct {
 	ForbidCases int  `json:"forbidCases"`
 	Empty       Rate `json:"empty"`
 	Chars       Dist `json:"chars"`
+	// NotYet is how many answered cases expect a memory made after the case's time (sets whose cases carry
+	// their times): no recall of that time could show it. They stay in the hit's denominator.
+	NotYet int `json:"notYet,omitempty"`
 }
 
 // Requests is the measure of the request cases. Chars is the characters of the request
@@ -208,8 +212,8 @@ func charsOf(s *Shown) int {
 
 // groupAcc adds up the cases of a group that shows ids to the model.
 type groupAcc struct {
-	cases, hitNum, hitDen, injected, correct, neutral, wrong, forbid, forbidCases, emptyNum, emptyDen int
-	chars                                                                                             []int
+	cases, hitNum, hitDen, injected, correct, neutral, wrong, forbid, forbidCases, emptyNum, emptyDen, notYet int
+	chars                                                                                                     []int
 }
 
 // add counts the ids a case put in (without layer A) against its answer.
@@ -238,7 +242,7 @@ func (g *groupAcc) add(c Case, injected []string) {
 
 func (g *groupAcc) group() Group {
 	return Group{Cases: g.cases, Hit: rate(g.hitNum, g.hitDen), Injected: g.injected, Correct: g.correct, Neutral: g.neutral,
-		Wrong: wrongRate(g.wrong, g.injected), Forbid: g.forbid, ForbidCases: g.forbidCases, Empty: rate(g.emptyNum, g.emptyDen), Chars: dist(g.chars)}
+		Wrong: wrongRate(g.wrong, g.injected), Forbid: g.forbid, ForbidCases: g.forbidCases, Empty: rate(g.emptyNum, g.emptyDen), Chars: dist(g.chars), NotYet: g.notYet}
 }
 
 // Compute measures outcomes. Shown is layer A of the session + what the work recall (B1) of the
@@ -266,6 +270,9 @@ func Compute(outs []Outcome) Metrics {
 			shown := union(o.Start.IDs, earlier[o.Key], own)
 			if len(c.Expect) > 0 {
 				req.hitDen++
+				if len(o.NotYet) > 0 {
+					req.notYet++
+				}
 				hit := covers(shown, c.Expect)
 				if hit {
 					req.hitNum++
@@ -317,6 +324,9 @@ func Compute(outs []Outcome) Metrics {
 			sub.add(c, recall)
 			if len(c.Expect) > 0 {
 				sub.hitDen++
+				if len(o.NotYet) > 0 {
+					sub.notYet++
+				}
 				if covers(union(lead, recall), c.Expect) {
 					sub.hitNum++
 					if !covers(recall, c.Expect) {

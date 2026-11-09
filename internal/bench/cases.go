@@ -81,6 +81,15 @@ type Case struct {
 	Allow   []string `json:"allow,omitempty"`
 	Forbid  []string `json:"forbid,omitempty"`
 	Note    string   `json:"note,omitempty"`
+	// At is when the case happened (RFC3339), for cases taken from logs: the run puts the DB at its state of
+	// that time and moves the recall path's clock there. A file gives it on every case or on none.
+	At string `json:"at,omitempty"`
+}
+
+// Time is the time of the case (false without one).
+func (c Case) Time() (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339Nano, c.At)
+	return t, c.At != "" && err == nil
 }
 
 // Set is a case file.
@@ -98,6 +107,9 @@ type Set struct {
 
 // At is the fixed now of the set.
 func (s *Set) At() time.Time { return s.now }
+
+// Timed reports whether the cases carry their times (Case.At).
+func (s *Set) Timed() bool { return len(s.Cases) > 0 && s.Cases[0].At != "" }
 
 // CaseKind is the kind with its default.
 func (c Case) CaseKind() string {
@@ -191,9 +203,13 @@ func Parse(b []byte) (*Set, error) {
 		}
 	}
 	ids := map[string]bool{}
+	timed := len(s.Cases) > 0 && s.Cases[0].At != ""
 	for i, c := range s.Cases {
 		if c.ID == "" {
 			return nil, fmt.Errorf("case %d: no id", i+1)
+		}
+		if _, ok := c.Time(); ok != timed || (c.At != "") != timed {
+			return nil, fmt.Errorf("case %q: at must be RFC3339 and given on every case or on none: %q", c.ID, c.At)
 		}
 		if ids[c.ID] {
 			return nil, fmt.Errorf("case id %q is repeated", c.ID)

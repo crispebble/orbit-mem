@@ -40,9 +40,15 @@ const (
 	similarOf    = bench.SimilarLimit
 )
 
+// clock is the time of the path: the set's now, moved by bench.Env.SetNow for cases that carry their times.
+type clock struct{ t time.Time }
+
+func (c *clock) now() time.Time { return c.t }
+func (c *clock) ms() int64      { return c.t.UnixMilli() }
+
 // service opens a host.Service on the DB copy: the settings given, the products of the set, long
-// time limits, the clock fixed at the set's now, and an empty upkeep.
-func service(db string, set *bench.Set, cfg config.Config) (*host.Service, error) {
+// time limits, the clock c, and an empty upkeep.
+func service(db string, set *bench.Set, cfg config.Config, c *clock) (*host.Service, error) {
 	if len(set.Products) > 0 {
 		var m place.Map
 		if err := json.Unmarshal(set.Products, &m); err != nil {
@@ -54,13 +60,12 @@ func service(db string, set *bench.Set, cfg config.Config) (*host.Service, error
 	for _, op := range host.Ops {
 		cfg.HostTimeouts[op] = opTimeout
 	}
-	at := set.At()
 	return host.New(host.Setup{
 		DB:         db,
 		LoadConfig: func() (config.Config, error) { return cfg, nil },
 		Upkeep:     host.UpkeepFunc(func(*memory.Store, config.Config) {}),
 		Launcher:   hostName,
-		Now:        func() time.Time { return at },
+		Now:        c.now,
 	}), nil
 }
 
@@ -81,15 +86,16 @@ func FactoryWith(o Options) bench.Factory {
 		if err != nil {
 			return bench.Env{}, err
 		}
-		svc, err := service(db, set, cfg)
+		c := &clock{t: set.At()}
+		svc, err := service(db, set, cfg, c)
 		if err != nil {
 			return bench.Env{}, err
 		}
-		at := set.At()
 		return bench.Env{
-			Recaller: &recaller{svc: svc, at: at.UnixMilli()},
-			Finder:   finder{svc: svc, at: at.UnixMilli()},
-			Similar:  similar{db: db, at: at, min: cfg.SaveSimilarMin},
+			Recaller: &recaller{svc: svc, at: c},
+			Finder:   finder{svc: svc, at: c},
+			Similar:  similar{db: db, at: c, min: cfg.SaveSimilarMin},
+			SetNow:   func(t time.Time) { c.t = t },
 			Close:    func() error { svc.Wait(); return nil },
 		}, nil
 	}
@@ -98,11 +104,12 @@ func FactoryWith(o Options) bench.Factory {
 // NewFinder is the Finder of this path alone, so that another recall path can be paired with the
 // same search.
 func NewFinder(db string, set *bench.Set) bench.Finder {
-	svc, err := service(db, set, config.Default())
+	c := &clock{t: set.At()}
+	svc, err := service(db, set, config.Default(), c)
 	if err != nil {
 		return failed{err}
 	}
-	return finder{svc: svc, at: set.At().UnixMilli()}
+	return finder{svc: svc, at: c}
 }
 
 type failed struct{ err error }
@@ -111,7 +118,7 @@ func (f failed) Find(string, string, int) ([]string, error) { return nil, f.err 
 
 type recaller struct {
 	svc    *host.Service
-	at     int64
+	at     *clock
 	agents int // subagents started so far: each gets its own id
 }
 
@@ -119,7 +126,7 @@ func (*recaller) Name() string { return Name }
 
 func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	req.Host = hostName
-	out, herr := r.svc.Do(op, req, host.Options{At: r.at})
+	out, herr := r.svc.Do(op, req, host.Options{At: r.at.ms()})
 	if herr != nil {
 		return bench.Shown{}, fmt.Errorf("hostpath: %s: %w", op, herr)
 	}
@@ -177,7 +184,7 @@ func (r *recaller) Subagent(session, cwd, task string) (bench.Shown, error) {
 
 type finder struct {
 	svc *host.Service
-	at  int64
+	at  *clock
 }
 
 // Find is memory_find through the contract's call: the scope is the contract's default (here).
@@ -186,7 +193,7 @@ func (f finder) Find(cwd, query string, limit int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, herr := f.svc.Do(host.OpCall, host.Request{Host: hostName, Session: "bench-find", Cwd: cwd, Name: "memory_find", Args: args}, host.Options{At: f.at})
+	out, herr := f.svc.Do(host.OpCall, host.Request{Host: hostName, Session: "bench-find", Cwd: cwd, Name: "memory_find", Args: args}, host.Options{At: f.at.ms()})
 	if herr != nil {
 		return nil, fmt.Errorf("hostpath: memory_find: %w", herr)
 	}
@@ -213,7 +220,7 @@ func (f finder) Find(cwd, query string, limit int) ([]string, error) {
 // the memories of the same scope that are like the draft (top 3) count.
 type similar struct {
 	db  string
-	at  time.Time
+	at  *clock
 	min float64
 }
 
@@ -225,7 +232,7 @@ func (s similar) Similar(cwd string, d bench.Draft) ([]string, error) {
 		return nil, fmt.Errorf("hostpath: save check: %w", err)
 	}
 	defer st.Close()
-	at := s.at
+	at := s.at.now()
 	st.Now = func() time.Time { return at }
 	res, err := st.SaveCheck(memory.SaveInput{Kind: d.Kind, Title: d.Title, Body: d.Body, Topic: d.Topic, Scope: d.Scope,
 		Source: memory.Source{Kind: memory.SourceQuote}}, s.min)

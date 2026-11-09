@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
@@ -207,8 +209,8 @@ func TestBench_extract는_세_파일을_쓴다(t *testing.T) {
 		Now      string
 		Memories []any
 		Cases    []struct {
-			ID, Session, Kind, Origin, Prompt, Task string
-			Expect                                  []string
+			ID, Session, Kind, Origin, Prompt, Task, At string
+			Expect                                      []string
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
@@ -219,6 +221,10 @@ func TestBench_extract는_세_파일을_쓴다(t *testing.T) {
 		hasPrompt := c.Kind == "request" && c.Prompt != ""
 		if c.Session == "" || len(c.Expect) != 0 || (hasPrompt && c.Origin == "") || (!hasPrompt && c.Origin != "") {
 			t.Errorf("사례 %+v", c)
+		}
+		// 단계의 시각을 남긴다(1-6 b6r 2차): recall이 그 시각의 DB 상태로 잰다.
+		if _, err := time.Parse(time.RFC3339Nano, c.At); err != nil {
+			t.Errorf("사례 %s 시각 %q: %v", c.ID, c.At, err)
 		}
 	}
 	// 합성 기록의 요청·위임 글 원문(internal/bench/claudelog/testdata/projects/-work-alpha/s1.jsonl)은 파일에만 쓰고 출력에 찍지 않는다.
@@ -398,5 +404,48 @@ func TestBench_recall은_판_4_DB를_사본에서_올려_돈다(t *testing.T) {
 	}
 	if _, info, err := memory.OpenReadOnly(db); err != nil || info.DB != 4 {
 		t.Errorf("원본 판 = %+v %v, 4 그대로여야 한다", info, err)
+	}
+}
+
+// 1-6 b6r 2차: 시각(at) 없이 뽑은 옛 재생 사례는 --steps(같은 추출의 sessions.json)로 단계 시각을 붙여 잰다. 사례 번호의
+// 단계가 같은 종류·같은 글일 때만 붙이고, 아니면 「시각 모름」으로 빼고 그 수를 알린다.
+func TestBench_steps는_옛_재생_사례에_단계_시각을_붙이고_맞지_않는_사례는_뺀다(t *testing.T) {
+	home(t)
+	db, _ := openedDB(t)
+	out := filepath.Join(t.TempDir(), "replay")
+	if _, errb, code := run(t, "", "bench", "extract", "--projects", benchProjs, "--db", db, "--out", out, "--min-sessions", "1", "--min-requests", "1"); code != 0 {
+		t.Fatalf("extract %d: %s", code, errb)
+	}
+	var file map[string]any
+	b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
+	if err := json.Unmarshal(b, &file); err != nil {
+		t.Fatal(err)
+	}
+	cases := file["cases"].([]any)
+	changed := false
+	for _, c := range cases {
+		m := c.(map[string]any)
+		delete(m, "at")
+		if p, ok := m["prompt"].(string); ok && p != "" && !changed {
+			m["prompt"] = p + " (고친 글)" // 단계와 글이 달라 시각을 모른다
+			changed = true
+		}
+	}
+	old := filepath.Join(t.TempDir(), "old-cases.json")
+	nb, _ := json.Marshal(file)
+	if err := os.WriteFile(old, nb, 0o600); err != nil || !changed {
+		t.Fatal(err, changed)
+	}
+	args := []string{"bench", "recall", "--db", filepath.Join(out, "memory-copy.db"), "--recall", "current", "--cases", old}
+	stdout, errb, code := run(t, "", append(args, "--steps", filepath.Join(out, "sessions.json"))...)
+	if code != 0 {
+		t.Fatalf("--steps run %d: %s", code, errb)
+	}
+	if want := fmt.Sprintf("case times: %d cases timed, 1 cases left out", len(cases)-1); !strings.Contains(stdout, want) {
+		t.Fatalf("want %q in:\n%.600s", want, stdout)
+	}
+	// 시각을 남긴 새 추출은 --steps 없이도 그 시각으로 돈다.
+	if _, errb, code := run(t, "", "bench", "recall", "--db", filepath.Join(out, "memory-copy.db"), "--recall", "current,legacy", "--cases", filepath.Join(out, "cases.json")); code != 0 {
+		t.Fatalf("timed run %d: %s", code, errb)
 	}
 }

@@ -36,6 +36,10 @@ func (benchWording) Hit(rate string, byStart, byEarlier int) string {
 	return i18n.T("bench.report.hit", rate, byStart, byEarlier)
 }
 
+func (benchWording) NotYet(requests, subagents int) string {
+	return i18n.T("bench.report.not_yet", requests, subagents)
+}
+
 func (benchWording) Wrong(rate string, injected, correct, neutral, wrong, forbid, forbidCases int) string {
 	return i18n.T("bench.report.wrong", rate, injected, correct, neutral, wrong, forbid, forbidCases)
 }
