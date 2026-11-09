@@ -200,6 +200,24 @@
    "words": ""
   },
   {
+   "name": "머리말과 블록과 둘째 변형 안내문뿐",
+   "prompt": "Another Claude session sent a message:\n<agent-message from=\"s\">\nhi\n</agent-message>\n\nThat \"other Claude session\" is an agent working inside this same session — a subagent or a helper. Just reply to it.",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "블록과 둘째 변형 안내문뿐",
+   "prompt": "<agent-message from=\"s\">\nhi\n</agent-message>\n\nThat \"other Claude session\" is an agent working inside this same session — a subagent or a helper. Just reply to it.",
+   "person": false,
+   "words": ""
+  },
+  {
+   "name": "머리말과 블록과 둘째 변형 안내문과 질문",
+   "prompt": "Another Claude session sent a message:\n<agent-message from=\"s\">\nhi\n</agent-message>\n\nThat \"other Claude session\" is an agent working inside this same session — a subagent or a helper. Just reply to it.\n\n그럼 이건?",
+   "person": true,
+   "words": "그럼 이건?"
+  },
+  {
    "name": "머리말과 블록과 안내문과 질문",
    "prompt": "Another Claude session sent a message:\n<agent-message from=\"s\">\nhi\n</agent-message>\n\nThis came from another Claude session — reply with the tool.\n\n그럼 이건?",
    "person": true,

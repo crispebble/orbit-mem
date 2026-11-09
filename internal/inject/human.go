@@ -33,10 +33,26 @@ var hostTags = []string{
 	"scheduled-task",
 }
 
-// hostNoticePrefix opens the paragraph the host adds after a forwarded message
-// block (for example "This came from another Claude session - ..."). It is the
-// host's own text and is removed together with the block it follows.
-const hostNoticePrefix = "This came from another Claude session"
+// hostNoticePrefixes open the paragraph the host adds after a forwarded message
+// block: "This came from another Claude session - ..." or, in the other variant,
+// `That "other Claude session" is an agent ...`. It is the host's own text and is
+// removed together with the block it follows. The paragraph runs to the next
+// blank line or the end of the text; a notice joined to a question by a single
+// newline is not told apart (no such case in one PC's records).
+var hostNoticePrefixes = []string{
+	"This came from another Claude session",
+	`That "other Claude session"`,
+}
+
+// hasNoticePrefix reports whether s opens with a host notice paragraph.
+func hasNoticePrefix(s string) bool {
+	for _, p := range hostNoticePrefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
 
 // reminderBlock is a system notice the host appends to a prompt.
 var reminderBlock = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
@@ -85,7 +101,7 @@ func PersonWords(prompt string) (words string, ok bool) {
 				break
 			}
 		}
-		if afterBlock && strings.HasPrefix(rest, hostNoticePrefix) {
+		if afterBlock && hasNoticePrefix(rest) {
 			if i := strings.Index(rest, "\n\n"); i >= 0 {
 				rest = strings.TrimSpace(rest[i:])
 			} else {
