@@ -137,9 +137,11 @@ func (tagWording) CharsStart(d string) string   { return tag("charsStart", d) }
 func (tagWording) Subagent(c int, h string, bl int, w string, f int, e, ch, lc string) string {
 	return tag("subagent", c, h, bl, w, f, e, ch, lc)
 }
-func (tagWording) Duplicate(c int, h, o string, f int) string { return tag("duplicate", c, h, o, f) }
-func (tagWording) ZeroDen() string                            { return "<zeroDen>" }
-func (tagWording) Dist(m, md float64, mx, n int) string       { return tag("dist", m, md, mx, n) }
+func (tagWording) Duplicate(c int, h, wb, no string, f, nf int) string {
+	return tag("duplicate", c, h, wb, no, f, nf)
+}
+func (tagWording) ZeroDen() string                      { return "<zeroDen>" }
+func (tagWording) Dist(m, md float64, mx, n int) string { return tag("dist", m, md, mx, n) }
 
 func TestReport_Text는_판정용_크기와_한_사례당_퍼센트포인트를_밝힌다(t *testing.T) {
 	r, _ := runFake(t, reportCases, fakeScript(), keyed{sim: map[string][]string{"t5": {"d"}}})

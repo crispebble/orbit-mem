@@ -70,8 +70,8 @@ func (benchWording) Subagent(cases int, hit string, byLead int, wrong string, fo
 	return i18n.T("bench.report.subagent", cases, hit, byLead, wrong, forbid, empty, chars, leadChars)
 }
 
-func (benchWording) Duplicate(cases int, hit, offered string, forbid int) string {
-	return i18n.T("bench.report.duplicate", cases, hit, offered, forbid)
+func (benchWording) Duplicate(cases int, hit, wrongBlock, nearOffered string, forbid, nearForbid int) string {
+	return i18n.T("bench.report.duplicate", cases, hit, wrongBlock, nearOffered, forbid, nearForbid)
 }
 
 func (benchWording) ZeroDen() string { return i18n.T("bench.report.zero_den") }

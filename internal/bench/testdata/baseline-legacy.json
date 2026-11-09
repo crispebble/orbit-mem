@@ -140,12 +140,18 @@
             "den": 15,
             "value": 0.8
           },
-          "offered": {
+          "wrongBlock": {
+            "num": 0,
+            "den": 3,
+            "value": 0
+          },
+          "nearOffered": {
             "num": 3,
             "den": 3,
             "value": 1
           },
-          "forbid": 10
+          "forbid": 0,
+          "nearForbid": 10
         }
       },
       "test": {
@@ -265,12 +271,18 @@
             "den": 10,
             "value": 1
           },
-          "offered": {
+          "wrongBlock": {
+            "num": 0,
+            "den": 3,
+            "value": 0
+          },
+          "nearOffered": {
             "num": 3,
             "den": 3,
             "value": 1
           },
-          "forbid": 6
+          "forbid": 0,
+          "nearForbid": 6
         }
       },
       "all": {
@@ -390,12 +402,18 @@
             "den": 25,
             "value": 0.88
           },
-          "offered": {
+          "wrongBlock": {
+            "num": 0,
+            "den": 6,
+            "value": 0
+          },
+          "nearOffered": {
             "num": 6,
             "den": 6,
             "value": 1
           },
-          "forbid": 16
+          "forbid": 0,
+          "nearForbid": 16
         }
       },
       "sessions": [
@@ -4120,7 +4138,7 @@
           "session": "dup-backup",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000003",
             "m-000000000004",
             "m-000000000132"
@@ -4131,7 +4149,7 @@
           "session": "dup-state",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000018",
             "m-000000000017",
             "m-000000000016"
@@ -4142,7 +4160,7 @@
           "session": "dup-pnpm",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000001",
             "m-000000000018",
             "m-000000000222"
@@ -4153,7 +4171,7 @@
           "session": "dup-paging",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000130",
             "m-000000000222",
             "m-000000000176"
@@ -4164,7 +4182,7 @@
           "session": "dup-lockout",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000094",
             "m-000000000086",
             "m-000000000010"
@@ -4175,7 +4193,7 @@
           "session": "dup-refund",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000149",
             "m-000000000164",
             "m-000000000198"
@@ -4186,7 +4204,7 @@
           "session": "new-chart",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000037",
             "m-000000000222",
             "m-000000000028"
@@ -4197,7 +4215,7 @@
           "session": "new-server-time",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000222",
             "m-000000000028",
             "m-000000000037"
@@ -4208,7 +4226,7 @@
           "session": "new-login-copy",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000213",
             "m-000000000179",
             "m-000000000199"
@@ -4816,7 +4834,7 @@
           "session": "s2-dup-dryrun",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000208",
             "m-000000000126",
             "m-000000000002"
@@ -4827,7 +4845,7 @@
           "session": "s2-dup-dryrun",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000208",
             "m-000000000126",
             "m-000000000003"
@@ -4838,7 +4856,7 @@
           "session": "s2-dup-dryrun",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000208",
             "m-000000000126",
             "m-000000000213"
@@ -4849,7 +4867,7 @@
           "session": "s2-dup-dryrun",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000208",
             "m-000000000126",
             "m-000000000003"
@@ -4860,7 +4878,7 @@
           "session": "s2-dup-polite",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000083",
             "m-000000000215",
             "m-000000000102"
@@ -4871,7 +4889,7 @@
           "session": "s2-dup-polite",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000083",
             "m-000000000156",
             "m-000000000090"
@@ -4882,7 +4900,7 @@
           "session": "s2-dup-polite",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000083",
             "m-000000000111",
             "m-000000000135"
@@ -4893,7 +4911,7 @@
           "session": "s-dup-itestdb",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000051",
             "m-000000000094",
             "m-000000000086"
@@ -4904,7 +4922,7 @@
           "session": "s-dup-itestdb",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000209",
             "m-000000000218",
             "m-000000000002"
@@ -4915,7 +4933,7 @@
           "session": "s-dup-itestdb",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000209",
             "m-000000000218",
             "m-000000000002"
@@ -4926,7 +4944,7 @@
           "session": "s-dup-dryrun-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000210",
             "m-000000000217",
             "m-000000000216"
@@ -4937,7 +4955,7 @@
           "session": "s-dup-dryrun-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000210",
             "m-000000000219",
             "m-000000000216"
@@ -4948,7 +4966,7 @@
           "session": "s-dup-dryrun-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000210",
             "m-000000000216",
             "m-000000000217"
@@ -4959,7 +4977,7 @@
           "session": "s-dup-dryrun-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000210",
             "m-000000000216",
             "m-000000000217"
@@ -4970,7 +4988,7 @@
           "session": "s2-dup-commit-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000211",
             "m-000000000217",
             "m-000000000216"
@@ -4981,7 +4999,7 @@
           "session": "s2-dup-commit-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000211",
             "m-000000000217",
             "m-000000000216"
@@ -4992,7 +5010,7 @@
           "session": "s2-dup-commit-en",
           "kind": "duplicate",
           "part": "train",
-          "similar": [
+          "near": [
             "m-000000000211",
             "m-000000000219",
             "m-000000000217"
@@ -5003,7 +5021,7 @@
           "session": "s3-dup-docker-en",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000212",
             "m-000000000217",
             "m-000000000219"
@@ -5014,7 +5032,7 @@
           "session": "s3-dup-docker-en",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000219",
             "m-000000000212",
             "m-000000000210"
@@ -5025,7 +5043,7 @@
           "session": "s1-save-new",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000109",
             "m-000000000039",
             "m-000000000061"
@@ -5036,7 +5054,7 @@
           "session": "s1-save-new",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000113",
             "m-000000000135",
             "m-000000000094"
@@ -5047,7 +5065,7 @@
           "session": "s1-save-new",
           "kind": "duplicate",
           "part": "test",
-          "similar": [
+          "near": [
             "m-000000000044",
             "m-000000000054",
             "m-000000000176"

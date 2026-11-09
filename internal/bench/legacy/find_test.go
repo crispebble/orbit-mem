@@ -108,30 +108,31 @@ func TestEnv의_찾기는_다른_폴더에서는_그_폴더의_기억을_본다(
 	}
 }
 
-func TestEnv의_비슷한_기억은_초안_제목과_본문으로_찾은_상위_3이다(t *testing.T) {
+// 87ab0fb에는 저장을 막는 판정이 없었다: find-proxy 상위 3은 막지 않는 가까운 목록이다(1-6 b6dn).
+func TestEnv의_비슷한_기억은_초안_제목과_본문으로_찾은_상위_3이고_막지_않는_가까운_목록이다(t *testing.T) {
 	p := prepare(t, findSet)
 	env := openEnv(t, p)
 	got, err := env.Similar.Similar("/bench/app", bench.Draft{Kind: "lesson", Title: "운영 배포 전 백업"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := ids(p, "deploy-title", "deploy-body"); !slices.Equal(got, want) {
-		t.Errorf("Similar = %v, want deploy-title, deploy-body", keysOfIDs(p, got))
+	if want := ids(p, "deploy-title", "deploy-body"); !slices.Equal(got.Near, want) || len(got.Block) != 0 {
+		t.Errorf("Similar = %v, want deploy-title, deploy-body", keysOfIDs(p, got.Near))
 	}
 	got, err = env.Similar.Similar("/bench/app", bench.Draft{Kind: "rule", Title: "설치", Body: "pnpm"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := ids(p, "pnpm"); !slices.Equal(got, want) {
-		t.Errorf("Similar with body = %v, want pnpm", keysOfIDs(p, got))
+	if want := ids(p, "pnpm"); !slices.Equal(got.Near, want) || len(got.Block) != 0 {
+		t.Errorf("Similar with body = %v, want pnpm", keysOfIDs(p, got.Near))
 	}
 	// 상위 3까지만 센다.
 	got, err = env.Similar.Similar("/bench/app", bench.Draft{Kind: "fact", Title: "운영 배포 캐시 만료"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != bench.SimilarLimit {
-		t.Errorf("Similar = %v, want %d ids", keysOfIDs(p, got), bench.SimilarLimit)
+	if len(got.Near) != bench.SimilarLimit {
+		t.Errorf("Similar = %v, want %d ids", keysOfIDs(p, got.Near), bench.SimilarLimit)
 	}
 }
 

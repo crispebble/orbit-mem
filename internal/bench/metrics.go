@@ -31,7 +31,8 @@ type Outcome struct {
 	B1      *Shown
 	B2      *Shown
 	Sub     *Shown
-	Similar []string
+	Similar []string // the memories the save stopped at (SaveMeets.Block)
+	Near    []string // the close memories beside a save that went on (SaveMeets.Near)
 	Found   []string
 	Found8  bool     // Find ran
 	NotYet  []string // expected memories made after the case's time (timed sets)
@@ -93,10 +94,18 @@ type Subagents struct {
 
 // Duplicates is the measure of the duplicate save cases.
 type Duplicates struct {
-	Cases   int  `json:"cases"`
-	Hit     Rate `json:"hit"`
-	Offered Rate `json:"offered"` // cases with nothing similar where something was offered
-	Forbid  int  `json:"forbid"`
+	Cases int `json:"cases"`
+	// Hit is the answered cases whose answers are all in the first SimilarLimit of the block and the near ids
+	// together (block first).
+	Hit Rate `json:"hit"`
+	// WrongBlock is the cases with no answer where the block named a memory outside allow: a save stopped for
+	// nothing.
+	WrongBlock Rate `json:"wrongBlock"`
+	// NearOffered is the cases with no answer where the near ids named a memory outside allow: a save that went on
+	// with a needless line beside it.
+	NearOffered Rate `json:"nearOffered"`
+	Forbid      int  `json:"forbid"`     // forbidden ids in the block (top SimilarLimit)
+	NearForbid  int  `json:"nearForbid"` // forbidden ids in the near ids (top SimilarLimit)
 }
 
 // Metrics is the measure of a part of the set.
@@ -287,7 +296,7 @@ func Compute(outs []Outcome) Metrics {
 	var hitByLead int
 	var b2Chars, startChars, sessionChars []int
 	var hitByStart, recNum, recDen, missNum, missDen int
-	var dupCases, dupHitNum, dupHitDen, dupOfferNum, dupOfferDen, dupForbid int
+	var dupCases, dupHitNum, dupHitDen, dupBlockNum, dupNearNum, dupNoneDen, dupForbid, dupNearForbid int
 	sessions := map[string]int{}     // key → characters so far
 	earlier := map[string][]string{} // key → what the work recall (B1) of the session's earlier requests put in
 	var hitByEarlier, hitByNews int
@@ -397,24 +406,21 @@ func Compute(outs []Outcome) Metrics {
 			subLead = append(subLead, leadCharsOf(o.Sub))
 		case KindDuplicate:
 			dupCases++
-			similar := union(top(o.Similar, SimilarLimit))
-			for _, id := range similar {
-				if slices.Contains(c.Forbid, id) {
-					dupForbid++
-				}
-			}
+			block, near := union(top(o.Similar, SimilarLimit)), union(top(o.Near, SimilarLimit))
+			dupForbid += countIn(block, c.Forbid)
+			dupNearForbid += countIn(near, c.Forbid)
 			if len(c.Expect) > 0 {
 				dupHitDen++
-				if covers(similar, c.Expect) {
+				if covers(top(union(block, near), SimilarLimit), c.Expect) {
 					dupHitNum++
 				}
 			} else {
-				dupOfferDen++
-				for _, id := range similar {
-					if !slices.Contains(c.Allow, id) {
-						dupOfferNum++
-						break
-					}
+				dupNoneDen++
+				if namesOutside(block, c.Allow) {
+					dupBlockNum++
+				}
+				if namesOutside(near, c.Allow) {
+					dupNearNum++
 				}
 			}
 		}
@@ -426,7 +432,24 @@ func Compute(outs []Outcome) Metrics {
 	return Metrics{
 		Requests: Requests{Group: req.group(), HitByStart: hitByStart, HitByEarlier: hitByEarlier, HitByNews: hitByNews, News: news, Recover: rate(recNum, recDen), RecoverMissed: rate(missNum, missDen),
 			B2Chars: dist(b2Chars), SessionChars: dist(sessionChars), StartChars: dist(startChars)},
-		Subagent:   Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
-		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), Offered: rate(dupOfferNum, dupOfferDen), Forbid: dupForbid},
+		Subagent: Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
+		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), WrongBlock: rate(dupBlockNum, dupNoneDen),
+			NearOffered: rate(dupNearNum, dupNoneDen), Forbid: dupForbid, NearForbid: dupNearForbid},
 	}
+}
+
+// countIn is how many of ids are in set.
+func countIn(ids, set []string) int {
+	n := 0
+	for _, id := range ids {
+		if slices.Contains(set, id) {
+			n++
+		}
+	}
+	return n
+}
+
+// namesOutside says whether ids has an id not in allow.
+func namesOutside(ids, allow []string) bool {
+	return slices.ContainsFunc(ids, func(id string) bool { return !slices.Contains(allow, id) })
 }

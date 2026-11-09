@@ -58,9 +58,17 @@ type Draft struct {
 	Scope string `json:"scope,omitempty"`
 }
 
-// Similar gives the ids of the memories most like a draft (top 3).
+// SaveMeets is what saving a draft meets: Block, the memories the save stops at for the caller to pick from
+// (or merges into or replaces), and Near, the close memories shown beside a save that goes on. Each is
+// ranked, best first; only the first SimilarLimit of each count.
+type SaveMeets struct {
+	Block []string
+	Near  []string
+}
+
+// Similar gives what saving a draft meets.
 type Similar interface {
-	Similar(cwd string, d Draft) ([]string, error)
+	Similar(cwd string, d Draft) (SaveMeets, error)
 }
 
 // Env is one recall path opened on one DB copy.

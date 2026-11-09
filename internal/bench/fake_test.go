@@ -61,7 +61,8 @@ func (f fake) Subagent(s, cwd, task string) (bench.Shown, error) { return f.show
 type keyed struct {
 	idOf func(string) string
 	find map[string][]string
-	sim  map[string][]string
+	sim  map[string][]string // 막음 후보
+	near map[string][]string // 가까운 기억
 }
 
 func (k keyed) ids(keys []string) []string {
@@ -72,8 +73,8 @@ func (k keyed) ids(keys []string) []string {
 	return out
 }
 func (k keyed) Find(cwd, q string, limit int) ([]string, error) { return k.ids(k.find[q]), nil }
-func (k keyed) Similar(cwd string, d bench.Draft) ([]string, error) {
-	return k.ids(k.sim[d.Title]), nil
+func (k keyed) Similar(cwd string, d bench.Draft) (bench.SaveMeets, error) {
+	return bench.SaveMeets{Block: k.ids(k.sim[d.Title]), Near: k.ids(k.near[d.Title])}, nil
 }
 
 // memories is ten fake memories with the keys a..j.

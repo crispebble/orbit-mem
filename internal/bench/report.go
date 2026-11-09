@@ -90,14 +90,15 @@ type CaseResult struct {
 	Request *Seen    `json:"request,omitempty"`
 	Tool    *Seen    `json:"tool,omitempty"`
 	Sub     *Seen    `json:"subagent,omitempty"`
-	Similar []string `json:"similar,omitempty"`
+	Similar []string `json:"similar,omitempty"` // the memories the save stopped at
+	Near    []string `json:"near,omitempty"`    // the close memories beside a save that went on
 	Found   []string `json:"found,omitempty"`
 	NotYet  []string `json:"notYet,omitempty"`
 }
 
 func caseResult(o Outcome) CaseResult {
 	return CaseResult{ID: o.Case.ID, Session: o.Key, Kind: o.Case.CaseKind(), Part: o.Part,
-		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Found: o.Found, NotYet: o.NotYet}
+		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Near: o.Near, Found: o.Found, NotYet: o.NotYet}
 }
 
 // JSON is the report as indented JSON with a final newline.
@@ -134,7 +135,9 @@ type Wording interface {
 	CharsSession(dist string) string
 	CharsStart(dist string) string
 	Subagent(cases int, hit string, byLead int, wrong string, forbid int, empty, chars, leadChars string) string
-	Duplicate(cases int, hit, offered string, forbid int) string
+	// Duplicate is the duplicate bundle: the hit of the block and near ids together, the cases with no answer
+	// where a save was stopped (wrongBlock) or a near line was offered (nearOffered), and the forbidden ids of each.
+	Duplicate(cases int, hit, wrongBlock, nearOffered string, forbid, nearForbid int) string
 	ZeroDen() string
 	Dist(mean, median float64, max, n int) string
 }
@@ -194,7 +197,7 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 		w.CharsSession(distText(w, q.SessionChars)),
 		w.CharsStart(distText(w, q.StartChars)),
 		w.Subagent(g.Cases, pct(w, g.Hit), g.HitByLead, pct(w, g.Wrong), g.Forbid, pct(w, g.Empty), distText(w, g.Chars), distText(w, g.LeadChars)),
-		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.Offered), d.Forbid),
+		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.WrongBlock), pct(w, d.NearOffered), d.Forbid, d.NearForbid),
 	} {
 		b.WriteString("  " + line + "\n")
 	}

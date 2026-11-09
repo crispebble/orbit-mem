@@ -94,7 +94,7 @@ func FactoryWith(o Options) bench.Factory {
 		return bench.Env{
 			Recaller: &recaller{svc: svc, at: c},
 			Finder:   finder{svc: svc, at: c},
-			Similar:  similar{db: db, at: c, min: cfg.SaveSimilarMin},
+			Similar:  similar{db: db, at: c, mins: memory.CheckMins{Similar: cfg.SaveSimilarMin, Near: cfg.SaveNearMin}},
 			SetNow:   func(t time.Time) { c.t = t },
 			Close:    func() error { svc.Wait(); return nil },
 		}, nil
@@ -221,34 +221,44 @@ func (f finder) Find(cwd, query string, limit int) ([]string, error) {
 // settings. A same-title or same-topic verdict names the memory the save would add its source to or
 // supersede: it counts as the memory found, because with it the save leaves one memory of that content,
 // not two (design L-16), and a wrong one would merge or replace a different memory in silence. Otherwise
-// the memories of the same scope that are like the draft (top 3) count.
+// the memories of the same scope that are like the draft (top 3) are the block. A save that goes on has the
+// close memories memory_save shows beside it (saveNearMin, top 3) as its near ids.
 type similar struct {
-	db  string
-	at  *clock
-	min float64
+	db   string
+	at   *clock
+	mins memory.CheckMins
 }
 
 func (similar) Name() string { return SimilarName }
 
-func (s similar) Similar(cwd string, d bench.Draft) ([]string, error) {
+func (s similar) Similar(cwd string, d bench.Draft) (bench.SaveMeets, error) {
 	st, _, err := memory.OpenRead(s.db)
 	if err != nil {
-		return nil, fmt.Errorf("hostpath: save check: %w", err)
+		return bench.SaveMeets{}, fmt.Errorf("hostpath: save check: %w", err)
 	}
 	defer st.Close()
 	at := s.at.now()
 	st.Now = func() time.Time { return at }
 	res, err := st.SaveCheck(memory.SaveInput{Kind: d.Kind, Title: d.Title, Body: d.Body, Topic: d.Topic, Scope: d.Scope,
-		Source: memory.Source{Kind: memory.SourceQuote}}, memory.CheckMins{Similar: s.min})
+		Source: memory.Source{Kind: memory.SourceQuote}}, s.mins)
 	if err != nil {
-		return nil, fmt.Errorf("hostpath: save check: %w", err)
+		return bench.SaveMeets{}, fmt.Errorf("hostpath: save check: %w", err)
 	}
-	ids := slices.Clone(res.Existing)
+	block := slices.Clone(res.Existing)
 	for _, m := range res.Similar {
-		ids = append(ids, m.ID)
+		block = append(block, m.ID)
 	}
+	var near []string
+	for _, m := range res.Near {
+		near = append(near, m.ID)
+	}
+	return bench.SaveMeets{Block: top(block), Near: top(near)}, nil
+}
+
+// top is the first similarOf of ids.
+func top(ids []string) []string {
 	if len(ids) > similarOf {
-		ids = ids[:similarOf]
+		return ids[:similarOf]
 	}
-	return ids, nil
+	return ids
 }

@@ -139,12 +139,18 @@
             "den": 15,
             "value": 0.8
           },
-          "offered": {
+          "wrongBlock": {
             "num": 0,
             "den": 3,
             "value": 0
           },
-          "forbid": 0
+          "nearOffered": {
+            "num": 2,
+            "den": 3,
+            "value": 0.6667
+          },
+          "forbid": 0,
+          "nearForbid": 1
         }
       },
       "test": {
@@ -259,16 +265,22 @@
         "duplicates": {
           "cases": 13,
           "hit": {
-            "num": 8,
+            "num": 10,
             "den": 10,
-            "value": 0.8
+            "value": 1
           },
-          "offered": {
+          "wrongBlock": {
             "num": 0,
             "den": 3,
             "value": 0
           },
-          "forbid": 0
+          "nearOffered": {
+            "num": 3,
+            "den": 3,
+            "value": 1
+          },
+          "forbid": 0,
+          "nearForbid": 2
         }
       },
       "all": {
@@ -383,16 +395,22 @@
         "duplicates": {
           "cases": 31,
           "hit": {
-            "num": 20,
+            "num": 22,
             "den": 25,
-            "value": 0.8
+            "value": 0.88
           },
-          "offered": {
+          "wrongBlock": {
             "num": 0,
             "den": 6,
             "value": 0
           },
-          "forbid": 0
+          "nearOffered": {
+            "num": 5,
+            "den": 6,
+            "value": 0.8333
+          },
+          "forbid": 0,
+          "nearForbid": 3
         }
       },
       "sessions": [
@@ -4048,13 +4066,19 @@
           "id": "new-chart",
           "session": "new-chart",
           "kind": "duplicate",
-          "part": "train"
+          "part": "train",
+          "near": [
+            "m-000000000037"
+          ]
         },
         {
           "id": "new-server-time",
           "session": "new-server-time",
           "kind": "duplicate",
-          "part": "train"
+          "part": "train",
+          "near": [
+            "m-000000000039"
+          ]
         },
         {
           "id": "new-login-copy",
@@ -4724,13 +4748,19 @@
           "id": "dup-polite-topic",
           "session": "s2-dup-polite",
           "kind": "duplicate",
-          "part": "test"
+          "part": "test",
+          "near": [
+            "m-000000000083"
+          ]
         },
         {
           "id": "dup-polite-lesson",
           "session": "s2-dup-polite",
           "kind": "duplicate",
-          "part": "test"
+          "part": "test",
+          "near": [
+            "m-000000000083"
+          ]
         },
         {
           "id": "dup-polite-same-topic",
@@ -4844,19 +4874,29 @@
           "id": "new-retry-header",
           "session": "s1-save-new",
           "kind": "duplicate",
-          "part": "test"
+          "part": "test",
+          "near": [
+            "m-000000000039"
+          ]
         },
         {
           "id": "new-flag-owner",
           "session": "s1-save-new",
           "kind": "duplicate",
-          "part": "test"
+          "part": "test",
+          "near": [
+            "m-000000000113",
+            "m-000000000188"
+          ]
         },
         {
           "id": "new-sort-allow",
           "session": "s1-save-new",
           "kind": "duplicate",
-          "part": "test"
+          "part": "test",
+          "near": [
+            "m-000000000044"
+          ]
         }
       ]
     }

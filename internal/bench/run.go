@@ -145,10 +145,11 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 			if env.Similar == nil {
 				return fail(errors.New("the recall path has no Similar for a duplicate case"))
 			}
-			if o.Similar, err = env.Similar.Similar(cwd, *c.Save); err != nil {
+			meets, err := env.Similar.Similar(cwd, *c.Save)
+			if err != nil {
 				return fail(err)
 			}
-			o.Similar = nonNil(o.Similar)
+			o.Similar, o.Near = nonNil(meets.Block), nonNil(meets.Near)
 		}
 		outs = append(outs, o)
 		run.Cases = append(run.Cases, caseResult(o))

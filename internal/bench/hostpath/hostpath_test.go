@@ -125,14 +125,14 @@ func TestSimilar는_저장_판정을_쓰고_이름에_밝힌다(t *testing.T) {
 		t.Fatalf("similar name = %v", f.env.Similar)
 	}
 	// 같은 제목(같은 종류·범위): 저장하면 그 기억에 출처가 더해진다. 가리킨 기억으로 센다.
-	ids, err := f.env.Similar.Similar("/bench/app", bench.Draft{Kind: "fact", Title: "운영 배포는 main 병합으로 일어난다", Scope: "global"})
-	if err != nil || len(ids) != 1 || ids[0] != f.p.IDOf("deploy") {
-		t.Fatalf("same title: ids = %v, err = %v", ids, err)
+	got, err := f.env.Similar.Similar("/bench/app", bench.Draft{Kind: "fact", Title: "운영 배포는 main 병합으로 일어난다", Scope: "global"})
+	if ids := got.Block; err != nil || len(ids) != 1 || ids[0] != f.p.IDOf("deploy") || len(got.Near) != 0 {
+		t.Fatalf("same title: %+v, err = %v", got, err)
 	}
 	// 같은 주제의 현재값: 저장하면 그 기억을 대체한다.
-	ids, err = f.env.Similar.Similar("/bench/app", bench.Draft{Kind: "rule", Title: "설치 도구는 pnpm 하나", Topic: "앱 패키지 설치", Scope: "project:/bench/app"})
-	if err != nil || len(ids) != 1 || ids[0] != f.p.IDOf("pnpm") {
-		t.Fatalf("same topic: ids = %v, err = %v", ids, err)
+	got, err = f.env.Similar.Similar("/bench/app", bench.Draft{Kind: "rule", Title: "설치 도구는 pnpm 하나", Topic: "앱 패키지 설치", Scope: "project:/bench/app"})
+	if ids := got.Block; err != nil || len(ids) != 1 || ids[0] != f.p.IDOf("pnpm") || len(got.Near) != 0 {
+		t.Fatalf("same topic: %+v, err = %v", got, err)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestSimilar는_저장_판정을_쓰고_이름에_밝힌다(t *testing.T) {
 func TestSimilar는_비슷한_것이_없으면_비어_있다(t *testing.T) {
 	f := open(t)
 	ids, err := f.env.Similar.Similar("/bench/app", bench.Draft{Kind: "fact", Title: "차트 라이브러리는 서버 렌더링에서 크기를 못 잰다", Scope: "global"})
-	if err != nil || len(ids) != 0 {
+	if err != nil || len(ids.Block) != 0 || len(ids.Near) != 0 {
 		t.Fatalf("ids = %v, err = %v", ids, err)
 	}
 }
@@ -148,15 +148,15 @@ func TestSimilar는_비슷한_것이_없으면_비어_있다(t *testing.T) {
 func TestSimilar는_다른_범위의_기억을_비슷하다고_세지_않는다(t *testing.T) {
 	f := open(t)
 	ids, err := f.env.Similar.Similar("/bench/other", bench.Draft{Kind: "fact", Title: "이 앱은 pnpm으로 설치한다 npm install을 쓰지 않는다", Body: "lock 파일은 pnpm-lock.yaml 하나만 둔다.", Scope: "project:/bench/other"})
-	if err != nil || len(ids) != 0 {
+	if err != nil || len(ids.Block) != 0 || len(ids.Near) != 0 {
 		t.Fatalf("ids = %v, err = %v", ids, err)
 	}
 }
 
-// 문턱(saveSimilarMin)은 설정 덮어쓰기로 바꿔 잰다.
-func TestSimilar는_덮어쓴_saveSimilarMin을_따른다(t *testing.T) {
+// 문턱(saveSimilarMin)과 가까운 하한(saveNearMin)은 설정 덮어쓰기로 바꿔 잰다. 막지 않으면 그 기억은 가까운 기억이다.
+func TestSimilar는_덮어쓴_saveSimilarMin과_saveNearMin을_따른다(t *testing.T) {
 	draft := bench.Draft{Kind: "decision", Title: "운영 배포는 main 병합으로 한다", Body: "감시기가 origin/main을 보고 배포한다.", Scope: "global"}
-	ids := func(set map[string]string) []string {
+	meets := func(set map[string]string) bench.SaveMeets {
 		f := openWith(t, set)
 		got, err := f.env.Similar.Similar("/bench/app", draft)
 		if err != nil {
@@ -164,11 +164,14 @@ func TestSimilar는_덮어쓴_saveSimilarMin을_따른다(t *testing.T) {
 		}
 		return got
 	}
-	if got := ids(nil); len(got) == 0 {
-		t.Fatalf("default threshold: want the deploy memory as similar, got %v", got)
+	if got := meets(nil); len(got.Block) == 0 || len(got.Near) != 0 {
+		t.Fatalf("default threshold: want the deploy memory as similar, got %+v", got)
 	}
-	if got := ids(map[string]string{"saveSimilarMin": "1"}); len(got) != 0 {
-		t.Fatalf("saveSimilarMin=1: ids = %v, want none", got)
+	if got := meets(map[string]string{"saveSimilarMin": "1"}); len(got.Block) != 0 || len(got.Near) == 0 {
+		t.Fatalf("saveSimilarMin=1: %+v, want the deploy memory as near", got)
+	}
+	if got := meets(map[string]string{"saveSimilarMin": "1", "saveNearMin": "1"}); len(got.Block) != 0 || len(got.Near) != 0 {
+		t.Fatalf("saveSimilarMin=1 saveNearMin=1: %+v, want none", got)
 	}
 }
 

@@ -333,7 +333,7 @@ func TestBench_set은_설정을_덮어써_지금_경로만_움직인다(t *testi
 	if code != 0 {
 		t.Fatalf("종료 %d: %s", code, errb)
 	}
-	strict, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1")
+	strict, errb, code := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1", "--set", "saveNearMin=1")
 	if code != 0 {
 		t.Fatalf("종료 %d: %s", code, errb)
 	}
@@ -357,13 +357,13 @@ func TestBench_set은_설정을_덮어써_지금_경로만_움직인다(t *testi
 		t.Fatalf("runs %d %d", len(a.Runs), len(b.Runs))
 	}
 	if a.Runs[0].All.Duplicates == b.Runs[0].All.Duplicates {
-		t.Errorf("saveSimilarMin=1 did not move the current duplicates: %+v", a.Runs[0].All.Duplicates)
+		t.Errorf("saveSimilarMin=1 saveNearMin=1 did not move the current duplicates: %+v", a.Runs[0].All.Duplicates)
 	}
 	if a.Runs[1].All.Duplicates != b.Runs[1].All.Duplicates {
 		t.Errorf("the frozen recall moved: %+v -> %+v", a.Runs[1].All.Duplicates, b.Runs[1].All.Duplicates)
 	}
 	// 같은 덮어쓰기는 같은 숫자를 낸다. 덮어쓴 값은 글 보고에 밝힌다.
-	again, _, _ := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1")
+	again, _, _ := run(t, "", "bench", "recall", "--cases", publicSet, "--json", "--set", "saveSimilarMin=1", "--set", "saveNearMin=1")
 	if again != strict {
 		t.Error("the same --set gave another report")
 	}

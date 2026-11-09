@@ -97,7 +97,8 @@ func TestEmptyDenominators는_정한_대로_비운다(t *testing.T) {
 	sub, dup := rep.Runs[0].All.Subagent, rep.Runs[0].All.Duplicates
 	wantRate(t, "subagent hit", sub.Hit, 0, 0, nil)
 	wantRate(t, "duplicate hit", dup.Hit, 0, 0, nil)
-	wantRate(t, "duplicate offered", dup.Offered, 0, 0, nil)
+	wantRate(t, "duplicate wrong block", dup.WrongBlock, 0, 0, nil)
+	wantRate(t, "duplicate near offered", dup.NearOffered, 0, 0, nil)
 }
 
 func TestToolOnly는_질의가_없어_놓침_복구에서_빠진다(t *testing.T) {
@@ -138,11 +139,49 @@ func TestSubagent와_Duplicate는_요청과_섞지_않고_따로_잰다(t *testi
 	if d.Cases != 4 || d.Forbid != 0 {
 		t.Errorf("duplicates %+v", d)
 	}
-	wantRate(t, "duplicate hit", d.Hit, 1, 2, f64(0.5))         // dp1, dp4(d는 넷째)
-	wantRate(t, "duplicate offered", d.Offered, 1, 2, f64(0.5)) // dp2 c를 내밀었다, dp3은 없다
+	wantRate(t, "duplicate hit", d.Hit, 1, 2, f64(0.5))                // dp1, dp4(d는 넷째)
+	wantRate(t, "duplicate wrong block", d.WrongBlock, 1, 2, f64(0.5)) // dp2 c에서 막았다, dp3은 없다
+	wantRate(t, "duplicate near offered", d.NearOffered, 0, 2, f64(0))
 	for _, c := range *calls {
 		if c == "start:dp1" {
 			t.Errorf("a duplicate case has no session to start: %v", *calls)
+		}
+	}
+}
+
+// 중복 묶음(1-6 b6dn): 적중은 정답이 (막음 ∪ 가까운) 상위 3에 든 것이다. 정답 없는 사례에서 막음 후보가 허용 밖
+// 기억을 내면 「잘못 막음」, 가까운 기억이 허용 밖 기억을 내면 「가까운 목록 내밂」으로 따로 센다. 금지 기억도 막음과
+// 가까운 것을 따로 센다.
+func TestDuplicate는_막음과_가까운_기억을_합쳐_적중을_보고_잘못_막음과_내밂을_따로_센다(t *testing.T) {
+	rep, _ := runFake(t, `
+	 {"id":"dp1","kind":"duplicate","save":{"kind":"fact","title":"t1"},"expect":["a"]},
+	 {"id":"dp2","kind":"duplicate","save":{"kind":"fact","title":"t2"},"expect":["d"]},
+	 {"id":"dp3","kind":"duplicate","save":{"kind":"fact","title":"t3"},"expect":["e"],"forbid":["f"]},
+	 {"id":"dp4","kind":"duplicate","save":{"kind":"fact","title":"t4"},"allow":["b"]},
+	 {"id":"dp5","kind":"duplicate","save":{"kind":"fact","title":"t5"},"allow":["b"]},
+	 {"id":"dp6","kind":"duplicate","save":{"kind":"fact","title":"t6"},"forbid":["g"]}`, script{}, keyed{
+		sim: map[string][]string{
+			"t2": {"a"},
+			"t4": {"c"},
+		},
+		near: map[string][]string{
+			"t1": {"b", "a"},           // 가까운 목록의 둘째가 정답
+			"t2": {"b", "c", "d"},      // 막음 a + 가까운 b, c가 상위 3: d는 넷째라 놓침
+			"t3": {"f", "e"},           // 반대 주장(forbid) 옛 결정이 가까운 목록에: 적중, 금지는 가까운 쪽 수
+			"t5": {"b", "h"},           // 허용 밖 h를 가까운 목록에 냈다
+			"t6": {"g", "h", "i", "j"}, // 넷째는 세지 않는다
+		},
+	})
+	d := rep.Runs[0].All.Duplicates
+	wantRate(t, "duplicate hit", d.Hit, 2, 3, f64(0.6667))
+	wantRate(t, "duplicate wrong block", d.WrongBlock, 1, 3, f64(0.3333))   // dp4
+	wantRate(t, "duplicate near offered", d.NearOffered, 2, 3, f64(0.6667)) // dp5, dp6
+	if d.Cases != 6 || d.Forbid != 0 || d.NearForbid != 2 {
+		t.Errorf("duplicates %+v", d)
+	}
+	for _, c := range rep.Runs[0].Cases {
+		if c.ID == "dp2" && (len(c.Similar) != 1 || len(c.Near) != 3) {
+			t.Errorf("case dp2 block %v near %v", c.Similar, c.Near)
 		}
 	}
 }
