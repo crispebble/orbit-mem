@@ -31,24 +31,24 @@
             "den": 64,
             "value": 0.9219
           },
-          "injected": 78,
+          "injected": 77,
           "correct": 69,
           "neutral": 3,
           "wrong": {
-            "num": 6,
-            "den": 78,
-            "value": 0.0769
+            "num": 5,
+            "den": 77,
+            "value": 0.0649
           },
           "forbid": 1,
           "forbidCases": 1,
           "empty": {
-            "num": 29,
+            "num": 30,
             "den": 32,
-            "value": 0.9063
+            "value": 0.9375
           },
           "chars": {
             "n": 82,
-            "mean": 63.1341,
+            "mean": 61.7317,
             "median": 81,
             "max": 132
           },
@@ -72,8 +72,8 @@
           },
           "sessionChars": {
             "n": 62,
-            "mean": 438.629,
-            "median": 414,
+            "mean": 436.7742,
+            "median": 413.5,
             "max": 777
           },
           "startChars": {
@@ -253,25 +253,25 @@
             "den": 91,
             "value": 0.8901
           },
-          "injected": 104,
+          "injected": 103,
           "correct": 93,
           "neutral": 4,
           "wrong": {
-            "num": 7,
-            "den": 104,
-            "value": 0.0673
+            "num": 6,
+            "den": 103,
+            "value": 0.0583
           },
           "forbid": 2,
           "forbidCases": 2,
           "empty": {
-            "num": 42,
+            "num": 43,
             "den": 46,
-            "value": 0.913
+            "value": 0.9348
           },
           "chars": {
             "n": 121,
-            "mean": 60.5785,
-            "median": 81,
+            "mean": 59.6281,
+            "median": 80,
             "max": 132
           },
           "hitByStart": 0,
@@ -294,8 +294,8 @@
           },
           "sessionChars": {
             "n": 88,
-            "mean": 434.6136,
-            "median": 414,
+            "mean": 433.3068,
+            "median": 413.5,
             "max": 777
           },
           "startChars": {
@@ -3862,10 +3862,8 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [
-              "m-000000000213"
-            ],
-            "chars": 115
+            "ids": [],
+            "chars": 0
           }
         },
         {

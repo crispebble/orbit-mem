@@ -62,3 +62,16 @@ func TestStemWord_굳은_부사는_떼지_않는다(t *testing.T) {
 		t.Fatalf("뜻 있는 낱말 %v", got)
 	}
 }
+
+// 조사·어미를 뗀 뒤 한 글자 기능어로 남는 낱말도 뜻 있는 낱말이 아니다(1-6 b6r): 「하는」→하, 「되는」→되, 「것을」→것.
+// 「하다」「되다」의 어간 하·되는 학교 문법의 닫힌 목록(체언에 붙어 용언을 만드는 말)이다. 뗀 뒤 한 글자 명사(앱·키)는 남는다.
+func TestMeaningfulWords_뗀_뒤_한_글자_기능어는_뺀다(t *testing.T) {
+	got := MeaningfulWords("린트 하는 것을 앱을 키를 빌드 되는")
+	if want := []string{"린트", "앱", "키", "빌드"}; !slices.Equal(got, want) {
+		t.Fatalf("뜻 있는 낱말 %v, want %v", got, want)
+	}
+	// 한 글자로 바로 쓴 하·되도 기능어다.
+	if got := MeaningfulWords("린트 하 빌드 되"); !slices.Equal(got, []string{"린트", "빌드"}) {
+		t.Fatalf("뜻 있는 낱말 %v", got)
+	}
+}

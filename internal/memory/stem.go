@@ -46,8 +46,9 @@ var oneSyllableStemTails = map[string]bool{"은": true, "는": true, "을": true
 // fixedAdverbs are adverbs that end in 로 without a particle (see above). Stemming leaves them whole.
 var fixedAdverbs = map[string]bool{}
 
-// functionSyllables are one-syllable words of closed classes (대명사·관형사·부사·의존명사·조사·흔한 용언 활용) that say
-// nothing about a topic. Other one-syllable Hangul words (앱·키·꼴) are nouns and stay.
+// functionSyllables are one-syllable words of closed classes (대명사·관형사·부사·의존명사·조사·흔한 용언 활용, 그리고
+// 체언에 붙어 용언을 만드는 「하다」「되다」의 어간 하·되) that say nothing about a topic. A word that is one of them
+// after stemming (「하는」→하, 「것을」→것) is left out too. Other one-syllable Hangul words (앱·키·꼴) are nouns and stay.
 var functionSyllables = map[string]bool{}
 
 func init() {
@@ -76,7 +77,7 @@ func init() {
 	}
 	sortTails(stemTailOrder)
 	for _, w := range strings.Fields(`이 그 저 뭐 왜 좀 더 잘 안 못 꼭 또 다 각 한 두 세 및 수 것 거 게 걸 건 데 때 뭘 곧 막 늘
-		될 할 해 돼 줘 나 너 날 내 네 제 난 넌 은 는 을 를 가 에 의 도 만 와 과 로 어 아 음 응 예`) {
+		하 되 될 할 해 돼 줘 나 너 날 내 네 제 난 넌 은 는 을 를 가 에 의 도 만 와 과 로 어 아 음 응 예`) {
 		functionSyllables[w] = true
 	}
 }
@@ -182,8 +183,8 @@ func requestWords(prompt string, withShort bool) []string {
 			} else if !withShort {
 				continue
 			}
-		} else {
-			w = stemWord(t)
+		} else if w = stemWord(t); utf8.RuneCountInString(w) == 1 && isHangulStart(w) && functionSyllables[w] {
+			continue // 뗀 뒤 한 글자 기능어
 		}
 		if stopwords[w] || seen[w] {
 			continue
