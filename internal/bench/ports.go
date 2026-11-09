@@ -28,7 +28,7 @@ type Recaller interface {
 }
 
 // Finder is the search a missed recall falls back to: the ids of the top limit hits.
-// One implementation is shared by the recall paths being compared.
+// Each recall path brings its own: the frozen one keeps the search of its day (internal/bench/legacy).
 type Finder interface {
 	Find(cwd, query string, limit int) ([]string, error)
 }

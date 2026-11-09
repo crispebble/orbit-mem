@@ -10,7 +10,7 @@ flowchart LR
     D --> E[지표<br/>학습 · 판정 · 전체]
 ```
 
-위 그림은 한 번의 실행이다. 회상 경로마다 새 DB 사본에서 따로 돈다. 보인 표시와 활동 기록이 다른 실행에 섞이지 않게 하려는 것이다. 도메인(`internal/bench`)은 회상 구현을 모른다. 지금 경로와 옛 경로는 하위 패키지의 어댑터가 포트(`Recaller`·`Finder`·`Similar`)에 맞춰 붙이고, 조립은 `internal/bench/paths`의 `Factories`가 한다. 옛 회상은 지금 경로의 Finder·Similar를 함께 쓴다.
+위 그림은 한 번의 실행이다. 회상 경로마다 새 DB 사본에서 따로 돈다. 보인 표시와 활동 기록이 다른 실행에 섞이지 않게 하려는 것이다. 도메인(`internal/bench`)은 회상 구현을 모른다. 지금 경로와 옛 경로는 하위 패키지의 어댑터가 포트(`Recaller`·`Finder`·`Similar`)에 맞춰 붙이고, 조립은 `internal/bench/paths`의 `Factories`가 한다. 옛 회상은 Finder·Similar도 87ab0fb의 `memory_find`(와 그것을 빌린 `find-proxy`)를 얼린 사본을 쓰고, 지금 경로를 열지 않는다(`internal/bench/legacy/find.go`). 지금 찾기가 바뀌어도 옛 기준선의 놓친 것 되찾기·중복 지표가 움직이지 않게 하려는 것이다. 그래서 두 회상의 되찾기 지표 차이에는 회상 차이와 찾기 차이가 함께 든다.
 
 ## 두 묶음
 
@@ -150,7 +150,7 @@ orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일
 `internal/memory`(1-3)와 `internal/inject`·`internal/host`(1-4)를 이 브랜치에 합치면 아래를 차례로 한다. 기본 `go test ./...`는 깨지지 않게 두었고, 깨지는 것이 정상인 시험은 `benchequiv` 태그 뒤에 있다.
 
 1. `go test ./internal/bench -run TestPublicSet -update-golden`으로 `baseline-current.json`을 다시 재고, 바뀐 지표를 이슈에 남긴다. 조립은 `internal/bench/paths`의 `Factories`(`current`·`legacy`) 한 곳이고, 깃발은 `-update-golden`이다.
-2. `baseline-legacy.json`은 바뀌면 안 된다. 깨지면 legacy 사본이 기대는 `memory`·`place` 심볼(목록은 `internal/bench/legacy/symbols_test.go`)이 바뀐 것이니 사본을 고친다.
+2. `baseline-legacy.json`은 바뀌면 안 된다. 깨지면 legacy 사본이 기대는 `memory`·`place`·`project` 심볼(목록은 `internal/bench/legacy/symbols_test.go`)이 바뀐 것이니 사본을 고친다. 0.17 통합 때 1-3이 `Store.Find`를 FTS5 색인으로 바꿔(`272b9ca`) 지금 경로의 찾기를 빌려 쓰던 옛 기준선이 움직였고, 그 뒤로 찾기도 사본에 얼렸다.
 3. `-tags benchequiv` 시험(`hostpath`·`legacy` 둘 다)은 87ab0fb 같음 증거라 1-3·1-4를 합친 뒤에는 깨지는 것이 정상이다. 옛 회상이 그대로인지는 기본 시험의 `baseline-legacy.json` 엄격 비교가 지킨다.
 4. 기대는 바깥 모양이 바뀌었는지 본다. `internal/bench/load.go`는 `memory.Import`·`Pin`·`RecordEvent`를, `internal/bench/hostpath`는 `host.Request`·`host.Setup`·op 이름·`memory_find` 결과 id를 기대한다. 1-3·1-4가 바꾸면 여기를 고친다.
-5. Similar는 `find-proxy`다(1-3의 저장 때 비슷한 기억 고르기가 생기면 1-6에서 잇는다). 두 회상이 같은 Similar를 쓰므로 중복 묶음은 두 회상 비교에 쓰지 않는다.
+5. 지금 경로의 Similar는 `find-proxy`다(1-3의 저장 때 비슷한 기억 고르기가 생기면 1-6에서 잇는다). 옛 회상의 Similar는 87ab0fb 찾기 위의 `find-proxy`를 얼린 것이다. 둘 다 회상이 아니라 찾기를 재므로 중복 묶음은 두 회상 비교에 쓰지 않는다.

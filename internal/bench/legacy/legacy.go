@@ -4,9 +4,10 @@
 // evaluation set measures against, so it does not move when the live recall changes. What it
 // still takes from memory, place and project is fixed by a test (symbols_test.go).
 //
-// It is an adapter of the bench Recaller port. The finder and the similar search of the
-// evaluation are shared with the live path and paired by the caller, so this package gives a
-// Recaller only.
+// It is an adapter of the bench ports. The search a missed recall falls back to (memory_find of
+// 87ab0fb) and the find-proxy similar search are frozen here too (find.go): the evaluation reads
+// them into the legacy baseline, and the live search moved to the FTS5 index in 272b9ca (1-3), so
+// sharing the live ones moved the frozen baseline. Env gives all three; New gives the Recaller only.
 package legacy
 
 import (
@@ -48,13 +49,16 @@ func New(dbPath string, set *bench.Set) (bench.Recaller, func() error, error) {
 	return &recaller{s: s, products: products}, s.Close, nil
 }
 
-// Env is New in the shape of a bench.Factory, without a finder or a similar search.
+// Env is the frozen path in the shape of a bench.Factory: the recall, and the search and the similar
+// search of 87ab0fb, all on the one store opened on the DB copy. Close closes that store.
 func Env(dbPath string, set *bench.Set) (bench.Env, error) {
 	r, closeFn, err := New(dbPath, set)
 	if err != nil {
 		return bench.Env{}, err
 	}
-	return bench.Env{Recaller: r, Close: closeFn}, nil
+	rc := r.(*recaller)
+	f := finder{s: rc.s, products: rc.products}
+	return bench.Env{Recaller: r, Finder: f, Similar: similar{f}, Close: closeFn}, nil
 }
 
 type recaller struct {

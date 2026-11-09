@@ -62,8 +62,9 @@ func TestFactories는_모르는_이름을_거절한다(t *testing.T) {
 	}
 }
 
-// 두 회상은 같은 찾기·비슷한 것 찾기를 쓰고, Close는 연 것을 다 닫는다: 닫은 뒤 사본 옆에 -wal·-shm이 남지 않는다.
-func TestFactories의_Env는_찾기를_함께_쓰고_Close가_연_것을_다_닫는다(t *testing.T) {
+// 두 회상은 저마다 찾기·비슷한 것 찾기를 갖추고(옛 회상은 87ab0fb 것을 얼린 사본), 뻔한 요청에는 같은 기억을 먼저 찾는다.
+// Close는 연 것을 다 닫는다: 닫은 뒤 사본 옆에 -wal·-shm이 남지 않는다.
+func TestFactories의_Env는_찾기를_갖추고_Close가_연_것을_다_닫는다(t *testing.T) {
 	p := prepared(t)
 	fs, err := paths.Factories(paths.Names)
 	if err != nil {
@@ -105,27 +106,34 @@ func TestFactories의_Env는_찾기를_함께_쓰고_Close가_연_것을_다_닫
 			}
 		}
 	}
-	if len(found) != 2 || len(found[0]) == 0 || len(found[0]) != len(found[1]) || found[0][0] != found[1][0] {
-		t.Errorf("the two paths share one search: %v", found)
+	if a := p.IDOf("a"); len(found) != 2 || len(found[0]) == 0 || len(found[1]) == 0 || found[0][0] != a || found[1][0] != a {
+		t.Errorf("both paths find the one memory first: %v", found)
 	}
 }
 
-// Close of the frozen recall closes the legacy side and the shared current-path side, both.
-func TestLegacy의_Close는_legacy와_함께_쓴_지금_경로를_둘_다_닫는다(t *testing.T) {
+// The frozen recall opens nothing of the current path: its search and similar search are frozen
+// too (87ab0fb memory_find), so a change of the current code cannot move the legacy baseline.
+// Close closes what it opened, once.
+func TestLegacy는_지금_경로를_열지_않고_자기가_연_것만_닫는다(t *testing.T) {
 	p := prepared(t)
-	closed := map[string]int{}
-	counting := func(name string, env bench.Env) bench.Env {
-		env.Close = func() error { closed[name]++; return nil }
-		return env
+	opened, closed := map[string]int{}, map[string]int{}
+	counting := func(name string, env bench.Env, err error) (bench.Env, error) {
+		opened[name]++
+		if err != nil {
+			return env, err
+		}
+		real := env.Close
+		env.Close = func() error { closed[name]++; return real() }
+		return env, nil
 	}
 	defer paths.SwapAdapters(
 		func(db string, set *bench.Set) (bench.Env, error) {
 			env, err := hostpath.Factory(db, set)
-			return counting("host", env), err
+			return counting("host", env, err)
 		},
 		func(db string, set *bench.Set) (bench.Env, error) {
 			env, err := legacy.Env(db, set)
-			return counting("legacy", env), err
+			return counting("legacy", env, err)
 		},
 	)()
 	fs, err := paths.Factories([]string{paths.Legacy})
@@ -140,10 +148,19 @@ func TestLegacy의_Close는_legacy와_함께_쓴_지금_경로를_둘_다_닫는
 	if err != nil {
 		t.Fatal(err)
 	}
+	if env.Finder == nil || env.Similar == nil {
+		t.Fatalf("legacy env without its own finder: %+v", env)
+	}
+	if _, err := env.Finder.Find("/bench/app", "indent Go files tabs", bench.FindLimit); err != nil {
+		t.Fatal(err)
+	}
 	if err := env.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if closed["host"] != 1 || closed["legacy"] != 1 {
-		t.Errorf("closed %v, want each once", closed)
+	if opened["host"] != 0 || closed["host"] != 0 {
+		t.Errorf("the legacy path opened the current path: opened %v, closed %v", opened, closed)
+	}
+	if opened["legacy"] != 1 || closed["legacy"] != 1 {
+		t.Errorf("legacy opened %d, closed %d, want each once", opened["legacy"], closed["legacy"])
 	}
 }

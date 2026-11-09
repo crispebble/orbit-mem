@@ -17,10 +17,13 @@ const (
 	Legacy  = "legacy"  // the frozen recall of 87ab0fb
 )
 
-// The adapters the factories assemble (tests swap them to see what Close closes).
+// The adapters the factories give (tests swap them to see what a path opens and closes). The legacy
+// path is the frozen copy alone: its recall, search and similar search are all 87ab0fb's
+// (internal/bench/legacy), so it opens nothing of the current path and a change of the current
+// code cannot move the legacy baseline.
 var (
 	hostFactory bench.Factory = hostpath.Factory
-	legacyEnv                 = legacy.Env
+	legacyEnv   bench.Factory = legacy.Env
 )
 
 // Names is every recall path, in report order.
@@ -47,36 +50,11 @@ func Factories(names []string) ([]bench.Factory, error) {
 		case Current:
 			out = append(out, hostFactory)
 		case Legacy:
-			out = append(out, legacyFactory)
+			out = append(out, legacyEnv)
 		default:
 			return nil, UnknownError{Name: n}
 		}
 		seen[n] = true
 	}
 	return out, nil
-}
-
-// legacyFactory pairs the frozen recall with the search and the similar search of the current
-// path (the frozen recall has none of its own) on the same DB copy, so only the recall differs.
-// Close closes both.
-func legacyFactory(db string, set *bench.Set) (bench.Env, error) {
-	env, err := legacyEnv(db, set)
-	if err != nil {
-		return bench.Env{}, err
-	}
-	hp, err := hostFactory(db, set)
-	if err != nil {
-		env.Close()
-		return bench.Env{}, err
-	}
-	env.Finder, env.Similar = hp.Finder, hp.Similar
-	closeLegacy := env.Close
-	env.Close = func() error {
-		err := hp.Close()
-		if cerr := closeLegacy(); err == nil {
-			err = cerr
-		}
-		return err
-	}
-	return env, nil
 }
