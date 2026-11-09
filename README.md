@@ -111,6 +111,8 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | `orbit-mem product rename <옛> <새> [--dry-run] [--json]` | 제품 지도(`config.json`의 `products`)의 제품 이름을 바꾸고 그 제품에 묶인 기억(`product:<옛>`, 상태·상시 핵심과 관계없이 모두)을 `product:<새>`로 함께 옮긴다. 옛 이름이 지도에 없거나, 새 이름이 이미 있거나, `product:<새>`에 기억이 있으면 거절한다. 시작 전에 `backups/`에 기억 DB 사본(`memory-before-product-rename-…sqlite`)과 설정 사본(`config-before-product-rename-….json`)을 남기고, 기억 옮기기와 설정 쓰기를 한 트랜잭션 안에서 한다: 설정은 처음 읽은 내용 그대로일 때만 쓰고, 쓴 뒤 실패하면 원래 내용으로 되돌린다. 내용·주제·승격은 바꾸지 않고 기억마다 판을 올려 이력(`rename`)에 남긴다(자동 변경 원장에는 남기지 않는다). `--dry-run`은 무엇을 옮길지만 보이고 사본도 만들지 않는다 |
 | `orbit-mem place --move [--json]` | 제품 지도에 맞는 `product:?` 기억을 그 제품으로 옮긴다(범위만, 자동 변경으로 원장에 남고 `orbit-mem audit revert`로 되돌린다). 하루 정리도 같은 일을 한다 |
 | `orbit-mem plugin build [--out D \| --repo R]` | 내장 원본으로 플러그인을 만든다. `--out`(기본 `$ORBIT_HOME/plugins/orbit-mem`)에는 Claude·Codex 꼴과 두 로컬 마켓을, `--repo`에는 GitHub 마켓(`.claude-plugin/marketplace.json`과 `plugin/`, Claude 꼴만)을 쓴다. `plugin/` 안의 남은 파일은 지운다 |
+| `orbit-mem migrate [--json]` | 기억 DB의 스키마를 이 실행 파일의 판으로 올리고(바꾸기 전 사본을 남긴다), 옛 실행 파일이 쓴 늦은 검색 색인 줄을 다 채운다. 채운 수를 알린다 |
+| `orbit-mem migrate --reindex [--json]` | 검색 색인(`memory_index`·`memory_fts`)을 비우고 모든 기억에서 다시 만든다(멱등). 다시 만든 줄 수를 알린다. 색인이 깨졌다고 의심될 때 쓴다 |
 | `orbit-mem migrate --from <사본>` | 옛 Knowledge 백업 사본을 한 번 옮긴다 |
 | `orbit-mem stats [--days N \| --week 월요일]` | 지표: 반복 교정, 요청 적중, 사용 판정, 빈 검색, 저장, 쓰기 판정, 제안 결정, 근거 파일 판정, 효과 원장, 기억 그래프(태그 묶음), 옛 기억 정리. 교정·사용 판정·쓰기 판정·근거 파일 판정은 걷어낸 회고가 남긴 옛 사건을 센다 |
 | `orbit-mem ledger [--all]` | 승인한 변경과 자동 변경(기억·하네스·지침)의 효과 판정 |
@@ -132,7 +134,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | --- | --- |
 | `host`, `session` | 기본키. 호스트(`claude`·`codex`)와 세션 id |
 | `project_scope`, `project_label`, `cwd` | 프로젝트 범위(`project:<키>`)·이름·작업 디렉터리 |
-| `launcher` | `human`(훅). 0.17.0 전 orbit-pi가 띄운 세션의 옛 줄에는 `orbit-pi`·`studio`·`telegram`·`workflow`가 있다 |
+| `launcher` | `human`(훅: 사람이 연 세션)·`host`(`host`·`inject`·`tool`로 계약을 거친 호스트: 누가 띄웠는지는 모른다). 0.17.0 전 orbit-pi가 띄운 세션의 옛 줄에는 `orbit-pi`·`studio`·`telegram`·`workflow`가 있다 |
 | `parent` | 세션을 띄운 쪽이 준 `ORBIT_PARENT` |
 | `started_at`, `last_at`, `ended_at` | 시작·마지막 활동·끝 시각(Unix ms). 다시 시작(resume·clear·compact)하면 끝 시각이 지워진다 |
 | `prompts`, `first_prompt`, `last_prompt` | 요청 수, 첫·마지막 요청 글(비밀값을 가리고 공백을 접어 300자까지) |
@@ -182,6 +184,9 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 - 후보 기한(0.13.0): `candidateExpiryDays`(기본 28, 0이면 끔)일 동안 만들지도 고치지도, 세션·요청에 넣지도, `memory_find`·`memory_get`으로 찾거나 읽지도, 사용 판정을 받지도 않은 후보는 하루 정리가 자동 낡음으로 돌리고 원장에 남긴다. 회상을 넣지 않는 설정(`inject` `rules`·`off`)에서는 후보가 쓰일 기회가 없으니 하지 않는다. 사용자 말 출처 기억은 대상이 아니고, 사건 기록이 기한보다 짧으면(새 설치) 하지 않는다. 되돌리면 후보로 돌아오고 다시 낡음으로 하지 않는다.
 - 주제(`topic`): 같은 범위·주제의 기억은 하나만 회상한다(세션 시작 규칙 포함): 확정된 것 중 가장 최근 것, 확정이 없으면 후보·낡음 중 가장 최근 것. 후보는 확정(사용자 말)을 가리지 못하고, 최신 판이 낡아도 옛 판은 돌아오지 않는다. 날이 지난 휘발 기억은 현재값이 아니다.
 - 저장 때 대체(설계 · orbit-mem 2판 4.2·4.3, 0.11.0): `memory_save`의 규칙·결정은 `topic`이 필수다(없으면 거절하고 이 범위의 주제 목록과 비슷한 현재값 3개를 보인다). 같은 범위·주제로 저장하면 옛 현재값을 낡음 + `superseded_by`로 돌리고, `supersedes: [id…]`는 범위·주제가 다른 옛 판도 같은 트랜잭션에서 대체한다. 사용자 말(출처 quote)은 옛 사용자 말을 `userQuote` 없이 대체한다(D1). AI가 배운 것·자동화는 사용자 말을 대체하지 않고 어긋남 표시를 남긴다. `volatile`(임시라고 밝힌 말)은 같은 주제를 대체하지 않는다. 응답의 `superseded`·`conflicts`가 한 일을 알린다.
+- 검색: `memory_find`·`orbit-mem search`의 질의는 SQLite FTS5 색인(`memory_index`·`memory_fts`, 스키마 판 5)으로 찾고 점수(0~1)를 매긴다. 한·중·일 글은 두 글자 바이그램으로 쪼개 색인한다. 색인은 기억을 쓰는 같은 트랜잭션에서 맞춘다. 옛 실행 파일이 판 5 DB에 쓴 기억은 색인에 없는 「늦은 줄」이라 검색이 훑어서 함께 찾고, 쓰기 호출이 한 번에 최대 200개씩, `orbit-mem migrate`·`install`·`backup restore`가 전부 채운다. 판 4 → 5 이전은 표를 만들고 전부 채운다. 훅·읽기 op·`doctor`는 채우지 않는다(`doctor`는 `index-stale`로 알릴 뿐이다).
+- 저장 때 정리(`memory_save`): 같은 범위에 비슷한 기억(제목·본문 점수 `saveSimilarMin` 이상, 기본 0.68, `orbit-mem config set saveSimilarMin 0.7`)이 있으면 저장하지 않고 `saved: false`와 `similar`(최대 3개: id·제목·요약·점수)를 돌려준다. 호출한 AI가 `resolve`로 다시 부른다: `add`(그래도 새로 저장)·`update:<id>`(그 기억에 합침)·`supersede:<id>`(그 기억을 대체)·`skip`(저장하지 않음). 같은 제목이면 출처를 그 기억에 더하고, 같은 범위·주제의 현재값은 대체한다(위). `idempotencyKey`를 주면 같은 키로 다시 불러도 한 번만 적용한다(재시도 안전).
+- 출처 등급(`sources[].trust`): `owner`(사용자 본인 말)·`agent`(호스트 AI가 배운 것)·`untrusted`(웹·도구 출력·남의 글·로그)·`system`(자동화). 통로가 상한을 정한다: MCP·호스트(`orbit-mem tool`)로 저장한 출처는 `agent`까지이고, `sources[].trust`로 낮출 수만 있다(올리지 못한다). 기억의 등급은 출처 가운데 가장 높은 것이다. 출처가 `untrusted`·`system`뿐인 기억은 확정·상시 핵심 승격이 안 되고 `owner`·`agent` 기억을 대체하지 못하며, 회상에 「믿을 수 없음」 표시가 붙는다.
 - 주장 하나: `memory_save`·`memory_update`에서 규칙·결정 본문이 1,000자를 넘으면 나눠 저장하라고 거절한다.
 - 도구 트리거(`tools`): 도구 이름(`mcp__atlas__write_page`)이나 `*`로 끝나는 접두(`mcp__atlas__*`), 10개까지. `memory_save`·`memory_update`가 받는다.
 - 나이 감쇠: 요청 회상에서 관련도가 같으면 마지막으로 바뀌거나 다시 나온 지 30일 안 → 180일 안 → 그 뒤 순으로 앞에 둔다. 관련도가 먼저다.
@@ -295,7 +300,7 @@ go run ./cmd/orbit-mem plugin build --repo .
 | `update` | `current`, `latest`(하루 한 번 세션 시작 훅이 남긴 캐시 `update-check.json`의 최신 판, 없으면 빈 문자열), `checkedAt`, `available`(새 판이 있는가), `enabled`(설정 `updateCheck`). doctor는 네트워크를 하지 않고 캐시만 읽는다 |
 | `claude` | `path`, `plugin`(`installed`·`missing`·`unknown`·`no-host`), `version`, `enabled`, `marketplace`(`github:<owner/repo>`·`directory:<경로>`) |
 | `codex` | `path`, `config`(읽은 `config.toml`), `marketplace`, `plugin`(`installed`·`missing`), `enabled`, `hooksTrusted` |
-| `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted`, `claude-auto-memory`(Claude Code 자체 기억이 켜짐: `autoMemoryEnabled`가 false가 아니고 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`도 없음), `codex-memories`(Codex `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true), `claude-memory-plugin`·`claude-memory-mcp`·`codex-memory-plugin`·`codex-memory-mcp`(알려진 기억 플러그인·MCP 서버가 켜짐), `host-settings-unreadable`(겹침 판정에서 읽지 못한 설정 파일), `old-proposals`(0.13.0에서 없앤 승인 대기열에 남은 옛 제안: `orbit-mem backup && orbit-mem proposals drain`). 겹치는 기억의 `fix`는 `orbit-mem host-memory off --only <id>`(Claude MCP는 `claude mcp remove …`, 관리·프로젝트 설정이 켠 것은 그 파일)이고, 사용자가 유지하기로 했으면(`hostMemory` `keep`) 문제로 세지 않는다 |
+| `problems` | `[{id, message, fix}]`. `id`: `not-on-path`, `db-missing`, `claude-plugin-missing`, `claude-plugin-disabled`, `claude-plugin-version`, `codex-plugin-missing`, `codex-plugin-disabled`, `codex-hooks-untrusted`, `claude-auto-memory`(Claude Code 자체 기억이 켜짐: `autoMemoryEnabled`가 false가 아니고 `CLAUDE_CODE_DISABLE_AUTO_MEMORY`도 없음), `codex-memories`(Codex `features.memories`·`memories.generate_memories`·`memories.use_memories` 중 하나가 true), `claude-memory-plugin`·`claude-memory-mcp`·`codex-memory-plugin`·`codex-memory-mcp`(알려진 기억 플러그인·MCP 서버가 켜짐), `host-settings-unreadable`(겹침 판정에서 읽지 못한 설정 파일), `old-proposals`(0.13.0에서 없앤 승인 대기열에 남은 옛 제안: `orbit-mem backup && orbit-mem proposals drain`), `binary-older-than-db`(`orbit-mem update`)·`migration-needed`(`orbit-mem migrate`), `index-stale`(옛 orbit-mem이 쓴 기억이 검색 색인에 아직 없음, 메시지에 건수: `orbit-mem migrate`가 채운다. 판이 맞는 DB에서만 낸다). 겹치는 기억의 `fix`는 `orbit-mem host-memory off --only <id>`(Claude MCP는 `claude mcp remove …`, 관리·프로젝트 설정이 켠 것은 그 파일)이고, 사용자가 유지하기로 했으면(`hostMemory` `keep`) 문제로 세지 않는다 |
 
 ## 릴리스
 
