@@ -1,4 +1,4 @@
 package version
 
 // Version is the orbit-mem version (0.x until told otherwise).
-var Version = "0.16.0"
+var Version = "0.17.0"
