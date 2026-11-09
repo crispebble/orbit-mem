@@ -147,13 +147,15 @@ func (c *call) inTime() *Error {
 }
 
 // locate resolves the session folder afresh to the place the recall reads: the session's start (its
-// activity row keeps the result for the session's later operations) and an end whose start was missed.
+// activity row keeps the result for the session's later operations) and an end whose start was missed
+// or could not tell the project. A project git gave no answer for (Unsure) is not kept in the row.
 func (c *call) locate() {
 	c.at(project.Resolve)
 }
 
 // relocate is locate for an operation inside a session: a folder the session's open activity row was
 // resolved for is taken from that row without git (the hook time limits leave git no room under load).
+// A row without a project (a start git gave no answer) has nothing to take: git is asked again.
 // gitNeeded asks git again when the row cannot tell whether the folder is in git (a key that is the
 // folder itself): the writing tools pick their default scope by it.
 func (c *call) relocate(gitNeeded bool) {
@@ -248,7 +250,7 @@ func (c *call) activity(kind, prompt string) {
 
 // endActivity keeps the end of the session in the activity log. A session whose row the start
 // made gets only its end time (no project resolving: git stays out of the end's time limit);
-// a session whose start was missed resolves its project here and gets its row.
+// a session whose start was missed, or could not tell the project, resolves its project here.
 func (c *call) endActivity() {
 	c.after = append(c.after, func() {
 		if c.req.Session == "" {
@@ -259,20 +261,20 @@ func (c *call) endActivity() {
 			return
 		}
 		c.locate()
-		e.ProjectScope, e.ProjectLabel = c.p.Scope, c.p.Label
+		e.ProjectScope, e.ProjectLabel, e.ProjectUnknown = c.p.Scope, c.p.Label, c.p.Unsure
 		_ = c.store.RecordActivity(e)
 	})
 }
 
 // activityEvent is this call as an activity log event, with the session's project as located
-// and the request words the call keeps (empty: none).
+// (a guess git gave no answer for clears the row's project) and the request words the call keeps (empty: none).
 func (c *call) activityEvent(kind, prompt string) memory.ActivityEvent {
 	parent := c.req.Parent
 	if parent == "" {
 		parent = c.svc.setup.Parent
 	}
 	return memory.ActivityEvent{Kind: kind, Host: c.req.Host, Session: c.req.Session, Cwd: c.req.Cwd,
-		ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: prompt, At: c.opts.At}
+		ProjectScope: c.p.Scope, ProjectLabel: c.p.Label, ProjectUnknown: c.p.Unsure, Launcher: c.svc.setup.Launcher, Parent: parent, Prompt: prompt, At: c.opts.At}
 }
 
 func (c *call) version() (any, *Error) {

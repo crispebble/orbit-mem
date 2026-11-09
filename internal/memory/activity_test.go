@@ -110,3 +110,47 @@ func TestSessionProject_열린_줄의_폴더와_프로젝트(t *testing.T) {
 		t.Fatalf("키 없는 줄을 줬다 %+v", a)
 	}
 }
+
+// J-1(0.17 r6): 프로젝트를 모르는 호출(git이 답하지 못함)은 줄의 프로젝트를 비운다: 재개한 세션의 옛 키가 새 폴더와
+// 짝지어 다시 쓰이지 않고(SessionProject가 주지 않는다), 다음 호출이 다시 판정한다. 폴더는 남긴다.
+func TestRecordActivity_프로젝트를_모르면_줄의_프로젝트를_비운다(t *testing.T) {
+	s := activityStore(t)
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S1", Cwd: "/w/a", ProjectScope: "project:/w/a", ProjectLabel: "/w/a", At: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S1", Cwd: "/w/b", ProjectScope: "project:/w/b", ProjectLabel: "/w/b", ProjectUnknown: true, At: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S1"); ok {
+		t.Fatalf("모르는 프로젝트의 줄을 줬다 %+v", a)
+	}
+	as, _ := s.Activities(ActivityFilter{})
+	if len(as) != 1 || as[0].ProjectScope != "" || as[0].ProjectLabel != "" || as[0].Cwd != "/w/b" {
+		t.Fatalf("%+v", as)
+	}
+	// 프로젝트가 빈 이벤트(폴더 없는 요청)는 전처럼 있던 것을 둔다
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityPrompt, Host: "claude", Session: "S1", Cwd: "/w/b", ProjectScope: "project:/w/b", ProjectLabel: "/w/b", Prompt: "x", At: 3000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityPrompt, Host: "claude", Session: "S1", Prompt: "y", At: 4000}); err != nil {
+		t.Fatal(err)
+	}
+	if a, ok := s.SessionProject("claude", "S1"); !ok || a.ProjectScope != "project:/w/b" {
+		t.Fatalf("%+v %v", a, ok)
+	}
+}
+
+// 프로젝트 없는 줄(시작이 프로젝트를 몰랐다)의 끝은 줄이 없을 때처럼 「없음」을 알린다: 호출자가 프로젝트를 판정해 쓴다.
+func TestEndActivity_프로젝트_없는_줄은_없음을_알린다(t *testing.T) {
+	s := activityStore(t)
+	if err := s.RecordActivity(ActivityEvent{Kind: ActivityStart, Host: "claude", Session: "S1", Cwd: "/w/a", At: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	found, err := s.EndActivity(ActivityEvent{Kind: ActivityEnd, Host: "claude", Session: "S1", Cwd: "/w/a", At: 2000})
+	if err != nil || found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if as, _ := s.Activities(ActivityFilter{}); len(as) != 1 || as[0].EndedAt != 0 {
+		t.Fatalf("%+v", as)
+	}
+}

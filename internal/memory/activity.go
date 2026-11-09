@@ -57,6 +57,9 @@ type ActivityEvent struct {
 	Launcher, Parent                string
 	Prompt                          string // ActivityPrompt only
 	At                              int64
+	// ProjectUnknown says the call could not tell the project (git gave no answer): the row's
+	// project is cleared, whatever the project fields hold, so no later call reuses a guess.
+	ProjectUnknown bool
 }
 
 // activityText is a request as the log keeps it: secrets masked, whitespace collapsed, clipped.
@@ -66,7 +69,8 @@ func activityText(s string) string {
 
 // RecordActivity adds one hook call to the log. The first call of a session makes its row
 // (a missed session start is filled by the first prompt or the end); a later session start
-// (resume, clear, compact) opens the row again. Empty project fields keep what was there.
+// (resume, clear, compact) opens the row again. Empty project fields keep what was there; an
+// event whose project is unknown (ProjectUnknown) clears it.
 func (s *Store) RecordActivity(e ActivityEvent) error {
 	if e.Host == "" || e.Session == "" {
 		return ErrInvalid
@@ -76,6 +80,10 @@ func (s *Store) RecordActivity(e ActivityEvent) error {
 	}
 	if e.At == 0 {
 		e.At = s.nowMs()
+	}
+	clear := 0
+	if e.ProjectUnknown {
+		e.ProjectScope, e.ProjectLabel, clear = "", "", 1
 	}
 	prompts, first, last, ended := 0, "", "", int64(0)
 	switch e.Kind {
@@ -97,8 +105,8 @@ func (s *Store) RecordActivity(e ActivityEvent) error {
 	if _, err := tx.Exec(`INSERT INTO activity(host,session,project_scope,project_label,cwd,launcher,parent,started_at,last_at,ended_at,prompts,first_prompt,last_prompt)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(host, session) DO UPDATE SET
-		  project_scope=CASE WHEN excluded.project_scope<>'' THEN excluded.project_scope ELSE project_scope END,
-		  project_label=CASE WHEN excluded.project_label<>'' THEN excluded.project_label ELSE project_label END,
+		  project_scope=CASE WHEN ?=1 THEN '' WHEN excluded.project_scope<>'' THEN excluded.project_scope ELSE project_scope END,
+		  project_label=CASE WHEN ?=1 THEN '' WHEN excluded.project_label<>'' THEN excluded.project_label ELSE project_label END,
 		  cwd=CASE WHEN excluded.cwd<>'' THEN excluded.cwd ELSE cwd END,
 		  launcher=excluded.launcher,
 		  parent=CASE WHEN excluded.parent<>'' THEN excluded.parent ELSE parent END,
@@ -108,7 +116,7 @@ func (s *Store) RecordActivity(e ActivityEvent) error {
 		  prompts=prompts+excluded.prompts,
 		  first_prompt=CASE WHEN first_prompt='' THEN excluded.first_prompt ELSE first_prompt END,
 		  last_prompt=CASE WHEN excluded.prompts>0 THEN excluded.last_prompt ELSE last_prompt END`,
-		e.Host, e.Session, e.ProjectScope, e.ProjectLabel, e.Cwd, e.Launcher, e.Parent, e.At, e.At, ended, prompts, first, last, e.Kind); err != nil {
+		e.Host, e.Session, e.ProjectScope, e.ProjectLabel, e.Cwd, e.Launcher, e.Parent, e.At, e.At, ended, prompts, first, last, clear, clear, e.Kind); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -116,8 +124,9 @@ func (s *Store) RecordActivity(e ActivityEvent) error {
 
 // EndActivity closes the row of a session that has one: as RecordActivity of an end, but the
 // project fields stay as they are (the row already has them), so the caller need not work out
-// the project. found is false when the session has no row (its start was missed); then nothing
-// is written and the caller records the end with its project (RecordActivity).
+// the project. found is false when the session has no row (its start was missed) or a row with
+// no project (its start could not tell it); then nothing is written and the caller records the
+// end with its project (RecordActivity).
 func (s *Store) EndActivity(e ActivityEvent) (found bool, err error) {
 	if e.Host == "" || e.Session == "" {
 		return false, ErrInvalid
@@ -140,7 +149,7 @@ func (s *Store) EndActivity(e ActivityEvent) (found bool, err error) {
 		  started_at=MIN(started_at, ?),
 		  last_at=MAX(last_at, ?),
 		  ended_at=?
-		WHERE host=? AND session=?`,
+		WHERE host=? AND session=? AND project_scope<>''`,
 		e.Cwd, e.Cwd, e.Launcher, e.Parent, e.Parent, e.At, e.At, e.At, e.Host, e.Session)
 	if err != nil {
 		return false, err

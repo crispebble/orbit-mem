@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // gitIn runs a real git for a test's setup (before countingGit, or counted apart).
@@ -219,25 +220,31 @@ func TestAgain_저장소일_수_없는_폴더는_앞선_값을_보지_않는다(
 }
 
 // 판정에 git이 필요한 폴더(세션의 첫 판정)는 원격 조회와 rev-parse를 함께 띄운다: 한도 안 시간이 둘의 합이 아니라
-// 긴 쪽이다. 가짜 git은 서로 상대가 시작한 것을 본 뒤에야 「만남」을 적는다(차례로 돌면 먼저 돈 쪽이 상대를 못 본다).
+// 긴 쪽이다. 가짜 git은 저마다 시작을 적고 상대가 시작할 때까지 기다린 뒤에 「만남」을 적는다. 함께 돌면 만나는 즉시
+// 끝나고, 차례로 돌면 먼저 돈 쪽이 끝나지 않아(상대가 시작하지 않는다) 시험의 데드라인(git 한 번의 한도를 10초로
+// 늘린 것)에 죽고 만남이 하나뿐이라 실패한다. 기다림은 시간이 아니라 상대의 시작 표시로 끝난다.
 func TestResolve_원격_조회와_rev_parse를_함께_띄운다(t *testing.T) {
 	dir := realTemp(t)
 	gitIn(t, "init", "-q", dir)
 	marks := t.TempDir()
+	// 시험이 끝난 뒤 남은 가짜 git이 영원히 돌지 않게 하는 상한(약 60초)은 데드라인보다 길어 판정에 쓰이지 않는다.
 	meet := `case "$3" in config) me=config; other=rev-parse;; rev-parse) me=rev-parse; other=config;; *) me=; esac
 if [ -n "$me" ]; then
   : > '` + marks + `'/"$me"
-  i=0; while [ ! -e '` + marks + `'/"$other" ] && [ $i -lt 150 ]; do sleep 0.01; i=$((i+1)); done
+  i=0; while [ ! -e '` + marks + `'/"$other" ] && [ $i -lt 6000 ]; do sleep 0.01; i=$((i+1)); done
   [ -e '` + marks + `'/"$other" ] && echo "$me" >> '` + marks + `'/met
 fi
 `
 	countingGit(t, meet)
+	timeout := gitTimeout
+	gitTimeout = 10 * time.Second
+	t.Cleanup(func() { gitTimeout = timeout })
 	p := Resolve(dir)
-	if want := (Project{Scope: "project:" + filepath.ToSlash(dir), Label: filepath.ToSlash(dir), Dir: filepath.ToSlash(dir), Git: true, Temp: true}); p != want {
-		t.Fatalf("%+v, want %+v", p, want)
-	}
 	b, _ := os.ReadFile(filepath.Join(marks, "met"))
 	if got := string(b); got != "config\nrev-parse\n" && got != "rev-parse\nconfig\n" {
 		t.Fatalf("두 git이 함께 돌지 않았다: %q", got)
+	}
+	if want := (Project{Scope: "project:" + filepath.ToSlash(dir), Label: filepath.ToSlash(dir), Dir: filepath.ToSlash(dir), Git: true, Temp: true}); p != want {
+		t.Fatalf("%+v, want %+v", p, want)
 	}
 }

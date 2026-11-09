@@ -17,10 +17,14 @@ import (
 // scope ("project:<key>"); Label is what a person reads. Dir is the working
 // directory itself as a real slash path (the session folder, S3 명세 2.2b), Git
 // says it is inside a git checkout, and Temp that it is under a temporary folder.
+//
+// Unsure says git was asked and gave no answer to go by (resolveGit): the key is a guess, and a
+// caller does not keep it for later (a session's next operation asks git again).
 type Project struct {
 	Scope, Label string
 	Dir          string
 	Git, Temp    bool
+	Unsure       bool
 }
 
 // realSlash is dir with its symbolic links resolved, as a clean slash path.
@@ -72,21 +76,31 @@ func NormalizeRemote(u string) string {
 	return strings.ToLower(u)
 }
 
-func git(dir string, args ...string) string {
-	out, _ := gitRun(dir, args...)
-	return out
-}
+// gitTimeout bounds one git run. Tests that make a git wait for another raise it.
+var gitTimeout = 2 * time.Second
 
-// gitRun runs git in dir. ok says it ran and ended 0 (not a repository, a missing git and a timeout are not ok).
-func gitRun(dir string, args ...string) (out string, ok bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// gitRun runs git in dir. code is how git ended: 0 it answered, another number it ended with that
+// exit code, -1 it gave no answer (it could not be started, ran out of time or was killed).
+func gitRun(dir string, args ...string) (out string, code int) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	b, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
-	if err != nil {
-		return "", false
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return strings.TrimSpace(string(b)), 0
+	case ctx.Err() == nil && errors.As(err, &exit):
+		return "", exit.ExitCode() // 신호로 끝났으면 -1이다
+	default:
+		return "", -1
 	}
-	return strings.TrimSpace(string(b)), true
 }
+
+// gitRefused is the exit code of git's die(): git looked at the folder and turned it down (not a
+// git repository, an invalid gitfile, not a work tree, dubious ownership). It is git's answer: the
+// next run gives the same. What else git may die of (a file it cannot read now) ends the same way
+// and is not told apart: its message is translated, so it is not read.
+const gitRefused = 128
 
 // gitEnv are the environment variables that let git find a repository or a remote.origin.url
 // without a .git or a HEAD above the folder (git(1) ENVIRONMENT, git-config(1) ENVIRONMENT). With one
@@ -158,37 +172,47 @@ func Resolve(cwd string) Project {
 // resolveGit asks git for the project of cwd, an existing absolute folder git may see as a repository.
 // The remote and the repository questions go to git at once: the time is the longer of the two, not
 // their sum (a hook's time limit holds the first resolving of a session's folder).
+//
+// A question git gave no answer to makes the project Unsure (J-1: a session start's failed git was kept
+// for the whole session). Answers are, by exit code: for the remote (git-config --get) 0 (the remote)
+// and 1 (no such key), for the repository (rev-parse) 0, and gitRefused for both. The remote question
+// refused while rev-parse finds a repository is no answer either: git found the repository but did not
+// read its config. Anything else (no start, a timeout, a signal, another code) is no answer.
 func resolveGit(p Project, cwd string) Project {
 	type answer struct {
-		out string
-		ok  bool
+		out  string
+		code int
 	}
 	asked := make(chan answer, 1)
 	go func() {
-		out, ok := gitRun(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel")
-		asked <- answer{out, ok}
+		out, code := gitRun(cwd, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir", "--show-toplevel")
+		asked <- answer{out, code}
 	}()
-	remote := git(cwd, "config", "--get", "remote.origin.url")
+	remote, remoteCode := gitRun(cwd, "config", "--get", "remote.origin.url")
 	repo := <-asked
-	if remote != "" {
+	if remoteCode == 0 && remote != "" {
 		key := NormalizeRemote(remote)
 		p.Scope, p.Label, p.Git = "project:"+key, key, true
 		return p
 	}
+	p.Unsure = (remoteCode != 0 && remoteCode != 1 && remoteCode != gitRefused) ||
+		(repo.code != 0 && repo.code != gitRefused) || (remoteCode == gitRefused && repo.code == 0)
 	// 원격이 없는 저장소는 그 checkout의 최상위가 키다. 연결된 worktree(git 디렉터리와 공용 디렉터리가 다름)만
 	// 주 저장소 경로를 써서 같은 키를 쓴다(S3-R4). 서브모듈·--separate-git-dir은 최상위 그대로다. git 한 번에 묻는다(위에서 띄운 것).
 	// --path-format을 모르는 git(2.31 전)은 그 옵션을 글 그대로 되돌리고 0으로 끝난다(줄 수가 어긋난다): 그때만
-	// --show-toplevel로 다시 묻는다. 실패(저장소 아님 등)는 다시 물어도 같아 묻지 않는다.
+	// --show-toplevel로 다시 묻는다. 거절(저장소 아님 등)은 다시 물어도 같아 묻지 않는다.
 	root := ""
-	if repo.ok {
+	if repo.code == 0 {
 		if l := strings.Split(repo.out, "\n"); len(l) == 3 {
 			gitDir, common, top := l[0], l[1], l[2]
 			p.Git, root = true, top
 			if gitDir != common && filepath.Base(common) == ".git" {
 				root = filepath.Dir(common)
 			}
-		} else if top := git(cwd, "rev-parse", "--show-toplevel"); top != "" { // git 2.31 전
+		} else if top, code := gitRun(cwd, "rev-parse", "--show-toplevel"); code == 0 && top != "" { // git 2.31 전
 			p.Git, root = true, top
+		} else if code != 0 && code != gitRefused {
+			p.Unsure = true
 		}
 	}
 	// 홈 자체가 저장소(dotfiles)면 홈 아래 폴더는 git 밖 폴더로 본다(S3-R1).

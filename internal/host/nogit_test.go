@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,8 +16,8 @@ import (
 )
 
 // countingGit puts a git in front of PATH that writes one line per run to a file and then runs the
-// real git. It gives the file's line count so far (시간에 기대지 않고 git 실행 수를 센다).
-func countingGit(t *testing.T) func() int {
+// real git (with body before it, if any). It gives the file's line count so far (시간에 기대지 않고 git 실행 수를 센다).
+func countingGit(t *testing.T, body ...string) func() int {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("가짜 git이 셸 스크립트라 Windows에서는 돌지 않는다(실행 수 세기는 unix에서 본다)")
@@ -27,7 +28,7 @@ func countingGit(t *testing.T) func() int {
 	}
 	bin := t.TempDir()
 	log := filepath.Join(bin, "runs")
-	script := "#!/bin/sh\necho run >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	script := "#!/bin/sh\necho run >> '" + log + "'\n" + strings.Join(body, "") + "exec '" + real + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -202,5 +203,71 @@ func TestNoGit_키가_폴더인_저장소의_call은_git에_다시_묻는다(t *
 				t.Fatalf("저장 범위가 %s가 아니다: %s", c.scope, mustJSON(out))
 			}
 		})
+	}
+}
+
+// J-1(0.17 r6): 세션 시작에서 git이 답하지 못하면(여기서는 첫 원격 조회가 128로 끝남) 그 판정(폴더 키)은 짐작이라
+// 활동 줄에 남기지 않는다. 같은 세션의 회상 op는 git에 다시 묻고 저장소 키로 그 저장소의 기억을 읽으며, 그 뒤 활동 줄은
+// 저장소 키이고 다음 op는 다시 git 없이 그 키를 쓴다. 시작만 하고 끝난 세션의 끝은 프로젝트를 판정해 줄을 채운다.
+func TestNoGit_세션_시작에서_git이_실패하면_다음_op가_다시_묻는다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	rule := save(t, s, memory.SaveInput{Kind: memory.KindFact, Title: "금요일 배포 금지", Body: "주말 장애", Scope: "project:github.com/a/poison"})
+	repo := gitRepo(t, "git@github.com:a/poison.git")
+	marks := t.TempDir()
+	runs := countingGit(t, `if [ "$3" = "config" ] && mkdir '`+marks+`/failed' 2>/dev/null; then echo 'fatal: unable to read config' >&2; exit 128; fi
+`)
+	a := e.adapter("p-1")
+	a.cwd = repo
+	a.recall(host.OpContext, nil)
+	if _, err := os.Stat(filepath.Join(marks, "failed")); err != nil {
+		t.Fatal("세션 시작의 원격 조회가 실패하지 않았다: 시험이 실패를 주입하지 못했다")
+	}
+	if as := activities(t, e.store()); len(as) != 1 || as[0].ProjectScope != "" || as[0].Cwd != repo {
+		t.Fatalf("짐작한 키를 활동 줄에 남겼다: %+v", as)
+	}
+	before := runs()
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
+	if runs() == before {
+		t.Fatal("회상이 git에 다시 묻지 않았다")
+	}
+	if !slices.Contains(got.MemoryIDs, rule.ID) {
+		t.Fatalf("저장소 기억을 놓쳤다: %+v", got)
+	}
+	if as := activities(t, e.store()); len(as) != 1 || as[0].ProjectScope != "project:github.com/a/poison" || as[0].ProjectLabel != "github.com/a/poison" {
+		t.Fatalf("활동 %+v", as)
+	}
+	before = runs()
+	a.recall(host.OpToolContext, map[string]any{"tool": "Bash"})
+	if n := runs() - before; n != 0 {
+		t.Fatalf("저장소 키를 얻은 뒤 tool-context git 실행 %d번", n)
+	}
+
+	// 시작만 하고(실패) 끝난 세션: 끝이 프로젝트를 판정해 줄을 채운다.
+	os.Remove(filepath.Join(marks, "failed"))
+	b := e.adapter("p-2")
+	b.cwd = repo
+	b.recall(host.OpContext, nil)
+	if _, err := b.do(host.OpSessionEnd, nil); err != nil {
+		t.Fatal(err)
+	}
+	// git이 끝에서도 답하지 못하면 끝도 짐작을 남기지 않는다.
+	countingGit(t, `if [ "$3" = "config" ]; then exit 128; fi
+`)
+	c := e.adapter("p-3")
+	c.cwd = repo
+	c.recall(host.OpContext, nil)
+	if _, err := c.do(host.OpSessionEnd, nil); err != nil {
+		t.Fatal(err)
+	}
+	ended := map[string]memory.Activity{}
+	for _, x := range activities(t, e.store()) {
+		ended[x.Session] = x
+	}
+	if x := ended["p-2"]; x.ProjectScope != "project:github.com/a/poison" || x.EndedAt == 0 {
+		t.Fatalf("끝난 줄 %+v", x)
+	}
+	if x := ended["p-3"]; x.ProjectScope != "" || x.EndedAt == 0 || x.Cwd != repo {
+		t.Fatalf("끝까지 git이 답하지 못한 줄 %+v", x)
 	}
 }
