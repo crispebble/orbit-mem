@@ -516,8 +516,14 @@ func cmdConfig(a *app, args []string) error {
 		*map[string]*int{"recallChars": &cfg.RecallChars, "ledgerWindowDays": &cfg.LedgerWindowDays,
 			"confirmSeenDays": &cfg.ConfirmSeenDays, "confirmFollowedVerified": &cfg.ConfirmFollowedVerified, "correctionRepeatSessions": &cfg.CorrectionRepeatSessions,
 			"candidateExpiryDays": &cfg.CandidateExpiryDays}[key] = n
+	case "saveSimilarMin":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.number", key, val)
+		}
+		cfg.SaveSimilarMin = f // 범위는 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

@@ -58,7 +58,7 @@
 
 기억이 있는 짝(`setup.db`가 `"memories"`)의 `context`·`recall` 성공 결과는 건너뛴 까닭(`skipped`)이 없으면 `text`를 `"$nonEmptyString"`, `memoryIds`를 `"$nonEmptyArray"`로 둔다. 빈 결과로 통과하지 않게 하려는 것이다. `call` 짝은 결과의 봉투(성공·오류·도구 이름)만 대조하고 도구 결과는 `"$any"`로 둔다.
 
-공통 칸 `idempotencyKey`는 `call`의 `memory_save`에서 `args`에 `idempotencyKey`가 없을 때만 `args`에 합친다(`args`가 이긴다). 같은 키·같은 인자로 다시 부르면 한 번만 적용하고 그 기억을 지금 상태로 다시 돌려준다(`call-memory_save-idempotent`). 같은 키에 다른 인자는 도구 오류(`tool`)다. 저장할 기억과 비슷한 기억이 있으면 `memory_save`는 저장하지 않고 성공(종료 `0`)으로 고르기를 돌려주고(`call-memory_save-similar`), `args.resolve`로 고른 것을 적용한다(`call-memory_save-resolve`). 결과 꼴은 MCP `memory_save`와 같고 짝은 봉투만 대조한다.
+공통 칸 `idempotencyKey`는 `call`의 `memory_save`에서 `args`에 `idempotencyKey`가 없을 때만 `args`에 합친다(`args`가 이긴다). 같은 키·같은 인자로 다시 부르면 한 번만 적용하고 그 기억을 지금 상태로 다시 돌려준다(`call-memory_save-idempotent`). 같은 키에 다른 인자는 도구 오류(`tool`)다. 저장할 기억과 비슷한 기억이 있으면 `memory_save`는 저장하지 않고 성공(종료 `0`)으로 고르기를 돌려주고(`call-memory_save-similar`) **(주의: `call memory_save`는 종료 `0`이어도 `result.saved`가 `false`면 저장되지 않았다. 호출자는 `saved`를 확인하고, `false`면 `similar`·`choices`를 보고 `resolve`를 넣어 다시 부른다.)**, `args.resolve`로 고른 것을 적용한다(`call-memory_save-resolve`). 결과 꼴은 MCP `memory_save`와 같고 짝은 봉투만 대조한다.
 
 공통 칸 `trust`는 글 하나(`owner`·`agent`·`untrusted`·`system`)다. `call`의 저장이 남기는 출처 등급을 이번 호출만 그 값까지 낮춘다(`call-memory_save-trust-lowered`). 통로의 상한(host call은 `agent`)보다 올리지는 못한다. 다른 꼴(객체·숫자·배열)이나 모르는 값은 어느 op에서든 사용법 오류(종료 `2`)다(`usage-bad-trust`).
 

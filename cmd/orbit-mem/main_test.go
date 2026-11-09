@@ -414,3 +414,26 @@ func TestProposals_drain은_대기를_닫고_미리보기는_바꾸지_않는다
 		t.Fatalf("a %+v", got)
 	}
 }
+
+func TestConfig_saveSimilarMin을_설정한다(t *testing.T) {
+	home(t)
+	if _, errOut, code := run(t, "", "config", "set", "saveSimilarMin", "0.7"); code != 0 {
+		t.Fatalf("set: %s", errOut)
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.SaveSimilarMin != 0.7 {
+		t.Fatalf("cfg = %v %v", cfg.SaveSimilarMin, err)
+	}
+	out, _, _ := run(t, "", "config")
+	if !strings.Contains(out, `"saveSimilarMin": 0.7`) {
+		t.Fatalf("config show: %s", out)
+	}
+	for _, bad := range []string{"0", "1.5", "-1", "abc"} {
+		if _, _, code := run(t, "", "config", "set", "saveSimilarMin", bad); code != 1 {
+			t.Fatalf("%q accepted: %d", bad, code)
+		}
+	}
+	if cfg, _ := loadConfig(); cfg.SaveSimilarMin != 0.7 {
+		t.Fatalf("bad value changed the file: %v", cfg.SaveSimilarMin)
+	}
+}
