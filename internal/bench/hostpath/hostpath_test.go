@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -193,7 +194,8 @@ func TestOptions의_덮어쓰기는_설정_검사를_따른다(t *testing.T) {
 func TestSubagent는_상시_핵심을_Lead로_가른다(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	set, err := bench.Parse([]byte(`{"about":"t","now":"2026-11-03T09:00:00+09:00","cwd":"/bench/app","seed":"s",
-	 "memories":[{"key":"core","kind":"rule","scope":"global","quote":true,"pinned":true,"title":"존댓말로 답한다","topic":"말투","ageDays":9}],
+	 "memories":[{"key":"core","kind":"rule","scope":"global","quote":true,"pinned":true,"title":"존댓말로 답한다","topic":"말투","ageDays":9},
+	  {"key":"pay","kind":"rule","scope":"global","quote":true,"title":"결제 모듈 동시성 시험은 경합을 실제로 일으킨다","topic":"결제 동시성 시험","body":"결제 모듈 동시성 시험은 경합을 실제로 일으킨다","ageDays":3}],
 	 "cases":[{"id":"c1","session":"s1","kind":"subagent","task":"작업"}]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -219,6 +221,17 @@ func TestSubagent는_상시_핵심을_Lead로_가른다(t *testing.T) {
 	core := p.IDOf("core")
 	if !slices.Equal(got.IDs, []string{core}) || !slices.Equal(got.Lead, []string{core}) || got.LeadChars != got.Chars || got.Chars == 0 {
 		t.Fatalf("subagent = %+v", got)
+	}
+	// 위임 글에 맞는 기억은 위임 회상 몫이다: 그 id는 Lead가 아니고, 글자도 제목 줄 몫(LeadChars) 밖이다.
+	got, err = env.Recaller.Subagent("s1", "/bench/app", "결제 모듈 동시성 시험을 고친다. 경합을 실제로 일으키는 시험을 쓴다")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pay := p.IDOf("pay")
+	role := string([]rune(got.Text)[max(got.Chars-got.LeadChars, 0):])
+	if !slices.Equal(got.IDs, []string{pay, core}) || !slices.Equal(got.Lead, []string{core}) || got.LeadChars == 0 || got.LeadChars >= got.Chars ||
+		!strings.HasPrefix(role, inject.RoleHead) {
+		t.Fatalf("subagent with a recall = %+v", got)
 	}
 }
 

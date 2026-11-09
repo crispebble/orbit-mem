@@ -12,11 +12,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
 	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/host"
+	"github.com/crispebble/orbit-mem/internal/inject"
 	"github.com/crispebble/orbit-mem/internal/mcpserver"
 	"github.com/crispebble/orbit-mem/internal/memory"
 	"github.com/crispebble/orbit-mem/internal/place"
@@ -29,9 +31,13 @@ const (
 	// same one memory_save runs, with the saveSimilarMin of the settings.
 	SimilarName = "save-check"
 
-	hostName  = "bench" // host 칸: 기록에만 쓰인다
-	opTimeout = "30s"   // 느린 시험 기계에서도 결과가 비지 않게
-	similarOf = bench.SimilarLimit
+	hostName = "bench" // host 칸: 기록에만 쓰인다
+	// delegateTool and agentKind are the delegation tool and the subagent kind of every delegation case
+	// (one kind: the cases of a session pair in order).
+	delegateTool = "delegate"
+	agentKind    = "bench-worker"
+	opTimeout    = "30s" // 느린 시험 기계에서도 결과가 비지 않게
+	similarOf    = bench.SimilarLimit
 )
 
 // service opens a host.Service on the DB copy: the settings given, the products of the set, long
@@ -81,7 +87,7 @@ func FactoryWith(o Options) bench.Factory {
 		}
 		at := set.At()
 		return bench.Env{
-			Recaller: &recaller{svc: svc, at: at.UnixMilli(), started: map[string][]string{}},
+			Recaller: &recaller{svc: svc, at: at.UnixMilli()},
 			Finder:   finder{svc: svc, at: at.UnixMilli()},
 			Similar:  similar{db: db, at: at, min: cfg.SaveSimilarMin},
 			Close:    func() error { svc.Wait(); return nil },
@@ -104,9 +110,9 @@ type failed struct{ err error }
 func (f failed) Find(string, string, int) ([]string, error) { return nil, f.err }
 
 type recaller struct {
-	svc     *host.Service
-	at      int64
-	started map[string][]string // session → the ids layer A showed
+	svc    *host.Service
+	at     int64
+	agents int // subagents started so far: each gets its own id
 }
 
 func (*recaller) Name() string { return Name }
@@ -128,11 +134,7 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 }
 
 func (r *recaller) Start(session, cwd string) (bench.Shown, error) {
-	out, err := r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: host.SourceStartup, Audience: host.AudienceMain})
-	if err == nil {
-		r.started[session] = out.IDs
-	}
-	return out, err
+	return r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: host.SourceStartup, Audience: host.AudienceMain})
 }
 
 // Request always hands origin user: the origin of a case is the answer key, and the hook hands
@@ -145,25 +147,31 @@ func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
 	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool})
 }
 
-// Subagent splits the bundle into its two shares. The title lines are the always-on core, which layer A
-// of the session shows too, so the ids layer A showed are the Lead. Today the host gives the core alone,
-// so the recall share is empty and the characters are all Lead; a host that adds a recall for the task
-// puts its ids (and, for LeadChars, the split of its text) here. Until the text can be split the
-// characters of a bundle with a recall share count as recall (LeadChars stays 0).
+// Subagent goes the way of a delegation in a host session (설계 · orbit-mem 4.1·11절): the delegation tool's
+// tool-context keeps the task, then the subagent of that kind starts and the context pairs it with the task.
+// The bundle's role share (from inject.RoleHead on) is the title lines of the user core: its ids and
+// characters are the Lead; the rest is the recall for the task.
 func (r *recaller) Subagent(session, cwd, task string) (bench.Shown, error) {
-	out, err := r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Audience: host.AudienceSubagent, Task: task})
+	if _, err := r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: delegateTool, Task: task, AgentKind: agentKind}); err != nil {
+		return bench.Shown{}, err
+	}
+	r.agents++
+	out, err := r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Audience: host.AudienceSubagent,
+		Agent: fmt.Sprintf("bench-agent-%d", r.agents), AgentKind: agentKind})
 	if err != nil {
 		return out, err
 	}
+	role := ""
+	if i := strings.Index(out.Text, inject.RoleHead); i >= 0 {
+		role = out.Text[i:]
+	}
 	out.Lead = []string{}
 	for _, id := range out.IDs {
-		if slices.Contains(r.started[session], id) {
+		if role != "" && strings.Contains(role, id) {
 			out.Lead = append(out.Lead, id)
 		}
 	}
-	if len(out.Lead) == len(out.IDs) {
-		out.LeadChars = out.Chars
-	}
+	out.LeadChars = len([]rune(role))
 	return out, nil
 }
 
