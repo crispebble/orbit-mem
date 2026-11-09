@@ -130,6 +130,45 @@ func TestB1_새_기억_줄과_정정_줄로_알린_기억은_다시_내지_않�
 	}
 }
 
+// L-2(B3): 세션 중 바뀐 것(정정·새 기억 줄)으로 알린 기억은 같은 세션에서 다시 알리지도 요청 회상에 다시 내지도 않고,
+// compact·clear(reset) 뒤에는 그 표시가 지워져 다시 허용된다: 새 묶음 뒤 요청이 물으면 요청 회상에 나온다.
+func TestB3_정정과_새_기억으로_알린_기억은_reset_뒤_다시_허용된다(t *testing.T) {
+	s := store(t)
+	cfg := config.Default()
+	SessionBundle(s, cfg, here, "claude", "A")
+	old := saveIn(t, s, memory.KindRule, "배포 알림은 메일로 보낸다", memory.ScopeGlobal, "", "배포 알림")
+	asked := PromptInjectionFor(s, cfg, here, "배포 알림은 메일로 보내나", "claude", "A", Options{})
+	if !strings.Contains(b1Of(asked.Text), old.ID) {
+		t.Fatalf("옛 판이 요청 회상에 없습니다:\n%s", asked.Text)
+	}
+	RecordShown(s, "claude", "A", asked)
+	later(s, time.Hour)
+	fresh := save(t, s, memory.KindLesson, "배포 롤백은 태그로 한다", "이전 태그를 다시 배포한다", here, true)
+	cur := saveIn(t, s, memory.KindRule, "배포 알림은 채팅으로 보낸다", memory.ScopeGlobal, "", "배포 알림")
+	asks := map[string]string{fresh.ID: "배포 롤백은 태그로 하나", cur.ID: "배포 알림은 채팅으로 보내나"}
+	first := PromptInjectionFor(s, cfg, here, "오늘 점심 뭐 먹지", "claude", "A", Options{})
+	if news := b3Of(first.Text); !strings.Contains(news, "정정") || !strings.Contains(news, cur.ID) || !strings.Contains(news, fresh.ID) {
+		t.Fatalf("정정·새 기억 줄이 없습니다:\n%s", first.Text)
+	}
+	RecordShown(s, "claude", "A", first)
+	if again := PromptInjectionFor(s, cfg, here, "오늘 점심 뭐 먹지", "claude", "A", Options{}); b3Of(again.Text) != "" {
+		t.Fatalf("같은 세션에서 다시 알립니다:\n%s", again.Text)
+	}
+	for id, q := range asks {
+		if got := PromptInjectionFor(s, cfg, here, q, "claude", "A", Options{}); strings.Contains(got.Text, id) {
+			t.Fatalf("%q: reset 전에 알린 기억이 다시 나왔습니다:\n%s", q, got.Text)
+		}
+	}
+	ResetSession(s, "claude", "A") // compact·clear
+	later(s, time.Hour)
+	SessionBundle(s, cfg, here, "claude", "A")
+	for id, q := range asks {
+		if got := PromptInjectionFor(s, cfg, here, q, "claude", "A", Options{}); !strings.Contains(b1Of(got.Text), id) {
+			t.Fatalf("%q: reset 뒤에 다시 나와야 합니다:\n%s", q, got.Text)
+		}
+	}
+}
+
 var recallLinePat = regexp.MustCompile(`^- (.+) — (m-[0-9a-f]+) · (규칙|사실|결정|교훈) (확정|후보)`)
 
 // 4절 표 B1: 머리말 포함 500자 이하, 기억 줄 3개까지, 가장 확실한 1개만 요약 한 줄(160자 이하), 제목은 80자까지.
