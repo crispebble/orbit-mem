@@ -86,3 +86,17 @@ func TestSave_비슷한_기억_요약은_믿을_수_없는_기억에만_trust를
 		t.Fatalf("agent similar = %s", raw)
 	}
 }
+
+func TestSave_resolve_update는_출처_종류가_비면_일반_저장과_같은_안내를_준다(t *testing.T) {
+	cs, s := connect(t)
+	orig := saveMCP(t, cs, deployArgs(deployBase[0], deployBase[1]))
+	bad := map[string]any{"kind": "", "ref": "x"}
+	want := saveErr(t, cs, with(deployArgs("다른 제목", "다른 본문"), "source", bad))
+	got := saveErr(t, cs, with(deployArgs(deployReword[0], deployReword[1]), "resolve", "update:"+orig.Memory.ID, "source", bad))
+	if got != want || !strings.Contains(got, "출처 종류는") {
+		t.Errorf("update = %q, 일반 저장 = %q", got, want)
+	}
+	if m, _ := s.Get(orig.Memory.ID); m.Body != deployBase[1] || m.Version != orig.Memory.Version {
+		t.Fatalf("바뀌었다: %+v", m)
+	}
+}

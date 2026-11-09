@@ -760,6 +760,9 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 // guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
 // the userQuote of the change (D1).
 func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveOut, error) {
+	if !slices.Contains(memory.SourceKinds, si.Source.Kind) { // 일반 저장과 같은 안내
+		return SaveOut{}, i18n.Errorf("memory.err.source_kind", memory.ErrInvalid, strings.Join(memory.SourceKinds, "|"))
+	}
 	cur, err := h.s.Get(id)
 	if err != nil {
 		return SaveOut{}, err
