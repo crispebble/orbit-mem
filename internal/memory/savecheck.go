@@ -30,16 +30,21 @@ const (
 const SimilarLimit = 3
 
 // DefaultSimilarMin is the score a memory needs to count as similar when the caller gives no threshold.
-// 1-6 b6d 2차에 낱말 단위 기하 평균(similar.go)과 함께 정했다. 개발 자료(internal/bench/testdata의 public·holdout·
-// holdout2 중복 사례)에서 0.42~0.45가 같은 적중을 내고 0.48부터 holdout2의 낱말 바꾼 짧은 제목을 놓친다: 그 가운데
-// 높은 쪽이다. 시험 쪽 값: 바꿔 쓴 것 최저 0.463(similar_test.go 낱말 둘 바꿈), L-16 변형 최저 0.667, 다른 기억 최고
-// 0.333(머리 낱말 하나만 겹침, 짧은 기억이 긴 글에 다 들어 있음 0.324).
-const DefaultSimilarMin = 0.45
+// 1-6 b6db에 막음을 엄격하게 다시 정했다(사용자 결정 A: 막는 판정은 엄격하게, 막지 않을 때 가까운 기억을 붙인다).
+// 개발 자료 다섯(internal/bench/testdata의 public·holdout·holdout2·holdout3_dup·holdout4_dup 중복 사례)에서 잘못
+// 막음이 0이 되는 것은 0.67부터다: 막지 말아야 할 짝의 최고가 0.668(같은 틀에 시점·도구만 다른 점검)과 0.667(같은 틀에
+// 값만 다른 사실)이다. (막음 ∪ 가까운) 상위 3의 적중은 막음 문턱과 거의 무관하다(막지 않으면 가까운 기억으로 보인다):
+// 0.45부터 1까지 다섯 묶음 모두 같고 옛 판(87ab0fb find-proxy) 이상이다. 위쪽은 시험이 정한다: 계속 막아야 할 L-16
+// 변형·scoreCases의 바꿔 쓴 것 최저가 0.707(본문을 더한 영어 짧은 제목)이다. 0.668 초과 ~ 0.707 이하의 가운데 쪽이다.
+// 다른 기억 최고(시험)는 0.333(머리 낱말 하나만 겹침, 짧은 기억이 긴 글에 다 들어 있음 0.324)이다. 이전 값 0.45(1-6 b6d
+// 2차)는 주제 낱말만 같은 새 사실을 막았다(holdout4_dup 7/18).
+const DefaultSimilarMin = 0.69
 
 // DefaultNearMin is the score a memory needs to be shown as close beside a save that goes on, when the caller
 // gives no floor. 1-6 b6dn에 정했다: 개발 자료 넷(internal/bench/testdata의 public·holdout·holdout2·holdout3_dup 중복
 // 사례)에서 (막음 ∪ 가까운) 상위 3의 적중이 묶음마다 옛 판(87ab0fb find-proxy) 이상인 가장 높은 하한이다. 0.24부터
-// holdout3_dup의 바꿔 쓴 같은 주장(0.239)을 놓쳐 옛 판 아래로 내려간다.
+// holdout3_dup의 바꿔 쓴 같은 주장(0.239)을 놓쳐 옛 판 아래로 내려간다. 1-6 b6db(막음 0.69, 다른 꼴 반 맞음)에서도
+// holdout4_dup까지 다섯 묶음 모두 옛 판 이상이고 0.24부터 같은 사례로 떨어진다: 그대로 둔다.
 const DefaultNearMin = 0.22
 
 // CheckMins are the scores of SaveCheck. Similar is the score that stops a save (0 or less: DefaultSimilarMin),

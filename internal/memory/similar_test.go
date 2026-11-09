@@ -2,11 +2,12 @@ package memory
 
 import (
 	"math"
+	"slices"
 	"testing"
 )
 
-// 저장 때 비슷함의 경계(1-6 b6d 2차). 낱말을 바꿔 다시 쓴 짧은 제목은 기본 문턱 이상이고, 한쪽이 다른 쪽에 다 들어
-// 있거나 머리 낱말 하나만 겹치는 짝은 1/3 이하다(기본 문턱 0.45와 0.1 넘게 떨어진다).
+// 저장 때 비슷함의 경계(1-6 b6d 2차, b6db). 낱말을 바꿔 다시 쓴 짧은 제목은 막거나 가까운 기억으로 보이고, 한쪽이 다른
+// 쪽에 다 들어 있거나 머리 낱말 하나만 겹치는 짝은 1/3 이하다(기본 막음 문턱 0.69와 0.35 넘게 떨어진다).
 
 type simPair struct {
 	name        string
@@ -40,12 +41,20 @@ func pairScore(t *testing.T, p simPair) float64 {
 	return simScore(t, s, checkIn(p.probe[0], p.probe[1], ""), b.ID)
 }
 
-func TestSaveCheck_낱말을_바꿔_다시_쓴_짧은_제목은_기본_문턱_이상이다(t *testing.T) {
+// 1-6 b6db에 다시 정의했다. b6d 2차에는 「기본 문턱 이상(막음)」이었다. 그 뜻은 AI가 정한 것이고, 사용자 결정 A(막는
+// 판정은 엄격하게, 막지 않을 때 가까운 기억을 붙인다)에서 낱말을 바꿔 쓴 같은 주장은 가까운 기억의 몫이다: 막음을 이
+// 짝들까지 내리면 주제 낱말만 같은 새 사실(0.667~0.668)도 막는다(savecheck_strict_test.go). 그래서 기본 판정에서 막히거나
+// (Similar) 막지 않고 저장할 때 가까운 기억(Near)으로 보이면 된다. 지금 값: 0.463~0.750, 그 가운데 어순·어미만 막는다.
+func TestSaveCheck_낱말을_바꿔_다시_쓴_짧은_제목은_막거나_가까운_기억으로_보인다(t *testing.T) {
 	for _, p := range rewordedShortTitles {
-		sc := pairScore(t, p)
-		t.Logf("%s: %.3f", p.name, sc)
-		if sc < DefaultSimilarMin {
-			t.Errorf("%s: score %.3f < %.2f", p.name, sc, DefaultSimilarMin)
+		s, _ := newTestStore(t)
+		b := saveDoc(t, s, p.base[0], p.base[1], "")
+		in := checkIn(p.probe[0], p.probe[1], "")
+		sc := simScore(t, s, in, b.ID)
+		r := mustCheckMins(t, s, in, CheckMins{})
+		t.Logf("%s: %.3f %s", p.name, sc, r.Verdict)
+		if !slices.Contains(similarIDs(r), b.ID) && !slices.Contains(nearIDs(r), b.ID) {
+			t.Errorf("%s: score %.3f, neither blocked (min %.2f) nor close (floor %.2f): %+v", p.name, sc, DefaultSimilarMin, DefaultNearMin, r)
 		}
 	}
 }
@@ -85,5 +94,26 @@ func TestSimilarity_같은_입력은_같은_값이고_짝의_순서와_무관하
 	}
 	if sc := similarity(same, memoryTokens("", "", nil, "")); sc != 0 {
 		t.Errorf("empty: %.6f, want 0", sc)
+	}
+}
+
+// 같은 낱말의 다른 꼴은 반만 맞는다(1-6 b6db): 영어 낱말은 네 글자 이상인 한쪽이 다른 쪽의 앞부분이면(databases·database),
+// 한글 낱말은 첫 글자가 같고 둘째 글자가 받침만 다르면(답한다·답하기, 돌린다·돌리고) 앞 두 글자 맞음과 같이 0.5다. 낱말
+// 셋 가운데 하나만 꼴이 바뀐 짧은 제목은 5/6이고, 첫 글자가 다르거나 영어 앞부분이 세 글자 이하면 맞지 않는다.
+func TestSimilarity_같은_낱말의_다른_꼴은_반만_맞는다(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want float64
+	}{
+		{"Use Docker for databases", "Use Docker for the database", 5.0 / 6},
+		{"사용자에게 존댓말로 답한다", "사용자에게는 존댓말로 답하기", 5.0 / 6},
+		{"배포 스크립트 돌린다", "배포 스크립트 돌리고", 5.0 / 6},
+		{"Use Docker tools", "User Docker tools", 2.0 / 3}, // use·user: 앞부분 세 글자
+		{"사용자에게 존댓말로 답한다", "사용자에게 존댓말로 합하기", 2.0 / 3},      // 첫 글자가 다르다
+	} {
+		sc := similarity(memoryTokens(c.a, "", nil, ""), memoryTokens(c.b, "", nil, ""))
+		if math.Abs(sc-c.want) > 1e-9 {
+			t.Errorf("%q · %q: %.6f, want %.6f", c.a, c.b, sc, c.want)
+		}
 	}
 }

@@ -14,7 +14,7 @@ import (
 // 붙인다. 막을 때(saved:false)·같은 제목·같은 주제·resolve로 고른 저장·가까운 것이 없을 때는 붙이지 않는다.
 
 // 「배포 공지는 팀 채널에 미리 알린다」와 비슷함(similar.go): 영어로 0.408 · 하루 전 0.365 · 백업 0.204 · 위키 0.204 ·
-// 커밋 0. 모두 기본 막음 문턱(0.45) 밑이다.
+// 커밋 0. 모두 기본 막음 문턱(0.69) 밑이다.
 var nearProbe = "배포 공지는 팀 채널에 미리 알린다"
 
 func nearArgs(title string) map[string]any { return deployArgs(title, "") }
