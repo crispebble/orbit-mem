@@ -19,3 +19,6 @@ func SetRetryWait(f func(try int) time.Duration) (restore func()) {
 
 // DefaultRetryWait is the wait CopyDB uses unless a test changes it.
 func DefaultRetryWait(try int) time.Duration { return defaultRetryWait(try) }
+
+// CopyFiles runs the copy step of CopyDB alone, so a test can look at the files it copies.
+func CopyFiles(src, dst string) error { return copyFiles(src, dst) }

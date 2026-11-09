@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -233,7 +234,13 @@ func TestCopyDB는_없는_원본이면_오류다(t *testing.T) {
 	}
 }
 
+// The open WAL case does not catch a CopyDB that opens the source directly: the writing connection
+// has already made the -wal and the -shm. The closed WAL case is the core defense of this
+// regression: opening the source there would make them in the 0500 folder and fail.
 func TestCopyDB는_읽기_전용_원본_폴더에서도_사본을_쓰고_폴더를_그대로_둔다(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a 0500 folder does not stop writes on Windows or for root (uid 0), so the test would pass without proving anything")
+	}
 	for _, tc := range walCases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, path, id := walDB(t, tc.open)
@@ -266,6 +273,15 @@ func TestCopyDB는_롤백_저널이_있는_원본도_사본으로_열고_원본�
 		t.Fatal(err)
 	}
 	before := folderState(t, dir)
+	// The journal is only 0 bytes of padding, which SQLite does not treat as a hot journal, so
+	// look at the files of the private copy directly: the -journal must be copied with the DB.
+	raw := filepath.Join(t.TempDir(), "raw.db")
+	if err := bench.CopyFiles(path, raw); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(raw + "-journal"); err != nil || st.Size() != 512 {
+		t.Errorf("the -journal was not copied next to the DB: %v %v", err, st)
+	}
 	dst := filepath.Join(t.TempDir(), "copy.db")
 	if err := bench.CopyDB(path, dst); err != nil {
 		t.Fatal(err)
