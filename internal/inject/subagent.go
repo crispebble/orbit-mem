@@ -117,7 +117,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	}
 	th := taskThresholds(cfg)
 	found := th.found(s, task) // 위임 회상과 옛 판 셈이 같이 쓴다(같은 찾기를 두 번 돌리지 않는다)
-	hits := recallHitsOf(s, cfg, th, pl, task, found, byID, nil)
+	hits := recallHitsOf(s, cfg, th, pl, task, found, byID, nil, nil)
 	if len(hits) > maxTaskRecall {
 		hits = hits[:maxTaskRecall]
 	}

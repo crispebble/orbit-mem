@@ -3,6 +3,7 @@ package inject
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -363,5 +364,42 @@ func TestB1_분야_기억은_분야_한_줄로_든다(t *testing.T) {
 	}
 	if strings.Count(inj.Text, "이렇게 적는다") != 1 || strings.Contains(inj.Text, "  본문") || inj.Chars > 500 {
 		t.Fatalf("분야 기억은 한 제목만, 본문 없이 들어야 합니다:\n%s", inj.Text)
+	}
+}
+
+// 상대 문턱의 1위는 세션 묶음(A층)에 든 기억도 센다(1-6 b6r): 요청에 가장 맞는 기억이 이미 묶음에 있으면 그 곁의 약한
+// 기억이 1위로 올라 들어오지 않는다. 이미 말한 기억(told)을 1위로 세는 것과 같은 규칙이다(L-2).
+func TestB1_상대_문턱의_1위는_세션_묶음에_든_기억도_센다(t *testing.T) {
+	s := store(t)
+	strong := save(t, s, memory.KindDecision, "pnpm 설치 캐시 정리 순서", "store prune 다음 설치", here, true)
+	weak := save(t, s, memory.KindFact, "캐시는 매주 비운다", "", here, false)
+	prompt := "pnpm 설치 캐시 정리"
+	var ws, ss float64
+	hits, _ := s.RecallHits(prompt)
+	for _, h := range hits {
+		switch h.Memory.ID {
+		case weak.ID:
+			ws = h.Score
+		case strong.ID:
+			ss = h.Score
+		}
+	}
+	if !(ws > 0 && ss > ws) {
+		t.Fatalf("재료가 맞지 않습니다: 약한 %v 강한 %v", ws, ss)
+	}
+	cfg := config.Default()
+	cfg.RecallMinScore, cfg.RecallMinCoverage, cfg.RecallMinCoverageOneWord, cfg.RecallMinRelative = 0.01, 0.01, 0.01, ws/ss+1e-6
+	bundle := SessionBundle(s, cfg, here, "claude", "S")
+	if !slices.Contains(bundle.MemoryIDs, strong.ID) {
+		t.Fatalf("강한 결정이 묶음(최근 결정 줄)에 없습니다:\n%s", bundle.Text)
+	}
+	got := PromptInjectionFor(s, cfg, here, prompt, "claude", "S", Options{})
+	if slices.Contains(got.MemoryIDs, weak.ID) || slices.Contains(got.MemoryIDs, strong.ID) {
+		t.Fatalf("묶음의 1위 곁 약한 기억이 들어왔습니다: %v\n%s", got.MemoryIDs, got.Text)
+	}
+	// 1위 배수와 같으면 든다(묶음 기억이 1위를 지켜도 문턱 자체는 같다).
+	cfg.RecallMinRelative = ws / ss
+	if got := PromptInjectionFor(s, cfg, here, prompt, "claude", "T", Options{}); !slices.Contains(got.MemoryIDs, weak.ID) {
+		t.Fatalf("문턱 위 약한 기억이 빠졌습니다: %v\n%s", got.MemoryIDs, got.Text)
 	}
 }

@@ -153,7 +153,7 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		th := requestThresholds(cfg)
 		add(StageSelected, No, "weak_match", strings.Join(matched, " "), strings.Join(memory.MeaningfulWords(in.Prompt), " "),
 			fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", th.score), fmt.Sprintf("%.2f", cover), fmt.Sprintf("%.2f", th.coverFor(len(matched))))
-	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID); score < floor {
+	} else if _, floor := recallFloor(s, requestThresholds(cfg), in.Prompt, byID, idSet(bundle)); score < floor {
 		add(StageSelected, No, "below_top", fmt.Sprintf("%.2f", score), fmt.Sprintf("%.2f", floor), fmt.Sprintf("%.2f", recallRelative(cfg)))
 	} else {
 		add(StageSelected, Yes, "matched", fmt.Sprintf("%.2f", score))

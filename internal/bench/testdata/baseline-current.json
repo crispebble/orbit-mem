@@ -31,13 +31,13 @@
             "den": 64,
             "value": 0.9219
           },
-          "injected": 75,
+          "injected": 74,
           "correct": 66,
           "neutral": 3,
           "wrong": {
-            "num": 6,
-            "den": 75,
-            "value": 0.08
+            "num": 5,
+            "den": 74,
+            "value": 0.0676
           },
           "forbid": 1,
           "forbidCases": 1,
@@ -48,15 +48,15 @@
           },
           "chars": {
             "n": 82,
-            "mean": 59.2439,
-            "median": 80.5,
+            "mean": 58.2073,
+            "median": 80,
             "max": 132
           },
           "hitByStart": 3,
           "hitByEarlier": 0,
           "recover": {
-            "num": 4,
-            "den": 4,
+            "num": 5,
+            "den": 5,
             "value": 1
           },
           "recoverMissed": {
@@ -72,7 +72,7 @@
           },
           "sessionChars": {
             "n": 62,
-            "mean": 658.1129,
+            "mean": 656.7419,
             "median": 645.5,
             "max": 1047
           },
@@ -253,13 +253,13 @@
             "den": 91,
             "value": 0.9011
           },
-          "injected": 99,
+          "injected": 98,
           "correct": 88,
           "neutral": 4,
           "wrong": {
-            "num": 7,
-            "den": 99,
-            "value": 0.0707
+            "num": 6,
+            "den": 98,
+            "value": 0.0612
           },
           "forbid": 2,
           "forbidCases": 2,
@@ -270,15 +270,15 @@
           },
           "chars": {
             "n": 121,
-            "mean": 56.1901,
+            "mean": 55.4876,
             "median": 80,
             "max": 132
           },
           "hitByStart": 6,
           "hitByEarlier": 0,
           "recover": {
-            "num": 11,
-            "den": 11,
+            "num": 12,
+            "den": 12,
             "value": 1
           },
           "recoverMissed": {
@@ -294,7 +294,7 @@
           },
           "sessionChars": {
             "n": 88,
-            "mean": 655.4432,
+            "mean": 654.4773,
             "median": 648.5,
             "max": 1047
           },
@@ -2581,10 +2581,8 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [
-              "m-000000000044"
-            ],
-            "chars": 85
+            "ids": [],
+            "chars": 0
           },
           "found": [
             "m-000000000043",

@@ -476,7 +476,7 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 	}
 	b.WriteString(news)
 	if !opts.NewsOnly {
-		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), MaxHookRunes-runes(news)))
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), idSet(bundleIDs), MaxHookRunes-runes(news)))
 	}
 	return inj.done(&b)
 }
@@ -491,6 +491,15 @@ func toldInSession(s *memory.Store, host, session string) map[string]bool {
 		}
 	}
 	return told
+}
+
+// idSet is ids as a set.
+func idSet(ids []string) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
 }
 
 // clipTitle folds a title's spaces and cuts it to n characters at most (an ellipsis included).
@@ -695,13 +704,13 @@ func recallRelative(cfg config.Config) float64 {
 // (설계 5.1 3·4단계) and the relative floor (recallFloor), best first: confirmed before candidates (A2),
 // then find score, share of the request's words, this place's own before the user's (S3 명세 2.8), age
 // (newer first), net usage (followed − irrelevant) over the ledger window, last edit, id.
-func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
-	return recallHitsOf(s, cfg, th, pl, prompt, th.found(s, prompt), byID, told)
+func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told, held map[string]bool) []memory.RecallHit {
+	return recallHitsOf(s, cfg, th, pl, prompt, th.found(s, prompt), byID, told, held)
 }
 
 // recallHitsOf is recallHits over found, the live memories prompt matched (thresholds.found).
-func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, found []memory.RecallHit, byID map[string]memory.Memory, told map[string]bool) []memory.RecallHit {
-	hits, floor := floorOf(th, found, byID)
+func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, found []memory.RecallHit, byID map[string]memory.Memory, told, held map[string]bool) []memory.RecallHit {
+	hits, floor := floorOf(th, found, byID, held)
 	kept := hits[:0]
 	for _, h := range hits {
 		if !told[h.Memory.ID] && h.Score >= floor {
@@ -713,10 +722,11 @@ func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Pl
 
 // recallFloor is the hits of byID that pass the gate (thresholds.pass), and the relative floor (설계 보완, 1-6 b6):
 // recallMinRelative times the best of their find scores, less a rounding margin. The best counts the memories
-// the session was already told: a memory weak next to the best match of the request stays out when that one
-// was told before (L-2: the same request again is 0 characters).
-func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
-	return floorOf(th, th.found(s, prompt), byID)
+// the session was already told, and those its bundle holds (held, 1-6 b6r): a memory weak next to the best
+// match of the request stays out when that one was told before or is in the bundle (L-2: the same request
+// again is 0 characters).
+func recallFloor(s *memory.Store, th thresholds, prompt string, byID map[string]memory.Memory, held map[string]bool) ([]memory.RecallHit, float64) {
+	return floorOf(th, th.found(s, prompt), byID, held)
 }
 
 // found are the live memories prompt matches, as this recall measures them: none when prompt has fewer words
@@ -732,12 +742,16 @@ func (th thresholds) found(s *memory.Store, prompt string) []memory.RecallHit {
 	return found
 }
 
-// floorOf is recallFloor over found (thresholds.found).
-func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Memory) ([]memory.RecallHit, float64) {
+// floorOf is recallFloor over found (thresholds.found). A held memory that passes the gate counts toward the
+// best but is not among the hits.
+func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Memory, held map[string]bool) ([]memory.RecallHit, float64) {
 	var hits []memory.RecallHit
 	top := 0.0
 	for _, h := range found {
 		m, ok := byID[h.Memory.ID]
+		if !ok && held[h.Memory.ID] && th.pass(h) {
+			top = max(top, h.Score)
+		}
 		if !ok || !th.pass(h) {
 			continue
 		}
@@ -808,7 +822,7 @@ func recallLine(m memory.Memory, now time.Time) string {
 // how to find them, and under the first memory line one summary line (its body's start). All of it
 // stays within cfg.PromptRecallChars and limit. Memories already named in this injection or told in
 // the session are left out; what it lists is marked shown.
-func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told map[string]bool, limit int) string {
+func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told, held map[string]bool, limit int) string {
 	skip := map[string]bool{}
 	for id := range told {
 		skip[id] = true
@@ -816,7 +830,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 	for _, id := range inj.MemoryIDs {
 		skip[id] = true
 	}
-	hits := recallHits(s, cfg, requestThresholds(cfg), pl, prompt, byID, skip)
+	hits := recallHits(s, cfg, requestThresholds(cfg), pl, prompt, byID, skip, held)
 	if len(hits) == 0 {
 		return ""
 	}
