@@ -42,15 +42,15 @@ func TestPublicSetData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(set.Memories); n < 190 || n > 210 {
-		t.Errorf("memories = %d, want 190..210", n)
+	if n := len(set.Memories); n < 190 || n > 260 {
+		t.Errorf("memories = %d, want 190..260", n)
 	}
-	if n := len(set.Cases); n < 60 {
-		t.Errorf("cases = %d, want >= 60", n)
+	if n := len(set.Cases); n < 150 {
+		t.Errorf("cases = %d, want >= 150", n)
 	}
 	all := bench.CountBundles(set.Cases, bench.Partition(set), bench.PartAll)
-	if all.Subagent < 6 || all.Duplicate < 6 || all.Empty < 12 {
-		t.Errorf("bundles = %+v, want subagent>=6 duplicate>=6 empty>=12", all)
+	if all.Subagent < 20 || all.Duplicate < 20 || all.Empty < 20 {
+		t.Errorf("bundles = %+v, want subagent>=20 duplicate>=20 empty>=20", all)
 	}
 	sessions := map[string]bool{}
 	for _, c := range set.Cases {
@@ -62,8 +62,8 @@ func TestPublicSetData(t *testing.T) {
 		t.Errorf("sessions = %d, want >= 8", len(sessions))
 	}
 	h := bench.CountBundles(set.Cases, bench.Partition(set), bench.PartTest)
-	if h.Answered < 1 || h.Empty < 1 || h.Subagent < 1 || h.Duplicate < 1 {
-		t.Errorf("test bundles = %+v, want each >= 1", h)
+	if h.Answered < 20 || h.Empty < 10 || h.Subagent < 8 || h.Duplicate < 8 {
+		t.Errorf("test bundles = %+v, want answered>=20 empty>=10 subagent>=8 duplicate>=8", h)
 	}
 }
 
