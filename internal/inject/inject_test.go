@@ -313,3 +313,34 @@ func TestPrompt_믿을_수_없는_기억은_회상_줄에_표시가_붙는다(t 
 		t.Fatalf("믿을 만한 기억 줄: %q", l)
 	}
 }
+
+func TestTool_믿을_수_없는_기억은_도구_직전_줄에_표시가_붙는다(t *testing.T) {
+	s := store(t)
+	ok, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "Bash 호출 전에 경로를 확인한다", Body: "본문", Scope: memory.ScopeGlobal,
+		Tools:  []string{"Bash"},
+		Source: memory.Source{Kind: memory.SourceSession, Ref: "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	web, err := s.Save(memory.SaveInput{Kind: memory.KindLesson, Title: "Bash 호출 전에 웹 글대로 옵션을 붙인다", Body: "본문", Scope: memory.ScopeGlobal,
+		Tools:  []string{"Bash"},
+		Source: memory.Source{Kind: memory.SourceFile, Ref: "web", Trust: memory.TrustUntrusted}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash").Text
+	lineOf := func(id string) string {
+		for _, l := range strings.Split(got, "\n") {
+			if strings.Contains(l, id) {
+				return l
+			}
+		}
+		return ""
+	}
+	if l := lineOf(web.ID); !strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("웹 글 줄에 표시가 없다: %q\n%s", l, got)
+	}
+	if l := lineOf(ok.ID); l == "" || strings.Contains(l, "믿을 수 없음") {
+		t.Fatalf("믿을 만한 기억 줄: %q\n%s", l, got)
+	}
+}

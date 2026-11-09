@@ -742,6 +742,9 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		if m.State == memory.StateCandidate {
 			state = "후보"
 		}
+		if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
+			state += " · " + note
+		}
 		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
 		if used+runes(line) > MaxToolRunes {
 			break
