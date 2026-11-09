@@ -73,6 +73,7 @@ func commands() []command {
 		{"stats", "usage.stats", cmdStats},
 		{"ledger", "usage.ledger", cmdLedger},
 		{"audit", "usage.audit", cmdAudit},
+		{"bench", "usage.bench", cmdBench},
 	}
 }
 
