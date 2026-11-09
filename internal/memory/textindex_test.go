@@ -11,7 +11,7 @@ import (
 	"github.com/crispebble/orbit-mem/internal/sqlitedb"
 )
 
-// FTS5 색인 가공 글과 MATCH 질의 글(설계 7절, ORBIT-25).
+// FTS5 색인 가공 글, 찾기 질의 토큰과 후보 MATCH 글(설계 7절, ORBIT-25).
 
 func TestIndexText_한글_어절은_겹치는_두_글자로_쪼갠다(t *testing.T) {
 	cases := []struct {
@@ -76,8 +76,8 @@ func TestIndexText_빈_글과_기호만은_토큰이_없다(t *testing.T) {
 		if got := indexText(in); got != "" {
 			t.Errorf("indexText(%q) = %q, want empty", in, got)
 		}
-		if got := matchQuery(in, 60); got != "" {
-			t.Errorf("matchQuery(%q) = %q, want empty", in, got)
+		if got := candidateMatch(scoreTokens(in)); got != "" {
+			t.Errorf("candidateMatch(%q) = %q, want empty", in, got)
 		}
 		if got := queryTokens(in, 60); len(got) != 0 {
 			t.Errorf("queryTokens(%q) = %q, want none", in, got)
@@ -85,45 +85,44 @@ func TestIndexText_빈_글과_기호만은_토큰이_없다(t *testing.T) {
 	}
 }
 
-func TestMatchQuery_모든_토큰을_따옴표로_감싼다(t *testing.T) {
+func TestCandidateMatch_모든_토큰을_따옴표로_감싸고_라틴_낱말과_한_글자만_접두로_잡는다(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"설계서를", `"설계 계서 서를"`},
+		{"설계서를", `"설계" OR "계서" OR "서를"`},
 		{"설", `"설"*`},
 		{"deploy", `"deploy"*`},
-		{"설계서를 deploy", `"설계 계서 서를" OR "deploy"*`},
+		{"설계서를 deploy", `"설계" OR "계서" OR "서를" OR "deploy"*`},
 		{"DB를", `"db"* OR "를"*`},
+		{`say "hi"`, `"say"* OR "hi"*`},
 	}
 	for _, c := range cases {
-		if got := matchQuery(c.in, 60); got != c.want {
-			t.Errorf("matchQuery(%q) = %s, want %s", c.in, got, c.want)
+		if got := candidateMatch(scoreTokens(c.in)); got != c.want {
+			t.Errorf("candidateMatch(%q) = %s, want %s", c.in, got, c.want)
 		}
 	}
 }
 
-func TestMatchQuery_토큰_상한을_넘으면_뒤_어절을_버린다(t *testing.T) {
+func TestQueryTokens_토큰_상한을_넘으면_뒤_어절을_버린다(t *testing.T) {
 	var words []string
 	for i := 0; i < 200; i++ {
 		words = append(words, "word"+strings.Repeat("a", i%7))
 	}
 	q := strings.Join(words, " ")
-	m := matchQuery(q, 10)
-	if n := strings.Count(m, " OR ") + 1; n != 10 {
-		t.Errorf("OR 항 수 = %d, want 10 (%s)", n, m)
+	if got := queryTokens(q, 10); len(got) != 7 { // 앞 10어절에 다른 낱말은 7개
+		t.Errorf("queryTokens 수 = %d, want 7 (%q)", len(got), got)
 	}
-	if got := queryTokens(q, 10); len(got) > 10 {
-		t.Errorf("queryTokens 수 = %d, want <= 10", len(got))
+	if m := candidateMatch(scoreTokens(strings.Join(words[:findTokenLimit+40], " x"))); strings.Count(m, " OR ")+1 > findTokenLimit {
+		t.Errorf("OR 항 %d개, want <= %d", strings.Count(m, " OR ")+1, findTokenLimit)
 	}
 	long := strings.Repeat("가나다라마바사", 30)
-	if got := queryTokens(long, 20); len(got) > 20 {
-		t.Errorf("긴 한 어절 토큰 수 = %d, want <= 20", len(got))
+	if got := queryTokens(long, 20); len(got) != 7 { // 한 어절을 20개 토큰으로 자른 뒤 중복을 없앤다
+		t.Errorf("긴 한 어절 토큰 수 = %d, want 7 (%q)", len(got), got)
 	}
-	m = matchQuery(long, 20)
-	if n := len(strings.Fields(strings.Trim(m, `"`))); n != 20 {
-		t.Errorf("긴 한 어절 구 토큰 수 = %d, want 20", n)
+	if got := queryTokens("가나다 라마바", 3); !reflect.DeepEqual(got, []string{"가나", "나다"}) {
+		t.Errorf("둘째 어절이 넘침: %q", got)
 	}
 }
 
-func TestMatchQuery_점수용_토큰은_중복이_없다(t *testing.T) {
+func TestQueryTokens_점수용_토큰은_중복이_없다(t *testing.T) {
 	got := queryTokens("설계서 설계서 Deploy deploy", 60)
 	want := []string{"설계", "계서", "deploy"}
 	if !reflect.DeepEqual(got, want) {
@@ -154,7 +153,7 @@ func ftsAdd(t *testing.T, db *sql.DB, title, keys, body string) {
 
 func ftsFind(t *testing.T, db *sql.DB, q string) []string {
 	t.Helper()
-	m := matchQuery(q, 60)
+	m := candidateMatch(scoreTokens(q))
 	if m == "" {
 		return nil
 	}
@@ -177,7 +176,7 @@ func ftsFind(t *testing.T, db *sql.DB, q string) []string {
 	return out
 }
 
-func TestMatchQuery_실제_FTS5에서_한글_낱말과_접두를_찾는다(t *testing.T) {
+func TestCandidateMatch_실제_FTS5에서_한글_낱말과_접두를_찾는다(t *testing.T) {
 	db := ftsDB(t)
 	ftsAdd(t, db, "설계서를", "", "")
 	ftsAdd(t, db, "deployment", "", "")
@@ -202,7 +201,7 @@ func TestMatchQuery_실제_FTS5에서_한글_낱말과_접두를_찾는다(t *te
 	}
 }
 
-func TestMatchQuery_FTS5_문법_글자가_든_질의도_오류가_없다(t *testing.T) {
+func TestCandidateMatch_FTS5_문법_글자가_든_질의도_오류가_없다(t *testing.T) {
 	db := ftsDB(t)
 	ftsAdd(t, db, "foo bar", "", "AND OR NEAR 설계")
 	queries := []string{
@@ -211,7 +210,7 @@ func TestMatchQuery_FTS5_문법_글자가_든_질의도_오류가_없다(t *test
 		`설계" OR "x`, `(설계)`, "a\x00b", `{`, `+ - * ^ : ( )`,
 	}
 	for _, q := range queries {
-		m := matchQuery(q, 60)
+		m := candidateMatch(scoreTokens(q))
 		if m == "" {
 			continue
 		}

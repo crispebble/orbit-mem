@@ -61,7 +61,7 @@ type Config struct {
 	// 이 판이 모르는 op 키(뒤 판의 op)는 검사하지 않고 무시하며, 저장할 때 그대로 남는다.
 	HostTimeouts map[string]string `json:"hostTimeouts,omitempty"`
 	// 저장 때 정리(설계 6.1, 계획 D8): memory_save가 같은 범위의 기억을 「비슷하다」고 보고 저장 전에 고르게 하는
-	// 찾기 점수(0~1)의 문턱. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
+	// 저장 때 비슷함 점수(0~1, 두 기억 사이 토큰 양쪽 덮음)의 문턱. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값(memory.DefaultSimilarMin)이다.
 	SaveSimilarMin float64 `json:"saveSimilarMin"`
 }
 

@@ -1,5 +1,5 @@
 {
-  "about": "L-16(설계 6.1) 중복 사례 묶음: 원래 기억을 저장한 뒤 같은 내용을 다르게 다시 저장한다. 개인 내용 없음. 평가 묶음(internal/bench)이 생기면 그쪽으로 옮긴다. knownMiss는 지금 문턱에서 못 잡는 변형이다: 빼지 않고 남겨 두며, 시험은 못 잡는 것이 그대로인지 보고 잡히게 되면 표시를 지우라고 실패한다.",
+  "about": "L-16(설계 6.1) 중복 사례 묶음: 원래 기억을 저장한 뒤 같은 내용을 다르게 다시 저장한다. 개인 내용 없음. 평가 묶음(internal/bench)이 생기면 그쪽으로 옮긴다. 변형은 모두 잡혀야 한다: 못 잡는 변형이 생기면 빼지 않고 판정을 고친다.",
   "others": [
     {"kind": "fact", "title": "배포 뒤에는 스모크 시험을 돌린다", "body": "배포 직후 스모크 시험으로 첫 화면과 로그인이 되는지 확인한다"},
     {"kind": "fact", "title": "커밋 메시지는 한글로 쓴다", "body": "커밋 제목과 본문은 한글로 쓰고 영어 낱말은 그대로 둔다"},
@@ -17,7 +17,7 @@
       "variants": [
         {"how": "그대로", "kind": "lesson", "title": "배포 스크립트는 드라이런을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다"},
         {"how": "조사·어순", "kind": "lesson", "title": "드라이런을 먼저 돌린다, 배포 스크립트는", "body": "실제로 돌리기 전에 드라이런으로 바뀔 것을 먼저 본다, 운영 배포 스크립트를 처음 돌릴 때는"},
-        {"how": "낱말 바꿈", "knownMiss": "문턱 0.68에서 못 잡음(잰 값 0.657): 바꾼 낱말 「시험」이 무관한 기억 셋에 있어 흔한 낱말이 된다. 1-6이 평가 묶음으로 다시 본다", "kind": "lesson", "title": "배포 스크립트는 시험 실행을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 시험 실행으로 바뀔 것을 먼저 확인하고 나서 실제로 돌린다"},
+        {"how": "낱말 바꿈", "kind": "lesson", "title": "배포 스크립트는 시험 실행을 먼저 돌린다", "body": "운영 배포 스크립트를 처음 돌릴 때는 시험 실행으로 바뀔 것을 먼저 확인하고 나서 실제로 돌린다"},
         {"how": "짧은 제목", "kind": "lesson", "title": "배포 전 드라이런", "body": "운영 배포 스크립트는 처음 돌릴 때 드라이런으로 바뀌는 것을 먼저 본 뒤에 실제로 돌린다"}
       ]
     },
@@ -63,7 +63,7 @@
       "original": {"kind": "fact", "title": "Use Docker for databases", "body": ""},
       "variants": [
         {"how": "one word", "kind": "fact", "title": "Use Docker for the database", "body": ""},
-        {"how": "body added", "knownMiss": "문턱 0.68에서 못 잡음(잰 값 0.428): 제목을 다시 쓰고 본문을 더해 원래 제목 낱말의 몫이 작다. 1-6이 평가 묶음으로 다시 본다", "kind": "fact", "title": "Databases run in Docker", "body": "Use Docker for databases on this machine"}
+        {"how": "body added", "kind": "fact", "title": "Databases run in Docker", "body": "Use Docker for databases on this machine"}
       ]
     }
   ]

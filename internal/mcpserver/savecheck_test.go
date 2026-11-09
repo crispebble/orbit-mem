@@ -385,7 +385,6 @@ func TestSave_문턱은_Options의_saveSimilarMin을_쓴다(t *testing.T) {
 
 type dupMemory struct {
 	How       string `json:"how"`
-	KnownMiss string `json:"knownMiss"`
 	Kind      string `json:"kind"`
 	AppliesTo string `json:"appliesTo"`
 	Topic     string `json:"topic"`
@@ -403,15 +402,20 @@ func (m dupMemory) args() map[string]any {
 	return a
 }
 
-// scoreOf is the find score of the memory id against m about to be saved (0 when it is not among the top).
+// scoreOf is the save check score of the memory id against m about to be saved (-1 when the check is the same
+// title or topic, 0 when id is not among the similar ones).
 func scoreOf(t *testing.T, s *memory.Store, m dupMemory, id string) float64 {
 	t.Helper()
-	r, err := s.FindScored(memory.FindInput{Query: strings.Join([]string{m.Title, m.Topic, m.Body}, " "), Scope: memory.ScopeGlobal, Limit: memory.SimilarLimit})
+	r, err := s.SaveCheck(memory.SaveInput{Kind: m.Kind, Scope: memory.ScopeGlobal, Title: m.Title, Body: m.Body, Topic: m.Topic,
+		Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, 1e-9)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, h := range r {
-		if h.Memory.ID == id {
+	if r.Verdict == memory.CheckSameTitle || r.Verdict == memory.CheckSameTopic {
+		return -1
+	}
+	for _, h := range r.Similar {
+		if h.ID == id {
 			return h.Score
 		}
 	}
@@ -451,20 +455,6 @@ func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_�
 	variants:
 		for i, v := range c.Variants {
 			variants++
-			t.Logf("%s · %s: 원래 기억과의 점수 %.3f", c.Name, v.How, scoreOf(t, s, v, orig.Memory.ID))
-			if v.KnownMiss != "" { // 저장하면 중복이 생긴다: 읽기 판정으로 못 잡는 것이 그대로인지만 본다
-				chk, err := s.SaveCheck(memory.SaveInput{Kind: v.Kind, Scope: memory.ScopeGlobal, Title: v.Title, Body: v.Body, Topic: v.Topic,
-					Source: memory.Source{Kind: memory.SourceSession, Ref: "t:dup"}}, 0)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if chk.Verdict != memory.CheckNew {
-					t.Errorf("%s · %s: 이제 잡힌다(%s) — fixture의 knownMiss를 지우세요", c.Name, v.How, chk.Verdict)
-				}
-				caught["못 잡음(knownMiss)"]++
-				continue
-			}
-			out := saveMCP(t, cs, v.args())
 			cur := func() []string {
 				var ids []string
 				for _, m := range live(t, s) {
@@ -474,6 +464,10 @@ func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_�
 				}
 				return ids
 			}
+			if ids := cur(); len(ids) == 1 {
+				t.Logf("%s · %s: 지금 기억과의 점수 %.3f (-1은 같은 제목·주제)", c.Name, v.How, scoreOf(t, s, v, ids[0]))
+			}
+			out := saveMCP(t, cs, v.args())
 			switch {
 			case out.Saved && len(cur()) == 1:
 				caught["바로 합침"]++ // 같은 제목 단축이나 같은 주제 대체
@@ -514,8 +508,8 @@ func TestSave_L16_중복_사례를_다시_저장해도_같은_내용_기억이_�
 		}
 	}
 	t.Logf("사례 %d개, 변형 %d개: %v", len(set.Cases), variants, caught)
-	if caught["못 잡음(knownMiss)"] > 2 {
-		t.Errorf("못 잡는 변형이 늘었다: %v", caught)
+	if caught["놓침"] > 0 || caught["고르기"]+caught["바로 합침"] != variants {
+		t.Errorf("못 잡은 변형이 있다: %v (변형 %d개)", caught, variants)
 	}
 	if variants < 15 {
 		t.Errorf("변형 %d개", variants)

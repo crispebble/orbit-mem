@@ -47,7 +47,7 @@ type Options struct {
 	// LoadProducts, when set, reads the product map on every call instead of Products: a long-lived server
 	// follows a config.json changed after it started, like the hooks do.
 	LoadProducts func() (place.Map, error)
-	// SaveSimilarMin is the find score (0~1) a memory of the same scope needs for memory_save to show it as
+	// SaveSimilarMin is the similarity score (0~1, two-way token cover between the two memories) a memory of the same scope needs for memory_save to show it as
 	// similar and save nothing until the caller picks (config saveSimilarMin, 설계 6.1). 0 or less is
 	// memory.DefaultSimilarMin. LoadSaveSimilarMin, when set, reads it on every save instead (a long-lived
 	// server follows config.json like LoadProducts).

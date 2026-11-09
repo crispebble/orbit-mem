@@ -72,8 +72,12 @@ func TestSave_통로_상한은_agent이고_요청이_올리지_못한다(t *test
 
 func TestSave_AI는_등급을_낮출_수_있고_모르는_값은_도구_오류다(t *testing.T) {
 	cs, s := connectOpts(t, Options{})
+	titles := map[string]string{
+		memory.TrustUntrusted: "외부 웹 문서에서 가져온 배포 절차",
+		memory.TrustSystem:    "시스템 점검 알림의 야간 백업 시각",
+	}
 	for _, lvl := range []string{memory.TrustUntrusted, memory.TrustSystem} {
-		res, out := saveWith(t, cs, "낮춤 "+lvl, map[string]any{"kind": "file", "ref": "web", "trust": lvl})
+		res, out := saveWith(t, cs, titles[lvl], map[string]any{"kind": "file", "ref": "web", "trust": lvl})
 		if res.IsError {
 			t.Fatal(text(res))
 		}

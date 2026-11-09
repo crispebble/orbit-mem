@@ -1,14 +1,17 @@
 package memory
 
 import (
+	"cmp"
 	"database/sql"
 	"errors"
+	"math"
+	"slices"
 	"strings"
 )
 
 // 저장 전 판정(설계 6.1, T-26 · ORBIT-25 G10, 계획 D8). 저장을 받는 쪽(MCP·host call 처리기)이 저장하기 전에
 // 부르는 읽기 전용 판정이다. Save가 하는 순서 그대로 같은 제목 단축 → 같은 주제 대체를 먼저 보고, 둘 다 아니면
-// 같은 범위(scope)의 후보·확정 기억 가운데 찾기 점수(rank.go)가 문턱 이상인 것을 위에서 SimilarLimit개 고른다.
+// 같은 범위(scope)의 후보·확정 기억 가운데 새 기억과의 비슷함(similar.go)이 문턱 이상인 것을 위에서 SimilarLimit개 고른다.
 // 내부 Save(정리·나누기·들여오기·계획 적용이 부름)는 이 판정을 하지 않는다: 넣으면 그 흐름이 모두 바뀐다(T-26).
 // 비슷한 기억은 종류(kind)를 가리지 않는다: 같은 내용이 규칙·결정·사실로 갈라지는 중복도 보이게 한다.
 
@@ -24,9 +27,9 @@ const (
 const SimilarLimit = 3
 
 // DefaultSimilarMin is the score a memory needs to count as similar when the caller gives no threshold.
-// Measured on rewordings and on different memories (savecheck_test.go, TestSaveCheck_잰_점수): the
-// evaluation set of 1-6 tunes it again.
-const DefaultSimilarMin = 0.68
+// Measured on rewordings and on different memories (savecheck_test.go scoreCases, the L-16 duplicate set
+// in internal/mcpserver/testdata): the evaluation set of 1-6 tunes it again.
+const DefaultSimilarMin = 0.61
 
 // similarSummaryRunes is the most characters of a similar memory's summary.
 const similarSummaryRunes = 200
@@ -50,7 +53,7 @@ type SaveCheckResult struct {
 
 // SaveCheck says, only reading, what saving in would meet: the same title (Save adds the source to that
 // memory), the current value of the same scope and topic (Save supersedes it), or else the candidate and
-// confirmed memories of the same scope that score min or more against the new one, best SimilarLimit
+// confirmed memories of the same scope whose similarity to the new one (similar.go) is min or more, best SimilarLimit
 // first. min <= 0 is DefaultSimilarMin. An input Save refuses is refused with the same error.
 func (s *Store) SaveCheck(in SaveInput, min float64) (SaveCheckResult, error) {
 	if err := in.validate(); err != nil { // in은 값 복사본이다: 부르는 쪽 입력은 그대로
@@ -79,18 +82,25 @@ func (s *Store) SaveCheck(in SaveInput, min float64) (SaveCheckResult, error) {
 			return SaveCheckResult{Verdict: CheckSameTopic, Existing: ids}, nil
 		}
 	}
-	hits, err := s.FindScored(FindInput{Query: checkQuery(in), Scope: in.Scope, Limit: SimilarLimit})
+	// 후보는 찾기(rank.go)가 정한다: 같은 범위의 후보·확정 기억 가운데 새 글의 토큰(앞 findTokenLimit개)이 하나라도 닿는
+	// 것 모두. 점수는 두 기억 사이 비슷함(similar.go)이고, 같은 점수면 찾기 순서(찾기 점수 → 확정 → 최신)를 지킨다.
+	hits, err := s.FindScored(FindInput{Query: checkQuery(in), Scope: in.Scope, Limit: math.MaxInt})
 	if err != nil {
 		return SaveCheckResult{}, err
 	}
+	n := memoryTokens(in.Title, in.Topic, in.Tags, in.Body)
 	r := SaveCheckResult{Verdict: CheckNew}
 	for _, h := range hits {
-		if h.Score < min {
-			break // 점수 순이다
-		}
 		m := h.Memory
-		r.Similar = append(r.Similar, Similar{ID: m.ID, Kind: m.Kind, Title: m.Title, Summary: summaryOf(m.Body),
-			Topic: m.Topic, Score: h.Score})
+		if sc := similarity(n, memoryTokens(m.Title, m.Topic, m.Tags, m.Body)); sc >= min {
+			r.Similar = append(r.Similar, Similar{ID: m.ID, Kind: m.Kind, Title: m.Title, Summary: summaryOf(m.Body),
+				Topic: m.Topic, Score: sc})
+		}
+	}
+	// 비교용으로 반올림한다: 같은 값의 부동소수점 오차가 순서를 가르지 않게(FindScored와 같다).
+	slices.SortStableFunc(r.Similar, func(a, b Similar) int { return cmp.Compare(math.Round(b.Score*1e9), math.Round(a.Score*1e9)) })
+	if len(r.Similar) > SimilarLimit {
+		r.Similar = r.Similar[:SimilarLimit]
 	}
 	if len(r.Similar) > 0 {
 		r.Verdict = CheckSimilar

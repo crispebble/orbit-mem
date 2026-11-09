@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -279,8 +280,11 @@ var scoreCases = []scoreCase{
 }
 
 // 기본 문턱(DefaultSimilarMin)을 정한 사례다. 같은 내용을 조금 바꿔 다시 저장한 것(조사·어순·한두 낱말, 한글·영어,
-// 긴 본문과 제목뿐)은 문턱 이상이고, 낱말이 겹쳐도 다른 기억은 문턱 아래다. 기억 1건과 51건 DB에서 함께 본다.
-// 잰 값(2026-11-09): 바꿔 쓴 것 0.691~0.893, 다른 기억 0.000~0.662(짧은 제목이 머리 낱말 「사용자에게」를 나눔).
+// 긴 본문과 제목뿐)은 문턱 이상이고, 낱말이 겹쳐도 다른 기억은 문턱 아래다. 기억 1건과 51건 DB에서 함께 본다(두 기억
+// 사이 비슷함은 짝만 보므로 같은 값이 나와야 한다). L-16 중복 사례 묶음(internal/mcpserver/testdata)도 같은 문턱을 쓴다.
+// 잰 값(2026-11-09, a6c): 여기 바꿔 쓴 것 0.725~0.920, 다른 기억 0.000~0.508(짧은 제목이 머리 낱말 「사용자에게」를 나눔).
+// L-16 묶음까지 합치면 바꿔 쓴 것 최저 0.679(낱말 바꿈), 다른 기억 최고 0.541(시험 컨테이너 · 어순과 「시험 DB는
+// 컨테이너로 띄운다」). 문턱 0.61은 그 가운데다.
 func TestSaveCheck_기본_문턱은_바꿔_쓴_기억과_다른_기억을_가른다(t *testing.T) {
 	for _, n := range []int{0, 50} {
 		for _, c := range scoreCases {
@@ -305,5 +309,58 @@ func TestSaveCheck_기본_문턱은_바꿔_쓴_기억과_다른_기억을_가른
 				t.Errorf("기억 %d건 %s: score %.3f, similar %v, want %v (min %.2f)", n+1, c.name, score, got, c.similar, DefaultSimilarMin)
 			}
 		}
+	}
+}
+
+// simScore is SaveCheck's score of the memory id against in (0 when it is not among the similar ones).
+func simScore(t *testing.T, s *Store, in SaveInput, id string) float64 {
+	t.Helper()
+	r := mustCheck(t, s, in, 1e-9)
+	for _, h := range r.Similar {
+		if h.ID == id {
+			return h.Score
+		}
+	}
+	return 0
+}
+
+// 두 기억 사이 비슷함은 그 둘만 본다(similar.go): 다른 기억이 몇 건이든, 같은 내용 사본이 이미 있든 같은 짝의 점수는
+// 같다. 그래서 거의 같은 기억이 이미 둘 있어도 세 번째로 같은 내용을 저장하면 둘 다 기본 문턱으로 잡힌다(a6b 관찰:
+// 찾기 점수는 사본이 서로의 낱말을 흔하게 만들어 0.56~0.58로 떨어졌다).
+func TestSaveCheck_같은_내용_기억이_이미_둘_있어도_세_번째를_기본_문턱으로_잡고_짝의_점수는_다른_기억과_무관하다(t *testing.T) {
+	base := [2]string{"배포 스크립트는 드라이런을 먼저 돌린다", "운영 배포 스크립트를 처음 돌릴 때는 드라이런으로 바뀔 것을 먼저 보고 나서 실제로 돌린다"}
+	probe := checkIn("배포 스크립트는 시험 실행을 먼저 돌린다", "운영 배포 스크립트를 처음 돌릴 때는 시험 실행으로 바뀔 것을 먼저 확인하고 나서 실제로 돌린다", "")
+	alone, _ := newTestStore(t)
+	want := simScore(t, alone, probe, saveDoc(t, alone, base[0], base[1], "").ID)
+	for _, n := range []int{0, 50} {
+		s, _ := newTestStore(t)
+		for i := 0; i < n; i++ {
+			filler(t, s, i)
+		}
+		a := saveDoc(t, s, base[0], base[1], "")
+		b := saveDoc(t, s, "배포 스크립트 드라이런 먼저", base[1], "") // 제목만 다른 사본
+		r := mustCheck(t, s, probe, 0)
+		if r.Verdict != CheckSimilar || !slices.Contains(similarIDs(r), a.ID) || !slices.Contains(similarIDs(r), b.ID) {
+			t.Errorf("기억 %d건: 사본 둘이 다 잡히지 않았다: %+v", n+2, r.Similar)
+		}
+		if got := simScore(t, s, probe, a.ID); got != want {
+			t.Errorf("기억 %d건: 같은 짝의 점수 %.6f, 기억 1건일 때 %.6f", n+2, got, want)
+		}
+	}
+}
+
+// 한쪽이 다른 쪽에 다 들어 있다는 것(덮음 1)만으로는 비슷하지 않다: 짧은 기억은 긴 글에 쉽게 다 들어간다.
+// 같은 낱말을 어순만 바꾼 것은 1이다.
+func TestSaveCheck_짧은_기억이_긴_다른_글에_다_들어_있는_것만으로는_비슷하지_않고_같은_낱말은_1이다(t *testing.T) {
+	s, _ := newTestStore(t)
+	short := saveDoc(t, s, "배포 일정", "", "")
+	long := checkIn("배포 일정 때문에 미룬 일은 회의록 끝에 모아 둔다",
+		"회의에서 배포 일정 때문에 미룬 일은 회의록 끝의 남은 일 칸에 담당자와 함께 모아 두고 다음 회의 첫머리에 다시 본다", "")
+	if sc := simScore(t, s, long, short.ID); sc >= DefaultSimilarMin {
+		t.Errorf("짧은 기억이 긴 글에 다 들어 있다: score %.3f (min %.2f)", sc, DefaultSimilarMin)
+	}
+	same := saveDoc(t, s, "커밋 메시지는 한글로 쓴다", "커밋 제목과 본문은 한글로 쓴다", "")
+	if sc := simScore(t, s, checkIn("한글로 쓴다, 커밋 메시지는", "한글로 쓴다, 커밋 제목과 본문은", ""), same.ID); math.Abs(sc-1) > 1e-9 {
+		t.Errorf("같은 낱말 어순만 바꿈: score %.6f, want 1", sc)
 	}
 }
