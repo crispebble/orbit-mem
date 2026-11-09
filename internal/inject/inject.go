@@ -7,7 +7,6 @@ package inject
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -23,19 +22,12 @@ import (
 // Lengths (설계 · orbit-mem 2판 AC-1). Claude Code saves a hook context over 10,000
 // characters to a file and shows only its first 2,000, so no hook context passes
 // MaxHookRunes, and the session start, which stays for the whole session, keeps to
-// MaxSessionStartRunes (D2). Rules that do not fit are not listed by title: they are
-// counted in one line and come through the work recall when a request matches them.
+// MaxSessionStartRunes (D2) with the note lines saved in it (T-20). Rules that do not
+// fit are not listed by title: they are counted in one line and come through the work
+// recall when a request matches them.
 const (
 	MaxHookRunes         = 9000
 	MaxSessionStartRunes = 6000
-	// sessionNoteRunes is kept free for the lines a hook adds after the bundle (the
-	// plugin version note and the overlapping memory note, 17절).
-	sessionNoteRunes = 600
-	// maxDecisionsRunes bounds the line of recent decision titles.
-	maxDecisionsRunes = 1000
-	// MaxToolRunes and MaxToolMemories bound what a tool call brings (6절).
-	MaxToolRunes    = 1000
-	MaxToolMemories = 3
 	// maxNewMemories is how many memories confirmed elsewhere one request announces.
 	maxNewMemories = 3
 	// maxSessionNewsRunes bounds the corrections and new memories of one request.
@@ -52,14 +44,13 @@ func at(cfg config.Config, scope string) place.Place { return place.Resolve(scop
 
 func inScope(m memory.Memory, pl place.Place) bool { return pl.Sees(m.Scope, m.Project) }
 
-// Options picks the form of what is injected. The hooks of Claude Code and
-// Codex use the zero value (the full form); Orbit Code asks for the brief one.
+// Options are the choices of one injection that the settings do not carry. None is left: the brief
+// form of the confirmed rules (Brief) is gone (설계 보완 T-27, 진행 결정 D3), and every host gets the
+// full form. The type stays so the callers keep their shape.
 type Options struct {
-	// Brief lists each confirmed rule on one line (title and id) at session
-	// start instead of its full text, and lets the work recall bring the full
-	// text of the confirmed rules a request strongly matches. It keeps to the
-	// same length as the full form; memory_get reads the rest.
-	Brief bool
+	// NewsOnly leaves the recall for the request out and keeps the session news
+	// (correction and new memory lines): the request is a trivial one.
+	NewsOnly bool
 }
 
 // Not eligible for recall (subject): a volatile
@@ -79,11 +70,6 @@ func excluded(m memory.Memory, now time.Time, heads memory.TopicHeads) string {
 	}
 	return ""
 }
-
-// briefTitle drops a trailing date in parentheses, which the brief form does not need.
-var trailingDate = regexp.MustCompile(`\s*\(\d{4}-\d{2}-\d{2}\)\s*$`)
-
-func briefTitle(t string) string { return trailingDate.ReplaceAllString(t, "") }
 
 // Injection is what a hook adds and which memories it named, for the metrics.
 type Injection struct {
@@ -128,49 +114,104 @@ func (in Injection) done(b *strings.Builder) Injection {
 // session resumes, so the host's prompt cache holds. A compaction or /clear calls
 // ResetSession first. Without a session id it is built afresh.
 func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session string) Injection {
-	return SessionBundleWith(s, cfg, scope, host, session, Options{})
+	return SessionBundleWith(s, cfg, scope, host, session, nil)
 }
 
-// SessionBundleWith is SessionBundle in the given form. A session keeps the
-// form it was built in; the bundle is kept per host and session.
-func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, opts Options) Injection {
+// SessionBundleWith is SessionBundle with the note lines of the session (the version, update and
+// overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew; its
+// lines go at the end of the bundle and are saved with it, so a resumed session gets the same bytes.
+// The bundle keeps to MaxSessionStartRunes with them. notes may be nil. With recall off no memory is
+// put in, but the note lines still are (as with the old inject=off). A notes that panics leaves only
+// the note lines out; the bundle is made and saved as usual (원칙 6).
+func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
 	if session != "" {
-		if text, ids, ok := s.SessionBundle(host, session); ok && runes(text) <= MaxSessionStartRunes-sessionNoteRunes {
+		if text, ids, ok := s.SessionBundle(host, session); ok && runes(text) <= MaxSessionStartRunes {
 			var b strings.Builder
 			b.WriteString(text)
 			return Injection{MemoryIDs: ids}.done(&b)
-		} else if ok { // 0.10.0이 남긴 한도 넘는 묶음은 다시 만든다
+		} else if ok { // 한도 넘는 옛 묶음은 다시 만든다
 			_ = s.ResetSession(host, session)
 		}
 	}
-	inj := SessionStartInjectionWith(s, cfg, scope, opts)
+	note := noteText(noteLines(notes))
+	limit := MaxSessionStartRunes
+	if note != "" {
+		limit -= runes(note) + 1 // 묶음과 안내 줄 사이 줄바꿈
+	}
+	inj := sessionStart(s, cfg, scope, limit)
+	if note != "" {
+		var b strings.Builder
+		b.WriteString(inj.Text)
+		for _, l := range strings.Split(note, "\n") { // 핵심이 길어 남는 자리가 모자라면 뒤 안내 줄부터 뺀다
+			if runes(b.String())+1+runes(l) > MaxSessionStartRunes {
+				break
+			}
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(l)
+		}
+		inj = inj.done(&b)
+	}
 	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
 		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
 	return inj
 }
 
-// SessionStart is the session-start context: confirmed rules of the global
-// scope and this project in full, the titles of recent decisions, and one line
-// about harmful automatic changes undone lately.
+// noteLines calls notes, if any; one that panics gives no lines.
+func noteLines(notes func() []string) (lines []string) {
+	if notes == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			lines = nil
+		}
+	}()
+	return notes()
+}
+
+// noteText is the non-empty note lines, one per line.
+func noteText(lines []string) string {
+	var kept []string
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+// SessionStart is the session-start context: the core layers, one line on where to look first and one
+// line about harmful automatic changes undone lately.
 func SessionStart(s *memory.Store, cfg config.Config, scope string) string {
 	return SessionStartInjection(s, cfg, scope).Text
 }
 
 // SessionStartInjection is SessionStart with the memories it named.
 func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Injection {
-	return SessionStartInjectionWith(s, cfg, scope, Options{})
+	return sessionStart(s, cfg, scope, MaxSessionStartRunes)
 }
 
-// SessionStartInjectionWith is SessionStartInjection in the given form (S3-R6): the core layers, one
-// line on where to look first (how many confirmed rules and decisions this folder sees, memory_find
-// first), the titles of recent decisions and the automatic-revert line, within MaxSessionStartRunes. The
-// other memories come through the request recall, the tool recall and memory_find (S3-R7). Only
-// inject=rules, which has no request recall, fills the rest with confirmed rules as before.
-func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, opts Options) Injection {
+// SessionStartInjectionWith is SessionStartInjection; Options carries no choice any more.
+func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, _ Options) Injection {
+	return SessionStartInjection(s, cfg, scope)
+}
+
+// findLine says where to look first. It names no count, so it is the same all through a session
+// (설계 · orbit-mem 지연 회상 7판 4절).
+const findLine = "[" + Label + " 기억 · 먼저 찾는 곳] 규칙·결정이 일에 닿으면 memory_find로 먼저 찾는다.\n"
+
+// sessionStart is the session start within limit runes (S3-R6, 7판 4절 A층): the core layers, the find
+// line and the automatic-revert line. The other memories come through the request recall, the tool
+// recall and memory_find (S3-R7). Only recall=on_demand, which has no request recall, fills the rest
+// with confirmed rules in full as before. Nothing with recall=off.
+func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) Injection {
 	var inj Injection
 	var b strings.Builder
-	if cfg.Inject == config.InjectOff {
+	mode := cfg.RecallMode()
+	if mode == config.RecallOff {
 		return inj.done(&b)
 	}
 	confirmed, err := s.List(memory.StateConfirmed)
@@ -215,48 +256,34 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 	for _, id := range inj.MemoryIDs {
 		inCore[id] = true
 	}
-	var rules, decisions []memory.Memory
-	// 묶음 핵심 층에 들지 않은 승격 기억(여러 제품 폴더의 제품 핵심): 찾는 곳 수에만 든다(검토 지적).
-	pinnedRules, pinnedDecisions := 0, 0
+	var rules []memory.Memory
+	// 묶음 핵심 층 밖에 이 폴더에서 보이는 확정 규칙·결정(여러 제품 폴더의 제품 핵심 포함)이 있는가: 찾는 곳 줄을 붙인다.
+	others := false
 	for _, m := range confirmed {
 		// 분야 지식은 요청에 맞을 때 신호로만 넣는다. 이 묶음의 핵심 층에 든 것은 세지 않는다.
 		if !inScope(m, pl) || memory.DomainOf(m) != "" || inCore[m.ID] {
 			continue
 		}
-		if excluded(m, now, heads) != "" {
+		if excluded(m, now, heads) != "" || (m.Kind != memory.KindRule && m.Kind != memory.KindDecision) {
 			continue
 		}
-		switch {
-		case m.Pinned && m.Kind == memory.KindRule: // 규칙 채우기·결정 제목 줄에는 넣지 않는다(요청 회상으로 온다)
-			pinnedRules++
-		case m.Pinned && m.Kind == memory.KindDecision:
-			pinnedDecisions++
-		case m.Kind == memory.KindRule:
+		others = true
+		if m.Kind == memory.KindRule && !m.Pinned { // 승격 규칙은 규칙 채우기에 넣지 않는다(요청 회상으로 온다)
 			rules = append(rules, m)
-		case m.Kind == memory.KindDecision:
-			decisions = append(decisions, m)
 		}
 	}
-	footer := "기억은 " + Label + " MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
-	head := "[" + Label + " 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
-	if opts.Brief {
-		footer = "기억은 memory_find·memory_get·memory_save로 찾고 남긴다."
-		head = "[" + Label + " 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다. 한 줄이 규칙 하나의 요지다. 일이 규칙에 닿으면 memory_get으로 전문을 읽고 따른다(요청과 맞는 규칙은 전문이 회상으로 온다).\n"
-	}
-	omittedLine := func(n int) string {
-		return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
-	}
-	if cfg.Inject == config.InjectRules {
-		// 요청 회상이 없는 판: 규칙이 들어올 다른 길이 없어 예전처럼 남는 칸을 확정 규칙으로 채운다(명세 2.7 예외).
-		budget := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(head) - runes(omittedLine(len(rules)))
+	if mode == config.RecallOnDemand {
+		// 요청 회상이 없는 판: 규칙이 들어올 다른 길이 없어 예전처럼 남는 칸을 확정 규칙 전문으로 채운다(명세 2.7 예외).
+		head := "[" + Label + " 기억 · 확정 규칙] 이 PC에서 사용자가 확정한 일하는 방식이다.\n"
+		omittedLine := func(n int) string {
+			return fmt.Sprintf("- 확정 규칙 %d개 더: 길이 때문에 여기 없다. 요청과 맞으면 회상으로 들어오고, memory_find로 찾는다.\n", n)
+		}
+		budget := limit - runes(core.String()) - runes(head) - runes(omittedLine(len(rules)))
 		if len(rules) > 0 {
 			var body strings.Builder
 			used := 0
 			for _, m := range rules { // 최근에 고친 규칙부터
 				entry := memory.CoreEntry(m)
-				if opts.Brief {
-					entry = fmt.Sprintf("- %s (%s)\n", briefTitle(m.Title), m.ID)
-				}
 				if n := runes(entry); used+n <= budget {
 					body.WriteString(entry)
 					used += n
@@ -275,55 +302,27 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 		}
 		return inj.done(&b)
 	}
-	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 이 폴더에서 보이는 수와 먼저 찾을 곳만 알리고, 나머지는
-	// 요청 회상·도구 직전·memory_find로 들어온다(S3-R7).
+	// 상시 핵심 밖은 세션 시작에 넣지 않는다(S3-R6). 먼저 찾을 곳만 알리고, 나머지는 요청 회상·도구 직전·memory_find로
+	// 들어온다(S3-R7). 「최근 결정」 줄은 없다(T-3). 찾는 곳 줄·꼬리 줄은 한도 안에 들 때만 쓴다.
+	footer := "기억은 " + Label + " MCP(memory_find·memory_get·memory_save)로 찾고 남긴다."
+	room := limit - runes(core.String()) - runes(footer)
 	find := ""
-	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; nr+nd > 0 {
-		find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더에서 보이는 확정 규칙 %d개·결정 %d개의 본문은 여기 없다(최근 결정 몇 개는 아래에 제목으로 있다). 일이 작업 방식·문서 위치·설계 선택 같은 규칙이나 결정에 닿으면 무엇보다 먼저 memory_find로 찾는다. 요청에 맞는 것은 회상으로 들어온다.\n",
-			nr, nd)
-		if opts.Brief {
-			find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
-		}
+	if core.Len() > 0 || others {
+		find = findLine
 	}
-	// 핵심이 한도까지 차면 찾는 곳 줄은 짧은 꼴로 줄인다(합계 한도).
-	if nr, nd := len(rules)+pinnedRules, len(decisions)+pinnedDecisions; find != "" && !opts.Brief &&
-		runes(core.String())+runes(find)+runes(footer) > MaxSessionStartRunes-sessionNoteRunes {
-		find = fmt.Sprintf("["+Label+" 기억 · 먼저 찾는 곳] 이 폴더의 확정 규칙 %d개·결정 %d개의 본문은 여기 없다. 일이 닿으면 먼저 memory_find로 찾는다.\n", nr, nd)
+	if runes(find) > room {
+		find = ""
 	}
-	// 꼬리(결정 제목·자동 되돌림 줄)는 핵심과 찾는 곳 줄을 뺀 남는 자리 안에서만 쓴다(합계 한도).
-	var tail strings.Builder
-	room := MaxSessionStartRunes - sessionNoteRunes - runes(core.String()) - runes(find) - runes(footer)
+	room -= runes(find)
 	reverts := revertLine(s)
-	if reverts != "" && runes(reverts)+1 <= room {
-		room -= runes(reverts) + 1
-	} else {
+	if reverts == "" || runes(reverts)+1 > room {
 		reverts = ""
 	}
-	if n := cfg.RecentDecisions; n > 0 && len(decisions) > 0 {
-		line := "[최근 결정] "
-		var ids []string
-		for i := 0; i < len(decisions) && i < n; i++ {
-			entry := fmt.Sprintf("%s(%s)", decisions[i].Title, decisions[i].ID)
-			if i > 0 {
-				entry = " · " + entry
-			}
-			if runes(line)+runes(entry) > min(maxDecisionsRunes, room-1) {
-				break
-			}
-			line += entry
-			ids = append(ids, decisions[i].ID)
-		}
-		if len(ids) > 0 {
-			tail.WriteString(line + "\n")
-			inj.MemoryIDs = append(inj.MemoryIDs, ids...)
-		}
-	}
-	if reverts != "" {
-		tail.WriteString(reverts + "\n")
-	}
 	b.WriteString(find)
-	b.WriteString(tail.String())
-	if b.Len() > 0 {
+	if reverts != "" {
+		b.WriteString(reverts + "\n")
+	}
+	if b.Len() > 0 && runes(b.String())+runes(footer) <= limit {
 		b.WriteString(footer)
 	}
 	return inj.done(&b)
@@ -382,7 +381,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	byID := map[string]memory.Memory{}
 	out := map[string]string{}
 	for _, m := range active {
-		// 세션 묶음에 전문으로 든 확정 규칙은 다시 넣지 않는다(분야 규칙과 짧은 꼴은 빼고). 일지는 대화 맥락이 아니다.
+		// 세션 묶음에 전문으로 든 확정 규칙은 다시 넣지 않는다(분야 규칙은 빼고). 일지는 대화 맥락이 아니다.
 		domain := memory.DomainOf(m) != ""
 		switch why := excluded(m, now, heads); {
 		case !inScope(m, pl):
@@ -391,7 +390,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 			out[m.ID] = "journal"
 		case why != "":
 			out[m.ID] = why
-		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && !opts.Brief && inBundle[m.ID],
+		case m.Kind == memory.KindRule && m.State == memory.StateConfirmed && !domain && inBundle[m.ID],
 			m.Pinned && inBundle[m.ID]:
 			out[m.ID] = "session_rule"
 		default:
@@ -415,7 +414,7 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host, session string, opts Options) Injection {
 	var inj Injection
 	var b strings.Builder
-	if cfg.Inject != config.InjectFull || strings.TrimSpace(prompt) == "" {
+	if cfg.RecallMode() != config.RecallAuto || (strings.TrimSpace(prompt) == "" && !opts.NewsOnly) {
 		return inj.done(&b)
 	}
 	_, bundleIDs, ok := s.SessionBundle(host, session)
@@ -432,8 +431,9 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 		news = sessionNews(s, &inj, host, session, bundleIDs, byID)
 	}
 	b.WriteString(news)
-	recall := recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news))
-	b.WriteString(recall)
+	if !opts.NewsOnly {
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, MaxHookRunes-runes(news)))
+	}
 	return inj.done(&b)
 }
 
@@ -649,7 +649,12 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 				members = append(members, m)
 			}
 		}
-		sort.Slice(members, func(i, j int) bool { return members[i].UpdatedAt > members[j].UpdatedAt })
+		sort.Slice(members, func(i, j int) bool {
+			if members[i].UpdatedAt != members[j].UpdatedAt {
+				return members[i].UpdatedAt > members[j].UpdatedAt
+			}
+			return members[i].ID < members[j].ID
+		})
 		sec := fmt.Sprintf("[분야 「%s」 신호] 필요한 항목만 memory_get으로 연다.\n", d)
 		if used+utf8.RuneCountInString(sec) > budget {
 			break
@@ -683,94 +688,6 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 	return head + entries.String()
 }
 
-// ToolInjection is what a tool call brings right before it runs (PreToolUse, 설계 ·
-// orbit-mem 2판 6절): the live current values in scope whose tool triggers name the
-// tool or a prefix of it, exact names first, then confirmed, this project, newest, at
-// most MaxToolMemories within MaxToolRunes, each once per session (RecordShown).
-func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
-	var inj Injection
-	var b strings.Builder
-	if cfg.Inject == config.InjectOff || strings.TrimSpace(tool) == "" {
-		return inj.done(&b)
-	}
-	active, err := s.Triggered()
-	if err != nil || len(active) == 0 {
-		return inj.done(&b)
-	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
-	given := s.SessionMarks(host, session, memory.MarkTool)
-	pl := at(cfg, scope)
-	type hit struct {
-		m     memory.Memory
-		exact bool
-	}
-	var hits []hit
-	for _, m := range active {
-		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
-			continue
-		}
-		if exact, ok := m.TriggeredBy(tool); ok {
-			hits = append(hits, hit{m, exact})
-		}
-	}
-	if len(hits) == 0 {
-		return inj.done(&b)
-	}
-	sort.SliceStable(hits, func(i, j int) bool {
-		a, c := hits[i], hits[j]
-		if a.exact != c.exact {
-			return a.exact
-		}
-		if ca, cc := a.m.State == memory.StateConfirmed, c.m.State == memory.StateConfirmed; ca != cc {
-			return ca
-		}
-		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
-			return la
-		}
-		return a.m.UpdatedAt > c.m.UpdatedAt
-	})
-	head := fmt.Sprintf("["+Label+" 기억 · %s 호출 직전] 이 도구에 걸린 기억이다. 부르기 전에 확인하고 따른다.\n", tool)
-	used := runes(head)
-	var entries strings.Builder
-	for _, h := range hits {
-		if len(inj.MemoryIDs) == MaxToolMemories {
-			break
-		}
-		m := h.m
-		state := "확정"
-		if m.State == memory.StateCandidate {
-			state = "후보"
-		}
-		if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
-			state += " · " + note
-		}
-		line := fmt.Sprintf("- %s (%s · %s %s)\n", m.Title, m.ID, kindName(m.Kind), state)
-		if used+runes(line) > MaxToolRunes {
-			break
-		}
-		if text := strings.Join(strings.Fields(m.Body), " "); text != "" {
-			room := min(ruleBodyRunes, MaxToolRunes-used-runes(line)-3)
-			if room > 20 {
-				line += "  " + memory.ClipRunes(text, room) + "\n"
-			}
-		}
-		if used+runes(line) > MaxToolRunes {
-			continue
-		}
-		entries.WriteString(line)
-		used += runes(line)
-		inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
-		inj.mark(memory.MarkTool, m.ID)
-	}
-	if len(inj.MemoryIDs) == 0 {
-		return inj.done(&b)
-	}
-	b.WriteString(head)
-	b.WriteString(entries.String())
-	return inj.done(&b)
-}
-
 func kindName(k string) string {
 	return map[string]string{memory.KindRule: "규칙", memory.KindFact: "사실", memory.KindDecision: "결정", memory.KindLesson: "교훈", memory.KindJournal: "일지"}[k]
 }
@@ -791,7 +708,7 @@ func HookOutput(event, context string) string {
 func SubagentStart(s *memory.Store, cfg config.Config) Injection {
 	var inj Injection
 	var b strings.Builder
-	if cfg.Inject == config.InjectOff {
+	if cfg.RecallMode() == config.RecallOff {
 		return inj.done(&b)
 	}
 	core, err := s.Core(memory.ScopeGlobal)

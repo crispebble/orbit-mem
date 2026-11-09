@@ -46,10 +46,10 @@ func cmdTidy(a *app, args []string) error {
 }
 
 // tidyOptions maps the settings onto the tidy: long-unused candidates go stale only when
-// recall is injected (inject full); with rules·off a candidate had no chance to be used.
+// recall is injected (recall auto, old inject full); with on_demand·off a candidate had no chance to be used.
 func tidyOptions(cfg config.Config) memory.TidyOptions {
 	return memory.TidyOptions{LedgerWindowDays: cfg.LedgerWindowDays, CandidateExpiryDays: cfg.CandidateExpiryDays,
-		ExpireCandidates: cfg.Inject == config.InjectFull, Products: cfg.Products}
+		ExpireCandidates: cfg.RecallMode() == config.RecallAuto, Products: cfg.Products}
 }
 
 // tidyAuto is the background run the session-start hook starts. The process that marks

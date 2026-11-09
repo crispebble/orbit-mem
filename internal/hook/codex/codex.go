@@ -51,7 +51,7 @@ func (Adapter) Plan(ev hook.Event, b []byte) hook.Plan {
 		}
 		steps = append(steps, hook.Step{Op: host.OpContext, Request: ctx})
 	case hook.Prompt:
-		req.Prompt, req.Origin = in.Prompt, host.OriginUser
+		req.Prompt = in.Prompt // 사람 글 후보는 prompt 칸이다. 입력에 출처 칸이 없어 사람 요청인지는 recall op가 판정한다(origin은 비운다)
 		steps = []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
 		req.Tool = in.ToolName

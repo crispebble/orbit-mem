@@ -121,7 +121,7 @@ func TestHook_요청과_세션_끝_훅은_사본을_만들지_않는다(t *testi
 	home(t)
 	seed(t)
 	calls := fakeBackground(t, nil)
-	run(t, `{"cwd":"/tmp","prompt":"안녕","session_id":"s-1"}`, "hook", "prompt", "--host", "claude")
+	run(t, `{"cwd":"/tmp","prompt":"배포 규칙이 뭐였지","session_id":"s-1"}`, "hook", "prompt", "--host", "claude")
 	run(t, `{"cwd":"/tmp","session_id":"s-1"}`, "hook", "session-end", "--host", "claude")
 	if len(*calls) != 0 {
 		t.Fatalf("background = %v", *calls)

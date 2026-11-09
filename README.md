@@ -101,8 +101,8 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | `orbit-mem proposals [drain [--dry-run]]` | 사람 승인 대기열은 0.13.0에서 없앴다. `proposals`는 대기열을 없애기 전에 남은 옛 제안을 보이고, `drain`은 그것을 모두 닫는다: 자동 규칙에 맞으면 적용(`settled`, 새 자동 변경을 가리킴), 아니면 까닭을 메모로 남기고 닫음(`dropped`). 행은 지우지 않는다. `--dry-run`은 DB 사본에서 돌려 결과만 보인다. 실제로 돌리기 전에 `orbit-mem backup`. 옛 제안 하나씩 결정(`review`·`approve`·`reject`)도 남아 있다 |
 | `orbit-mem audit [--days N] [--json]`, `audit revert <원장·제안 id> [--note]`, `audit dismiss <f-…\|correction:…>` | 감사 목록(아래 「확정 규칙과 감사 목록」): 최근 자동 확정·자동 정리, 어긋남, 기준을 넘은 반복 교정(스킬·역할 교정과 서로 다른 작업 여럿에서 나온 절차 교훈은 「하네스 개선 후보」로 표시). 틀린 것만 되돌리거나 확인함으로 닫는다 |
 | `orbit-mem mcp [--actor ai\|user\|automation]` | 호스트가 띄우는 MCP 서버(stdio). 아래 「MCP 도구」. `--actor`는 이 서버로 쓰는 쪽(기본 ai) |
-| `orbit-mem hook session-start\|prompt\|pre-tool\|subagent-start\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(상시 핵심·「먼저 찾는 곳」 한 줄(이 폴더에서 보이는 확정 규칙·결정 수, `memory_find` 먼저)·최근 결정 제목·해로운 자동 변경 되돌림 한 줄, 합계 6,000자 이하. 핵심 밖 확정 규칙은 넣지 않고 요청 회상 후보로 남는다. `inject rules`만 예전처럼 남는 자리를 확정 규칙으로 채운다. resume에서는 바뀌지 않고, 입력 `source`가 `compact`·`clear`면 묶음을 다시 만든다), 요청마다 강하게 맞는 기억을 `recallChars` 안에서 준다(어떤 훅 문맥도 9,000자 이하). 요청 훅은 세션 도중 대체된 기억을 「정정」 줄로, 세션 시작 뒤 다른 세션에서 확정된 기억을 「새 기억」 줄(최대 3개)로 세션마다 한 번 더한다. `pre-tool`(PreToolUse)은 부르려는 도구(`tool_name`)에 도구 트리거(`tools`)가 걸린 현재값을 3개·1,000자 안에서 세션마다 한 번 넣는다. `subagent-start`(Claude Code SubagentStart, 플러그인은 Claude 꼴에만 싣는다)는 user 상시 핵심만 3,000자 안에서 넣는다. 서브에이전트 안에서 부른 훅(`agent_id`가 있음)은 「세션 id/agent_id」를 세션으로 쳐서, 주 세션이 받은 도구 기억도 서브에이전트가 한 번 더 받는다. 시작·요청·끝 훅은 활동 기록을 남기고, 세션 끝 훅은 활동 기록의 끝 시각만 남긴다. 세션 시작 훅은 마지막 기억 사본이 24시간보다 오래됐으면 `orbit-mem backup auto`를, 그날 정리가 아직이면 `orbit-mem tidy auto`를 따로 띄우고 기다리지 않는다(아래 「백업」·「하루 정리」). 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). 옛 인자(`hook work`, `--runtime`·`--launcher`·`--record-only`)는 0.17.0에서 걷어냈고, 불러도 인자 오류로 아무것도 하지 않는다(종료 0) |
-| `orbit-mem inject session-start\|prompt --host H [--cwd D] [--session S] [--rules brief\|full] [--source compact\|clear]` | 훅이 없는 호스트에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 길이 한도·정정·새 기억 줄도 훅과 같다. 요청 글은 stdin. `--host`는 꼭 준다(사용 사건과 「왜 안 나왔나」 진단이 호스트로 나뉜다). `--rules brief`면 확정 규칙을 짧은 꼴(규칙마다 제목 한 줄과 id, 본문은 `memory_get`)로 주고, 요청 회상이 그 요청과 강하게 맞는 확정 규칙을 본문과 함께 넣는다. 비우거나 `full`이면 전문 꼴이다. `inject delivered --host H --session S --ids A,B`는 호스트가 회상을 모델 요청에 실었다는 사건(`inject.delivered`)을 남긴다. Claude Code·Codex(`claude`·`codex`) 말고는 이 사건이 있어야 「전달됨」으로 본다 |
+| `orbit-mem hook session-start\|prompt\|pre-tool\|subagent-start\|session-end --host claude\|codex [--plugin-version V]` | 호스트 훅(stdin JSON). 세션 시작에 고정 묶음(상시 핵심·고정 한 줄 「[orbit-mem 기억 · 먼저 찾는 곳] 규칙·결정이 일에 닿으면 memory_find로 먼저 찾는다.」·꼬리 줄·해로운 자동 변경 되돌림 한 줄. 판 안내·새 판 안내·겹치는 호스트 기억 안내 줄은 묶음을 만들 때 한 번 넣어 묶음과 함께 저장하고, 안내 줄을 포함해 합계 6,000자 이하. 핵심 밖 확정 규칙은 넣지 않고 요청 회상 후보로 남는다. 설정 `recall`이 `on_demand`면 남는 자리를 확정 규칙 전문으로 채운다. resume에서는 같은 바이트이고, 입력 `source`가 `compact`·`clear`면 묶음을 새로 만든다. 새 판 확인(캐시 갱신 띄우기)은 모든 세션 시작 훅에서 한다), 요청마다 사람이 쓴 요청에만 강하게 맞는 기억을 `recallChars` 안에서 준다(어떤 훅 문맥도 9,000자 이하). 서브에이전트 보고·작업 알림·다른 세션 메시지·시스템 알림만 있는 요청은 0자이고 활동 기록에도 세지 않는다(그런 글을 붙여 넣고 질문하면 회상한다). 인사·「ㅇㅇ」 같은 짧은 답·숫자 3자 이하·인자 없는 슬래시 명령은 관련 기억을 건너뛰고 정정·새 기억 줄만 준다. 인자 있는 슬래시 명령은 인자를 요청으로 본다. 판정 상수는 `internal/inject/human.go` 한 곳에 있다. 요청 훅은 세션 도중 대체된 기억을 「정정」 줄로, 세션 시작 뒤 다른 세션에서 확정된 기억을 「새 기억」 줄(최대 3개)로 세션마다 한 번 더한다. `pre-tool`(PreToolUse)은 부르려는 도구(`tool_name`)에 도구 트리거(`tools`)가 걸린 현재값을 호출마다 기억 2개·기억 줄 합 800자(기억마다 400자 이하) 안에서 넣고, 같은 세션 합계 2,000자에서 멈춘다. 남은 것은 「- 이 도구에 걸린 기억 N개 더 — memory_find」 한 줄로 알리되 같은 기억들은 세션에 한 번만 알린다(N은 아직 알리지 않은 기억 수이고, 넣을 것도 새로 알릴 것도 없으면 아무것도 내지 않는다). 훅 글 전체는 2,500자 이하다. 순서는 도구 이름 정확 일치 → 확정 → 이 제품 → 최신 → id다. `recall`이 `off`면 넣지 않는다. `subagent-start`(Claude Code SubagentStart, 플러그인은 Claude 꼴에만 싣는다)는 user 상시 핵심만 3,000자 안에서 넣는다. 서브에이전트 안에서 부른 훅(`agent_id`가 있음)은 「세션 id/agent_id」를 세션으로 따로 셈하고, compact·clear 뒤에는 도구 기억을 다시 받을 수 있다. 시작·요청·끝 훅은 활동 기록을 남기고, 세션 끝 훅은 활동 기록의 끝 시각만 남긴다. 세션 시작 훅은 마지막 기억 사본이 24시간보다 오래됐으면 `orbit-mem backup auto`를, 그날 정리가 아직이면 `orbit-mem tidy auto`를 따로 띄우고 기다리지 않는다(아래 「백업」·「하루 정리」). 어떤 경우에도 호스트를 실패시키지 않는다(종료 0). `--plugin-version`이 자기 판과 다르면 세션 시작 문맥 끝에 맞추라는 한 줄을 더한다(다른 훅은 무시). 옛 인자(`hook work`, `--runtime`·`--launcher`·`--record-only`)는 0.17.0에서 걷어냈고, 불러도 인자 오류로 아무것도 하지 않는다(종료 0) |
+| `orbit-mem inject session-start\|prompt --host H [--cwd D] [--session S] [--rules brief\|full] [--source compact\|clear]` | 훅이 없는 호스트에 훅과 같은 기억 문맥을 JSON(`text`·`memoryIds`)으로 준다. 길이 한도·정정·새 기억 줄·사람이 쓴 요청만 회상하는 규칙도 훅과 같다. 요청 글은 stdin. `--host`는 꼭 준다(사용 사건과 「왜 안 나왔나」 진단이 호스트로 나뉜다). `--rules`는 받기만 하고 효과가 없다(아래 「뜻이 없어진 값」). `inject delivered --host H --session S --ids A,B`는 호스트가 회상을 모델 요청에 실었다는 사건(`inject.delivered`)을 남긴다. Claude Code·Codex(`claude`·`codex`) 말고는 이 사건이 있어야 「전달됨」으로 본다 |
 | `orbit-mem tool memory_find\|memory_get\|memory_save\|memory_update --host H [--cwd D] [--session S] [--actor ai]` | MCP 클라이언트가 없는 호스트의 기억 도구. `--host`는 꼭 준다. 입력은 MCP 도구와 같은 JSON(stdin), 결과도 같은 값의 JSON(stdout, 들여쓰기와 `<>&` 이스케이프만 다르다), 도구 오류는 `{"error": …}`와 종료 1. 쓰는 쪽은 기본 AI이고, 호출은 그 호스트·세션의 `tool.<이름>` 사건으로 남는다 |
 | `orbit-mem why <기억 id> [요청 글…] [--cwd D] [--host H] [--session S] [--rules brief\|full] [--json]` | 「왜 안 나왔나」 진단. 저장됨·적격·선택됨·주입됨·전달됨·사용됨을 각자의 증거(그 세션의 `inject.*`·`inject.delivered`·`tool.memory_get`·`memory.used` 사건, 세션이 없으면 지금 요청으로 묶음을 다시 만들어 봄)로 따로 판정하고 멈춘 단계를 보인다. 읽기만 한다 |
 | `orbit-mem place [--cwd D] [--json]` | 제품 지도(`config.json`의 `products`, 아래 「적용 대상·제품 지도·상시 핵심」)가 폴더를 어느 제품으로 보는지: 범위 키, 제품(여럿이면 여러 제품 폴더), 여기서 `appliesTo` 없이 저장한 기억의 적용 대상. 읽기만 한다 |
@@ -118,7 +118,28 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | `orbit-mem ledger [--all]` | 승인한 변경과 자동 변경(기억·하네스·지침)의 효과 판정 |
 | `orbit-mem backup [list\|status\|restore <사본> [--yes]]` | 지금 사본 만들기(하루 규칙과 관계없이), 사본 목록, 상태, 복구. 아래 「백업」 |
 | `orbit-mem tidy [--json]` | 하루 정리를 지금 돌리고 한 일을 센다(날과 관계없이, 그날 표시도 남긴다). 아래 「하루 정리」 |
-| `orbit-mem config`, `orbit-mem version` | 설정 보기·바꾸기, 판 |
+| `orbit-mem config`, `orbit-mem version` | 설정 보기·바꾸기, 판. 회상 설정 `recall`은 아래 「회상 설정」 |
+
+## 회상 설정
+
+설정 키 `recall`이 세션 시작·요청·도구 직전에 무엇을 넣을지 정한다.
+
+| `recall` | 세션 시작 | 요청 회상(정정·새 기억 줄 포함) | 도구 직전 |
+| --- | --- | --- | --- |
+| `auto`(기본) | 상시 핵심 묶음 | 있음 | 있음 |
+| `on_demand` | 묶음의 남는 자리를 확정 규칙 전문으로 채움(옛 `rules`와 같음) | 없음 | 있음 |
+| `off` | 기억 없음(판·새 판 안내 줄만) | 없음 | 없음 |
+
+- 옛 키 `inject`는 그대로 읽는다: `full`→`auto`, `rules`→`on_demand`, `off`→`off`. 둘이 다르면 더 제한적인 값을 따른다.
+- `orbit-mem config set recall X`와 `config set inject X`는 두 키를 함께 맞춰 쓴다(옛 실행 파일이 `inject`를 읽기 때문이다). `doctor`가 `recall` 값을 보인다.
+- 같은 시각의 기억은 id 순으로 놓아 회상 결과가 실행마다 같다.
+
+### 뜻이 없어진 값
+
+받기만 하고 효과가 없다. 오류는 아니다(단, `--rules`의 잘못된 값은 사용법 오류다).
+
+- `--rules brief\|full`(`inject`·`why`): 확정 규칙의 짧은 꼴이 없어졌다.
+- 설정 `recentDecisions`: 세션 시작의 「최근 결정」 제목 줄이 없어졌다. 키는 남아 있다.
 
 ## 얇은 CLI의 출력
 
@@ -134,7 +155,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 | --- | --- |
 | `host`, `session` | 기본키. 호스트(`claude`·`codex`)와 세션 id |
 | `project_scope`, `project_label`, `cwd` | 프로젝트 범위(`project:<키>`)·이름·작업 디렉터리 |
-| `launcher` | `human`(훅: 사람이 연 세션)·`host`(`host`·`inject`·`tool`로 계약을 거친 호스트: 누가 띄웠는지는 모른다). 0.17.0 전 orbit-pi가 띄운 세션의 옛 줄에는 `orbit-pi`·`studio`·`telegram`·`workflow`가 있다 |
+| `launcher` | `human`(훅), `host`(호스트 계약을 거친 `orbit-mem host`·`inject`·`tool`: 누가 띄웠는지는 모른다). 0.17.0 전 orbit-pi가 띄운 세션의 옛 줄에는 `orbit-pi`·`studio`·`telegram`·`workflow`가 있다 |
 | `parent` | 세션을 띄운 쪽이 준 `ORBIT_PARENT` |
 | `started_at`, `last_at`, `ended_at` | 시작·마지막 활동·끝 시각(Unix ms). 다시 시작(resume·clear·compact)하면 끝 시각이 지워진다 |
 | `prompts`, `first_prompt`, `last_prompt` | 요청 수, 첫·마지막 요청 글(비밀값을 가리고 공백을 접어 300자까지) |
@@ -173,7 +194,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
   `match` 한 줄은 git 원격 키(정규화한 `host/owner/repo`)이거나 `/`·`~`로 시작하는 폴더(글롭 `*`·`?`·`[…]` 가능, 그 폴더와 그 아래)다. git 원격이 있는 저장소는 원격 키로 찾는다. 맞은 줄 중 가장 구체적인 것(원격 키, 그다음 경로 마디가 많은 폴더)이 이기고, 같은 구체성에 제품이 둘 이상이면 그 폴더는 여러 제품 폴더다(상위 폴더 `~/_workspace/onidot`을 여러 제품에 적는 식). `names`는 요청 글에서 그 제품을 가리키는 말이다. `orbit-mem place`로 확인한다.
 - 보이는 곳: `user`는 어디서나, `product:<이름>`은 그 제품의 폴더와 그 제품을 포함한 여러 제품 폴더, `repo:<키>`와 `product:?`는 그 저장소·폴더와 그 아래 모든 폴더·저장소(폴더 계층 상속: 세션 폴더에서 홈 바로 아래까지 올라가며 상위 폴더의 기억을 모두 가져온다). 세션 시작·요청 회상·도구 직전·`memory_find`(`here`)가 같은 판정을 쓴다. 요청 회상은 이 폴더의 제품(여러 제품 폴더면 요청 글에 이름이 나온 제품)의 기억을 사용자 공통보다 앞에 둔다.
 - 상시 핵심(`pinned` 열): 확정된 `user`·`product:<이름>` 기억만 승격된다(`memory_save` `pin`, `memory_update` action `pin`·`unpin`, 판 이력 `pin`·`unpin`). 한도는 세션 시작에 들어가는 꼴(`- 제목 (id)` 줄과 본문)로 user 3,000자, 제품마다 2,000자다. 넘으면 자르지 않고 거절하며 그 층의 지금 핵심(id·제목·글자 수)과 합계를 돌려준다. `memory_save pin`이 넘치면 아무것도 저장하지 않는다. 승격된 기억을 대체한 새 판은 한도 안이면 승격을 이어받고, 넘치면 `warnings`에 「상시 핵심에서 빠짐」을 싣는다.
-- 세션 시작 순서: user 핵심 → 이 폴더가 한 제품이면 그 제품 핵심(여러 제품 폴더는 넣지 않는다) → 「먼저 찾는 곳」 한 줄(핵심 밖 확정 규칙 N·결정 M개, 일이 닿으면 `memory_find`를 가장 먼저) → 최근 결정 제목(승격된 것 빼고)·해로운 자동 변경 되돌림 줄. 합계 6,000자 이하. 핵심 밖 기억(상위 폴더에서 물려받은 것 포함)은 요청 회상·도구 직전·`memory_find`로만 들어온다.
+- 세션 시작 순서: user 핵심 → 이 폴더가 한 제품이면 그 제품 핵심(여러 제품 폴더는 넣지 않는다) → 고정 한 줄 「먼저 찾는 곳」(일이 닿으면 `memory_find`를 가장 먼저) → 꼬리 줄·해로운 자동 변경 되돌림 줄. 안내 줄을 포함해 합계 6,000자 이하. 핵심 밖 기억(상위 폴더에서 물려받은 것 포함)은 요청 회상·도구 직전·`memory_find`로만 들어온다.
 - 처음 핵심 뽑기: `orbit-mem core --suggest [--scope user|product:<이름>] [--json]`이 층마다 한도 안에서 늘 지킬 확정 기억을 고른다(교정×3 + 어김×3 + 따름 + 사용자 말 2 순, 분야·도구 트리거·한도의 3분의 1을 넘는 것 제외). 아무것도 바꾸지 않는다. 사람이 틀린 것을 빼고 `orbit-mem core --pin <id,…>`로 승격한다(한도 거절·판 이력 `pin`). 사람이 직접 실행하면 그 실행이 근거다. AI가 대신 부르면(`ORBIT_ACTOR=ai`) 사용자 말 기억은 `--quote "사용자 말"`이 있어야 승격되고 그 말이 출처로 남는다. 내리기는 `memory_update action=unpin`.
 
 ## 보존 등급·재검토일·주제·저장 거부
@@ -181,7 +202,7 @@ Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 �
 기획 · Orbit Code K15.
 
 - 보존 등급(`retention`): `volatile`(1~7일, 기본 7일 뒤 회상에서 빠지고 하루 정리가 낡음으로 바꾼다, 사용자 말을 담은 것은 그대로 둔다), 보통(기본, 만료·재검토일 없음), `durable`(재검토일 기본 90일). `reviewAfterDays`를 주면 어느 등급이든 재검토일을 둔다. 재검토일이 지난 기억은 회상에 「재검토일 지남」으로 표시된다(대기 제안은 내지 않는다). 다시 봤고 아직 맞으면 `memory_update` action `reviewed`가 재검토일을 민다.
-- 후보 기한(0.13.0): `candidateExpiryDays`(기본 28, 0이면 끔)일 동안 만들지도 고치지도, 세션·요청에 넣지도, `memory_find`·`memory_get`으로 찾거나 읽지도, 사용 판정을 받지도 않은 후보는 하루 정리가 자동 낡음으로 돌리고 원장에 남긴다. 회상을 넣지 않는 설정(`inject` `rules`·`off`)에서는 후보가 쓰일 기회가 없으니 하지 않는다. 사용자 말 출처 기억은 대상이 아니고, 사건 기록이 기한보다 짧으면(새 설치) 하지 않는다. 되돌리면 후보로 돌아오고 다시 낡음으로 하지 않는다.
+- 후보 기한(0.13.0): `candidateExpiryDays`(기본 28, 0이면 끔)일 동안 만들지도 고치지도, 세션·요청에 넣지도, `memory_find`·`memory_get`으로 찾거나 읽지도, 사용 판정을 받지도 않은 후보는 하루 정리가 자동 낡음으로 돌리고 원장에 남긴다. 회상을 넣지 않는 설정(`recall` `on_demand`·`off`)에서는 후보가 쓰일 기회가 없으니 하지 않는다. 사용자 말 출처 기억은 대상이 아니고, 사건 기록이 기한보다 짧으면(새 설치) 하지 않는다. 되돌리면 후보로 돌아오고 다시 낡음으로 하지 않는다.
 - 주제(`topic`): 같은 범위·주제의 기억은 하나만 회상한다(세션 시작 규칙 포함): 확정된 것 중 가장 최근 것, 확정이 없으면 후보·낡음 중 가장 최근 것. 후보는 확정(사용자 말)을 가리지 못하고, 최신 판이 낡아도 옛 판은 돌아오지 않는다. 날이 지난 휘발 기억은 현재값이 아니다.
 - 저장 때 대체(설계 · orbit-mem 2판 4.2·4.3, 0.11.0): `memory_save`의 규칙·결정은 `topic`이 필수다(없으면 거절하고 이 범위의 주제 목록과 비슷한 현재값 3개를 보인다). 같은 범위·주제로 저장하면 옛 현재값을 낡음 + `superseded_by`로 돌리고, `supersedes: [id…]`는 범위·주제가 다른 옛 판도 같은 트랜잭션에서 대체한다. 사용자 말(출처 quote)은 옛 사용자 말을 `userQuote` 없이 대체한다(D1). AI가 배운 것·자동화는 사용자 말을 대체하지 않고 어긋남 표시를 남긴다. `volatile`(임시라고 밝힌 말)은 같은 주제를 대체하지 않는다. 응답의 `superseded`·`conflicts`가 한 일을 알린다.
 - 검색: `memory_find`·`orbit-mem search`의 질의는 SQLite FTS5 색인(`memory_index`·`memory_fts`, 스키마 판 5)으로 찾고 점수(0~1)를 매긴다. 한·중·일 글은 두 글자 바이그램으로 쪼개 색인한다. 색인은 기억을 쓰는 같은 트랜잭션에서 맞춘다. 옛 실행 파일이 판 5 DB에 쓴 기억은 색인에 없는 「늦은 줄」이라 검색이 훑어서 함께 찾고, 쓰기 호출이 한 번에 최대 200개씩, `orbit-mem migrate`·`install`·`backup restore`가 전부 채운다. 판 4 → 5 이전은 표를 만들고 전부 채운다. 훅·읽기 op·`doctor`는 채우지 않는다(`doctor`는 `index-stale`로 알릴 뿐이다).
@@ -241,7 +262,7 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 기획 · orbit-mem 4.3(H1~H4). 모델이 필요 없는 정리를 하루 한 번 돌린다. 예전에는 회고 마무리가 돌렸다.
 
 - 세션 시작 훅은 기억 DB `meta`의 `tidy.day`가 오늘이 아니면 `orbit-mem tidy auto`를 따로(새 세션, 입출력 없이) 띄운 뒤 기다리지 않는다. `tidy auto`는 `meta`에 오늘을 먼저 쓴 프로세스만 정리한다(한 문장의 조건부 쓰기): 두 세션이 함께 열려도 하루 한 번만 돈다. 실패는 `logs/tidy.log`에 남기고 다음 날 다시 한다. 훅은 언제나 종료 0이다.
-- 차례: 관찰 기간이 끝난 변경의 효과 판정(`JudgeLedger`) → 해롭다고 판정된 자동 변경 되돌리기(`RevertHarmfulAuto`) → 증거가 생긴 후보 확정 → 끝난 제안 닫기 → 기한 지난 휘발 기억 낡음 → `candidateExpiryDays`일 쓰지 않은 후보 낡음(`inject`가 `full`일 때만) → 제품 지도에 맞는 `product:?` 기억 옮기기 → 30일 지난 세션 묶음 지우기. 바꾼 것은 모두 자동 변경으로 원장에 남고 감사 목록에서 되돌린다.
+- 차례: 관찰 기간이 끝난 변경의 효과 판정(`JudgeLedger`) → 해롭다고 판정된 자동 변경 되돌리기(`RevertHarmfulAuto`) → 증거가 생긴 후보 확정 → 끝난 제안 닫기 → 기한 지난 휘발 기억 낡음 → `candidateExpiryDays`일 쓰지 않은 후보 낡음(`recall`이 `auto`일 때만) → 제품 지도에 맞는 `product:?` 기억 옮기기 → 30일 지난 세션 묶음 지우기. 바꾼 것은 모두 자동 변경으로 원장에 남고 감사 목록에서 되돌린다.
 - `orbit-mem config set autoTidy false`로 끈다(기본 켜짐). 사람은 `orbit-mem tidy`로 지금 돌린다. `doctor`가 켜짐과 마지막 날을 보인다.
 
 ## 개발

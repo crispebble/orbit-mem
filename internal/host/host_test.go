@@ -206,7 +206,8 @@ func TestContext_main은_SessionBundle과_같고_시작을_기록한다(t *testi
 	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) || got.Text == "" {
 		t.Fatalf("context = %+v\nwant %+v", got, want)
 	}
-	if !slices.Contains(got.MemoryIDs, rule.ID) || !strings.Contains(got.Text, dec.Title) || got.Skipped != "" {
+	// 「최근 결정」 줄은 없다(T-3): 핵심 밖 결정은 제목도 들지 않는다.
+	if !slices.Contains(got.MemoryIDs, rule.ID) || strings.Contains(got.Text, dec.Title) || got.Skipped != "" {
 		t.Fatalf("context = %+v", got)
 	}
 	if got.Budget.Chars != want.Chars || got.Budget.Limit != inject.MaxSessionStartRunes {
@@ -238,17 +239,16 @@ func TestContext_main은_SessionBundle과_같고_시작을_기록한다(t *testi
 	}
 }
 
-// --rules brief는 계약 JSON에 없는 Go 쪽 선택지다: inject.Options{Brief: true}와 같은 글.
-func TestContext_brief는_Go_선택지로_받는다(t *testing.T) {
+// 세션 시작은 inject.SessionBundleWith와 같은 글이다(짧은 꼴은 없어졌다, T-27).
+func TestContext_세션_시작은_SessionBundleWith와_같은_글이다(t *testing.T) {
 	e := newEnv(t)
 	s := e.store()
 	for i, title := range []string{"규칙 하나", "규칙 둘"} {
 		save(t, s, memory.SaveInput{Kind: memory.KindRule, Title: title, Body: strings.Repeat("본문 ", 20+i), Scope: memory.ScopeGlobal})
 	}
 	a := e.adapter("b-1")
-	a.opts.Brief = true
 	got := a.recall(host.OpContext, map[string]any{"source": "startup"})
-	want := inject.SessionBundleWith(s, e.cfg, e.where(), "host-x", "b-2", inject.Options{Brief: true})
+	want := inject.SessionBundleWith(s, e.cfg, e.where(), "host-x", "b-2", nil)
 	if got.Text != want.Text || !slices.Equal(got.MemoryIDs, want.MemoryIDs) {
 		t.Fatalf("brief = %q\nwant %q", got.Text, want.Text)
 	}
@@ -310,6 +310,107 @@ func TestRecall_origin과_세션_키(t *testing.T) {
 	}
 }
 
+// 사람 요청 판정: 틀만 있는 요청은 DB를 열기 전에 not-person으로 건너뛴다(origin이 user여도). 아무것도 남기지 않는다.
+func TestRecall_틀만_있는_요청은_DB를_열지_않고_not_person이다(t *testing.T) {
+	e := newEnv(t) // DB를 만들지 않는다
+	a := e.adapter("s-1")
+	for _, prompt := range []string{
+		"[Subagent hand-back]\nstep done",
+		"<task-notification>\n<status>completed</status>\n</task-notification>",
+		"Another Claude session sent a message:\nplease check the build",
+		"<system-reminder>알림</system-reminder>",
+	} {
+		for _, origin := range []string{"", "user"} {
+			f := map[string]any{"prompt": prompt}
+			if origin != "" {
+				f["origin"] = origin
+			}
+			got := a.recall(host.OpRecall, f)
+			if got.Skipped != host.SkippedNotPerson || got.Text != "" || len(got.MemoryIDs) != 0 {
+				t.Fatalf("%q/%q = %+v", prompt, origin, got)
+			}
+		}
+	}
+	if _, err := os.Stat(e.db); err == nil {
+		t.Fatal("DB를 열지 않아야 한다")
+	}
+	// origin이 agent면 그대로 origin이다.
+	if got := a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포", "origin": "agent"}); got.Skipped != host.SkippedOrigin {
+		t.Fatalf("agent = %+v", got)
+	}
+}
+
+func TestRecall_틀만_있는_요청은_활동도_사용_사건도_남기지_않는다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n금요일 배포 금지\n</task-notification>"})
+	if got.Skipped != host.SkippedNotPerson {
+		t.Fatalf("got %+v", got)
+	}
+	if len(events(t, s)) != 0 || len(activities(t, s)) != 0 {
+		t.Fatal("사람 요청이 아니면 기록하지 않는다")
+	}
+}
+
+// 사람이 틀 글을 붙여 넣고 질문하면 회상한다. 활동 기록에는 사람 글(틀을 걷은 것)이 남는다.
+func TestRecall_붙여_넣고_질문하면_회상하고_사람_글을_기록한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "<task-notification>\n<status>completed</status>\n</task-notification>\n\n금요일 배포 금지 맞나"})
+	if got.Skipped != "" || !slices.Contains(got.MemoryIDs, dec.ID) {
+		t.Fatalf("got %+v", got)
+	}
+	if acts := activities(t, s); len(acts) != 1 || acts[0].FirstPrompt != "금요일 배포 금지 맞나" {
+		t.Fatalf("activity = %+v", acts)
+	}
+}
+
+// 인자 있는 슬래시 명령은 인자로 회상한다. 인자 없는 슬래시 명령은 사소하다.
+func TestRecall_슬래시_명령은_인자로_회상한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	dec := save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "/review 금요일 배포 금지 맞나"})
+	if !slices.Contains(got.MemoryIDs, dec.ID) {
+		t.Fatalf("got %+v", got)
+	}
+	if got := a.recall(host.OpRecall, map[string]any{"prompt": "/clear"}); got.Text != "" || got.Skipped != "" {
+		t.Fatalf("인자 없는 명령 = %+v", got)
+	}
+}
+
+// 사소한 요청은 요청 회상(B1)만 건너뛴다. 세션 중 다른 곳에서 확정된 새 기억 줄(B3)은 나오고 활동은 남는다.
+func TestRecall_사소한_요청은_B1만_건너뛰고_B3와_활동은_남긴다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	save(t, s, memory.SaveInput{Kind: memory.KindDecision, Title: "금요일 배포 금지", Body: "주말 장애", Scope: memory.ScopeGlobal})
+	a := e.adapter("s-1")
+	a.recall(host.OpContext, map[string]any{"source": "startup"})
+	time.Sleep(5 * time.Millisecond)
+	fresh := save(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "릴리스 노트는 한국어로", Body: "노트 문서는 한국어", Topic: "릴리스 노트", Scope: memory.ScopeGlobal})
+	got := a.recall(host.OpRecall, map[string]any{"prompt": "ㅇㅇ"})
+	if got.Skipped != "" || !slices.Equal(got.MemoryIDs, []string{fresh.ID}) || !strings.Contains(got.Text, "새 기억") {
+		t.Fatalf("got %+v", got)
+	}
+	if strings.Contains(got.Text, "금요일 배포 금지") {
+		t.Fatalf("B1이 나왔다: %q", got.Text)
+	}
+	acts := activities(t, s)
+	if len(acts) != 1 || acts[0].Prompts != 1 {
+		t.Fatalf("activity = %+v", acts)
+	}
+	for _, ev := range events(t, s) {
+		if ev.Kind == memory.EventInjectPrompt {
+			t.Fatalf("사소한 요청은 요청 회상 사용이 아니다: %v", kinds(events(t, s)))
+		}
+	}
+}
+
 // tool-context는 inject.ToolInjection이고 계산·표시·사건 모두 「세션/agent」 키다. 넣은 것이 없으면 사건이 없다.
 func TestToolContext는_ToolInjection이고_agent_키로_한_번만_준다(t *testing.T) {
 	e := newEnv(t)
@@ -361,6 +462,15 @@ func TestInject_수준과_빈_요청은_사건을_남기지_않는다(t *testing
 	a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
 	if evs := events(t, s); len(evs) != 0 {
 		t.Fatalf("rules 수준의 요청 = %v", kinds(evs))
+	}
+	// 새 키 recall도 같은 뜻이다(T-27): on_demand는 요청 회상 사건이 없고, off는 세션 시작 사건도 없다.
+	e.cfg.Inject = config.InjectFull
+	e.cfg.Recall = config.RecallOnDemand
+	a.recall(host.OpRecall, map[string]any{"prompt": "금요일 배포 금지 맞나"})
+	e.cfg.Recall = config.RecallOff
+	a.recall(host.OpContext, map[string]any{"source": "startup"})
+	if evs := events(t, s); len(evs) != 0 {
+		t.Fatalf("recall on_demand·off = %v", kinds(evs))
 	}
 }
 
@@ -1157,5 +1267,69 @@ func TestCall_trust는_이번_호출의_상한을_낮추기만_한다(t *testing
 		if got := save(c.limit, c.trust, "상한 "+c.limit+" 요청 "+c.trust); got != c.want {
 			t.Errorf("limit %q trust %q = %q, want %q", c.limit, c.trust, got, c.want)
 		}
+	}
+}
+
+// 세션 시작 안내 줄(Options.SessionNotes)은 묶음을 새로 만들 때만 불리고 묶음 글 끝에 함께 저장된다(설계 보완 T-20):
+// resume은 부르지 않고 바이트 같은 묶음, reset(compact·clear) 뒤에는 다시 부른다. subagent·recall off는 부르지 않는다.
+func TestContext_안내_줄은_묶음을_만들_때만_불리고_함께_저장된다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal})
+	a := e.adapter("n-1")
+	calls := 0
+	a.opts.SessionNotes = func() []string { calls++; return []string{"판 안내", " ", "새 판 안내"} }
+	first := a.recall(host.OpContext, map[string]any{"source": "startup"})
+	if calls != 1 || !strings.Contains(first.Text, "답은 존댓말") || !strings.HasSuffix(first.Text, "\n판 안내\n새 판 안내") {
+		t.Fatalf("calls %d first %q", calls, first.Text)
+	}
+	if text, _, ok := s.SessionBundle("host-x", "n-1"); !ok || text != first.Text {
+		t.Fatalf("saved bundle %v %q", ok, text)
+	}
+	again := a.recall(host.OpContext, map[string]any{"source": "resume"})
+	if calls != 1 || again.Text != first.Text || !slices.Equal(again.MemoryIDs, first.MemoryIDs) {
+		t.Fatalf("resume calls %d %q", calls, again.Text)
+	}
+	if _, err := a.do(host.OpReset, nil); err != nil {
+		t.Fatal(err)
+	}
+	a.opts.SessionNotes = func() []string { calls++; return []string{"다른 판 안내"} }
+	renewed := a.recall(host.OpContext, map[string]any{"source": "compact"})
+	if calls != 2 || !strings.HasSuffix(renewed.Text, "\n다른 판 안내") || strings.Contains(renewed.Text, "새 판 안내") {
+		t.Fatalf("after reset calls %d %q", calls, renewed.Text)
+	}
+	sub := a
+	sub.agent = "ag-1"
+	sub.recall(host.OpContext, map[string]any{"source": "startup", "audience": "subagent"})
+	if calls != 2 {
+		t.Fatalf("subagent called the notes: %d", calls)
+	}
+	e.cfg.Recall = config.RecallOff
+	off := e.adapter("n-2")
+	off.opts.SessionNotes = a.opts.SessionNotes
+	// recall=off: 기억은 0자이고 안내 줄만 나간다(예전 inject=off와 같다).
+	if got := off.recall(host.OpContext, map[string]any{"source": "startup"}); calls != 3 || got.Text != "다른 판 안내" {
+		t.Fatalf("recall off calls %d %q", calls, got.Text)
+	}
+}
+
+// 안내 줄 만들개가 panic해도 문맥 op는 핵심 묶음을 내고 남긴다. 안내 줄만 없다(원칙 6: 실패하면 빈 결과로 넘어간다).
+func TestContext_안내_줄이_panic해도_핵심은_나오고_안내_줄만_없다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Scope: memory.ScopeGlobal})
+	a := e.adapter("p-1")
+	a.opts.SessionNotes = func() []string { panic("notes") }
+	out, err := a.do(host.OpContext, map[string]any{"source": "startup"})
+	if err != nil {
+		t.Fatalf("err %v", err)
+	}
+	res, ok := out.(host.Recall)
+	if !ok || !strings.Contains(res.Text, "답은 존댓말") || strings.Contains(res.Text, "notes") {
+		t.Fatalf("out %#v", out)
+	}
+	text, _, saved := s.SessionBundle("host-x", "p-1")
+	if !saved || text != res.Text {
+		t.Fatalf("saved %v %q", saved, text)
 	}
 }

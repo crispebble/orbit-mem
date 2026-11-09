@@ -60,9 +60,9 @@ var planCases = []planCase{
 	{"session-start unknown source", hook.SessionStart, in(map[string]any{"hook_event_name": "SessionStart", "source": "weird"}),
 		[]want{{"context-main-memories", map[string]any{"source": nil}}}},
 	{"prompt", hook.Prompt, in(map[string]any{"hook_event_name": "UserPromptSubmit", "prompt": "보고 한국어로"}),
-		[]want{{"recall-user", nil}}},
+		[]want{{"recall-user", map[string]any{"origin": nil}}}},
 	{"prompt in a subagent", hook.Prompt, in(map[string]any{"prompt": "보고 한국어로", "agent_id": "a-1"}),
-		[]want{{"recall-user", map[string]any{"agent": "a-1"}}}},
+		[]want{{"recall-user", map[string]any{"agent": "a-1", "origin": nil}}}},
 	{"pre-tool", hook.PreTool, in(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}}),
 		[]want{{"tool-context-bash", nil}}},
 	{"pre-tool in a subagent", hook.PreTool, in(map[string]any{"tool_name": "Bash", "agent_id": "a-1"}),
@@ -73,7 +73,7 @@ var planCases = []planCase{
 		[]want{{"session-end-ok", nil}}},
 	// 읽지 못하는 입력은 빈 입력이다: 훅은 계속한다(지금과 같다).
 	{"broken input", hook.Prompt, `not json`,
-		[]want{{"recall-user", map[string]any{"session": nil, "cwd": nil, "prompt": nil}}}},
+		[]want{{"recall-user", map[string]any{"session": nil, "cwd": nil, "prompt": nil, "origin": nil}}}},
 }
 
 func pairs(t *testing.T) map[string]contract.Pair {

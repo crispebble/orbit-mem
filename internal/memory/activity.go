@@ -36,7 +36,7 @@ type Activity struct {
 	ProjectScope string `json:"projectScope,omitempty"`
 	ProjectLabel string `json:"project,omitempty"`
 	Cwd          string `json:"cwd,omitempty"`
-	Launcher     string `json:"launcher"`         // human(훅). 옛 줄에는 orbit-pi·studio·telegram·workflow도 있다
+	Launcher     string `json:"launcher"`         // human(훅)·host(호스트 계약: host·inject·tool). 옛 줄에는 orbit-pi·studio·telegram·workflow도 있다
 	Parent       string `json:"parent,omitempty"` // ORBIT_PARENT of the session
 	StartedAt    int64  `json:"startedAt"`
 	LastAt       int64  `json:"lastAt"`

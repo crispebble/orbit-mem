@@ -26,11 +26,8 @@ func cmdWhy(a *app, args []string) error {
 	if len(pos) < 1 {
 		return errUsage
 	}
-	var opts inject.Options
 	switch *rules {
-	case "", "full":
-	case "brief": // 확정 규칙을 짧은 꼴로(규칙마다 한 줄, 전문은 memory_get과 요청 회상)
-		opts.Brief = true
+	case "", "full", "brief": // 짧은 꼴(brief)은 없어졌다(T-27): 옛 호출이 깨지지 않게 받기만 하고 전문 꼴이다
 	default:
 		return errUsage
 	}
@@ -50,7 +47,7 @@ func cmdWhy(a *app, args []string) error {
 	if *cwd != "" {
 		p = project.Resolve(*cwd)
 	}
-	d := inject.Diagnose(s, cfg, inject.DiagnoseInput{ID: pos[0], Scope: whereOf(p), Prompt: strings.Join(pos[1:], " "), Host: *host, Session: *session, Options: opts})
+	d := inject.Diagnose(s, cfg, inject.DiagnoseInput{ID: pos[0], Scope: whereOf(p), Prompt: strings.Join(pos[1:], " "), Host: *host, Session: *session})
 	if *asJSON || !isTerminal(a.stdout) {
 		return a.json(d)
 	}

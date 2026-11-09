@@ -54,7 +54,8 @@ const (
 // Skipped reasons of an empty recall-shaped result: the request was not a person's, or the DB is not
 // one this binary reads (so the model does not take an empty result for "no memories").
 const (
-	SkippedOrigin = "origin"
+	SkippedOrigin    = "origin"
+	SkippedNotPerson = "not-person" // 서브에이전트 보고·작업 알림·다른 세션 메시지·시스템 알림만 있는 요청
 )
 
 // Request is one contract request: the common fields and those of every operation (an operation

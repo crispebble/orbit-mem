@@ -97,26 +97,21 @@ func (a *app) printAskUser(asks []askUser) {
 	fmt.Fprintln(a.stdout, i18n.T("cli.hostmem.ask.tail", i18n.T("cli.hostmem.ask.reason"), keepCommand))
 }
 
-// withHostMemoryNote adds one line at the end of the session-start context while a
-// memory system overlaps orbit-mem and the user has not chosen to keep it (17.4). The
-// AI reads it and asks the user.
-func withHostMemoryNote(text string, cfg config.Config, cwd string) string {
-	if cfg.Inject == config.InjectOff {
-		return text
+// hostMemoryNote is the session-start note line while a memory system overlaps orbit-mem and the
+// user has not chosen to keep it (17.4), else "". The AI reads it and asks the user.
+func hostMemoryNote(cfg config.Config, cwd string) string {
+	if cfg.RecallMode() == config.RecallOff {
+		return ""
 	}
 	ov, _ := overlapsToAsk(cfg, cwd)
 	if len(ov) == 0 {
-		return text
+		return ""
 	}
 	ids := make([]string, len(ov))
 	for i, o := range ov {
 		ids[i] = o.ID
 	}
-	line := i18n.T("cli.hostmem.note", strings.Join(ids, ", "), keepCommand)
-	if text = strings.TrimRight(text, "\n"); text == "" {
-		return line
-	}
-	return text + "\n" + line
+	return i18n.T("cli.hostmem.note", strings.Join(ids, ", "), keepCommand)
 }
 
 // hostChange is one value host-memory off changed, kept so on can put back only that.

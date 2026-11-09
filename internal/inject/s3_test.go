@@ -178,7 +178,7 @@ func TestSubagentStart_user_핵심만_3000자_안에서_넣는다(t *testing.T) 
 	}
 }
 
-// 검토 지적(2026-11-04): 핵심을 한도까지 채우고 결정 제목이 많아도 세션 시작 묶음은 판 안내 몫을 남기고 6,000자 안이다.
+// 검토 지적(2026-11-04): 핵심을 한도까지 채우고 결정이 많아도 세션 시작 묶음은 6,000자 안이다(안내 줄을 더한 한도는 recall_mode_test).
 func TestS3_핵심을_한도까지_채워도_세션_시작은_한도_안이다(t *testing.T) {
 	s := store(t)
 	cfg := s3Config()
@@ -208,8 +208,8 @@ func TestS3_핵심을_한도까지_채워도_세션_시작은_한도_안이다(t
 		saveIn(t, s, memory.KindRule, fmt.Sprintf("규칙 %d", i), memory.ScopeGlobal, "", fmt.Sprintf("규칙 %d", i))
 	}
 	in := SessionStartInjection(s, cfg, f["시안 폴더"])
-	if in.Chars > MaxSessionStartRunes-sessionNoteRunes {
-		t.Fatalf("session start %d > %d", in.Chars, MaxSessionStartRunes-sessionNoteRunes)
+	if in.Chars > MaxSessionStartRunes {
+		t.Fatalf("session start %d > %d", in.Chars, MaxSessionStartRunes)
 	}
 	for _, scope := range []string{memory.ScopeGlobal, "product:orbit-code-desktop"} {
 		for _, m := range mustCore(t, s, scope) {

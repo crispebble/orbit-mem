@@ -2,6 +2,7 @@
   "config.err.candidate_expiry": "candidateExpiryDays는 0(끔)~365일입니다: %d",
   "config.err.evidence": "confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions(1-30)를 확인해 주세요",
   "config.err.inject": "inject는 full|rules|off입니다: %q",
+  "config.err.recall": "recall은 auto|on_demand|off입니다: %q",
   "config.err.language": "language는 en 또는 ko입니다: %q",
   "config.err.read": "설정 파일을 읽을 수 없습니다(%s): %w",
   "config.err.recall_chars": "recallChars는 100-%d입니다: %d",

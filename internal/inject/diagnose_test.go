@@ -61,7 +61,7 @@ func TestDiagnose_Orbit_Code_세션의_여섯_단계(t *testing.T) {
 	s := store(t)
 	m := save(t, s, memory.KindLesson, "codex exec는 stdin을 닫는다", "", memory.ScopeGlobal, false)
 	prompt := "codex exec stdin 닫힘 문제"
-	in := DiagnoseInput{ID: m.ID, Scope: here, Prompt: prompt, Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
+	in := DiagnoseInput{ID: m.ID, Scope: here, Prompt: prompt, Host: "orbit-code", Session: "c-1"}
 	d := Diagnose(s, config.Default(), in)
 	if st := stages(d); st[StageSelected].Status != Yes || st[StageInjected].Code != "would_inject" || st[StageDelivered].Code != "no_record" {
 		t.Fatalf("before: %+v", d)
@@ -99,13 +99,13 @@ func TestDiagnose_훅_호스트는_돌려준_문맥이_전달이고_확정_규�
 	}
 }
 
-func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
+func TestDiagnose_상시_핵심_확정_규칙은_세션_묶음으로_보고_전달은_세션에_한_번이다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "답은 한글 존댓말", "반말 금지", memory.ScopeGlobal, true)
 	if _, err := s.Pin(r.ID, memory.Who{}); err != nil { // 세션 시작에는 상시 핵심만 든다(S3-R6)
 		t.Fatal(err)
 	}
-	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1", Options: Options{Brief: true}}
+	in := DiagnoseInput{ID: r.ID, Scope: here, Prompt: "날씨 알려줘", Host: "orbit-code", Session: "c-1"}
 	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Host: "orbit-code", Session: "c-1"}, map[string]any{"memoryIds": []string{r.ID}}); err != nil {
 		t.Fatal(err)
 	}
@@ -119,10 +119,10 @@ func TestDiagnose_짧은_꼴의_확정_규칙은_세션_묶음으로_보고_전�
 	}
 }
 
-func TestPrompt_짧은_꼴에서_잘린_규칙_본문은_전문_자리를_알린다(t *testing.T) {
+func TestPrompt_잘린_규칙_본문은_전문_자리를_알린다(t *testing.T) {
 	s := store(t)
 	r := save(t, s, memory.KindRule, "배포 전 확인 순서", strings.Repeat("확인한다. ", 200), memory.ScopeGlobal, true)
-	inj := PromptInjectionWith(s, config.Default(), here, "배포 전 확인 순서 알려줘", Options{Brief: true})
+	inj := PromptInjectionWith(s, config.Default(), here, "배포 전 확인 순서 알려줘", Options{})
 	if !slices.Contains(inj.MemoryIDs, r.ID) || !strings.Contains(inj.Text, "memory_get") {
 		t.Fatalf("%s", inj.Text)
 	}

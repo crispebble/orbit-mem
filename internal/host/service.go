@@ -36,12 +36,15 @@ type Setup struct {
 
 // Options are the choices of one run that the JSON contract does not carry.
 type Options struct {
-	Brief bool   // 확정 규칙을 짧은 꼴로(inject.Options.Brief)
 	Actor string // call로 쓰는 쪽. 없으면 AI
 	// TrustLimit is the highest trust a call's saves may get: the channel the assembly point stands for,
 	// which the contract request cannot raise (its trust only lowers). Empty is agent (memory.ResolveTrust).
 	TrustLimit string
 	At         int64 // 활동 시각(Unix ms). 0이면 Start 때
+	// SessionNotes gives the note lines of a main session start (설계 보완 T-20). The context op calls it
+	// only when it builds the session's bundle anew, and saves its lines at the end of the bundle, so
+	// a resumed session gets the same bytes. Not called for a subagent or with recall off. nil: none.
+	SessionNotes func() []string
 }
 
 // EventFail is the diagnostic event of an operation that ended in an error or a timeout
