@@ -93,5 +93,7 @@
   "memory.err.trust_value": "%w: 출처 등급은 %s 가운데 하나입니다",
   "memory.err.untrusted": "출처가 믿을 수 없는 것(untrusted·system)뿐인 기억이라 확정·핵심 승격·owner·agent 기억 대체를 하지 않습니다. 사용자가 맞다고 한 말(userQuote)을 함께 주면 됩니다",
   "memory.err.trust_not_stored": "이 기억 DB에는 출처 등급 칸이 없어(판 4 사본으로 복구됨) 믿을 수 없는 출처를 저장하지 않았습니다. 기억 DB를 다시 열면(이전) 저장됩니다",
-  "memory.trust.note": "믿을 수 없음"
+  "memory.trust.note": "믿을 수 없음",
+  "memory.err.idempotency_conflict": "이 idempotencyKey는 이미 다른 인자의 쓰기에 썼습니다. 새 요청에는 새 키를 주세요",
+  "memory.err.idempotency_key": "%w: idempotencyKey는 비우지 않고(%d바이트 이하) 인자 해시와 함께 줍니다"
 }

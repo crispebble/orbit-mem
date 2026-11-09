@@ -285,6 +285,13 @@ type SaveInput struct {
 	// assembly point says (a person's own command owner, an AI host agent). Empty is agent. A source
 	// asks for a lower one with Source.Trust; a quote is always owner (ResolveTrust).
 	TrustLimit string
+	// Idem makes the save idempotent: a key already applied with the same argument hash returns the memory it
+	// recorded without writing; the same key with another hash is ErrIdempotencyConflict (idem.go).
+	Idem *Idem
+	// Replaces is an older memory the save puts out of date by the rules of SupersedeAs, in the same
+	// transaction: the save is refused whole when the writer may not change it (the user's words without a
+	// quote) or when the new sources are all untrusted and the old ones are not.
+	Replaces string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -339,6 +346,9 @@ func (in *SaveInput) validate() error {
 		return err
 	}
 	in.Tools = tools
+	if err := in.Idem.validate(); err != nil {
+		return err
+	}
 	return in.validateLifecycle()
 }
 
@@ -361,6 +371,9 @@ type SaveReport struct {
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
 
+	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
+	Replayed *SaveRequest `json:"-"`
+
 	untrusted []string // Conflicts 가운데 새 판의 출처가 믿을 수 없는 것뿐이라 남긴 것
 }
 
@@ -372,7 +385,7 @@ type SaveReport struct {
 // memory (the user said it is for now) does not replace its topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
-	if err != nil {
+	if err != nil || rep.Replayed != nil { // 다시 온 키: 이번에는 아무것도 쓰지 않았다
 		return m, rep, err
 	}
 	for _, id := range rep.Superseded {
@@ -428,8 +441,33 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		return Memory{}, rep, err
 	}
 	defer tx.Rollback()
-	for _, id := range in.Supersedes { // 없는 기억을 지목하면 아무것도 쓰지 않는다
+	action := ApplySave
+	if in.Replaces != "" {
+		action = ApplySupersede
+	}
+	// 멱등 키: 같은 트랜잭션에서 먼저 본다. 적용된 키면 쓰지 않고 기록한 기억을 지금 상태로 돌려준다.
+	if rep.Replayed, err = replayTx(tx, in.Idem, action); err != nil {
+		return Memory{}, rep, err
+	}
+	if rep.Replayed != nil {
+		if err := tx.Commit(); err != nil {
+			return Memory{}, rep, err
+		}
+		m, err := s.Get(rep.Replayed.MemoryID)
+		return m, rep, err
+	}
+	for _, id := range append(slices.Clone(in.Supersedes), in.Replaces) { // 없는 기억을 지목하면 아무것도 쓰지 않는다
+		if id == "" {
+			continue
+		}
 		if _, err := getTx(tx, id); err != nil {
+			return Memory{}, rep, err
+		}
+	}
+	// Replaces는 SupersedeAs의 보호를 거친다: 사람이 아니면 사용자 말 기억은 사용자 말(userQuote)이 있어야 낡게 한다.
+	// 새 출처가 사용자 말이면 그 말이 근거다(D1, supersedeTx와 같다).
+	if in.Replaces != "" && in.Source.Kind != SourceQuote {
+		if err := guardTx(tx, in.Who, now, in.Replaces); err != nil {
 			return Memory{}, rep, err
 		}
 	}
@@ -454,6 +492,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			}
 		}
 		if err := savePinTx(tx, in, existingID, now); err != nil {
+			return Memory{}, rep, err
+		}
+		if err := recordTx(tx, in.Idem, existingID, action, now); err != nil {
 			return Memory{}, rep, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -517,6 +558,9 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		return Memory{}, rep, err
 	}
 	if err := savePinTx(tx, in, m.ID, now); err != nil {
+		return Memory{}, rep, err
+	}
+	if err := recordTx(tx, in.Idem, m.ID, action, now); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -742,6 +786,7 @@ type UpdateInput struct {
 	Action          string
 	Who             Who    // 비우면 사람. 사람이 아니면 사용자 인용 기억은 사용자 말이 있어야 고친다
 	ExpectState     string // 비우지 않으면 지금 상태가 이것일 때만 고친다(자동 확정이 겹치지 않게)
+	Idem            *Idem  // 멱등 키: 같은 키·같은 해시로 다시 오면 쓰지 않고 지금 기억을 돌려준다(idem.go)
 }
 
 // Update edits a memory and records a new version. A writer other than the
@@ -749,11 +794,41 @@ type UpdateInput struct {
 // and confirms a candidate only with them (automatic confirmation goes through
 // ConfirmByEvidence).
 func (s *Store) Update(in UpdateInput) (Memory, error) {
+	m, _, err := s.UpdateWith(in)
+	return m, err
+}
+
+// UpdateWith is Update that also says, for an idempotency key that came before (in.Idem), the earlier
+// application: then nothing was written and the memory comes back as it is now. The key is checked
+// before anything else (a stale ExpectedVersion of the retried call does not matter) and recorded in
+// the update's transaction.
+func (s *Store) UpdateWith(in UpdateInput) (Memory, *SaveRequest, error) {
+	if err := in.Idem.validate(); err != nil {
+		return Memory{}, nil, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return Memory{}, err
+		return Memory{}, nil, err
 	}
 	defer tx.Rollback()
+	replay, err := replayTx(tx, in.Idem, ApplyUpdate)
+	if err != nil {
+		return Memory{}, nil, err
+	}
+	if replay != nil {
+		if err := tx.Commit(); err != nil {
+			return Memory{}, nil, err
+		}
+		m, err := s.Get(replay.MemoryID)
+		return m, replay, err
+	}
+	m, err := s.update(tx, in)
+	return m, nil, err
+}
+
+// update is the body of Update in its transaction tx, which it commits.
+
+func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	m, err := getTx(tx, in.ID)
 	if err != nil {
 		return m, err
@@ -832,6 +907,9 @@ func (s *Store) Update(in UpdateInput) (Memory, error) {
 		action = "update"
 	}
 	if err := writeTx(tx, m, action, in.Reason, m.UpdatedAt); err != nil {
+		return m, err
+	}
+	if err := recordTx(tx, in.Idem, m.ID, ApplyUpdate, m.UpdatedAt); err != nil {
 		return m, err
 	}
 	if err := tx.Commit(); err != nil {

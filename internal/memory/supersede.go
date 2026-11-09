@@ -6,6 +6,7 @@ package memory
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -20,6 +21,9 @@ import (
 func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (SaveReport, error) {
 	var rep SaveReport
 	targets := slices.Clone(in.Supersedes)
+	if in.Replaces != "" {
+		targets = append(targets, in.Replaces)
+	}
 	if topic && m.Topic != "" && m.Retention != RetentionVolatile {
 		rows, err := tx.Query(`SELECT id FROM memories WHERE scope=? AND topic=? AND state IN ('candidate','confirmed') AND id<>?`, m.Scope, m.Topic, m.ID)
 		if err != nil {
@@ -58,6 +62,12 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		reason := "같은 주제의 새 판: " + m.Title
 		if userWords {
 			reason = "사용자 말로 대체: " + m.Title // D1: 새 말 자체가 근거다
+		} else if id == in.Replaces {
+			// 고른 옛 판(Replaces)은 SupersedeAs처럼 막는다: 사용자 말 보호는 save가 guardTx로 이미 거쳤고,
+			// 믿을 수 없는 출처뿐인 새 판은 owner·agent 판을 낡게 하지 못한다(D7) — 어긋남으로 두지 않고 거절한다.
+			if Untrusted(newTrust) && !Untrusted(old.Trust) && in.Who.quote() == "" {
+				return rep, fmt.Errorf("%w: %s", ErrUntrusted, m.ID)
+			}
 		} else if p, err := protectedTx(tx, id); err != nil {
 			return rep, err
 		} else if p {

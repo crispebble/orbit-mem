@@ -525,6 +525,27 @@ func TestIndex_판4_사본으로_복구된_DB에서도_열려_있던_저장소�
 	if err != nil || owner.ID != m.ID || owner.Trust != TrustAgent { // owner를 적을 칸이 없으면 낮춰(종류의 등급으로) 남긴다
 		t.Fatalf("owner save after restore: %+v %v", owner, err)
 	}
+	// 멱등 표(save_requests)도 판 4 사본에는 없다: 키를 기록하지 않고 저장·고침·건너뛰기는 성공한다. 같은 인자의
+	// 재시도는 같은 제목 단축이 새 기억을 만들지 않게 막는다.
+	idem := &Idem{Key: "restore-key", Hash: "h"}
+	for range 2 {
+		got, err := a.Save(SaveInput{Kind: KindFact, Title: "복구 뒤 저장", Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "s"}, Idem: idem})
+		if err != nil || got.ID != m.ID {
+			t.Fatalf("idempotent save after restore: %+v %v", got, err)
+		}
+	}
+	if _, ok, err := a.SaveRequest("restore-key"); err != nil || ok {
+		t.Fatalf("save request after restore %v %v", ok, err)
+	}
+	if _, err := a.Update(UpdateInput{ID: m.ID, Body: &body, Idem: &Idem{Key: "restore-update", Hash: "h"}}); err != nil {
+		t.Fatalf("idempotent update after restore: %v", err)
+	}
+	if got, replay, err := a.RecordSkip(Idem{Key: "restore-skip", Hash: "h"}, m.ID); err != nil || got.ID != m.ID || replay != nil {
+		t.Fatalf("skip after restore: %+v %+v %v", got, replay, err)
+	}
+	if n, err := a.PruneSaveRequests(SaveRequestDays); err != nil || n != 0 {
+		t.Fatalf("prune after restore %d %v", n, err)
+	}
 	// 낮춘 등급(믿을 수 없음)은 적을 칸이 없으면 저장하지 않는다: agent로 올려 남기지 않는다.
 	if _, err := a.Save(SaveInput{Kind: KindFact, Title: "복구 뒤 웹 글", Scope: ScopeGlobal, Source: Source{Kind: SourceFile, Ref: "web", Trust: TrustUntrusted}}); !errors.Is(err, ErrTrustNotStored) {
 		t.Fatalf("untrusted save after restore err %v", err)
@@ -540,6 +561,13 @@ func TestIndex_판4_사본으로_복구된_DB에서도_열려_있던_저장소�
 		t.Fatalf("after reopen stale %d index %d", staleCount(t, w), countRows(t, w, "memory_index"))
 	}
 	wantIndexed(t, w, m.ID)
+	// 이전 뒤에는 키를 다시 기록한다.
+	if _, _, err := w.RecordSkip(Idem{Key: "restore-skip", Hash: "h"}, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok, err := w.SaveRequest("restore-skip"); err != nil || !ok || r.Action != ApplySkip {
+		t.Fatalf("save request after reopen %+v %v %v", r, ok, err)
+	}
 }
 
 func TestIndex_두_연결이_동시에_써도_색인_줄은_기억마다_하나이고_늦은_줄이_없다(t *testing.T) {
