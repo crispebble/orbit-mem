@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -135,13 +136,16 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 		}
 		return ctx
 	}
+	// 세션 합계는 훅 글 전체(머리말·기억 줄·가리키기 줄)다(1-6 b6r 2차). 같은 기억은 세션에 한 번 가리킨다.
 	total, shown, empty := 0, 0, 0
+	pointed := map[string]bool{}
 	for call := 0; call < 12; call++ {
 		ctx := pre("S", "mcp__docs__write_page")
 		if ctx == "" {
 			empty++
 			continue
 		}
+		total += utf8.RuneCountInString(ctx)
 		var more string
 		for _, line := range strings.Split(ctx, "\n")[1:] {
 			switch {
@@ -149,21 +153,23 @@ func TestHook_도구_직전_훅은_2500자_이하이고_세션_합계_2000자에
 				more = line
 			case strings.HasPrefix(line, "- "):
 				shown++
-				total += utf8.RuneCountInString(line) + 1
-			default:
-				total += utf8.RuneCountInString(line) + 1
 			}
 		}
 		if total > 2000 {
-			t.Fatalf("call %d: session memory lines %d runes", call, total)
+			t.Fatalf("call %d: session tool text %d runes", call, total)
 		}
-		// 같은 기억들은 세션에 한 번 가리킨다: 첫 호출만 가리키기 줄이 있다.
-		if (call == 0) != (more != "") || (call == 0 && (strings.Count(more, "(m-") != 5 || !strings.Contains(more, fmt.Sprintf("외 %d개 — memory_find", n-shown-5)))) {
+		for _, id := range regexp.MustCompile(`\((m-[0-9a-f]+)\)`).FindAllStringSubmatch(more, -1) {
+			if pointed[id[1]] {
+				t.Fatalf("call %d: %s pointed twice\n%s", call, id[1], ctx)
+			}
+			pointed[id[1]] = true
+		}
+		if call == 0 && (strings.Count(more, "(m-") != 5 || !strings.Contains(more, fmt.Sprintf("외 %d개 — memory_find", n-shown-5))) {
 			t.Fatalf("call %d: pointer %q\n%s", call, more, ctx)
 		}
 	}
-	if shown >= n || total+160 <= 2000 || empty < 2 {
-		t.Fatalf("did not stop at the session sum once told: shown=%d total=%d empty=%d", shown, total, empty)
+	if shown >= n || total+120 <= 2000 || empty < 2 {
+		t.Fatalf("did not stop at the session sum: shown=%d total=%d empty=%d", shown, total, empty)
 	}
 	if ctx := pre("long", "mcp__docs__"+strings.Repeat("x", 10000)); !strings.Contains(ctx, "외 13개 — memory_find") {
 		t.Fatalf("long tool name:\n%.300s", ctx)
