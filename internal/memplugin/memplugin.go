@@ -8,8 +8,9 @@
 //   - Local: the folder orbit-mem install writes to $ORBIT_HOME/plugins/orbit-mem, with the
 //     Codex format and Codex's local marketplace (.agents/plugins/marketplace.json) too.
 //
-// Hooks and the MCP server call orbit-mem on PATH, never an absolute path, so the same
-// plugin works on every PC. The orbit-code harness plugin is built by orbit-code (orb); the
+// Hooks and the MCP server look for orbit-mem on PATH first, then in the default install
+// folder ($HOME/.local/bin), never an absolute path, so the same plugin works on every PC
+// and in apps a launcher starts with a bare PATH (/usr/bin:/bin). The orbit-code harness plugin is built by orbit-code (orb); the
 // two plugins do not know each other.
 package memplugin
 
@@ -200,12 +201,13 @@ func encode(v any) []byte {
 	return b.Bytes()
 }
 
-// hookCommand is the sh line a host runs: orbit-mem on PATH with its arguments, else the
-// missing-binary context (session start) or nothing, exit 0 either way. An if, not && ||,
+// hookCommand is the sh line a host runs: orbit-mem (PATH first, else $HOME/.local/bin)
+// with its arguments, else the missing-binary context (session start) or nothing, exit 0 either way. An if, not && ||,
 // so a failing orbit-mem never adds the notice after its own output.
 func hookCommand(event string, h Hook, host, version string) string {
 	call := fmt.Sprintf("orbit-mem hook %s --host %s --plugin-version %s", h.Hook, host, version)
-	line := "if command -v orbit-mem >/dev/null 2>&1; then " + call + ";"
+	call = strings.Replace(call, "orbit-mem hook", `"$p" hook`, 1)
+	line := `p=$(command -v orbit-mem 2>/dev/null) || p="$HOME/.local/bin/orbit-mem"; if [ -x "$p" ]; then ` + call + ";"
 	if h.Missing != "" {
 		line += " else printf '%s\\n' '" + inject.HookOutput(event, h.Missing) + "';"
 	}

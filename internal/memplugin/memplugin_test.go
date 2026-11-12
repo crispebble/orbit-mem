@@ -61,7 +61,7 @@ func TestClaude_꼴(t *testing.T) {
 	}
 	mustJSON(t, files, ".mcp.json", &mcp)
 	srv := mcp.MCPServers["orbit-mem"]
-	if len(mcp.MCPServers) != 1 || srv["command"] != "orbit-mem" || !slices.Equal(toStrings(srv["args"]), []string{"mcp"}) {
+	if len(mcp.MCPServers) != 1 || srv["command"] != "/bin/sh" || len(toStrings(srv["args"])) != 3 || !strings.HasSuffix(toStrings(srv["args"])[1], `exec "$p" mcp`) {
 		t.Fatalf(".mcp.json %v", mcp)
 	}
 	checkHooks(t, files, "hooks/hooks.json", "claude", "0.4.0")
@@ -112,8 +112,8 @@ func checkHooks(t *testing.T, files Files, path, host, version string) {
 			t.Fatalf("%s %s: %+v", path, e, g)
 		}
 		hk := g[0].Hooks[0]
-		call := "orbit-mem hook " + want.name + " --host " + host + " --plugin-version " + version
-		if hk.Type != "command" || hk.Timeout != want.timeout || hk.Async || !strings.Contains(hk.Command, call) || !strings.HasPrefix(hk.Command, "if command -v orbit-mem ") {
+		call := `"$p" hook ` + want.name + " --host " + host + " --plugin-version " + version
+		if hk.Type != "command" || hk.Timeout != want.timeout || hk.Async || !strings.Contains(hk.Command, call) || !strings.HasPrefix(hk.Command, "p=$(command -v orbit-mem ") {
 			t.Errorf("%s %s: %+v", path, e, hk)
 		}
 		if host == "codex" && want.limit > 0 {
@@ -157,7 +157,7 @@ func TestCodex_꼴(t *testing.T) {
 		} `json:"mcpServers"`
 	}
 	mustJSON(t, files, "codex/mcp.json", &mcp)
-	if s := mcp.MCPServers["orbit-mem"]; s.Command != "orbit-mem" || !slices.Equal(s.Args, []string{"mcp"}) || !slices.Equal(s.EnvVars, []string{"ORBIT_HOME"}) {
+	if s := mcp.MCPServers["orbit-mem"]; s.Command != "/bin/sh" || len(s.Args) != 3 || !strings.HasSuffix(s.Args[1], `exec "$p" mcp`) || !slices.Equal(s.EnvVars, []string{"ORBIT_HOME"}) {
 		t.Fatalf("codex mcp %+v", mcp)
 	}
 	checkHooks(t, files, "hooks/codex.json", "codex", "0.4.0")
@@ -349,7 +349,7 @@ func TestSubagentStart_훅은_두_호스트_꼴에_있다(t *testing.T) {
 		var hf hookFile
 		mustJSON(t, files, path, &hf)
 		groups := hf.Hooks["SubagentStart"]
-		if len(groups) != 1 || len(groups[0].Hooks) != 1 || !strings.Contains(groups[0].Hooks[0].Command, "orbit-mem hook subagent-start --host "+host) {
+		if len(groups) != 1 || len(groups[0].Hooks) != 1 || !strings.Contains(groups[0].Hooks[0].Command, `"$p" hook subagent-start --host `+host) {
 			t.Fatalf("%s SubagentStart %+v", host, groups)
 		}
 	}

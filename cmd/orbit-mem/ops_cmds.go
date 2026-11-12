@@ -411,6 +411,20 @@ func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource s
 	return nil
 }
 
+// launcherBinary is the orbit-mem the plugin's hooks and MCP launcher would run: the one on
+// PATH (onPath), else an executable file in the default install folder, as in the launcher's
+// sh line. "" when neither exists.
+func launcherBinary(onPath string) string {
+	if onPath != "" {
+		return onPath
+	}
+	p := filepath.Join(install.DefaultBinDir(), install.BinaryName())
+	if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() && (runtime.GOOS == "windows" || st.Mode()&0o111 != 0) {
+		return p
+	}
+	return ""
+}
+
 func samePath(a, b string) bool {
 	ra, err1 := filepath.EvalSymlinks(a)
 	rb, err2 := filepath.EvalSymlinks(b)
@@ -451,23 +465,26 @@ func cmdUninstall(a *app, args []string) error {
 
 // doctorReport is orbit-mem doctor --json. orbit-code's orb doctor reads it: keep the keys.
 type doctorReport struct {
-	Version    string             `json:"version"`
-	Binary     string             `json:"binary"`     // this orbit-mem
-	PathBinary string             `json:"pathBinary"` // the orbit-mem hooks and MCP find on PATH ("" none)
-	Home       string             `json:"home"`
-	DB         bool               `json:"db"` // memory.db exists
-	Config     config.Config      `json:"config"`
-	Memories   map[string]int     `json:"memories"`
-	Pending    int                `json:"pendingProposals"`
-	Activity   activityStatus     `json:"activity"`
-	Tidy       tidyStatus         `json:"tidy"`
-	LastBackup string             `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
-	Backups    backupStatus       `json:"backups"`
-	Claude     claudeStatus       `json:"claude"`
-	Codex      codexStatus        `json:"codex"`
-	Update     updateStatus       `json:"update"`
-	Schema     *memory.SchemaInfo `json:"schema,omitempty"` // 기억 DB의 판과 이 실행 파일의 판(DB가 없으면 빠진다)
-	Problems   []problem          `json:"problems"`
+	Version    string `json:"version"`
+	Binary     string `json:"binary"`     // this orbit-mem
+	PathBinary string `json:"pathBinary"` // orbit-mem on the shell PATH ("" none)
+	// LauncherBinary is what the plugin's hooks and MCP launcher find: PATH first, else the
+	// default install folder ("" none).
+	LauncherBinary string             `json:"launcherBinary"`
+	Home           string             `json:"home"`
+	DB             bool               `json:"db"` // memory.db exists
+	Config         config.Config      `json:"config"`
+	Memories       map[string]int     `json:"memories"`
+	Pending        int                `json:"pendingProposals"`
+	Activity       activityStatus     `json:"activity"`
+	Tidy           tidyStatus         `json:"tidy"`
+	LastBackup     string             `json:"lastBackup,omitempty"` // 마지막 기억 하루 사본(memory-YYYYMMDD.sqlite)
+	Backups        backupStatus       `json:"backups"`
+	Claude         claudeStatus       `json:"claude"`
+	Codex          codexStatus        `json:"codex"`
+	Update         updateStatus       `json:"update"`
+	Schema         *memory.SchemaInfo `json:"schema,omitempty"` // 기억 DB의 판과 이 실행 파일의 판(DB가 없으면 빠진다)
+	Problems       []problem          `json:"problems"`
 }
 
 // updateStatus is the version part of doctor: the newest version is the cached answer of the
@@ -539,7 +556,9 @@ func cmdDoctor(a *app, args []string) error {
 	}
 	if found, err := exec.LookPath("orbit-mem"); err == nil {
 		rep.PathBinary = found
-	} else {
+	}
+	rep.LauncherBinary = launcherBinary(rep.PathBinary)
+	if rep.LauncherBinary == "" {
 		add("not-on-path", fmt.Sprintf(`orbit-mem install && export PATH="%s:$PATH"`, install.DefaultBinDir()))
 	}
 	if _, err := os.Stat(p.DB()); err == nil { // 설치 전이면 DB를 만들지 않는다

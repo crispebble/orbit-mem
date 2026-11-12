@@ -399,3 +399,68 @@ func TestDoctor_파이프는_JSON(t *testing.T) {
 		t.Fatalf("파이프인데 JSON이 아닙니다: %v\n%s", err, out)
 	}
 }
+
+// 끝 기준: doctor는 훅·MCP 런처와 같은 탐색(PATH, 없으면 기본 설치 폴더)으로 실행 파일을 찾는다.
+// launcherBinary가 그 결과이고, pathBinary(셸 PATH만)는 그대로다. 둘 다 못 찾을 때만 not-on-path를 낸다.
+func TestDoctor_런처_탐색(t *testing.T) {
+	f := newFakePC(t)
+	seed(t)
+	type report struct {
+		PathBinary, LauncherBinary string
+		Problems                   []struct{ ID, Fix string }
+	}
+	doctor := func() (rep report, raw map[string]json.RawMessage) {
+		t.Helper()
+		out, errOut, code := run(t, "", "doctor", "--json")
+		if code != 0 {
+			t.Fatalf("%d %s", code, errOut)
+		}
+		if err := json.Unmarshal([]byte(out), &rep); err != nil {
+			t.Fatal(err)
+		}
+		json.Unmarshal([]byte(out), &raw)
+		return
+	}
+	has := func(rep report, id string) bool {
+		for _, p := range rep.Problems {
+			if p.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	// 어디에도 없다
+	rep, raw := doctor()
+	if _, ok := raw["launcherBinary"]; !ok || rep.LauncherBinary != "" || !has(rep, "not-on-path") {
+		t.Fatalf("없음: %+v", rep)
+	}
+	for _, p := range rep.Problems {
+		if p.ID == "not-on-path" && !strings.Contains(p.Fix, "orbit-mem install") {
+			t.Errorf("고칠 명령 %q", p.Fix)
+		}
+	}
+	// PATH에는 없고 기본 설치 폴더에만 있다: 런처는 찾는다
+	home, _ := os.UserHomeDir()
+	dflt := filepath.Join(home, ".local", "bin", "orbit-mem")
+	if runtime.GOOS != "windows" {
+		os.MkdirAll(filepath.Dir(dflt), 0o755)
+		os.WriteFile(dflt, []byte("#!/bin/sh\n"), 0o755)
+		rep, _ = doctor()
+		if rep.PathBinary != "" || rep.LauncherBinary != dflt || has(rep, "not-on-path") {
+			t.Fatalf("기본 설치 폴더: %+v", rep)
+		}
+	}
+	// 실행 권한이 없으면 못 찾는다
+	if runtime.GOOS != "windows" {
+		os.Chmod(dflt, 0o644)
+		if rep, _ = doctor(); rep.LauncherBinary != "" || !has(rep, "not-on-path") {
+			t.Fatalf("실행 권한 없음: %+v", rep)
+		}
+		os.Remove(dflt)
+	}
+	// PATH에 있으면 PATH가 우선이다
+	os.WriteFile(filepath.Join(f.bin, "orbit-mem"), []byte("#!/bin/sh\n"), 0o755)
+	if rep, _ = doctor(); rep.PathBinary != filepath.Join(f.bin, "orbit-mem") || rep.LauncherBinary != rep.PathBinary || has(rep, "not-on-path") {
+		t.Fatalf("PATH 우선: %+v", rep)
+	}
+}

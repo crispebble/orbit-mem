@@ -7,8 +7,8 @@
   "skills": ["memory", "proposals"],
   "mcpServers": {
     "orbit-mem": {
-      "command": "orbit-mem",
-      "args": ["mcp"],
+      "command": "/bin/sh",
+      "args": ["-c", "p=$(command -v orbit-mem) || p=\"$HOME/.local/bin/orbit-mem\"; [ -x \"$p\" ] || { echo 'orbit-mem 실행 파일을 찾지 못했습니다' >&2; exit 127; }; exec \"$p\" mcp", "orbit-mem-mcp"],
       "envVars": ["ORBIT_HOME"]
     }
   },
@@ -19,7 +19,7 @@
         "matcher": "startup|resume|clear|compact|fork",
         "timeout": 10,
         "codexContextLimit": 12000,
-        "missing": "orbit-mem 실행 파일이 PATH에 없습니다. https://github.com/crispebble/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요."
+        "missing": "orbit-mem 실행 파일이 PATH와 ~/.local/bin 어디에도 없습니다. https://github.com/crispebble/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요."
       }
     ],
     "UserPromptSubmit": [
