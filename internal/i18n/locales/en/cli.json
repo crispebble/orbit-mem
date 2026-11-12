@@ -67,7 +67,7 @@
   "cli.doctor.problem.binary-older-than-db": "This orbit-mem is older than the memory DB (DB schema %d, this binary %d); it answers empty until you update it",
   "cli.doctor.problem.migration-needed": "The memory DB needs a schema migration (an older orbit-mem made it)",
   "cli.doctor.problem.db-missing": "No memory DB yet (orbit-mem is not installed)",
-  "cli.doctor.problem.not-on-path": "orbit-mem is not on PATH, so the plugin's hooks and MCP server cannot start",
+  "cli.doctor.problem.not-on-path": "orbit-mem is on neither PATH nor the default install folder, so the plugin's hooks and MCP server cannot start",
   "cli.doctor.problem.old-proposals": "%d old proposals are left from before the approval queue went away. Nobody needs to decide them; close them (preview with --dry-run first)",
   "cli.doctor.yes": "yes",
   "cli.err.usage": "wrong usage",

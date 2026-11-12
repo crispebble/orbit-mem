@@ -67,7 +67,7 @@
   "cli.doctor.problem.binary-older-than-db": "이 orbit-mem이 기억 DB보다 옛 판입니다(DB 판 %d, 이 실행 파일 %d). 올리기 전에는 빈 결과로 답합니다",
   "cli.doctor.problem.migration-needed": "기억 DB의 스키마 이전이 필요합니다(옛 orbit-mem이 만든 DB)",
   "cli.doctor.problem.db-missing": "기억 DB가 아직 없습니다(orbit-mem을 설치하지 않음)",
-  "cli.doctor.problem.not-on-path": "orbit-mem이 PATH에 없어 플러그인의 훅과 MCP 서버가 뜨지 않습니다",
+  "cli.doctor.problem.not-on-path": "orbit-mem을 PATH와 기본 설치 폴더 어디에서도 찾지 못해 플러그인의 훅과 MCP 서버가 뜨지 않습니다",
   "cli.doctor.problem.old-proposals": "대기열을 없애기 전에 남은 옛 제안이 %d건 있습니다. 더는 사람이 결정할 일이 아니니 정리하세요(먼저 --dry-run으로 미리 보기)",
   "cli.doctor.yes": "있음",
   "cli.err.usage": "사용법이 맞지 않습니다",

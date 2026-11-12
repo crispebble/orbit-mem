@@ -75,9 +75,9 @@ orbit-mem doctor               # 상태와 문제마다 고칠 명령 한 줄
 
 `install`은 아무것도 예약하지 않는다. 0.6.0 전 `orbit-mem install`이 등록한 회고 예약(launchd `dev.onidot.orbit.retro`, Windows 작업 `Orbit Retro`)을 지우던 일도 0.17.0에서 걷어냈다: 그런 예약이 남아 있으면 손으로 지운다(`launchctl bootout gui/$(id -u)/dev.onidot.orbit.retro`). `--no-hosts`는 호스트를 건드리지 않고, `--dry-run`은 무엇을 할지만 보인다. `orbit-mem uninstall`은 두 호스트의 `orbit-mem@orbit-mem`·마켓 `orbit-mem`을 뺀다(있는 것만). 기억 DB·활동 기록·백업·로컬 플러그인 폴더는 남긴다.
 
-Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 플러그인만 깔 수도 있다. 이때 실행 파일이 PATH에 없으면 세션 시작 훅이 설치 안내(「orbit-mem 실행 파일이 PATH에 없습니다. … `orbit-mem install`을 실행하세요.」)를 문맥으로 내고, 요청·세션 끝 훅은 조용히 넘어간다. 실행 파일과 플러그인의 판이 다르면 세션 시작 문맥 끝에 `orbit-mem install`로 맞추라는 한 줄이 붙는다(훅이 `--plugin-version`을 넘긴다).
+Claude Code의 `/plugin`에서 GitHub 마켓 `crispebble/orbit-mem`을 더해 플러그인만 깔 수도 있다. 이때 실행 파일이 PATH와 `~/.local/bin` 어디에도 없으면 세션 시작 훅이 설치 안내(「orbit-mem 실행 파일이 PATH와 ~/.local/bin 어디에도 없습니다. … `orbit-mem install`을 실행하세요.」)를 문맥으로 내고, 요청·세션 끝 훅은 조용히 넘어간다. 실행 파일과 플러그인의 판이 다르면 세션 시작 문맥 끝에 `orbit-mem install`로 맞추라는 한 줄이 붙는다(훅이 `--plugin-version`을 넘긴다).
 
-훅과 MCP 서버는 절대경로를 박지 않고 PATH의 `orbit-mem`을 부른다. 훅 명령은 sh 꼴이다(`if command -v orbit-mem >/dev/null 2>&1; then orbit-mem hook … --host … --plugin-version …; else …; fi`). 맥·리눅스에서 시험했고 Windows는 확인하지 않았다. 호스트를 Dock·Finder에서 띄우면 셸의 PATH를 받지 못할 수 있으니 `orbit-mem doctor`의 `orbit-mem on PATH`로 확인한다.
+훅과 MCP 서버는 절대경로를 박지 않고 PATH의 `orbit-mem`을 먼저 찾고, 없으면 기본 설치 폴더(`$HOME/.local/bin`)에서 찾는다. 훅 명령은 sh 꼴이다(`p=$(command -v orbit-mem 2>/dev/null) || p="$HOME/.local/bin/orbit-mem"; if [ -x "$p" ]; then "$p" hook … --host … --plugin-version …; else …; fi`). MCP 서버는 `/bin/sh -c`로 같은 탐색을 하고 `exec`로 `orbit-mem mcp`를 띄우며, 못 찾으면 종료 코드 127과 안내를 낸다. 맥·리눅스에서 시험했고 Windows는 확인하지 않았다. 호스트를 Dock·Finder·launchd로 띄우면 셸의 PATH 없이(`/usr/bin:/bin` 정도) 뜰 수 있는데, 기본 설치 폴더 폴백 덕에 `orbit-mem install`이 둔 실행 파일은 그래도 찾는다. `orbit-mem doctor`의 `launcherBinary`(훅·MCP가 찾을 실행 파일)로 확인한다.
 
 이력: 2026-11-01까지 이 저장소의 실행 파일은 지금 orbit-code의 명령인 `orb`(4차 동안 별칭 `oni`)였고, 작업 기록(`work.db`, 훅 번역·결정 카드), orbit-pi 런타임·데몬·TUI 실행, orbit-code TS CLI 다리를 함께 담았다. N4-2 차례 5(ONID-121)에서 그것들을 걷어 내고 `orbit-mem` 0.4.0이 됐다. 옛 `work.db`는 0.17.0부터 읽지도 복사하지도 않는다(파일은 지우지 않는다).
 
