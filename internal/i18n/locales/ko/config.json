@@ -1,5 +1,6 @@
 {
   "config.err.candidate_expiry": "candidateExpiryDays는 0(끔)~365일입니다: %d",
+  "config.err.claude_marketplace": "claudeMarketplace는 마켓 출처(owner/repo, git 주소, 로컬 폴더 절대경로)이고 -로 시작하거나 앞뒤 빈칸·제어 문자가 있을 수 없습니다: %q",
   "config.err.evidence": "confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions(1-30)를 확인해 주세요",
   "config.err.inject": "inject는 full|rules|off입니다: %q",
   "config.err.recall": "recall은 auto|on_demand|off입니다: %q",

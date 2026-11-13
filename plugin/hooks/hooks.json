@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook pre-tool --host claude --plugin-version 0.17.1; fi",
+            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook pre-tool --host claude --plugin-version 0.18.0; fi",
             "timeout": 5,
             "type": "command"
           }
@@ -15,7 +15,7 @@
       {
         "hooks": [
           {
-            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook session-end --host claude --plugin-version 0.17.1; fi",
+            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook session-end --host claude --plugin-version 0.18.0; fi",
             "timeout": 3,
             "type": "command"
           }
@@ -26,7 +26,7 @@
       {
         "hooks": [
           {
-            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook session-start --host claude --plugin-version 0.17.1; else printf '%s\\n' '{\"hookSpecificOutput\":{\"additionalContext\":\"orbit-mem 실행 파일이 PATH와 ~/.local/bin 어디에도 없습니다. https://github.com/crispebble/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요.\",\"hookEventName\":\"SessionStart\"}}'; fi",
+            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook session-start --host claude --plugin-version 0.18.0; else printf '%s\\n' '{\"hookSpecificOutput\":{\"additionalContext\":\"orbit-mem 실행 파일이 PATH와 ~/.local/bin 어디에도 없습니다. https://github.com/crispebble/orbit-mem 안내대로 설치한 뒤 `orbit-mem install`을 실행하세요.\",\"hookEventName\":\"SessionStart\"}}'; fi",
             "timeout": 10,
             "type": "command"
           }
@@ -38,7 +38,7 @@
       {
         "hooks": [
           {
-            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook subagent-start --host claude --plugin-version 0.17.1; fi",
+            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook subagent-start --host claude --plugin-version 0.18.0; fi",
             "timeout": 5,
             "type": "command"
           }
@@ -49,7 +49,7 @@
       {
         "hooks": [
           {
-            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook prompt --host claude --plugin-version 0.17.1; fi",
+            "command": "p=$(command -v orbit-mem 2>/dev/null) || p=\"$HOME/.local/bin/orbit-mem\"; if [ -x \"$p\" ]; then \"$p\" hook prompt --host claude --plugin-version 0.18.0; fi",
             "timeout": 5,
             "type": "command"
           }

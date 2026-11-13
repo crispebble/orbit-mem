@@ -16,7 +16,8 @@ import (
 
 // fakePC is a PC with fake claude and codex on PATH that log their arguments: HOME, PATH
 // and CODEX_HOME all point into temporary folders, so no test reaches the real hosts or
-// launchctl. claude answers its list commands from state files.
+// launchctl. claude answers its list commands from state files; after a marketplace add,
+// markets-after-add.json (when there is one) becomes the marketplace list.
 type fakePC struct {
 	home, bin, log, state, codexHome string
 }
@@ -36,6 +37,7 @@ func newFakePC(t *testing.T, hosts ...string) *fakePC {
 			"case \"$*\" in\n" +
 			"\"plugin marketplace list --json\") if [ -f '" + f.state + "/markets.json' ]; then /bin/cat '" + f.state + "/markets.json'; else echo '[]'; fi ;;\n" +
 			"\"plugin list --json\") if [ -f '" + f.state + "/plugins.json' ]; then /bin/cat '" + f.state + "/plugins.json'; else echo '[]'; fi ;;\n" +
+			"\"plugin marketplace add \"*) if [ -f '" + f.state + "/markets-after-add.json' ]; then /bin/cp '" + f.state + "/markets-after-add.json' '" + f.state + "/markets.json'; fi ;;\n" +
 			"esac\n"
 		if err := os.WriteFile(filepath.Join(f.bin, h), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
@@ -164,8 +166,8 @@ func TestInstall_no_hosts와_dry_run(t *testing.T) {
 	h2 := home(t)
 	dest2 := t.TempDir()
 	out, _, code = run(t, "", "install", "--dry-run", "--local-plugin", "--bin-dir", dest2)
-	if code != 0 || len(f.calls(t)) != 0 {
-		t.Fatalf("미리 보기가 호스트를 불렀습니다 %d %q", code, f.calls(t))
+	if code != 0 || len(f.writes(t)) != 0 { // 할 일을 정확히 보이려고 목록(list --json)만 읽는다
+		t.Fatalf("미리 보기가 호스트를 바꿨습니다 %d %q", code, f.writes(t))
 	}
 	for _, want := range []string{filepath.Join(dest2, "orbit-mem"), "claude plugin marketplace add " + filepath.Join(h2, "plugins", "orbit-mem"), "claude plugin install orbit-mem@orbit-mem --scope user", "codex plugin add orbit-mem@orbit-mem"} {
 		if !strings.Contains(out, want) {
@@ -325,7 +327,7 @@ func TestUsage_걷어_낸_명령(t *testing.T) {
 			t.Errorf("%v: %d", args, code)
 		}
 	}
-	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.17.1\n" {
+	if out, _, code := run(t, "", "version"); code != 0 || out != "orbit-mem 0.18.0\n" {
 		t.Errorf("version %d %q", code, out)
 	}
 	if _, errOut, code := run(t, ""); code != 2 || !strings.Contains(errOut, "orbit-mem search") || strings.Contains(errOut, "orb run") || strings.Contains(errOut, "fragment") {

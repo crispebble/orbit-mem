@@ -87,6 +87,15 @@ tmp_clean; check "성공 뒤 임시 폴더 정리" $?
 home_clean; check "스크립트가 홈에 쓰지 않음" $?
 grep -q "1.2.3" "$ROOT/out" && grep -q "$BASE" "$ROOT/out"; check "판과 출처를 출력" $?
 
+# 1b. orbit-plugins setup.sh의 호출 꼴: ORBIT_MEM_VERSION=<판> sh install.sh --marketplace <출처>
+( ORBIT_MEM_VERSION=1.2.3 run_install --marketplace crispebble/orbit-plugins ); rc=$?
+check "--marketplace 설치 종료 코드 0" "$rc"
+[ "$(cat "$ROOT/record" 2>/dev/null)" = "--marketplace
+crispebble/orbit-plugins" ]; check "--marketplace와 출처를 orbit-mem install에 그대로 전달" $?
+( ORBIT_MEM_VERSION=1.2.3 run_install --marketplace "/srv/my catalog" ); rc=$?
+[ "$(cat "$ROOT/record" 2>/dev/null)" = "--marketplace
+/srv/my catalog" ]; check "빈칸이 든 로컬 폴더 출처도 한 인자로 전달" $?
+
 # 2. 최신 판 조회
 run_install --no-hosts; rc=$?
 check "최신 판 설치 종료 코드 0" "$rc"

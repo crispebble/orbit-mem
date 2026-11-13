@@ -385,3 +385,43 @@ func TestSaveNearMin_기본값과_범위(t *testing.T) {
 		t.Fatalf("0.3 = %v %v", c.SaveNearMin, err)
 	}
 }
+
+// 끝 기준: claudeMarketplace(Claude Code 플러그인을 받을 마켓 출처)의 기본값은 crispebble/orbit-mem이고, 키가 없는 옛 설정도
+// 그 값이다. 빈 값은 기본값으로 읽는다. 옵션처럼 보이거나 앞뒤 빈칸·제어 문자가 든 값은 거절한다(꼴은 install이 자세히 본다).
+func TestClaudeMarketplace_기본값과_검증(t *testing.T) {
+	if Default().ClaudeMarketplace != "crispebble/orbit-mem" || Default().ClaudeMarketplaceSource() != "crispebble/orbit-mem" {
+		t.Fatalf("%+v", Default())
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(p, []byte(`{"inject":"full"}`), 0o600)
+	c, err := Load(p)
+	if err != nil || c.ClaudeMarketplace != DefaultClaudeMarketplace {
+		t.Fatalf("옛 설정 %q %v", c.ClaudeMarketplace, err)
+	}
+	c.ClaudeMarketplace = "crispebble/orbit-plugins"
+	if err := Save(p, c); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Load(p); err != nil || got.ClaudeMarketplace != "crispebble/orbit-plugins" {
+		t.Fatalf("저장한 값 %q %v", got.ClaudeMarketplace, err)
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"claudeMarketplace": "crispebble/orbit-plugins"`) {
+		t.Fatalf("파일 %s", b)
+	}
+	c.ClaudeMarketplace = ""
+	if c.Validate() != nil || c.ClaudeMarketplaceSource() != DefaultClaudeMarketplace {
+		t.Fatalf("빈 값 %q", c.ClaudeMarketplaceSource())
+	}
+	for _, bad := range []string{"-x", "--scope", " a/b", "a/b ", "a/b\n", "a\tb"} {
+		c.ClaudeMarketplace = bad
+		if err := c.Validate(); err == nil {
+			t.Errorf("%q를 받았습니다", bad)
+		}
+	}
+	for _, good := range []string{"crispebble/orbit-plugins", "https://github.com/crispebble/orbit-plugins.git", "/srv/catalog", "/Users/a/Application Support/catalog", "git@github.com:a/b.git"} {
+		c.ClaudeMarketplace = good
+		if err := c.Validate(); err != nil {
+			t.Errorf("%q: %v", good, err)
+		}
+	}
+}

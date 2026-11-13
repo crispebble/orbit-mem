@@ -454,3 +454,28 @@ func TestRun_같은_판_지정은_불변이다(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 }
+
+// 끝 기준: 새 판을 깔 때는 install 단계 뒤에 그 install이 호스트에 할 일(HostSteps)을 단계로 잇는다(--dry-run에도 보인다).
+// 깔 것이 없으면 HostSteps를 부르지 않는다.
+func TestRun_호스트_단계를_install_뒤에_잇는다(t *testing.T) {
+	f := newFake(t, "v0.14.0")
+	f.archives[asset] = tarGz(t, entry{name: "orbit-mem", body: "NEW"})
+	o := opts(f, target(t), "0.13.0")
+	o.DryRun = true
+	o.HostSteps = func() []string {
+		return []string{"Claude Code: claude plugin uninstall orbit-mem@orbit-mem --scope user"}
+	}
+	res, err := Run(context.Background(), o)
+	if err != nil || len(res.Steps) < 2 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if last := res.Steps[len(res.Steps)-1]; last != "Claude Code: claude plugin uninstall orbit-mem@orbit-mem --scope user" {
+		t.Fatalf("단계 %q", res.Steps)
+	}
+	called := false
+	o = opts(f, target(t), "0.14.0")
+	o.HostSteps = func() []string { called = true; return nil }
+	if _, err := Run(context.Background(), o); err != nil || called {
+		t.Fatalf("최신인데 호스트 단계를 읽었습니다 %v %v", err, called)
+	}
+}

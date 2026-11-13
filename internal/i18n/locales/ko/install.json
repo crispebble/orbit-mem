@@ -1,3 +1,11 @@
 {
-  "install.err.replace_binary": "기존 orbit-mem를 바꿀 수 없습니다(실행 중인 세션을 닫고 다시 해 주세요): %w"
+  "install.err.market_list": "Claude Code 마켓 목록을 읽지 못해 마켓 이름을 알 수 없습니다: %w",
+  "install.err.market_not_listed": "마켓을 더했지만 Claude Code 마켓 목록에서 출처 %s를 찾지 못했습니다",
+  "install.err.market_source": "Claude Code 마켓 출처가 아닙니다: %q (owner/repo, git 주소, 로컬 폴더 절대경로)",
+  "install.err.replace_binary": "기존 orbit-mem를 바꿀 수 없습니다(실행 중인 세션을 닫고 다시 해 주세요): %w",
+  "install.note.drop_market": "마켓 %s: orbit-mem 자기 마켓이고 거기서 깐 다른 플러그인이 없음",
+  "install.note.drop_plugin": "orbit-mem이 두 벌 돌지 않게 뺌, %s를 씀",
+  "install.note.enable": "옛 것을 빼기 전에 %s를 켬",
+  "install.note.replace_market": "이름이 같은 orbit-mem 마켓의 출처가 다름: %s",
+  "install.placeholder.market": "<마켓 이름>"
 }

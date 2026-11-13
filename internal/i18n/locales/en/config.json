@@ -1,5 +1,6 @@
 {
   "config.err.candidate_expiry": "candidateExpiryDays is 0 (off) to 365 days: %d",
+  "config.err.claude_marketplace": "claudeMarketplace is a marketplace source (owner/repo, a git URL, or a local folder's absolute path) and cannot start with -, or have leading or trailing spaces or control characters: %q",
   "config.err.evidence": "check confirmSeenDays, confirmFollowedVerified and correctionRepeatSessions (1-30)",
   "config.err.inject": "inject is full|rules|off: %q",
   "config.err.recall": "recall is auto|on_demand|off: %q",

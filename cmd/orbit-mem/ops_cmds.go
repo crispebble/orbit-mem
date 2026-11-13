@@ -158,6 +158,74 @@ func counts(m map[string]int) string {
 // Claude Code with --local-plugin).
 func localPluginDir() string { return filepath.Join(paths().Home, "plugins", memplugin.Name) }
 
+// claudeTarget is where the Claude Code plugin comes from: source is orbit-mem's own marketplace
+// (named memplugin.Market) when it is its GitHub repository or the local plugin folder; any
+// other source is a catalog, whose marketplace orbit-mem never removes.
+func claudeTarget(source string) install.ClaudeTarget {
+	own := install.SameMarketSource(source, memplugin.GitHubRepo) || install.SameMarketSource(source, localPluginDir())
+	return install.ClaudeTarget{Source: source, Plugin: memplugin.Name, OwnMarket: memplugin.Market, Own: own}
+}
+
+// claudeSource is the marketplace source of the settings (claudeMarketplace) in the form install
+// passes to Claude Code.
+func claudeSource(cfg config.Config) (string, error) {
+	return install.MarketSource(cfg.ClaudeMarketplaceSource())
+}
+
+// configuredClaudeTarget is the Claude Code plugin's marketplace from the settings. Settings
+// orbit-mem cannot read, or a source it cannot use, give orbit-mem's own marketplace and the
+// error (uninstall still takes orbit-mem out).
+func configuredClaudeTarget() (install.ClaudeTarget, error) {
+	cfg, err := loadConfig()
+	if err == nil {
+		var src string
+		if src, err = claudeSource(cfg); err == nil {
+			return claudeTarget(src), nil
+		}
+	}
+	return claudeTarget(memplugin.GitHubRepo), err
+}
+
+// claudePlanSteps are the step lines of what install would do in Claude Code now (read from its
+// lists; nothing changes).
+func claudePlanSteps(h install.Hosts, t install.ClaudeTarget) []string {
+	plan, err := h.PlanClaude(t)
+	if err != nil {
+		return []string{i18n.T("cli.install.step_claude_unknown", t.Source, err)}
+	}
+	var out []string
+	for _, st := range plan.Steps {
+		out = append(out, i18n.T("cli.install.step_claude", st.String()))
+	}
+	return out
+}
+
+// hostPlanSteps are the Claude Code steps the next install would take with the settings'
+// marketplace (update shows them for the new binary's install). None when claude is not on PATH.
+func hostPlanSteps() []string {
+	h := install.FindHosts()
+	if h.Claude == "" {
+		return nil
+	}
+	t, err := configuredClaudeTarget()
+	if err != nil {
+		return []string{i18n.T("cli.install.step_claude_unknown", t.Source, err)}
+	}
+	return claudePlanSteps(h, t)
+}
+
+// marketplaceFlag is install --marketplace checked: "" when not given. It cannot go with
+// --local-plugin, which picks the local folder for this run.
+func marketplaceFlag(v string, localPlugin bool) (string, error) {
+	if v == "" {
+		return "", nil
+	}
+	if localPlugin {
+		return "", i18n.Err("cli.install.err.marketplace_local")
+	}
+	return install.MarketSource(v)
+}
+
 // cmdPlugin builds orbit-mem's own plugin from the embedded source: --out (default the local
 // marketplace folder) gets both host formats and both local marketplaces; --repo gets the
 // GitHub marketplace this repository is (the Claude format only).
@@ -203,18 +271,28 @@ func contains(list []string, v string) bool {
 }
 
 // cmdInstall puts orbit-mem in the bin folder, writes the settings, makes the memory DB
-// and registers orbit-mem's plugin in the hosts: Claude Code
-// from the GitHub marketplace (or, with --local-plugin, the local folder), Codex always from
-// the local folder it builds.
+// and registers orbit-mem's plugin in the hosts: Claude Code from the marketplace of the
+// settings (claudeMarketplace, default the GitHub marketplace; --marketplace sets it, and
+// --local-plugin uses the local folder for this run), Codex always from the local folder it
+// builds.
 func cmdInstall(a *app, args []string) (err error) {
 	fs := a.flags("install")
 	binDir := fs.String("bin-dir", install.DefaultBinDir(), i18n.T("flag.install.bin_dir"))
 	localPlugin := fs.Bool("local-plugin", false, i18n.T("flag.install.local_plugin"))
+	marketplace := fs.String("marketplace", "", i18n.T("flag.install.marketplace"))
 	noHosts := fs.Bool("no-hosts", false, i18n.T("flag.install.no_hosts"))
 	dry := fs.Bool("dry-run", false, i18n.T("flag.install.dry_run"))
 	asJSON := fs.Bool("json", false, i18n.T("flag.install.json"))
 	res := installResult{AskUser: []askUser{}, Warnings: []hostWarning{}, Steps: []string{}}
-	if _, perr := parse(fs, args); perr != nil {
+	_, perr := parse(fs, args)
+	chosen := ""
+	if perr == nil {
+		if chosen, perr = marketplaceFlag(*marketplace, *localPlugin); perr != nil && !wantsJSON(args) {
+			fmt.Fprintln(a.stderr, "orbit-mem install: "+perr.Error())
+			return errUsage
+		}
+	}
+	if perr != nil {
 		if !wantsJSON(args) || errors.Is(perr, flag.ErrHelp) {
 			return perr
 		}
@@ -274,11 +352,25 @@ func cmdInstall(a *app, args []string) (err error) {
 	h := install.FindHosts()
 	dst := filepath.Join(*binDir, install.BinaryName())
 	dir := localPluginDir()
-	claudeSource := memplugin.GitHubRepo
-	if *localPlugin {
-		claudeSource = dir
+	cfg, err := loadConfig()
+	if err != nil {
+		if !*dry {
+			return err // 아무것도 바꾸기 전에 멈춘다
+		}
+		cfg = config.Default() // 미리 보기는 기본값으로 보인다(읽지 못한 까닭은 warnings에)
 	}
-	needLocal := !*noHosts && (h.Codex != "" || (*localPlugin && h.Claude != ""))
+	if chosen != "" {
+		cfg.ClaudeMarketplace = chosen
+	}
+	source, err := claudeSource(cfg)
+	if err != nil {
+		return err
+	}
+	if *localPlugin {
+		source = dir
+	}
+	target := claudeTarget(source)
+	needLocal := !*noHosts && (h.Codex != "" || (install.SameMarketSource(source, dir) && h.Claude != ""))
 	steps = []string{
 		i18n.T("cli.install.step_copy", selfPath(), dst),
 		i18n.T("cli.install.step_home", p.Home),
@@ -288,7 +380,7 @@ func cmdInstall(a *app, args []string) (err error) {
 			steps = append(steps, i18n.T("cli.install.step_build", memplugin.ID, dir))
 		}
 		if h.Claude != "" {
-			steps = append(steps, i18n.T("cli.install.step_claude", claudeSource, memplugin.Market, memplugin.ID))
+			steps = append(steps, claudePlanSteps(h, target)...)
 		}
 		if h.Codex != "" {
 			steps = append(steps, i18n.T("cli.install.step_codex", dir, memplugin.ID))
@@ -316,10 +408,6 @@ func cmdInstall(a *app, args []string) (err error) {
 	} else if !samePath(found, dst) {
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.other_on_path", found, dst))
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return err
-	}
 	if err := config.Save(p.Config(), cfg); err != nil {
 		return err
 	}
@@ -333,11 +421,11 @@ func cmdInstall(a *app, args []string) (err error) {
 	}
 	s.Close()
 	if *noHosts {
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", memplugin.GitHubRepo))
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.hosts_skipped", source))
 		fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
 		return finish(dst)
 	}
-	if err := a.registerHosts(h, needLocal, dir, claudeSource); err != nil {
+	if err := a.registerHosts(h, needLocal, dir, target); err != nil {
 		return err
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.install.done"))
@@ -371,10 +459,11 @@ func wantsJSON(args []string) bool {
 }
 
 // registerHosts builds the local plugin folder when a host needs it and registers the plugin
-// in every host present. A host that fails does not stop the other.
-func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource string) error {
+// in every host present. A host that fails does not stop the other. The Claude Code steps that
+// take something out (another orbit-mem, orbit-mem's own marketplace) are printed as they ran.
+func (a *app) registerHosts(h install.Hosts, needLocal bool, dir string, target install.ClaudeTarget) error {
 	if h.Claude == "" && h.Codex == "" {
-		fmt.Fprintln(a.stdout, i18n.T("cli.install.no_hosts", memplugin.GitHubRepo))
+		fmt.Fprintln(a.stdout, i18n.T("cli.install.no_hosts", target.Source))
 		return nil
 	}
 	if needLocal {
@@ -389,11 +478,17 @@ func (a *app) registerHosts(h install.Hosts, needLocal bool, dir, claudeSource s
 	}
 	failed := false
 	if h.Claude != "" {
-		if err := h.RegisterClaude(claudeSource, memplugin.Name, memplugin.Market); err != nil {
+		ran, err := h.RegisterClaude(target)
+		for _, st := range ran.Steps {
+			if st.Note != "" {
+				fmt.Fprintln(a.stdout, i18n.T("cli.install.step_claude", st.String()))
+			}
+		}
+		if err != nil {
 			fmt.Fprintln(a.stderr, i18n.T("cli.install.host_failed", "Claude Code", err))
 			failed = true
 		} else {
-			fmt.Fprintln(a.stdout, i18n.T("cli.install.registered", "Claude Code", memplugin.ID, claudeSource))
+			fmt.Fprintln(a.stdout, i18n.T("cli.install.registered", "Claude Code", ran.ID, target.Source))
 		}
 	}
 	if h.Codex != "" {
@@ -434,8 +529,9 @@ func samePath(a, b string) bool {
 	return ra == rb
 }
 
-// cmdUninstall takes orbit-mem's plugin and marketplace out of the hosts. The data and the
-// local plugin folder stay.
+// cmdUninstall takes orbit-mem's plugin out of the hosts: in Claude Code every orbit-mem
+// plugin and orbit-mem's own marketplace, never a catalog marketplace of the settings (its
+// other plugins stay). The data and the local plugin folder stay.
 func cmdUninstall(a *app, args []string) error {
 	if _, err := parse(a.flags("uninstall"), args); err != nil {
 		return err
@@ -443,7 +539,15 @@ func cmdUninstall(a *app, args []string) error {
 	failed := false
 	h := install.FindHosts()
 	if h.Claude != "" {
-		if err := h.UnregisterClaude(memplugin.Name, memplugin.Market); err != nil {
+		target, terr := configuredClaudeTarget()
+		if terr != nil {
+			fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.host_error", "Claude Code", terr))
+		}
+		done, err := h.UnregisterClaude(target)
+		for _, st := range done {
+			fmt.Fprintln(a.stdout, i18n.T("cli.install.step_claude", st.String()))
+		}
+		if err != nil {
 			fmt.Fprintln(a.stderr, i18n.T("cli.uninstall.host_error", "Claude Code", err))
 			failed = true
 		}
@@ -458,7 +562,7 @@ func cmdUninstall(a *app, args []string) error {
 	if failed {
 		return i18n.Errorf("cli.uninstall.err.partial", paths().Home)
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", memplugin.ID, paths().Home))
+	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.done", memplugin.Name, paths().Home))
 	fmt.Fprintln(a.stdout, i18n.T("cli.uninstall.binary", selfPath()))
 	return nil
 }
@@ -517,10 +621,13 @@ const (
 
 type claudeStatus struct {
 	Path        string `json:"path"`   // claude on PATH ("" none)
+	ID          string `json:"id"`     // the plugin the setting claudeMarketplace points to: orbit-mem@<marketplace>
 	Plugin      string `json:"plugin"` // installed | missing | unknown | no-host
 	Version     string `json:"version,omitempty"`
 	Enabled     bool   `json:"enabled"`
-	Marketplace string `json:"marketplace,omitempty"` // github:<owner/repo> | directory:<path>
+	Marketplace string `json:"marketplace,omitempty"` // github:<owner/repo> | git:<url> | directory:<path>
+	// Duplicates are orbit-mem plugins installed from other marketplaces: hooks and MCP run once per plugin.
+	Duplicates []string `json:"duplicates"`
 }
 
 type codexStatus struct {
@@ -607,24 +714,40 @@ func cmdDoctor(a *app, args []string) error {
 	rep.Backups = readBackupStatus(p, rep.Config, time.Now())
 	rep.LastBackup = rep.Backups.LastPath
 	h := install.FindHosts()
-	rep.Claude = claudeStatus{Path: h.Claude, Plugin: pluginNoHost}
+	target := claudeTarget(memplugin.GitHubRepo)
+	if src, err := claudeSource(cfg); err != nil {
+		add("claude-marketplace-invalid", "orbit-mem install --marketplace "+memplugin.GitHubRepo, err)
+	} else {
+		target = claudeTarget(src)
+	}
+	rep.Claude = claudeStatus{Path: h.Claude, ID: memplugin.ID, Plugin: pluginNoHost, Duplicates: []string{}}
 	if h.Claude != "" {
-		st := h.ClaudeStatus(memplugin.Name, memplugin.Market)
-		rep.Claude.Marketplace, rep.Claude.Version, rep.Claude.Enabled = st.Marketplace, st.Version, st.Enabled
+		st := h.ClaudeStatus(target)
+		rep.Claude.ID, rep.Claude.Marketplace, rep.Claude.Version, rep.Claude.Enabled = st.ID, st.Marketplace, st.Version, st.Enabled
+		for _, o := range st.Others {
+			rep.Claude.Duplicates = append(rep.Claude.Duplicates, o.ID)
+		}
 		switch {
 		case !st.Known:
 			rep.Claude.Plugin = pluginUnknown
 		case !st.Installed:
 			rep.Claude.Plugin = pluginMissing
-			add("claude-plugin-missing", "orbit-mem install")
+			add("claude-plugin-missing", "orbit-mem install", st.ID, target.Source)
 		default:
 			rep.Claude.Plugin = pluginInstalled
 			if !st.Enabled {
-				add("claude-plugin-disabled", "claude plugin enable "+memplugin.ID)
+				add("claude-plugin-disabled", "claude plugin enable "+st.ID, st.ID)
 			}
 			if st.Version != "" && st.Version != version.Version {
 				add("claude-plugin-version", "orbit-mem install", st.Version, version.Version)
 			}
+		}
+		if dup := duplicateFix(st, target); dup != "" {
+			all := rep.Claude.Duplicates
+			if st.Installed {
+				all = append([]string{st.ID}, all...)
+			}
+			add("claude-plugin-duplicate", dup, strings.Join(all, ", "))
 		}
 	}
 	cs := install.ReadCodexState(install.CodexConfigPath(), memplugin.Name, memplugin.Market)
@@ -692,7 +815,7 @@ func cmdDoctor(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.recall", cfg.RecallMode(), cfg.PromptRecallChars(), onOff(rep.Tidy.Auto), orNone(rep.Tidy.LastDay)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.update", rep.Update.Current, orNone(rep.Update.Latest), yes(rep.Update.Available), onOff(rep.Update.Enabled)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.activity", rep.Activity.Sessions))
-	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), memplugin.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
+	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.claude", orNone(rep.Claude.Path), rep.Claude.ID, rep.Claude.Plugin, rep.Claude.Version, orNone(rep.Claude.Marketplace)))
 	fmt.Fprintln(a.stdout, i18n.T("cli.doctor.codex", orNone(rep.Codex.Path), memplugin.ID, rep.Codex.Plugin, yes(rep.Codex.Marketplace), yes(rep.Codex.HooksTrusted)))
 	if b := rep.Backups; b.Last != "" {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.backups", timeText(b.LastAt), b.Last, b.Count, b.Keep, onOff(b.Auto)))
@@ -704,6 +827,36 @@ func cmdDoctor(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.doctor.problem", pr.Message, pr.Fix))
 	}
 	return nil
+}
+
+// duplicateFix is the line that leaves one orbit-mem plugin when more than one is installed, else
+// "": with the setting's plugin installed, uninstall the others (and orbit-mem's own marketplace
+// when one came from it); without it, orbit-mem install, which installs it and takes the others out.
+func duplicateFix(st install.ClaudeStatus, t install.ClaudeTarget) string {
+	n := len(st.Others)
+	if st.Installed {
+		n++
+	}
+	if n < 2 {
+		return ""
+	}
+	if !st.Installed {
+		return "orbit-mem install"
+	}
+	var cmds []string
+	own := false
+	for _, o := range st.Others {
+		scope := o.Scope
+		if scope == "" {
+			scope = "user"
+		}
+		cmds = append(cmds, "claude plugin uninstall "+o.ID+" --scope "+scope)
+		own = own || o.Market() == t.OwnMarket
+	}
+	if own && st.ID != t.Plugin+"@"+t.OwnMarket {
+		cmds = append(cmds, "claude plugin marketplace remove "+t.OwnMarket)
+	}
+	return strings.Join(cmds, " && ")
 }
 
 func lexists(p string) bool {

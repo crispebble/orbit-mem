@@ -20,6 +20,10 @@ import (
 // updateTarget is the orbit-mem file `update` replaces (tests point it elsewhere).
 var updateTarget = selfPath
 
+// updateHostSteps are the host steps that install will take (shown after the install step; tests
+// keep them off the real hosts).
+var updateHostSteps = hostPlanSteps
+
 // updateReinstall runs `install` of the new binary so the host plugins match it.
 var updateReinstall = func(bin string, out, errw io.Writer) error {
 	cmd := exec.Command(bin, "install", "--bin-dir", filepath.Dir(bin))
@@ -71,6 +75,7 @@ func cmdUpdate(a *app, args []string) (err error) {
 			Current: version.Version, Want: *want, Target: res.Binary, CheckOnly: *check, Force: *force, DryRun: *dry,
 			Client:    &http.Client{Timeout: 2 * time.Minute},
 			Reinstall: func(bin string) error { return updateReinstall(bin, out, a.stderr) },
+			HostSteps: updateHostSteps,
 		})
 	}
 	if r.Binary == "" {
