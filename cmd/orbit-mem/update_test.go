@@ -65,10 +65,11 @@ func updateSetup(t *testing.T, srv *httptest.Server) *updEnv {
 	t.Setenv("ORBIT_MEM_BASE_URL", srv.URL)
 	e := &updEnv{target: filepath.Join(t.TempDir(), "orbit-mem")}
 	os.WriteFile(e.target, []byte("OLD"), 0o755)
-	oldT, oldR := updateTarget, updateReinstall
+	oldT, oldR, oldH := updateTarget, updateReinstall, updateHostSteps
 	updateTarget = func() string { return e.target }
 	updateReinstall = func(bin string, out, errw io.Writer) error { e.reinstalled = append(e.reinstalled, bin); return nil }
-	t.Cleanup(func() { updateTarget, updateReinstall = oldT, oldR })
+	updateHostSteps = func() []string { return nil } // 이 PC의 claude를 부르지 않는다
+	t.Cleanup(func() { updateTarget, updateReinstall, updateHostSteps = oldT, oldR, oldH })
 	return e
 }
 

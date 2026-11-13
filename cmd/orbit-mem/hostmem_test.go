@@ -702,7 +702,7 @@ func TestHostMemory_Codex_기억_플러그인과_MCP를_찾아_끄고_되돌린�
 }
 
 func TestHostMemory_아는_기억_목록은_orbit_mem을_빼고_이름으로_찾는다(t *testing.T) {
-	for id, want := range map[string]string{"claude-mem@thedotmack": "claude-mem", "mem0@mem0-plugins": "mem0", "claude-supermemory@supermemory-plugins": "supermemory", "orbit-mem@orbit-mem": "", "memory@x": ""} {
+	for id, want := range map[string]string{"claude-mem@thedotmack": "claude-mem", "mem0@mem0-plugins": "mem0", "claude-supermemory@supermemory-plugins": "supermemory", "orbit-mem@orbit-mem": "", "orbit-mem@orbit-plugins": "", "memory@x": ""} {
 		k, ok := memoryPluginOf(id)
 		if (want == "") == ok || k.Name != want {
 			t.Errorf("%s → %q %v", id, k.Name, ok)

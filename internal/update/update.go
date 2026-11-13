@@ -67,6 +67,9 @@ type Options struct {
 	Reinstall         func(bin string) error // runs `install` of the new binary
 	MaxDownload       int64
 	Force             bool // allow --version older than Current
+	// HostSteps says what that install will do in the hosts (steps after the install step, --dry-run
+	// included). Called only when a new binary is to be installed; nil adds nothing.
+	HostSteps func() []string
 }
 
 // Normalize drops a leading v.
@@ -242,6 +245,9 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	res.Steps = append(res.Steps, i18n.T("update.step.verify"))
 	res.Steps = append(res.Steps, i18n.T("update.step.replace", o.Target))
 	res.Steps = append(res.Steps, i18n.T("update.step.install", o.Target))
+	if o.HostSteps != nil {
+		res.Steps = append(res.Steps, o.HostSteps()...)
+	}
 	if o.DryRun {
 		return res, nil
 	}

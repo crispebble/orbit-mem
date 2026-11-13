@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/crispebble/orbit-mem/internal/i18n"
 	"github.com/crispebble/orbit-mem/internal/memory"
@@ -93,6 +94,11 @@ type Config struct {
 
 	// 새 판 알림: 세션 시작 훅이 하루 한 번 이하로 최신 판을 확인해 새 판이 있으면 문맥 끝에 안내 한 줄을 붙인다. false면 요청하지 않는다.
 	UpdateCheck bool `json:"updateCheck"`
+	// Claude Code 플러그인을 받을 마켓 출처: claude plugin marketplace add가 받는 GitHub owner/repo, git 주소, 로컬 폴더 절대경로.
+	// install·update·uninstall·doctor가 따른다. 기본은 orbit-mem 자기 GitHub 마켓이고, 여러 플러그인을 모은 카탈로그 마켓을
+	// 주면 orbit-mem@<그 마켓 이름>을 쓴다. orbit-mem install --marketplace가 정하고 남긴다(꼴은 install.MarketSource가 본다).
+	// 비어 있으면 기본값이다.
+	ClaudeMarketplace string `json:"claudeMarketplace"`
 	// 제품 지도(설계 · orbit-mem 2판 4.1, S3 명세 2.2): 제품 이름 → 그 제품의 저장소 원격 키·폴더(글롭 가능)와 요청 글에서
 	// 그 제품을 가리키는 말. 제품 범위 기억(product:<이름>)이 어느 폴더에서 보이는지를 정한다. 비어 있으면 제품이 없다.
 	Products place.Map `json:"products,omitempty"`
@@ -210,6 +216,19 @@ func (c Config) HostTimeout(op string) time.Duration {
 	return defaultHostTimeouts[op]
 }
 
+// DefaultClaudeMarketplace is orbit-mem's own GitHub marketplace (memplugin.GitHubRepo; config
+// cannot import memplugin, so a test keeps the two equal).
+const DefaultClaudeMarketplace = "crispebble/orbit-mem"
+
+// ClaudeMarketplaceSource is the marketplace source the Claude Code plugin comes from:
+// claudeMarketplace, else the default.
+func (c Config) ClaudeMarketplaceSource() string {
+	if c.ClaudeMarketplace == "" {
+		return DefaultClaudeMarketplace
+	}
+	return c.ClaudeMarketplace
+}
+
 // HostMemory values.
 const (
 	HostMemoryAsk  = "ask"
@@ -225,7 +244,7 @@ const maxRecallChars = 9000
 func Default() Config {
 	return Config{Language: string(i18n.EN), Inject: InjectFull, RecentDecisions: 5, BackupKeep: 14, AutoBackup: true, AutoTidy: true, Hosts: []string{"claude", "codex"},
 		RecallChars: MaxPromptRecallChars, LedgerWindowDays: 7,
-		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true,
+		ConfirmSeenDays: 2, ConfirmFollowedVerified: 2, CorrectionRepeatSessions: 3, CandidateExpiryDays: 28, UpdateCheck: true, ClaudeMarketplace: DefaultClaudeMarketplace,
 		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
@@ -254,6 +273,10 @@ func (c Config) Validate() error {
 	}
 	if c.HostMemory != "" && c.HostMemory != HostMemoryAsk && c.HostMemory != HostMemoryKeep {
 		return i18n.Errorf("config.err.host_memory", c.HostMemory)
+	}
+	// 마켓 출처는 claude 명령의 인자로 넘어간다: 옵션처럼 읽히거나 앞뒤 빈칸·제어 문자가 든 값은 받지 않는다(폴더 이름 안의 빈칸은 된다).
+	if m := c.ClaudeMarketplace; strings.HasPrefix(m, "-") || strings.TrimSpace(m) != m || strings.ContainsFunc(m, unicode.IsControl) {
+		return i18n.Errorf("config.err.claude_marketplace", m)
 	}
 	if c.CandidateExpiryDays < 0 || c.CandidateExpiryDays > 365 {
 		return i18n.Errorf("config.err.candidate_expiry", c.CandidateExpiryDays)

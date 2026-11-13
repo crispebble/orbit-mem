@@ -1,3 +1,11 @@
 {
-  "install.err.replace_binary": "cannot replace the existing orbit-mem (close the running sessions and try again): %w"
+  "install.err.market_list": "cannot read the Claude Code marketplace list to learn the marketplace name: %w",
+  "install.err.market_not_listed": "added the marketplace but source %s is not in the Claude Code marketplace list",
+  "install.err.market_source": "not a Claude Code marketplace source: %q (owner/repo, a git URL, or a local folder's absolute path)",
+  "install.err.replace_binary": "cannot replace the existing orbit-mem (close the running sessions and try again): %w",
+  "install.note.drop_market": "marketplace %s is orbit-mem's own and no other plugin comes from it",
+  "install.note.drop_plugin": "so orbit-mem does not run twice; %s is used",
+  "install.note.enable": "turn %s on before taking the old one out",
+  "install.note.replace_market": "the orbit-mem marketplace of the same name comes from another source: %s",
+  "install.placeholder.market": "<marketplace>"
 }
