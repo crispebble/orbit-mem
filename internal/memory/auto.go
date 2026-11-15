@@ -273,6 +273,10 @@ func (s *Store) RevertChange(ref string, w Who, reason string) (DecideResult, er
 	if err != nil {
 		return DecideResult{}, err
 	}
+	// 제안 줄을 넣기 전에 거절한다: 지운 기억이 든 변경은 되돌릴 수 없고, 거절한 시도가 제안 표에 남으면 안 된다.
+	if err := revertableErr(e.Before); err != nil {
+		return DecideResult{}, err
+	}
 	if !w.human() && !s.isAuto(e) {
 		return DecideResult{}, fmt.Errorf("%w: %s", ErrProtected, e.ID)
 	}

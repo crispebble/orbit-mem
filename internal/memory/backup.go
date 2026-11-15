@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -277,6 +278,45 @@ func ReadCopyInfo(path string) (CopyInfo, error) {
 		return info, i18n.Errorf("memory.err.copy_check", path, err)
 	}
 	return info, nil
+}
+
+// ForgottenInCopy counts the memories in the copy at path whose ids are in forgotten now: the ones a
+// restore would bring back although they were forgotten after the copy was made. The copy is opened read
+// only; a copy that holds no memory the live DB forgot gives 0.
+func (s *Store) ForgottenInCopy(path string) (int, error) {
+	db, err := sql.Open("sqlite", sqlitedb.FileURI(path)+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return 0, i18n.Errorf("memory.err.copy_check", path, err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT id FROM memories`)
+	if err != nil {
+		return 0, i18n.Errorf("memory.err.copy_check", path, err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, i18n.Errorf("memory.err.copy_check", path, err)
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, i18n.Errorf("memory.err.copy_check", path, err)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	list, _ := json.Marshal(ids)
+	var n int
+	// 사본의 id를 한 목록으로 넘겨 이 DB의 forgotten에서 센다(사본을 ATTACH하지 않아 읽기 전용으로 둔다).
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM forgotten WHERE id IN (SELECT value FROM json_each(?))`, string(list)).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // CheckCopy says whether path is an intact memory DB.

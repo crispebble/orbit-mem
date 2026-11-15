@@ -83,7 +83,8 @@ func saveRequestTx(q querier, key string) (SaveRequest, bool, error) {
 }
 
 // replayTx is the earlier application of idem for a write doing action, or nil when the key is new (or
-// there is no key). The same key with another hash or action is ErrIdempotencyConflict.
+// there is no key). The same key with another hash or action is ErrIdempotencyConflict; a key whose recorded
+// memory was forgotten is ErrForgotten.
 func replayTx(q querier, idem *Idem, action string) (*SaveRequest, error) {
 	if idem == nil {
 		return nil, nil
@@ -94,6 +95,12 @@ func replayTx(q querier, idem *Idem, action string) (*SaveRequest, error) {
 	}
 	if r.Hash != idem.Hash || r.Action != action {
 		return nil, ErrIdempotencyConflict
+	}
+	// 기록한 기억을 지웠으면 재시도가 그 글을 다시 내줄 수 없다. 거절해야 같은 키의 재시도가 지운 글을 되살리지 않는다.
+	if forgotten, err := forgottenTx(q, r.MemoryID, ""); err != nil {
+		return nil, err
+	} else if forgotten {
+		return nil, ErrForgotten
 	}
 	return &r, nil
 }

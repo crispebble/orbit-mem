@@ -52,6 +52,19 @@ var ErrProtected = i18n.Err("memory.err.protected")
 // candidate without the user's words (automatic confirmation needs evidence).
 var ErrConfirmNeedsWords = i18n.Err("memory.err.confirm_words")
 
+// ErrForgetNeedsWords means a writer other than the person tried to forget memories without the user's
+// words that ask for it. Forget returns it so that it is ErrProtected as well (명세 · memory_forget 5.1).
+var ErrForgetNeedsWords = i18n.Err("memory.err.forget_words")
+
+// ErrForgetAutomation means an automation tried to forget memories: it never does, words or not.
+var ErrForgetAutomation = i18n.Err("memory.err.forget_automation")
+
+// ErrForgotten means a memory or a save request points at a memory that was forgotten (deleted for good).
+var ErrForgotten = i18n.Err("memory.err.forgotten")
+
+// ErrLedgerForgotten means a ledger change cannot be reverted: a memory it changed was forgotten.
+var ErrLedgerForgotten = i18n.Err("memory.err.ledger_forgotten")
+
 // ErrNoEvidence means an automatic confirmation has no evidence.
 var ErrNoEvidence = i18n.Err("memory.err.no_evidence")
 

@@ -16,6 +16,7 @@ const (
 	ImportExists    = "exists"    // 같은 id가 이미 있다: 그대로 두고 건너뛴다
 	ImportDuplicate = "duplicate" // 같은 종류·범위·제목의 숨기지 않은 기억이 이미 있다
 	ImportInvalid   = "invalid"   // 종류·상태·범위·제목이 틀렸다
+	ImportForgotten = "forgotten" // 지운 기억이다(id나 legacy_id가 forgotten에 있다): 되살리지 않고 건너뛴다
 )
 
 // Export reads every memory in the given states (all but hidden when none are given) with
@@ -65,6 +66,12 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback()
+	// 지운 기억은 파일이 되살리지 못한다. ImportExists 앞에서 보는 까닭: 지운 id는 memories에 없어 그대로 두면 새로 들어온다.
+	if forgotten, err := forgottenTx(tx, m.ID, m.LegacyID); err != nil {
+		return "", err
+	} else if forgotten {
+		return ImportForgotten, nil
+	}
 	var n int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id=? OR (legacy_id IS NOT NULL AND legacy_id=?)`, m.ID, nullIfEmpty(m.LegacyID)).Scan(&n); err != nil {
 		return "", err
@@ -82,6 +89,14 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 	}
 	if dry {
 		return ImportDone, nil
+	}
+	// 대체한 새 판을 지웠으면 옛 판은 낡은 채로 들이고 대체 표시만 비운다(Forget의 clearSuccessorTx와 같다).
+	if m.SupersededBy != "" {
+		if gone, err := forgottenTx(tx, m.SupersededBy, ""); err != nil {
+			return "", err
+		} else if gone {
+			m.SupersededBy, m.StaleReason = "", forgetSuccessorGone
+		}
 	}
 	now := s.nowMs()
 	if m.Version < 1 {

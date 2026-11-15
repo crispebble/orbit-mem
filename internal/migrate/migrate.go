@@ -220,6 +220,13 @@ func Run(s *memory.Store, o Options) (Report, error) {
 			rep.Skipped++
 			continue
 		}
+		// 지운 기억의 legacy_id는 다시 돌려도 들이지 않는다.
+		if gone, err := s.IsForgotten("", r.ID); err != nil {
+			return rep, err
+		} else if gone {
+			rep.Skipped++
+			continue
+		}
 		kind, state, tags := mapRecord(r)
 		var sources []memory.Source
 		var absorbed [][2]string

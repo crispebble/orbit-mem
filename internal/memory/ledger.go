@@ -48,6 +48,9 @@ type LedgerBefore struct {
 	// ActivityGone is the activity row this change took out (a revert of a journal move); undoing it puts
 	// the row back from the journal's title and body.
 	ActivityGone string `json:"activityGone,omitempty"`
+	// Forgotten are the memories Forget removed that this change held (a snapshot, a created memory or a
+	// reference in a snapshot). The change cannot be undone any more (revertableErr).
+	Forgotten []string `json:"forgotten,omitempty"`
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
@@ -249,6 +252,9 @@ func (s *Store) snapshotFor(p Proposal) (LedgerBefore, error) {
 		if err != nil {
 			return b, err
 		}
+		if err := revertableErr(e.Before); err != nil {
+			return b, err
+		}
 		ids = nil
 		for _, m := range e.Before.Memories {
 			ids = append(ids, m.ID)
@@ -393,18 +399,26 @@ func (s *Store) recordLedgerTx(q dbtx, p Proposal, before LedgerBefore, res Deci
 // would wipe that later change. A file already back to its old content (an
 // earlier attempt stopped half way) counts as undone.
 func (s *Store) revert(p Proposal, res *DecideResult) error {
-	e, err := s.LedgerEntry(p.Payload.LedgerID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// 원장 줄은 쓰기 트랜잭션 안에서 읽고 지운 기억을 다시 본다: 밖에서 읽고 검사한 뒤 Forget이 끼어들면 지운
+	// 기억을 가리키는 superseded_by로 되돌아갈 수 있다.
+	e, err := scanLedger(tx.QueryRow(`SELECT `+ledgerCols+` FROM ledger WHERE id=?`, p.Payload.LedgerID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return i18n.Errorf("memory.err.not_in_ledger", ErrInvalid, p.Payload.LedgerID)
+	}
 	if err != nil {
 		return err
 	}
 	if e.RevertedBy != "" {
 		return i18n.Errorf("memory.err.already_reverted", ErrInvalid, e.RevertedBy)
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
+	if err := revertableErr(e.Before); err != nil {
 		return err
 	}
-	defer tx.Rollback()
 	ids := make([]string, 0, len(e.Before.Memories)+len(e.Before.Created))
 	for _, m := range e.Before.Memories {
 		ids = append(ids, m.ID)
