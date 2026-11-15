@@ -112,6 +112,12 @@ func (t Tools) Update(in UpdateIn) (MemoryOut, error) {
 	return out, asError(res)
 }
 
+// Forget runs memory_forget; the error is the tool error text.
+func (t Tools) Forget(in ForgetIn) (ForgetOut, error) {
+	res, out, _ := t.h.forget(context.Background(), nil, in)
+	return out, asError(res)
+}
+
 func (t Tools) Activity(in ActivityIn) (activity.Result, error) {
 	res, out, _ := t.h.activity(context.Background(), nil, in)
 	return out, asError(res)

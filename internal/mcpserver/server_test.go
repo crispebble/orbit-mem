@@ -70,7 +70,7 @@ func TestTools_기억_여섯개와_활동_기록(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	sort.Strings(names)
-	want := "activity_find,memory_find,memory_get,memory_save,memory_update,proposal_decide,proposals"
+	want := "activity_find,memory_find,memory_forget,memory_get,memory_save,memory_update,proposal_decide,proposals"
 	if strings.Join(names, ",") != want {
 		t.Fatalf("tools = %v", names)
 	}
@@ -297,6 +297,7 @@ func TestToolAnnotations(t *testing.T) {
 		"proposals":       {read: true},
 		"memory_save":     {},
 		"memory_update":   {},
+		"memory_forget":   {destructive: true},
 		"proposal_decide": {destructive: true, idempotent: true},
 	})
 }
