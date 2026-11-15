@@ -170,7 +170,13 @@ func scrubLedgerLineTx(tx *sql.Tx, l auditLine, ids []string) error {
 	}
 	var b LedgerBefore
 	if err := json.Unmarshal([]byte(l.before), &b); err != nil {
-		return fmt.Errorf("ledger %s: before: %w", l.id, err)
+		// 깨진 before는 읽을 수 없어 가려내지 못한다: 통째로 지우고 되돌릴 수 없다고 적는다. 이 줄 하나 때문에
+		// 기억을 영영 못 지우게 되면 안 된다.
+		lost := slices.Clone(l.hit)
+		slices.Sort(lost)
+		raw, _ := json.Marshal(LedgerBefore{Forgotten: slices.Compact(lost)})
+		_, err := tx.Exec(`UPDATE ledger SET change=?, basis=?, before=? WHERE id=?`, text, text, string(raw), l.id)
+		return err
 	}
 	if !scrubBefore(&b, ids) {
 		_, err := tx.Exec(`UPDATE ledger SET change=?, basis=? WHERE id=?`, text, text, l.id)

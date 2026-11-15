@@ -113,6 +113,10 @@ func (t Tools) Update(in UpdateIn) (MemoryOut, error) {
 }
 
 // Forget runs memory_forget; the error is the tool error text.
+//
+// Nothing calls it yet. It is not part of the host contract (HostTools): the spec leaves memory_forget out
+// of the host on purpose. NewTools fills an empty actor with user, so wiring this function to another entry
+// point would delete without a word. Check the actor before connecting it anywhere.
 func (t Tools) Forget(in ForgetIn) (ForgetOut, error) {
 	res, out, _ := t.h.forget(context.Background(), nil, in)
 	return out, asError(res)

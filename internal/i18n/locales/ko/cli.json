@@ -419,5 +419,6 @@
   "cli.forget.cancelled": "취소했습니다. 아무것도 지우지 않았습니다.",
   "cli.forget.done": "기억 %d개를 완전히 지웠습니다: %s",
   "cli.forget.touched": "이 기억들은 낡음 그대로 둡니다. 대체한 기억을 지웠습니다: %s",
-  "cli.backup.restore_forgotten": "이 사본에는 지운 기억(%d개)이 있어 복구하면 돌아옵니다. 계속 지워 두려면 복구한 뒤 다시 forget하세요."
+  "cli.backup.restore_forgotten": "이 사본에는 지운 기억(%d개)이 있어 복구하면 돌아옵니다. 계속 지워 두려면 복구한 뒤 다시 forget하세요.",
+  "cli.backup.restore_forgotten_unchecked": "이 사본에 지운 기억이 있는지 확인하지 못했습니다(%v). 복구하면 지운 기억이 돌아올 수 있습니다."
 }

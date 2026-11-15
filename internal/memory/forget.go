@@ -117,7 +117,8 @@ func (e *ForgetMissingError) Unwrap() error { return ErrNotFound }
 //
 // A memory outside the set that the forgotten ones superseded stays stale: its superseded_by is cleared and
 // its stale reason says the successor was forgotten, without a new version (ForgetResult.Touched). Ledger
-// and proposal text, saved copies of the forgotten text elsewhere and backup copies are not touched here.
+// and proposal text are blanked by scrubAuditTx in the same transaction. Backup copies and text copied into
+// other memories are not touched.
 func (s *Store) Forget(in ForgetInput) (ForgetResult, error) {
 	ids, err := in.check()
 	if err != nil {

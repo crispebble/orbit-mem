@@ -223,8 +223,9 @@ func backupRestore(a *app, args []string) error {
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.plan", paths().DB(), now, src, info.Memories))
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.keep", paths().Backups()))
 	// 사본에 있던 기억을 그 뒤에 지웠다면 복구가 되살린다(명세 5.4): 사람이 알고 정하게 먼저 알린다.
+	// 이 대조가 실패해도 복구를 막지 않는다: 복구는 잘못 지웠을 때 되찾는 유일한 길이라 경고만 한다.
 	if n, err := s.ForgottenInCopy(src); err != nil {
-		return err
+		fmt.Fprintln(a.stderr, i18n.T("cli.backup.restore_forgotten_unchecked", err))
 	} else if n > 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore_forgotten", n))
 	}

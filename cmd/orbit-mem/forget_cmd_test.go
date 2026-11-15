@@ -143,3 +143,48 @@ func TestBackupRestore_지운_기억이_없으면_안내하지_않는다(t *test
 		t.Fatalf("안내가 나왔다: %q", out)
 	}
 }
+
+func TestForgetCmd_JSON이면_확인_질문과_취소_글이_stdout에_나오지_않는다(t *testing.T) {
+	home(t)
+	old := stdinIsTerminal
+	stdinIsTerminal = func(any) bool { return true } // 터미널에서 묻는 길을 탄다
+	t.Cleanup(func() { stdinIsTerminal = old })
+	s := seed(t)
+	m := forgetSeed(t, s, "지울 기억")
+	out, errOut, code := run(t, "n\n", "forget", m.ID, "--json")
+	if code != 0 {
+		t.Fatalf("code %d, stderr %q", code, errOut)
+	}
+	if out != "" {
+		t.Fatalf("JSON 모드 stdout에 글이 나왔다: %q", out)
+	}
+	if !strings.Contains(errOut, "Cancelled") {
+		t.Fatalf("취소 글이 stderr에 없다: %q", errOut)
+	}
+	if _, err := s.Get(m.ID); err != nil {
+		t.Fatalf("취소했는데 지워졌다: %v", err)
+	}
+}
+
+func TestBackupRestore_지운_기억_확인이_실패해도_미리_보기를_보이고_경고만_낸다(t *testing.T) {
+	h := home(t)
+	s := seed(t)
+	forgetSeed(t, s, "a")
+	if _, _, code := run(t, "", "backup"); code != 0 {
+		t.Fatal(code)
+	}
+	cp, _ := backup.Last(filepath.Join(h, "backups"), backup.PrefixMemory)
+	if _, err := s.DB().Exec(`DROP TABLE forgotten; CREATE TABLE forgotten(legacy_id TEXT)`); err != nil { // 지운 기억 대조가 실패하는 상황(id 열 없음)
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "backup", "restore", cp.Name) // --yes 없이: 미리 보기만
+	if !strings.Contains(out, cp.Path) {
+		t.Fatalf("복구 미리 보기가 막혔다: out %q, err %q", out, errOut)
+	}
+	if !strings.Contains(errOut, "forgotten") || !strings.Contains(errOut, "--yes") {
+		t.Fatalf("경고와 --yes 안내가 stderr에 없다: %q", errOut)
+	}
+	if code != 1 {
+		t.Fatalf("code %d", code)
+	}
+}

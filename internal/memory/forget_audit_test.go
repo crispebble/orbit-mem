@@ -411,3 +411,50 @@ func TestForgetAudit_원장_줄_없는_되돌림_제안도_비운다(t *testing.
 		t.Fatalf("got = %+v %v", got, err)
 	}
 }
+
+func TestForgetAudit_깨진_before가_든_원장_줄이_있어도_지우고_그_줄은_되돌릴_수_없다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := candidate(t, s, "깨진 줄의 기억")
+	res, err := s.AutoApply(auto(AutoInput{Kind: ProposalStale, Title: "낡음", MemoryIDs: []string{a.ID}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB().Exec(`UPDATE ledger SET before=? WHERE id=?`, "{깨짐 "+a.ID, res.LedgerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Forget(ForgetInput{IDs: []string{a.ID}, Who: Who{}}); err != nil {
+		t.Fatalf("깨진 줄 때문에 지우지 못했습니다: %v", err)
+	}
+	if _, err := s.Get(a.ID); err == nil {
+		t.Fatal("기억이 남았습니다")
+	}
+	var change, before string
+	if err := s.DB().QueryRow(`SELECT change, before FROM ledger WHERE id=?`, res.LedgerID).Scan(&change, &before); err != nil {
+		t.Fatal(err)
+	}
+	if change != fmt.Sprintf(forgetLedgerChange, a.ID) || before != `{"forgotten":["`+a.ID+`"]}` {
+		t.Fatalf("change=%q before=%q", change, before)
+	}
+	if _, err := s.RevertChange(res.LedgerID, Who{}, "되돌려"); !errors.Is(err, ErrLedgerForgotten) {
+		t.Fatalf("RevertChange = %v", err)
+	}
+}
+
+func TestRevert_적용_직전에_원장_줄을_다시_읽어_지운_기억이_든_줄은_거절한다(t *testing.T) {
+	s, _ := newTestStore(t)
+	a := candidate(t, s, "지울 기억")
+	res, err := s.AutoApply(auto(AutoInput{Kind: ProposalStale, Title: "낡음", MemoryIDs: []string{a.ID}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// RevertChange의 검사를 지난 뒤 Forget이 끼어든 상황: revert는 쓰기 트랜잭션 안에서 다시 읽고 다시 본다.
+	forgetHuman(t, s, a.ID)
+	var dr DecideResult
+	err = s.revert(Proposal{ID: "p-시험", Payload: Payload{LedgerID: res.LedgerID}}, &dr)
+	if !errors.Is(err, ErrLedgerForgotten) {
+		t.Fatalf("revert = %v", err)
+	}
+	if len(dr.Changed) != 0 {
+		t.Fatalf("바뀐 기억 %v", dr.Changed)
+	}
+}

@@ -471,6 +471,9 @@ func cmdActivity(a *app, args []string) error {
 	return nil
 }
 
+// stdinIsTerminal says whether forget may ask on stdin; a test swaps it to take the asking path.
+var stdinIsTerminal = isTerminal
+
 // forgetResult is what `forget` prints as JSON.
 type forgetResult struct {
 	Forgotten []string `json:"forgotten"`
@@ -500,7 +503,7 @@ func cmdForget(a *app, args []string) error {
 	}
 	defer s.Close()
 	wantJSON := a.wantJSON(*asJSON)
-	// 미리 보기는 JSON이 아니어야 하는 stdout을 더럽히지 않게 JSON 모드에서는 stderr로 보낸다.
+	// 미리 보기·확인 질문·취소 글은 JSON이어야 하는 stdout을 더럽히지 않게 JSON 모드에서는 stderr로 보낸다.
 	preview := a.stdout
 	if wantJSON {
 		preview = a.stderr
@@ -515,14 +518,14 @@ func cmdForget(a *app, args []string) error {
 	}
 	fmt.Fprintln(preview, i18n.T("cli.forget.kept"))
 	if !*yes {
-		if !isTerminal(a.stdin) {
+		if !stdinIsTerminal(a.stdin) {
 			fmt.Fprintln(a.stderr, i18n.T("cli.forget.need_yes"))
 			return exitCode(1)
 		}
-		fmt.Fprint(a.stdout, i18n.T("cli.forget.ask"))
+		fmt.Fprint(preview, i18n.T("cli.forget.ask"))
 		line, _ := bufio.NewReader(a.stdin).ReadString('\n')
 		if ans := strings.ToLower(strings.TrimSpace(line)); ans != "y" && ans != "yes" {
-			fmt.Fprintln(a.stdout, i18n.T("cli.forget.cancelled"))
+			fmt.Fprintln(preview, i18n.T("cli.forget.cancelled"))
 			return nil
 		}
 	}

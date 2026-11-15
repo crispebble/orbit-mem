@@ -419,5 +419,6 @@
   "cli.forget.cancelled": "Cancelled. Nothing deleted.",
   "cli.forget.done": "Deleted %d memories for good: %s",
   "cli.forget.touched": "These memories stay stale; the one that replaced them was deleted: %s",
-  "cli.backup.restore_forgotten": "This copy holds forgotten memories (%d): they come back with the restore. Forget them again afterwards if they must stay gone."
+  "cli.backup.restore_forgotten": "This copy holds forgotten memories (%d): they come back with the restore. Forget them again afterwards if they must stay gone.",
+  "cli.backup.restore_forgotten_unchecked": "Could not check which forgotten memories this copy holds (%v). Restoring may bring back memories you forgot."
 }

@@ -120,3 +120,34 @@ func TestForgetTool_호출_사건에_말과_이유를_남기지_않는다(t *tes
 		t.Fatalf("data = %s", data)
 	}
 }
+
+func TestForgetTool_기억_셋을_한_번에_지우면_셋_다_없고_찾아지지_않는다(t *testing.T) {
+	cs, s := connectAs(t, "")
+	ids := []string{saveForgettable(t, s, "셋 지우기 가나다"), saveForgettable(t, s, "셋 지우기 라마바"), saveForgettable(t, s, "셋 지우기 사아자")}
+	keep := saveForgettable(t, s, "셋 지우기 남는 기억")
+	var out ForgetOut
+	res := call(t, cs, "memory_forget", map[string]any{"ids": ids, "userQuote": "셋 다 지워줘"}, &out)
+	if res.IsError {
+		t.Fatalf("도구 오류: %s", text(res))
+	}
+	if strings.Join(out.Forgotten, ",") != strings.Join(ids, ",") {
+		t.Fatalf("forgotten = %v", out.Forgotten)
+	}
+	for _, id := range ids {
+		if _, err := s.Get(id); err == nil {
+			t.Errorf("%s가 남아 있습니다", id)
+		}
+	}
+	found, err := s.Find(memory.FindInput{Query: "셋 지우기", AllProjects: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		if f.ID != keep {
+			t.Errorf("지운 기억이 찾아집니다: %s", f.ID)
+		}
+	}
+	if _, err := s.Get(keep); err != nil {
+		t.Fatalf("남길 기억이 지워졌습니다: %v", err)
+	}
+}
