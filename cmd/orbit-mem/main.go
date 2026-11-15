@@ -52,6 +52,7 @@ func commands() []command {
 		{"list", "usage.list", cmdList},
 		{"edit", "usage.edit", cmdEdit},
 		{"stale", "usage.stale", cmdStale},
+		{"forget", "usage.forget", cmdForget},
 		{"export", "usage.export", cmdExport},
 		{"import", "usage.import", cmdImport},
 		{"activity", "usage.activity", cmdActivity},

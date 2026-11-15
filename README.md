@@ -110,6 +110,7 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 | `orbit-mem list [--kind K]… [--state S]… [--tag T]… [--all] [-n N]` | 최근 기억 목록(질의 없는 `memory_find`, 기본은 후보·확정, 한 건마다 색인 한 줄, `-n` 기본 20·최대 30, 제목 100자. `--json`은 `search`와 같은 꼴) |
 | `orbit-mem edit <id> [--title] [--body \| --body-file F] [--tag T]… [--link ID]… [--unlink ID]… [--note]` | 기억 고치기(`memory_update`, 판이 오르고 이력이 남는다) |
 | `orbit-mem stale <id> [--note]` | 낡음으로 표시(`memory_update` action=stale, 지우지 않는다) |
+| `orbit-mem forget <id>… [--reason 글] [--quote 글] [--yes] [--json]` | 기억을 DB에서 완전히 지운다(`memory_forget`과 같은 지우기, 되돌릴 수 없다). 지울 기억의 id와 제목을 먼저 보이고, `--yes`가 없으면 터미널에서는 묻고 터미널이 아니면 지우지 않고 종료 1이다. `ORBIT_ACTOR=ai`(또는 `--actor` 없이 AI가 부른 셸)면 `--quote`로 사용자 말이 있어야 하고, `automation`은 늘 거절한다. 하나라도 없는 id가 있으면 아무것도 지우지 않는다. 백업 사본에는 남는다(아래 「백업」·「지운 기억」) |
 | `orbit-mem export [--format jsonl\|md] [--out 경로] [--all]` | 사람이 읽고 옮길 수 있게 내보낸다. jsonl은 한 줄에 기억 하나(출처·나온 날·연결 포함), `--out`이 없으면 stdout. md는 폴더에 `<id>.md`와 `index.md`. 기본은 숨김 빼고 전부, `--all`은 숨김(거절한 후보)까지 |
 | `orbit-mem import <jsonl> [--dry-run]` | export한 jsonl을 들여온다. 아래 「들여오기 규칙」 |
 | `orbit-mem activity [질의] [--host H] [--project all\|DIR] [--since 날짜] [-n N]` | 활동 기록 찾기(`activity_find`) |
@@ -182,9 +183,9 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 
 ## 얇은 CLI의 출력
 
-`search`·`show`·`list`·`edit`·`stale`·`activity`·`import`는 MCP 도구와 같은 함수를 부른다. stdout이 터미널이면 사람이 읽는 표·글을, 파이프나 파일이면 JSON(도구 응답과 같은 구조)을 낸다. `--json`이면 언제나 JSON이다. 이 명령은 AI 도구 사용 사건(`tool.*`)으로 세지 않는다.
+`search`·`show`·`list`·`edit`·`stale`·`activity`·`import`는 MCP 도구와 같은 함수를 부른다(`forget`은 기억 저장소의 지우기를 직접 부르고, 지운 기억 id를 `--json`이면 `{forgotten, touched}`로 낸다). stdout이 터미널이면 사람이 읽는 표·글을, 파이프나 파일이면 JSON(도구 응답과 같은 구조)을 낸다. `--json`이면 언제나 JSON이다. 이 명령은 AI 도구 사용 사건(`tool.*`)으로 세지 않는다.
 
-들여오기 규칙(`import`): 줄마다 기억 하나를 읽어 같은 id·종류·범위·상태·제목·본문·태그·시각·출처·나온 날로 넣고, 판 이력에 `import`(사유 `import: <파일 이름>`) 한 줄을 남긴다. 이미 있는 id(옛 Knowledge id가 같은 것 포함)는 그대로 두고 `exists`로, 같은 종류·범위·제목의 숨기지 않은 기억이 있으면 `duplicate`로, 깨진 줄이나 틀린 값은 `invalid`로 건너뛰고 줄 번호와 함께 알린다. 양쪽 기억이 다 있게 된 연결은 다시 잇는다. 쓰기 전에 `backups/before-import-*.sqlite` 사본을 만든다. `--dry-run`은 쓰지 않고 결과만 보인다.
+들여오기 규칙(`import`): 줄마다 기억 하나를 읽어 같은 id·종류·범위·상태·제목·본문·태그·시각·출처·나온 날로 넣고, 판 이력에 `import`(사유 `import: <파일 이름>`) 한 줄을 남긴다. 이미 있는 id(옛 Knowledge id가 같은 것 포함)는 그대로 두고 `exists`로, 지운 기억(`forgotten`에 있는 id나 옛 Knowledge id)은 되살리지 않고 `forgotten`으로, 같은 종류·범위·제목의 숨기지 않은 기억이 있으면 `duplicate`로, 깨진 줄이나 틀린 값은 `invalid`로 건너뛰고 줄 번호와 함께 알린다. 양쪽 기억이 다 있게 된 연결은 다시 잇는다. 쓰기 전에 `backups/before-import-*.sqlite` 사본을 만든다. `--dry-run`은 쓰지 않고 결과만 보인다.
 
 ## 활동 기록
 
@@ -208,7 +209,7 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 
 `orbit-mem mcp`(서버 이름 `orbit-mem`, 응답 글은 AI가 읽으므로 한국어):
 
-- 기억 6개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `proposals`, `proposal_decide`. `memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다. `memory_find`는 기본으로 색인 꼴(`detail: "index"`: 건마다 `id`·`kind`·`state`·`appliesTo`·`title`)로 `limit` 기본 8건(최대 30)을 주고, `detail: "summary"`면 본문 앞 200자(`summary`)·`tags`·`pinned`가 더해진다. `memory_get`은 본문을 기본 2,000자까지(자르면 끝에 「… (전문은 full: true)」), 출처는 최근 2개, `links`는 「제목 — id」 줄 최대 5개(더 있으면 「외 N개」)로 줄여 주고, `full: true`면 본문 전문과 출처·`links` 전부를 준다. `memory_save`는 `conflictsWith`(어긋나는 사용자 규칙 id)와 출처 `verification`을, `memory_update`는 `userQuote`(사용자 인용 기억을 바꾸라는 사용자 말)를 받는다. `proposals`는 감사·교정용이다: 기본(`status=audit`)은 감사 목록(`audit`)이고, `status=pending`은 남은 옛 대기 제안이다. `proposal_decide`는 `revert`(자동 변경 되돌리기)·`dismiss`(어긋남·반복 교정 확인함)와, 남은 옛 대기 제안에 쓰는 `approve`·`reject`를 받는다.
+- 기억 7개: `memory_find`, `memory_get`, `memory_save`, `memory_update`, `memory_forget`, `proposals`, `proposal_decide`. `memory_save`·`memory_update`는 관련 기억 연결 `links`·`link`·`unlink`를 받고 `memory_get`은 `links`를 준다. `memory_find`는 기본으로 색인 꼴(`detail: "index"`: 건마다 `id`·`kind`·`state`·`appliesTo`·`title`)로 `limit` 기본 8건(최대 30)을 주고, `detail: "summary"`면 본문 앞 200자(`summary`)·`tags`·`pinned`가 더해진다. `memory_get`은 본문을 기본 2,000자까지(자르면 끝에 「… (전문은 full: true)」), 출처는 최근 2개, `links`는 「제목 — id」 줄 최대 5개(더 있으면 「외 N개」)로 줄여 주고, `full: true`면 본문 전문과 출처·`links` 전부를 준다. `memory_save`는 `conflictsWith`(어긋나는 사용자 규칙 id)와 출처 `verification`을, `memory_update`는 `userQuote`(사용자 인용 기억을 바꾸라는 사용자 말)를 받는다. `memory_forget`은 `ids`(1~20개)·`userQuote`(지우라고 한 사용자 말, AI는 꼭 준다)·`reason`을 받아 기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 `memory_update`의 stale·supersede로 고친다. `proposals`는 감사·교정용이다: 기본(`status=audit`)은 감사 목록(`audit`)이고, `status=pending`은 남은 옛 대기 제안이다. `proposal_decide`는 `revert`(자동 변경 되돌리기)·`dismiss`(어긋남·반복 교정 확인함)와, 남은 옛 대기 제안에 쓰는 `approve`·`reject`를 받는다.
 - 쓰는 쪽(actor)은 도구 인자가 아니라 서버가 정한다: `--actor`, 없으면 환경 `ORBIT_ACTOR`, 기본 `ai`.
 - 활동 기록: `activity_find` — 입력 `query`·`host`·`project`(비우면 이 프로젝트, `all`이면 전부, 아니면 프로젝트 디렉터리 절대경로)·`since`(`YYYY-MM-DD`, RFC 3339, `7d`·`12h`)·`limit`(기본 20, 최대 100). 출력 `{"items":[{source, host, session, project, projectScope, cwd, launcher, parent, startedAt, lastAt, endedAt, prompts, firstPrompt, lastPrompt, summary?}]}`.
 
@@ -244,7 +245,7 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 - 후보 기한(0.13.0): `candidateExpiryDays`(기본 28, 0이면 끔)일 동안 만들지도 고치지도, 세션·요청에 넣지도, `memory_find`·`memory_get`으로 찾거나 읽지도, 사용 판정을 받지도 않은 후보는 하루 정리가 자동 낡음으로 돌리고 원장에 남긴다. 회상을 넣지 않는 설정(`recall` `on_demand`·`off`)에서는 후보가 쓰일 기회가 없으니 하지 않는다. 사용자 말 출처 기억은 대상이 아니고, 사건 기록이 기한보다 짧으면(새 설치) 하지 않는다. 되돌리면 후보로 돌아오고 다시 낡음으로 하지 않는다.
 - 주제(`topic`): 같은 범위·주제의 기억은 하나만 회상한다(세션 시작 규칙 포함): 확정된 것 중 가장 최근 것, 확정이 없으면 후보·낡음 중 가장 최근 것. 후보는 확정(사용자 말)을 가리지 못하고, 최신 판이 낡아도 옛 판은 돌아오지 않는다. 날이 지난 휘발 기억은 현재값이 아니다.
 - 저장 때 대체(설계 · orbit-mem 2판 4.2·4.3, 0.11.0): `memory_save`의 규칙·결정은 `topic`이 필수다(없으면 거절하고 이 범위의 주제 목록과 비슷한 현재값 3개를 보인다). 같은 범위·주제로 저장하면 옛 현재값을 낡음 + `superseded_by`로 돌리고, `supersedes: [id…]`는 범위·주제가 다른 옛 판도 같은 트랜잭션에서 대체한다. 사용자 말(출처 quote)은 옛 사용자 말을 `userQuote` 없이 대체한다(D1). AI가 배운 것·자동화는 사용자 말을 대체하지 않고 어긋남 표시를 남긴다. `volatile`(임시라고 밝힌 말)은 같은 주제를 대체하지 않는다. 응답의 `superseded`·`conflicts`가 한 일을 알린다.
-- 검색: `memory_find`·`orbit-mem search`의 질의는 SQLite FTS5 색인(`memory_index`·`memory_fts`, 스키마 판 5)으로 후보를 찾고, 점수(0~1)는 Go가 매긴다: 질의 낱말 중 기억이 덮는 낱말의 IDF 가중 비율이고 제목 > 주제·태그 > 본문 순으로 무겁다(FTS5 `bm25()`는 기억이 한두 건일 때 점수가 무너져 쓰지 않는다). 한·중·일 글은 두 글자 바이그램으로 쪼개 색인한다. 색인은 기억을 쓰는 같은 트랜잭션에서 맞춘다. 옛 실행 파일이 판 5 DB에 쓴 기억은 색인에 없는 「늦은 줄」이다: `memories`의 트리거 두 개(`memory_index_late_insert`·`memory_index_late_update`)가 넣거나 고친 기억 id를 늦은 표시 표 `memory_index_late`에 남기고, 검색은 표시된 기억만 지금 글로 훑어 함께 찾는다. 쓰기 호출이 한 번에 최대 200개씩, `orbit-mem migrate`·`install`·`backup restore`가 전부 채운다. 판 4 → 5 이전은 표를 만들고 전부 채우고, 표시 표가 없던 판 5 DB는 쓰기 열기가 전체 검사로 표시를 채운다. 그래서 늦은 줄이 없으면 쓰기·검색 비용이 기억 수와 거의 무관하다. 표시 없이 색인이 깨진 기억(색인 줄이나 FTS 줄이 지워짐)은 검색이 같은 읽기 트랜잭션에서 기억·색인·FTS 줄 수를 견주어(개수 비교 보호 장치) 어긋나면 그 검색만 전체를 훑어 맞춘다. 수가 그대로인 깨짐(표시 없이 색인 시각만 어긋남, 빠진 줄과 남는 줄이 같은 수)은 검색이 놓칠 수 있다. 깨진 색인은 `doctor`가 `index-broken`으로 알리고 `orbit-mem migrate --reindex`가 고친다. 기억 없는 색인 줄이나 색인 줄 없는 FTS 줄(고아 줄)은 `orbit-mem migrate`로는 지워지지 않는다(채우기는 늦은 줄만 채운다). 색인을 모두 다시 만드는 `--reindex`만 고치므로 `index-broken`의 고칠 명령이 `--reindex`다. 훅·읽기 op·`doctor`는 채우지 않는다(`doctor`는 늦은 줄을 `index-stale`로 알릴 뿐이다).
+- 검색: `memory_find`·`orbit-mem search`의 질의는 SQLite FTS5 색인(`memory_index`·`memory_fts`, 스키마 판 5)으로 후보를 찾고, 점수(0~1)는 Go가 매긴다: 질의 낱말 중 기억이 덮는 낱말의 IDF 가중 비율이고 제목 > 주제·태그 > 본문 순으로 무겁다(FTS5 `bm25()`는 기억이 한두 건일 때 점수가 무너져 쓰지 않는다). 한·중·일 글은 두 글자 바이그램으로 쪼개 색인한다. 색인은 기억을 쓰는 같은 트랜잭션에서 맞추고, 기억을 지울 때도 같은 트랜잭션에서 색인·FTS 줄을 지운다. 옛 실행 파일이 판 5 DB에 쓴 기억은 색인에 없는 「늦은 줄」이다: `memories`의 트리거 두 개(`memory_index_late_insert`·`memory_index_late_update`)가 넣거나 고친 기억 id를 늦은 표시 표 `memory_index_late`에 남기고, 검색은 표시된 기억만 지금 글로 훑어 함께 찾는다. 쓰기 호출이 한 번에 최대 200개씩, `orbit-mem migrate`·`install`·`backup restore`가 전부 채운다. 판 4 → 5 이전은 표를 만들고 전부 채우고, 표시 표가 없던 판 5 DB는 쓰기 열기가 전체 검사로 표시를 채운다. 그래서 늦은 줄이 없으면 쓰기·검색 비용이 기억 수와 거의 무관하다. 표시 없이 색인이 깨진 기억(색인 줄이나 FTS 줄이 지워짐)은 검색이 같은 읽기 트랜잭션에서 기억·색인·FTS 줄 수를 견주어(개수 비교 보호 장치) 어긋나면 그 검색만 전체를 훑어 맞춘다. 수가 그대로인 깨짐(표시 없이 색인 시각만 어긋남, 빠진 줄과 남는 줄이 같은 수)은 검색이 놓칠 수 있다. 깨진 색인은 `doctor`가 `index-broken`으로 알리고 `orbit-mem migrate --reindex`가 고친다. 기억 없는 색인 줄이나 색인 줄 없는 FTS 줄(고아 줄)은 `orbit-mem migrate`로는 지워지지 않는다(채우기는 늦은 줄만 채운다). 색인을 모두 다시 만드는 `--reindex`만 고치므로 `index-broken`의 고칠 명령이 `--reindex`다. 훅·읽기 op·`doctor`는 채우지 않는다(`doctor`는 늦은 줄을 `index-stale`로 알릴 뿐이다).
 - 저장 때 정리(`memory_save`): 같은 범위에 비슷한 기억(두 기억 사이 비슷함 점수 `saveSimilarMin` 이상, 기본 0.69, `orbit-mem config set saveSimilarMin 0.75`)이 있으면 저장하지 않고 `saved: false`와 `similar`(최대 3개: id·제목·요약·주제, 믿을 수 없는 기억이면 `trust`)를 돌려준다. 비슷함은 두 기억의 낱말(제목·주제·태그·본문, 조사·어미를 뗀 것)이 서로를 덮는 비율의 기하 평균이라, 같은 기억이 몇 건 더 있든 그 짝만 본다. 같은 낱말의 다른 꼴(조사·어미·받침으로 붙는 어미, 영어 복수·활용)은 반만 맞는 것으로 센다. 짧은 기억이 긴 글에 다 들어 있거나 머리 낱말 하나만 같으면 1/3 이하라 잡지 않는다. 막는 판정은 엄격하게 둔다: 같은 틀에 값·시점·대상만 다른 새 사실(낱말 여섯 가운데 넷이 같은 짝, 0.67 안팎)은 막지 않고, 낱말을 바꿔 쓴 같은 주장도 거의 같지 않으면 막지 않고 아래 가까운 기억으로 보인다. 기본값은 평가 묶음(`internal/bench/testdata`)의 중복 사례에서 잘못 막음이 0이 되고 계속 막아야 할 시험(L-16 변형)을 지키는 범위의 가운데 쪽으로 정했다. 호출한 AI가 `resolve`로 다시 부른다: `add`(그래도 새로 저장)·`update:<id>`(그 기억의 제목·본문을 새 값으로 바꿈 — 합치려면 본문에 옛 내용도 넣는다)·`supersede:<id>`(그 기억을 대체)·`skip`(저장하지 않음). 같은 제목이면 출처를 그 기억에 더하고, 같은 범위·주제의 현재값은 대체한다(위). `idempotencyKey`를 주면 같은 키로 다시 불러도 한 번만 적용한다(재시도 안전).
 - 가까운 기억(`memory_save`): 막지 않고 저장했는데 같은 범위에 조금 비슷한 기억(같은 비슷함 점수 `saveNearMin` 이상, 기본 0.22, `orbit-mem config set saveNearMin 0.3`)이 있으면 `saved: true`와 함께 `near` 한 줄에 그 id·제목을 점수 순으로 최대 3개 붙인다(제목은 30자에서 자르고 줄은 230자 이하, 저장 한 건에 200자 안팎). 바꿔 쓴 같은 주장이면 호출한 AI가 `memory_update`(stale·supersede)로 하나만 남긴다. 막을 때(`saved: false`)·같은 제목·같은 주제·`resolve`로 고른 저장에는 붙이지 않는다. 기본값은 평가 묶음의 중복 사례에서 (막음 ∪ 가까운) 상위 3의 적중이 묶음마다 옛 판 이상인 가장 높은 하한이다. `saveSimilarMin` 이상으로 두면 붙는 것이 없다.
 - 출처 등급(`sources[].trust`): `owner`(사용자 본인 말)·`agent`(호스트 AI가 배운 것)·`untrusted`(웹·도구 출력·남의 글·로그)·`system`(자동화). 통로가 상한을 정한다: MCP·호스트(`orbit-mem tool`)로 저장한 출처는 `agent`까지이고, `sources[].trust`로 낮출 수만 있다(올리지 못한다). 기억의 등급은 출처 가운데 가장 높은 것이다. 출처가 `untrusted`·`system`뿐인 기억은 확정·상시 핵심 승격이 안 되고 `owner`·`agent` 기억을 대체하거나 `update:<id>`로 고쳐 쓰지 못하며(사용자 말이 있으면 된다), 회상에 「믿을 수 없음」 표시가 붙는다.
@@ -253,7 +254,7 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 - 나이 감쇠: 요청 회상에서 관련도가 같으면 마지막으로 바뀌거나 다시 나온 지 30일 안 → 180일 안 → 그 뒤 순으로 앞에 둔다. 관련도가 먼저다.
 - 회상 품질 고정 시험: `internal/inject/testdata/recall_fixtures.json`(모델 호출 없음). 회상 규칙을 바꾸면 이 묶음이 같은 답을 내는지 먼저 본다.
 - 저장 거부(`memory_save`·`orbit-mem tool memory_save`): 비밀값, 원본 로그·스택 추적(세 줄 이상), 대화 전사(역할 표시 두 줄 이상), 모델을 향한 지시문(이전 지시 무시·시스템 프롬프트), 지금 일의 진행 상태(사용자 말 인용이 아닐 때)는 저장하지 않고 까닭을 돌려준다. 「3주 뒤」·「내일」·「in 3 weeks」 같은 상대 시간은 제목·본문에서 날짜로 바꾸고 `rewrites`로 알린다. 규칙(일하는 방식)은 바꾸지 않는다(「배포 3일 전」은 사건 기준이고, 제목이 바뀌면 다른 날 다시 저장한 같은 규칙이 모이지 않는다). 출처 발췌는 그대로 둔다. 들여오기의 저장에는 적용하지 않는다.
-- 스키마: `memories`에 `retention`·`review_days`·`review_at`·`expires_at`·`topic`·`tools`·`pinned`(0.15.0) 열과 색인 `memories_topic`, `activity`에 `summary`(0.16.0, 활동 기록으로 옮긴 일지의 본문) 열, 표 `session_marks`(세션에 한 번만 알린 정정·새 기억·도구 회상)가 더해진다(판을 올리지 않고 판 4에 더했다. 지금 판 5는 검색 색인이다). 새 판이 처음 열 때 `before-schema-*.sqlite` 사본을 남기고 열을 더한다. 옛 판 실행 파일은 열 이름을 대어 읽고 쓰므로 같은 DB를 함께 써도 깨지지 않고, 옛 판이 넣은 줄은 기본값(보통·날짜 없음·주제 없음)이 된다.
+- 스키마: `memories`에 `retention`·`review_days`·`review_at`·`expires_at`·`topic`·`tools`·`pinned`(0.15.0) 열과 색인 `memories_topic`, `activity`에 `summary`(0.16.0, 활동 기록으로 옮긴 일지의 본문) 열, 표 `session_marks`(세션에 한 번만 알린 정정·새 기억·도구 회상)가 더해진다(판을 올리지 않고 판 4에 더했다. 지금 판 5는 검색 색인이다). 새 판이 처음 열 때 `before-schema-*.sqlite` 사본을 남기고 열을 더한다. 표 `forgotten`(지운 기억의 id, 위 「지운 기억」)도 판을 올리지 않고 더했다: 판을 올리면 옛 실행 파일이 DB를 열지 못한다. 이 표가 없는 기존 DB를 쓰기로 처음 열면 `before-schema-*.sqlite` 사본이 하나 생긴다. 옛 판 실행 파일은 열 이름을 대어 읽고 쓰므로 같은 DB를 함께 써도 깨지지 않고, 옛 판이 넣은 줄은 기본값(보통·날짜 없음·주제 없음)이 된다.
 
 ## 확정 규칙과 감사 목록
 
@@ -283,6 +284,25 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 - `config.json`에서 이 판이 모르는 키(걷어낸 회고 설정 `retroHost`·`retroModel`·`retroHour`·`sessionRetro*`·`graphTidy*`·`legacy*`·`claudePath`·`codexPath`·`applyTargets`·`pluginSource`·`retiredNames`, 옛 작업 기록 설정 `work`·`workStaleAfter`·`workTestCommands` 등)는 읽을 때 무시하고, 다시 저장할 때 파일에 있던 그대로 남긴다.
 - PC끼리 공유하지 않는다.
 
+## 지운 기억
+
+`stale`(낡음)은 회상에서 빼기만 하고 기억을 남긴다. `memory_forget`·`orbit-mem forget`은 기억을 DB에서 완전히 지운다. 사용자가 지우라고 할 때만 쓰고, 틀리거나 낡은 기억은 먼저 `memory_update`의 stale·supersede로 고친다.
+
+- 지우는 것: 기억 행과 판 이력·출처·본 기록·연결(뗀 줄 포함)·검색 색인·판정·감사 표시·세션 표시, 일지에서 옮긴 활동 줄, 그 기억을 가리키는 교정·사용 사건. 한 번에 1~20개이고 한 트랜잭션이라 하나라도 없는 id가 있으면 아무것도 지우지 않는다.
+- 쓰는 쪽: 사람은 말 없이 지운다. AI는 지우라고 한 사용자 말(`userQuote`, `--quote`)이 있어야 하고, 자동화(하루 정리·자동 변경)는 늘 거절된다. 말과 이유는 500자까지이고 비밀값이 들어 있으면 거절된다.
+- 남기는 것: `forgotten` 표에 지운 id·옛 Knowledge id·시각·쓴 쪽·이유·사용자 말만 남긴다(제목·본문은 남기지 않는다). `import`·`migrate`·같은 키의 `memory_save` 재시도가 이 id를 보고 되살리지 않는다. 같은 내용을 새 요청 키로 저장하는 것은 막지 않는다.
+- 다른 기억: 지운 기억이 대체한 옛 판은 낡음 그대로 두고 대체 표시만 비운다. 효과 원장·제안은 줄을 남기고 그 기억의 글만 「지운 기억 <id>에 대한 …」으로 바꾼다. 그 기억의 스냅숏이 있던 원장 줄은 되돌릴 수 없다고 표시된다.
+- 되돌리기: 되돌릴 수 없다. 잘못 지웠으면 지우기 전 사본으로 `orbit-mem backup restore`한다(아래 「백업」).
+
+지우지 않는 것:
+
+- 백업 사본(하루 사본 14개, 이름 붙은 `before-*` 사본). 지운 기억은 거기 남고, `backup restore`하면 돌아온다. 복구 미리 보기가 사본에 있는 지운 기억의 수를 알린다.
+- 비밀값의 완전한 소거. SQLite의 빈 쪽·WAL·FTS 조각, 사용자가 내보낸 파일, 이미 모델 문맥에 들어간 글은 다루지 않는다.
+- 지운 기억에서 나눠 만들었거나 다른 기억에 복사된 글, 다른 기억의 판 이력에 남은 지운 기억의 제목.
+- 이미 연 세션에 들어간 글. 세션에 「지워졌다」고 알리지 않는다.
+- `forgotten`을 모르는 옛 판 실행 파일의 `import`·`migrate`(지운 기억이 돌아올 수 있다)와 `audit revert`(남은 스냅숏만 되돌린다).
+- 호스트 계약(`orbit-mem tool`, `host call`)에는 `memory_forget`이 없다.
+
 ## 백업
 
 `backups/`에 기억 DB 사본을 둔다. 사본은 SQLite `VACUUM INTO`로 만든다: 읽기 트랜잭션 하나의 일관된 모습을 임시 이름(`*.tmp`)에 쓰고 다 쓴 뒤에 이름을 바꾸므로, 쓰는 쪽(훅·MCP)을 막지 않고 덜 쓴 사본이 이름을 얻지 않는다.
@@ -294,6 +314,7 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 
 - 세션 시작 훅은 폴더를 한 번 읽어 24시간 규칙만 보고, 사본이 필요하면 `orbit-mem backup auto`를 따로(새 세션, 입출력 없이) 띄운 뒤 기다리지 않는다. `backup auto`는 `backups/.backup.lock`(OS 파일 잠금)을 잡은 뒤 규칙을 다시 보고, 다른 프로세스가 잠금을 쥐고 있으면 건너뛴다. 실패는 `logs/backup.log`에 남기고 훅은 언제나 종료 0이다. `orbit-mem config set autoBackup false`로 끈다(기본 켜짐).
 - 스키마 이전 전 사본을 만들지 못하면 스키마를 바꾸지 않고 기억 DB 열기가 실패한다.
+- 지운 기억(위 「지운 기억」)은 사본에서 지우지 않는다. 지우기 전에 만든 하루 사본과 이름 붙은 사본에 남고 `backup restore`하면 돌아온다. 이것이 잘못 지웠을 때의 복구 수단이라 사본에서는 지우지 않는다.
 - `orbit-mem backup list`: 사본(이름·종류·시각·크기)을 최신순으로. `orbit-mem backup status`: 폴더, 자동 켜짐, 보관 개수, 마지막 하루 사본 시각·개수, 다음 자동 사본 시각. 둘 다 파이프면 JSON이다.
 - `orbit-mem backup restore <사본 이름 또는 경로> [--yes]`: 먼저 무엇을 무엇으로 바꾸는지(기억 수와 함께) 출력한다. `--yes`가 없으면 터미널에서는 묻고, 터미널이 아니면 바꾸지 않고 종료 1이다. 사본의 무결성(`PRAGMA integrity_check`)과 기억 표를 확인한 뒤, 지금 DB를 `before-restore-*.sqlite`로 남기고, SQLite 온라인 백업 API로 사본을 한 트랜잭션에 들여온다. 파일을 갈아 끼우지 않으므로 열려 있는 MCP 서버도 바뀐 내용을 본다. 들여온 뒤 다시 검사해 실패하면 남긴 사본으로 되돌린다.
 

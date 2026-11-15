@@ -470,3 +470,76 @@ func cmdActivity(a *app, args []string) error {
 	}
 	return nil
 }
+
+// forgetResult is what `forget` prints as JSON.
+type forgetResult struct {
+	Forgotten []string `json:"forgotten"`
+	Touched   []string `json:"touched,omitempty"`
+}
+
+// cmdForget deletes memories for good. A person runs it: it first shows each memory's id and title, and
+// without --yes it changes nothing (on a terminal it asks). It calls Store.Forget itself instead of the MCP
+// tool, as core --pin does: the writer is the actor flag/ORBIT_ACTOR (default user), so an AI that runs
+// it from a shell (ORBIT_ACTOR=ai) needs --quote, and an automation is refused (명세 5.2).
+func cmdForget(a *app, args []string) error {
+	fs := a.flags("forget")
+	reason := fs.String("reason", "", i18n.T("flag.forget.reason"))
+	quote := fs.String("quote", "", i18n.T("flag.forget.quote"))
+	yes := fs.Bool("yes", false, i18n.T("flag.forget.yes"))
+	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
+	ids, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return errUsage
+	}
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	wantJSON := a.wantJSON(*asJSON)
+	// 미리 보기는 JSON이 아니어야 하는 stdout을 더럽히지 않게 JSON 모드에서는 stderr로 보낸다.
+	preview := a.stdout
+	if wantJSON {
+		preview = a.stderr
+	}
+	fmt.Fprintln(preview, i18n.T("cli.forget.plan", len(ids)))
+	for _, id := range ids {
+		if m, err := s.Get(strings.TrimSpace(id)); err == nil {
+			fmt.Fprintln(preview, i18n.T("cli.forget.item", m.ID, oneLine(m.Title, 100)))
+		} else {
+			fmt.Fprintln(preview, i18n.T("cli.forget.item_missing", id))
+		}
+	}
+	fmt.Fprintln(preview, i18n.T("cli.forget.kept"))
+	if !*yes {
+		if !isTerminal(a.stdin) {
+			fmt.Fprintln(a.stderr, i18n.T("cli.forget.need_yes"))
+			return exitCode(1)
+		}
+		fmt.Fprint(a.stdout, i18n.T("cli.forget.ask"))
+		line, _ := bufio.NewReader(a.stdin).ReadString('\n')
+		if ans := strings.ToLower(strings.TrimSpace(line)); ans != "y" && ans != "yes" {
+			fmt.Fprintln(a.stdout, i18n.T("cli.forget.cancelled"))
+			return nil
+		}
+	}
+	res, err := s.Forget(memory.ForgetInput{
+		IDs:    ids,
+		Reason: *reason,
+		Who:    memory.Who{Actor: actorOf("", memory.ActorUser), UserQuote: strings.TrimSpace(*quote)},
+	})
+	if err != nil {
+		return err
+	}
+	if wantJSON {
+		return a.json(forgetResult{Forgotten: res.Forgotten, Touched: res.Touched})
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.forget.done", len(res.Forgotten), strings.Join(res.Forgotten, ", ")))
+	if len(res.Touched) > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.forget.touched", strings.Join(res.Touched, ", ")))
+	}
+	return nil
+}

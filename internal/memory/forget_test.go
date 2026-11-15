@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -488,5 +489,56 @@ func TestForgottenTx_표가_없으면_거짓이다(t *testing.T) {
 	}
 	if ok, err := s.IsForgotten("m-x", "legacy-x"); err != nil || ok {
 		t.Fatalf("%v %v", ok, err)
+	}
+}
+
+func TestForgottenInCopy_사본에_있던_기억_가운데_지금_지운_것만_센다(t *testing.T) {
+	s, _ := newTestStore(t)
+	gone := forgetQuote(t, s, "지울 기억")
+	kept := forgetQuote(t, s, "남길 기억")
+	path, err := s.Backup(t.TempDir(), 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.ForgottenInCopy(path); err != nil || n != 0 {
+		t.Fatalf("지우기 전 = %d %v", n, err)
+	}
+	if _, err := s.Forget(ForgetInput{IDs: []string{gone.ID}, Who: Who{Actor: ActorUser}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.ForgottenInCopy(path); err != nil || n != 1 {
+		t.Fatalf("지운 뒤 = %d %v (남긴 기억 %s)", n, err, kept.ID)
+	}
+}
+
+func TestForgottenInCopy_깨진_사본은_오류다(t *testing.T) {
+	s, _ := newTestStore(t)
+	if _, err := s.ForgottenInCopy(filepath.Join(t.TempDir(), "없음.sqlite")); err == nil {
+		t.Fatal("없는 사본인데 오류가 없다")
+	}
+}
+
+// README의 스키마 절이 이 동작을 말한다: forgotten 표가 없는 기존 DB를 처음 쓰기로 열면 사본이 하나 생기고 표가 생긴다.
+func TestOpen_forgotten_표가_없는_DB는_before_schema_사본_하나를_남기고_표를_만든다(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "memory.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB().Exec(`DROP TABLE forgotten`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if n := countOf(t, s, `SELECT COUNT(*) FROM sqlite_master WHERE name='forgotten'`); n != 1 {
+		t.Fatalf("forgotten 표 %d개", n)
+	}
+	if l := mustList(t, filepath.Join(home, "backups")); len(l) != 1 || !strings.HasPrefix(l[0].Name, "before-schema-") {
+		t.Fatalf("copies = %+v", l)
 	}
 }

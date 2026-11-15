@@ -222,6 +222,12 @@ func backupRestore(a *app, args []string) error {
 	now, _ := s.Count()
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.plan", paths().DB(), now, src, info.Memories))
 	fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore.keep", paths().Backups()))
+	// 사본에 있던 기억을 그 뒤에 지웠다면 복구가 되살린다(명세 5.4): 사람이 알고 정하게 먼저 알린다.
+	if n, err := s.ForgottenInCopy(src); err != nil {
+		return err
+	} else if n > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.backup.restore_forgotten", n))
+	}
 	if !*yes {
 		if !isTerminal(a.stdin) {
 			fmt.Fprintln(a.stderr, i18n.T("cli.backup.restore.need_yes"))
