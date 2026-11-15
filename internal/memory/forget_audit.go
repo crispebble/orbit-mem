@@ -28,13 +28,14 @@ func revertableErr(b LedgerBefore) error {
 // auditLine is a ledger line scrubAuditTx has to blank, with the ids of ids it is about.
 type auditLine struct {
 	id, proposalID, before string
+	text                   string // targets·observe·before를 이은 글: id를 찾는 범위
 	revertOf, revertedBy   string
 	hit                    []string // 지운 id 가운데 이 줄이 가리키는 것
 	direct                 bool     // targets·observe·before 글에 id가 있는 줄(되돌림으로 이어진 줄은 false)
 }
 
 // scrubAuditTx blanks what the ledger and the proposals keep of the memories ids, inside tx. It runs before
-// the rows of the memories are deleted.
+// the rows of the memories are deleted; now (ms) dates the pending proposals it closes.
 //
 // A ledger line is a target when its targets, observe or before text holds an id (a plain text search, so a
 // line that only carries the id inside a snapshot is found too), and so is every line linked to it by
@@ -44,9 +45,11 @@ type auditLine struct {
 // id only in observe loses text but not the way back.
 //
 // A proposal is a target when its memory_ids hold an id or a target line belongs to it: its title becomes
-// forgetProposalTitle, body and payload are emptied and memory_ids stay. A pending one is closed
+// forgetProposalTitle, body and payload are emptied and memory_ids stay. A revert proposal of a target line
+// is one too (payload.ledgerId): one for a file change has no memory_ids and no ledger line when it is
+// pending or its apply failed. A pending one is closed
 // (StatusDropped). The title of an audit.auto_reverted event of a target line goes too; its ledgerId stays.
-func scrubAuditTx(tx *sql.Tx, ids []string) error {
+func scrubAuditTx(tx *sql.Tx, ids []string, now int64) error {
 	lines, err := auditLinesTx(tx, ids)
 	if err != nil {
 		return err
@@ -63,6 +66,11 @@ func scrubAuditTx(tx *sql.Tx, ids []string) error {
 	if err := proposalsHoldingTx(tx, ids, proposals); err != nil {
 		return err
 	}
+	for _, l := range lines {
+		if err := revertProposalsOfTx(tx, l, proposals); err != nil {
+			return err
+		}
+	}
 	pids := make([]string, 0, len(proposals))
 	for pid := range proposals {
 		pids = append(pids, pid)
@@ -73,7 +81,7 @@ func scrubAuditTx(tx *sql.Tx, ids []string) error {
 		if _, err := tx.Exec(`UPDATE proposals SET title=?, body='', payload='{}' WHERE id=?`, title, pid); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE proposals SET status=?, note=? WHERE id=? AND status=?`, StatusDropped, forgetDropNote, pid, StatusPending); err != nil {
+		if _, err := tx.Exec(`UPDATE proposals SET status=?, note=?, decided_at=? WHERE id=? AND status=?`, StatusDropped, forgetDropNote, now, pid, StatusPending); err != nil {
 			return err
 		}
 	}
@@ -87,55 +95,70 @@ func scrubAuditTx(tx *sql.Tx, ids []string) error {
 
 // auditLinesTx finds the target ledger lines of ids: the ones that hold an id and the ones linked to them.
 func auditLinesTx(tx *sql.Tx, ids []string) ([]auditLine, error) {
-	rows, err := tx.Query(`SELECT id, proposal_id, targets, observe, before, revert_of, reverted_by FROM ledger`)
+	list, _ := json.Marshal(ids)
+	// 글 전체 검색이다: 스냅숏 안의 supersededBy처럼 targets에 없는 id도 찾는다.
+	direct, err := queryAuditLines(tx, `SELECT id, proposal_id, targets, observe, before, revert_of, reverted_by FROM ledger
+		WHERE EXISTS (SELECT 1 FROM json_each(?) j WHERE instr(targets, j.value)>0 OR instr(observe, j.value)>0 OR instr(before, j.value)>0)`, string(list))
 	if err != nil {
 		return nil, err
 	}
-	var all []auditLine
-	for rows.Next() {
-		var l auditLine
-		var targets, observe string
-		if err := rows.Scan(&l.id, &l.proposalID, &targets, &observe, &l.before, &l.revertOf, &l.revertedBy); err != nil {
-			rows.Close()
-			return nil, err
-		}
+	have := map[string]bool{}
+	for i := range direct {
+		l := &direct[i]
+		have[l.id] = true
 		for _, id := range ids {
-			if strings.Contains(targets, id) || strings.Contains(observe, id) || strings.Contains(l.before, id) {
+			if strings.Contains(l.text, id) {
 				l.hit = append(l.hit, id)
 			}
 		}
-		l.direct = len(l.hit) > 0
-		all = append(all, l)
+		l.direct = true
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	byID := map[string]*auditLine{}
-	for i := range all {
-		byID[all[i].id] = &all[i]
-	}
-	inherit := map[string][]string{} // 이어진 줄이 물려받는 id. 직접 걸린 줄의 hit은 그대로 둔다
-	for _, l := range all {
-		if !l.direct {
-			continue
-		}
+	// 이어진 줄은 id가 글에 없을 수 있다(관찰 대상으로만 든 줄의 되돌림은 observe가 비어 있다): 이은 줄의 id를 물려받는다.
+	inherit := map[string][]string{}
+	for _, l := range direct {
 		for _, link := range []string{l.revertOf, l.revertedBy} {
-			if p := byID[link]; link != "" && p != nil && !p.direct {
+			if link != "" && !have[link] {
 				inherit[link] = unionIDs(inherit[link], l.hit)
 			}
 		}
 	}
-	var out []auditLine
-	for _, l := range all {
-		if !l.direct {
-			l.hit = inherit[l.id]
+	out := direct
+	linked := make([]string, 0, len(inherit))
+	for id := range inherit {
+		linked = append(linked, id)
+	}
+	sort.Strings(linked)
+	for _, id := range linked {
+		rows, err := queryAuditLines(tx, `SELECT id, proposal_id, targets, observe, before, revert_of, reverted_by FROM ledger WHERE id=?`, id)
+		if err != nil {
+			return nil, err
 		}
-		if len(l.hit) > 0 {
+		for _, l := range rows {
+			l.hit = inherit[l.id]
 			out = append(out, l)
 		}
 	}
 	return out, nil
+}
+
+// queryAuditLines reads ledger lines (id, proposal_id, targets, observe, before, revert_of, reverted_by).
+func queryAuditLines(tx *sql.Tx, query string, args ...any) ([]auditLine, error) {
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []auditLine
+	for rows.Next() {
+		var l auditLine
+		var targets, observe string
+		if err := rows.Scan(&l.id, &l.proposalID, &targets, &observe, &l.before, &l.revertOf, &l.revertedBy); err != nil {
+			return nil, err
+		}
+		l.text = targets + "\n" + observe + "\n" + l.before
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // scrubLedgerLineTx blanks one target line.
@@ -184,7 +207,7 @@ func scrubBefore(b *LedgerBefore, ids []string) bool {
 	}
 	b.Memories = kept
 	for _, id := range ids {
-		if slices.Contains(b.Created, id) || strings.Contains(b.Activity, id) || strings.Contains(b.ActivityGone, id) {
+		if slices.Contains(b.Created, id) {
 			lost = append(lost, id)
 			changed = true
 		}
@@ -242,4 +265,21 @@ func unionIDs(a, b []string) []string {
 		}
 	}
 	return a
+}
+
+// revertProposalsOfTx adds to proposals the revert proposals that point at ledger line l.
+func revertProposalsOfTx(tx *sql.Tx, l auditLine, proposals map[string][]string) error {
+	rows, err := tx.Query(`SELECT id FROM proposals WHERE kind=? AND json_valid(payload) AND json_extract(payload,'$.ledgerId')=?`, ProposalRevert, l.id)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			return err
+		}
+		proposals[pid] = unionIDs(proposals[pid], l.hit)
+	}
+	return rows.Err()
 }

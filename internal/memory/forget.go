@@ -138,7 +138,7 @@ func (s *Store) Forget(in ForgetInput) (ForgetResult, error) {
 		return ForgetResult{}, err
 	}
 	// 원장·제안의 글은 행을 지우기 전에 비운다(forget_audit.go).
-	if err := scrubAuditTx(tx, ids); err != nil {
+	if err := scrubAuditTx(tx, ids, now); err != nil {
 		return ForgetResult{}, err
 	}
 	list, _ := json.Marshal(ids)

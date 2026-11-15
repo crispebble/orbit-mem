@@ -322,7 +322,7 @@ func TestForgetAudit_여러_기억에_걸친_제안은_남은_기억의_감사_�
 }
 
 func TestForgetAudit_대기_중인_제안은_닫는다(t *testing.T) {
-	s, _ := newTestStore(t)
+	s, c := newTestStore(t)
 	a := candidate(t, s, "대기 비밀 제목")
 	b := candidate(t, s, "대기 다른 제목")
 	pa, err := s.Propose(ProposalInput{Kind: ProposalConfirm, Title: "확정: 대기 비밀 제목", MemoryIDs: []string{a.ID}})
@@ -339,7 +339,75 @@ func TestForgetAudit_대기_중인_제안은_닫는다(t *testing.T) {
 	if err != nil || got.Status != StatusDropped || got.Title != fmt.Sprintf(forgetProposalTitle, a.ID) {
 		t.Fatalf("pa = %+v %v", got, err)
 	}
+	if got.DecidedAt != c.now().UnixMilli() {
+		t.Fatalf("decided_at = %d, 지금 %d", got.DecidedAt, c.now().UnixMilli())
+	}
 	if other, _ := s.GetProposal(pb.ID); other.Status != StatusPending || other.Title != "확정: 대기 다른 제목" {
 		t.Fatalf("다른 제안이 건드려졌습니다: %+v", other)
+	}
+}
+
+// 관찰 대상으로만 담긴 줄을 되돌린 줄은 observe가 비어 id가 글에 없다: 이어진 줄로만 대상이 된다.
+func TestForgetAudit_이어진_되돌림_줄은_id가_글에_없어도_비운다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := candidate(t, s, "관찰 연결 비밀 제목")
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	if err := os.WriteFile(path, []byte("옛 지침\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "지침 고치기: 관찰 연결 비밀 제목", MemoryIDs: []string{m.ID}, Payload: Payload{Path: path, Content: "새 지침\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := s.RevertChange(res.LedgerID, Who{}, "되돌려")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countOf(t, s, `SELECT COUNT(*) FROM ledger WHERE id=? AND instr(targets||observe||before, ?)>0`, rev.LedgerID, m.ID); n != 0 {
+		t.Fatal("준비가 어긋났습니다: 되돌림 줄에 id가 있습니다")
+	}
+	forgetHuman(t, s, m.ID)
+
+	if text := auditText(t, s); strings.Contains(text, "관찰 연결 비밀 제목") {
+		t.Fatalf("제목이 남았습니다: %s", text)
+	}
+	if e, _ := s.LedgerEntry(rev.LedgerID); e.Change != fmt.Sprintf(forgetLedgerChange, m.ID) {
+		t.Fatalf("change = %q", e.Change)
+	}
+}
+
+// 파일 변경 줄의 되돌림 제안은 memory_ids가 비어 있고 원장 줄 없이도 남는다(대기 중이거나 적용에 실패한 것):
+// 그 줄을 가리키는 payload.ledgerId로 찾는다.
+func TestForgetAudit_원장_줄_없는_되돌림_제안도_비운다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := candidate(t, s, "고아 비밀 제목")
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	if err := os.WriteFile(path, []byte("옛 지침\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ap, err := s.Propose(ProposalInput{Kind: ProposalApplyFile, Title: "지침 고치기", MemoryIDs: []string{m.ID}, Payload: Payload{Path: path, Content: "새 지침\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: ap.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Propose(ProposalInput{Kind: ProposalRevert, Title: "되돌림: 고아 비밀 제목", Body: "고아 비밀 본문", Payload: Payload{LedgerID: res.LedgerID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.MemoryIDs) != 0 {
+		t.Fatalf("준비가 어긋났습니다: memory_ids = %v", p.MemoryIDs)
+	}
+	forgetHuman(t, s, m.ID)
+
+	got, err := s.GetProposal(p.ID)
+	if err != nil || got.Status != StatusDropped || got.Title != fmt.Sprintf(forgetProposalTitle, m.ID) || got.Body != "" {
+		t.Fatalf("got = %+v %v", got, err)
 	}
 }
