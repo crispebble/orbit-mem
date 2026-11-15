@@ -110,7 +110,7 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 | `orbit-mem list [--kind K]… [--state S]… [--tag T]… [--all] [-n N]` | 최근 기억 목록(질의 없는 `memory_find`, 기본은 후보·확정, 한 건마다 색인 한 줄, `-n` 기본 20·최대 30, 제목 100자. `--json`은 `search`와 같은 꼴) |
 | `orbit-mem edit <id> [--title] [--body \| --body-file F] [--tag T]… [--link ID]… [--unlink ID]… [--note]` | 기억 고치기(`memory_update`, 판이 오르고 이력이 남는다) |
 | `orbit-mem stale <id> [--note]` | 낡음으로 표시(`memory_update` action=stale, 지우지 않는다) |
-| `orbit-mem forget <id>… [--reason 글] [--quote 글] [--yes] [--json]` | 기억을 DB에서 완전히 지운다(`memory_forget`과 같은 지우기, 되돌릴 수 없다). 지울 기억의 id와 제목을 먼저 보이고, `--yes`가 없으면 터미널에서는 묻고 터미널이 아니면 지우지 않고 종료 1이다. `ORBIT_ACTOR=ai`(또는 `--actor` 없이 AI가 부른 셸)면 `--quote`로 사용자 말이 있어야 하고, `automation`은 늘 거절한다. 하나라도 없는 id가 있으면 아무것도 지우지 않는다. 백업 사본에는 남는다(아래 「백업」·「지운 기억」) |
+| `orbit-mem forget <id>… [--reason 글] [--quote 글] [--yes] [--json]` | 기억을 DB에서 완전히 지운다(`memory_forget`과 같은 지우기, 되돌릴 수 없다). 지울 기억의 id와 제목을 먼저 보이고, `--yes`가 없으면 터미널에서는 묻고 터미널이 아니면 지우지 않고 종료 1이다. `ORBIT_ACTOR=ai`면 `--quote`로 사용자 말이 있어야 하고, `automation`은 늘 거절한다. `ORBIT_ACTOR`를 붙이지 않은 셸 호출은 사람으로 쓰인다. 하나라도 없는 id가 있으면 아무것도 지우지 않는다. 백업 사본에는 남는다(아래 「백업」·「지운 기억」) |
 | `orbit-mem export [--format jsonl\|md] [--out 경로] [--all]` | 사람이 읽고 옮길 수 있게 내보낸다. jsonl은 한 줄에 기억 하나(출처·나온 날·연결 포함), `--out`이 없으면 stdout. md는 폴더에 `<id>.md`와 `index.md`. 기본은 숨김 빼고 전부, `--all`은 숨김(거절한 후보)까지 |
 | `orbit-mem import <jsonl> [--dry-run]` | export한 jsonl을 들여온다. 아래 「들여오기 규칙」 |
 | `orbit-mem activity [질의] [--host H] [--project all\|DIR] [--since 날짜] [-n N]` | 활동 기록 찾기(`activity_find`) |
@@ -289,7 +289,7 @@ Codex는 플러그인 훅을 사용자가 `/hooks`에서 신뢰해야 돌리고,
 `stale`(낡음)은 회상에서 빼기만 하고 기억을 남긴다. `memory_forget`·`orbit-mem forget`은 기억을 DB에서 완전히 지운다. 사용자가 지우라고 할 때만 쓰고, 틀리거나 낡은 기억은 먼저 `memory_update`의 stale·supersede로 고친다.
 
 - 지우는 것: 기억 행과 판 이력·출처·본 기록·연결(뗀 줄 포함)·검색 색인·판정·감사 표시·세션 표시, 일지에서 옮긴 활동 줄, 그 기억을 가리키는 교정·사용 사건. 한 번에 1~20개이고 한 트랜잭션이라 하나라도 없는 id가 있으면 아무것도 지우지 않는다.
-- 쓰는 쪽: 사람은 말 없이 지운다. AI는 지우라고 한 사용자 말(`userQuote`, `--quote`)이 있어야 하고, 자동화(하루 정리·자동 변경)는 늘 거절된다. 말과 이유는 500자까지이고 비밀값이 들어 있으면 거절된다.
+- 쓰는 쪽: 사람은 말 없이 지운다. AI는 지우라고 한 사용자 말(`userQuote`, `--quote`)이 있어야 하고, 자동화(하루 정리·자동 변경)는 늘 거절된다. 명령줄은 `ORBIT_ACTOR`로 쓰는 쪽을 정하므로 `ORBIT_ACTOR`를 붙이지 않은 셸 호출은 사람으로 쓰이고 `--yes`만으로 지운다(한계). 말과 이유는 500자까지이고 비밀값이 들어 있으면 거절된다.
 - 남기는 것: `forgotten` 표에 지운 id·옛 Knowledge id·시각·쓴 쪽·이유·사용자 말만 남긴다(제목·본문은 남기지 않는다). `import`·`migrate`·같은 키의 `memory_save` 재시도가 이 id를 보고 되살리지 않는다. 같은 내용을 새 요청 키로 저장하는 것은 막지 않는다.
 - 다른 기억: 지운 기억이 대체한 옛 판은 낡음 그대로 두고 대체 표시만 비운다. 효과 원장·제안은 줄을 남기고 그 기억의 글만 「지운 기억 <id>에 대한 …」으로 바꾼다. 그 기억의 스냅숏이 있던 원장 줄은 되돌릴 수 없다고 표시된다.
 - 되돌리기: 되돌릴 수 없다. 잘못 지웠으면 지우기 전 사본으로 `orbit-mem backup restore`한다(아래 「백업」).
