@@ -59,7 +59,7 @@ func text(res *mcp.CallToolResult) string {
 	return b.String()
 }
 
-func TestTools_기억_여섯개와_활동_기록(t *testing.T) {
+func TestTools_도구_목록이_정해진_이름과_같다(t *testing.T) {
 	cs, _ := connect(t)
 	res, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestTools_기억_여섯개와_활동_기록(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	sort.Strings(names)
-	want := "activity_find,memory_find,memory_get,memory_save,memory_update,proposal_decide,proposals"
+	want := "activity_find,memory_find,memory_forget,memory_get,memory_save,memory_update,proposal_decide,proposals"
 	if strings.Join(names, ",") != want {
 		t.Fatalf("tools = %v", names)
 	}
@@ -289,6 +289,7 @@ func checkHints(t *testing.T, cs *mcp.ClientSession, want map[string]hints) {
 // 기억·제안 도구는 MCP 주석으로 성질을 밝힌다. 주석이 없으면 Codex는 파괴적·바깥 세계 도구로 보고 승인을 요구해,
 // 승인 정책 never에서 호출이 실패한다(ONID-8). memory_update는 판본을 남기며 고치므로 파괴적이지 않고,
 // proposal_decide는 파일 반영·되돌리기로 사용자 파일을 덮거나 지우므로 파괴적이다. 결정된 제안은 다시 결정되지 않는다.
+// memory_forget은 기억을 DB에서 지워 되돌릴 수 없으므로 파괴적이고, 같은 호출이 두 번째에는 없는 id로 거절돼 멱등이 아니다.
 func TestToolAnnotations(t *testing.T) {
 	cs, _ := connect(t)
 	checkHints(t, cs, map[string]hints{
@@ -297,6 +298,7 @@ func TestToolAnnotations(t *testing.T) {
 		"proposals":       {read: true},
 		"memory_save":     {},
 		"memory_update":   {},
+		"memory_forget":   {destructive: true},
 		"proposal_decide": {destructive: true, idempotent: true},
 	})
 }

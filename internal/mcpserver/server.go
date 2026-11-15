@@ -110,6 +110,7 @@ const instructions = `orbit-mem은 이 PC의 공유 기억이다. 일이 규칙�
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정, 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
 규칙·결정은 topic(주제 키)이 있어야 하고, 규칙은 appliesTo(사람의 일하는 방식은 대개 user)가 있어야 하며, 본문은 한 주장에 1,000자 이하다. 아니면 거절된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다. 「이번엔」처럼 임시라는 말은 retention volatile로 남기고, 옛 결정을 바꾸는 말인지 애매하면 저장 전에 사용자에게 묻는다.
 pin은 사용자가 늘 지키라고 한 확정된 user·제품 기억만 상시 핵심에 올린다(한도 user 3,000자·제품마다 2,000자, 넘으면 거절). 도구를 부르기 직전에 떠올릴 규칙은 tools에 도구 이름이나 접두(mcp__atlas__*)를 단다.
+memory_forget은 기억을 DB에서 지우며 되돌릴 수 없다. 사용자가 지우라고 한 말이 있을 때만 그 말을 userQuote로 주어 부른다.
 proposals·proposal_decide는 감사용이라 사용자가 감사 목록을 요청할 때만 쓴다. 이전 세션·이어 할 일은 activity_find로 찾는다. 자세한 규칙은 memory·proposals 스킬에 있다.`
 
 // New builds the server over the store.
@@ -117,8 +118,10 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "orbit-mem", Version: o.Version}, &mcp.ServerOptions{Instructions: instructions})
 	h := handlers{s: s, o: o}
 	// memory_save and memory_update only add: an edit, stale or supersede keeps
-	// every earlier version. proposal_decide can overwrite or remove a user's
-	// file (apply_file, revert); a decided proposal is not decided again.
+	// every earlier version. memory_forget is the one tool that deletes a
+	// memory for good, and only on the user's words (Store.Forget). proposal_decide
+	// can overwrite or remove a user's file (apply_file, revert); a decided
+	// proposal is not decided again.
 	addPlain(srv, &mcp.Tool{Name: "memory_find", Description: "기억을 찾는다. 설계·결정·규칙 확인, 문서 위치·작업 방식이 애매할 때 먼저 부른다. 결과는 색인이라 쓰기 전에 memory_get으로 읽는다.", Annotations: readHints()},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
@@ -142,6 +145,11 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 사용자 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
+		}))
+	addPlain(srv, &mcp.Tool{Name: "memory_forget", Description: "기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 memory_update의 stale·supersede로 고친다. 사용자가 지우라고 한 말을 userQuote로 줄 때만 부른다.", Annotations: writeHints(true, false)},
+		track(h, "memory_forget", h.forget, func(in ForgetIn, out ForgetOut) map[string]any {
+			// 개수만 남긴다. userQuote·reason·제목은 지우려던 글이라 사건에도 넣지 않는다.
+			return map[string]any{"count": len(in.IDs)}
 		}))
 	addPlain(srv, &mcp.Tool{Name: "proposals", Description: "감사용 목록. 기본(status=audit)은 최근 자동 변경·어긋남·반복 교정. 사용자가 요청할 때만 부른다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
@@ -190,6 +198,35 @@ func track[In, Out any](h handlers, name string, f mcp.ToolHandlerFor[In, Out], 
 		_ = h.s.RecordEvent(memory.Event{Kind: memory.EventToolPrefix + name, Scope: h.o.Project}, d)
 		return res, out, err
 	}
+}
+
+// ForgetIn is memory_forget's input.
+type ForgetIn struct {
+	IDs       []string `json:"ids" jsonschema:"지울 기억 id(1~20개)"`
+	UserQuote string   `json:"userQuote,omitempty" jsonschema:"사용자가 지우라고 한 말 그대로. AI는 필수"`
+	Reason    string   `json:"reason,omitempty" jsonschema:"지우는 까닭(500자 이하, 비밀값 없이)"`
+}
+
+// ForgetOut is memory_forget's result.
+type ForgetOut struct {
+	Forgotten []string `json:"forgotten"`
+	Touched   []string `json:"touched,omitempty"`
+	Note      string   `json:"note"`
+}
+
+// forgetNote tells the AI what forgetting leaves behind, so it does not claim the text is gone everywhere.
+// Like the tool descriptions it is read by the AI, so it is not in the locale catalog.
+const forgetNote = "백업 사본과, 다른 기억에 나눠지거나 복사된 글은 지우지 않았다."
+
+// forget forgets the memories for good through Store.Forget, which checks the id count, who writes
+// and the words. Every store error becomes a tool error; a missing id is named in its text.
+func (h handlers) forget(_ context.Context, _ *mcp.CallToolRequest, in ForgetIn) (*mcp.CallToolResult, ForgetOut, error) {
+	res, err := h.s.Forget(memory.ForgetInput{IDs: in.IDs, Reason: in.Reason, Who: h.o.who(in.UserQuote, "")})
+	if err != nil {
+		r, _ := toolError(err)
+		return r, ForgetOut{}, nil
+	}
+	return nil, ForgetOut{Forgotten: res.Forgotten, Touched: res.Touched, Note: forgetNote}, nil
 }
 
 // FindIn is memory_find's input.

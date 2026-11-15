@@ -426,7 +426,7 @@ func TestSurface_tools_list는_8000룬_이하이고_출력_스키마가_없다(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tools) != 7 {
+	if len(res.Tools) != 8 {
 		t.Fatalf("도구 %d개", len(res.Tools))
 	}
 	b, _ := json.Marshal(res)
