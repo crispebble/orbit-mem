@@ -183,7 +183,7 @@ func migrate(db *sql.DB) error {
 	if err := tx.QueryRow(lateObjectsSQL).Scan(&marks); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema + forgottenSchema); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
