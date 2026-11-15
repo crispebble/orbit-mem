@@ -30,7 +30,9 @@ func TestMigrate_지운_legacy_id는_다시_들여오지_않는다(t *testing.T)
 		t.Fatalf("second run: %+v %v", again, err)
 	}
 	var n int
-	s.DB().QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&n)
+	if err := s.DB().QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n != 0 {
 		t.Fatalf("memories = %d", n)
 	}

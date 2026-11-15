@@ -140,3 +140,17 @@ func TestIdem_forgotten_표가_없는_DB에서도_재시도가_돈다(t *testing
 		t.Fatalf("retry = %+v %+v %v", again, rep, err)
 	}
 }
+
+func TestImport_forgotten_표가_없는_DB에서도_들여온다(t *testing.T) {
+	s, _ := newTestStore(t)
+	if _, err := s.DB().Exec(`DROP TABLE forgotten`); err != nil {
+		t.Fatal(err)
+	}
+	m := Memory{ID: "m-notable001", Kind: KindFact, Scope: ScopeGlobal, State: StateConfirmed, Title: "표 없는 DB 들여오기", Body: "본문"}
+	if res, err := s.Import(m, "옮김", false); err != nil || res != ImportDone {
+		t.Fatalf("import = %q %v", res, err)
+	}
+	if _, err := s.Get(m.ID); err != nil {
+		t.Fatalf("memory not imported: %v", err)
+	}
+}
