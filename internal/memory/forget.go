@@ -137,6 +137,10 @@ func (s *Store) Forget(in ForgetInput) (ForgetResult, error) {
 	if err != nil {
 		return ForgetResult{}, err
 	}
+	// 원장·제안의 글은 행을 지우기 전에 비운다(forget_audit.go).
+	if err := scrubAuditTx(tx, ids); err != nil {
+		return ForgetResult{}, err
+	}
 	list, _ := json.Marshal(ids)
 	for _, c := range forgetTables {
 		if c.how == forgetCustom {
@@ -262,8 +266,9 @@ func clearSuccessorTx(tx *sql.Tx, ids []string) ([]string, error) {
 		return nil, err
 	}
 	for _, id := range touched {
-		// writeTx를 쓰지 않는다: 판 이력을 더하지 않고(명세 7절) 판·updated_at도 그대로 두어 지금 행이 마지막 판과
-		// 어긋나지 않게 한다. 행을 고치면 늦은 표시 트리거가 표시하므로 같은 트랜잭션에서 색인을 맞춰 표시를 지운다.
+		// writeTx를 쓰지 않는다: 판 이력을 더하지 않으므로(명세 7절) 판 번호·updated_at은 그대로 둔다. 대체 표시와
+		// 낡음 사유만 마지막 판 스냅숏과 달라진다. 행을 고치면 늦은 표시 트리거가 표시하므로 같은 트랜잭션에서 색인을
+		// 맞춰 표시를 지운다.
 		if _, err := tx.Exec(`UPDATE memories SET superseded_by='', stale_reason=? WHERE id=?`, forgetSuccessorGone, id); err != nil {
 			return nil, err
 		}

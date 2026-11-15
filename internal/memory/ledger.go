@@ -48,6 +48,9 @@ type LedgerBefore struct {
 	// ActivityGone is the activity row this change took out (a revert of a journal move); undoing it puts
 	// the row back from the journal's title and body.
 	ActivityGone string `json:"activityGone,omitempty"`
+	// Forgotten are the memories Forget removed that this change held (a snapshot, a created memory or a
+	// reference in a snapshot). The change cannot be undone any more (revertableErr).
+	Forgotten []string `json:"forgotten,omitempty"`
 }
 
 // ErrMemoryChanged means a memory changed again after the change being undone.
@@ -247,6 +250,9 @@ func (s *Store) snapshotFor(p Proposal) (LedgerBefore, error) {
 	case ProposalRevert:
 		e, err := s.LedgerEntry(p.Payload.LedgerID)
 		if err != nil {
+			return b, err
+		}
+		if err := revertableErr(e.Before); err != nil {
 			return b, err
 		}
 		ids = nil
