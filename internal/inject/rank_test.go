@@ -1,7 +1,7 @@
 package inject
 
 // 순위 함수(명세 R-1·R-3): 점수 차가 문턱보다 크면 점수가 앞서고, 문턱 안이면 확정이 앞서고, 점수와 확정이 같으면 재검토
-// 후보가 뒤에 온다. 스위치(rankByScore)를 끄면 지금 순위(확정, 점수, 맞은 비율, ...)다.
+// 후보가 뒤에 온다. 기본 설정은 스위치(rankByScore)가 켜져 있고(문턱 0.1), 끄면 확정, 점수, 맞은 비율, ... 순이다.
 
 import (
 	"slices"
@@ -13,11 +13,21 @@ import (
 	"github.com/crispebble/orbit-mem/internal/place"
 )
 
-// ranked is the default settings with the score-first rank on and margin 0.1.
+// ranked is the default settings with the score-first rank on and margin 0.1, spelled out so a test of the
+// on rule does not lean on the default.
 func ranked() config.Config {
 	cfg := config.Default()
 	cfg.RankByScore = true
 	cfg.RankScoreMargin = 0.1
+	return cfg
+}
+
+// rankedOff is the default settings with the score-first rank switched off: confirmed first, then score. A test
+// of the off rule uses it instead of the default, which is on.
+func rankedOff() config.Config {
+	cfg := config.Default()
+	cfg.RankByScore = false
+	cfg.RankScoreMargin = 0.1 // 문턱이 있어도 스위치가 꺼져 있으면 쓰지 않는다
 	return cfg
 }
 
@@ -91,7 +101,7 @@ func TestRank_점수와_확정이_같으면_재검토_후보가_뒤다(t *testin
 		t.Fatalf("review due old=%v fresh=%v", vw.Of(old).ReviewDue, vw.Of(fresh).ReviewDue)
 	}
 	hits := []memory.RecallHit{{Memory: old, Score: 0.6, Coverage: 0.5}, {Memory: fresh, Score: 0.6, Coverage: 0.5}}
-	for _, cfg := range []config.Config{ranked(), config.Default()} { // 스위치와 관계없이 같은 조건의 둘이다
+	for _, cfg := range []config.Config{ranked(), rankedOff()} { // 스위치와 관계없이 같은 조건의 둘이다
 		if got, want := rankIDs(t, s, cfg, slices.Clone(hits)), []string{fresh.ID, old.ID}; !slices.Equal(got, want) {
 			t.Fatalf("byScore %v: order %v, want %v", cfg.RankByScore, got, want)
 		}
@@ -109,12 +119,8 @@ func TestRank_rankByScore를_끄면_지금_순위와_같다(t *testing.T) {
 	strong := saveRank(t, s, "잘 맞는 후보 기억", false, false)
 	strong2 := saveRank(t, s, "더 잘 맞는 후보 기억", false, false)
 	hits := []memory.RecallHit{{Memory: strong, Score: 0.8, Coverage: 0.5}, {Memory: strong2, Score: 0.9, Coverage: 0.5}, {Memory: weak, Score: 0.4, Coverage: 0.5}}
-	cfg := config.Default()
-	cfg.RankScoreMargin = 0.1 // 문턱이 있어도 스위치가 꺼져 있으면 쓰지 않는다
-	if cfg.RankByScore {
-		t.Fatal("rankByScore is on by default")
-	}
-	// 지금 순위: 확정이 먼저, 그다음 점수.
+	cfg := rankedOff()
+	// 꺼짐의 순위: 확정이 먼저, 그다음 점수.
 	if got, want := rankIDs(t, s, cfg, hits), []string{weak.ID, strong2.ID, strong.ID}; !slices.Equal(got, want) {
 		t.Fatalf("order %v, want %v", got, want)
 	}
@@ -132,15 +138,41 @@ func TestRank_도구_직전_회상도_같은_순위_규칙을_쓴다(t *testing.
 		return ToolInjection(s, cfg, here, "claude", "S"+string(rune('a'+n)), "Bash", input).MemoryIDs
 	}
 	const input = "rsync -av 원본 경로 빗금 대상"
-	on := config.Default()
-	on.RankByScore, on.RankScoreMargin = true, 0.1
+	on := ranked()
 	if got, want := order(on, input), []string{strong.ID, weak.ID}; !slices.Equal(got, want) {
 		t.Fatalf("on: order %v, want %v", got, want)
 	}
-	if got, want := order(config.Default(), input), []string{weak.ID, strong.ID}; !slices.Equal(got, want) {
+	if got, want := order(config.Default(), input), []string{strong.ID, weak.ID}; !slices.Equal(got, want) {
+		t.Fatalf("default: order %v, want %v", got, want)
+	}
+	if got, want := order(rankedOff(), input), []string{weak.ID, strong.ID}; !slices.Equal(got, want) {
 		t.Fatalf("off: order %v, want %v", got, want)
 	}
 	if got, want := order(on, ""), []string{weak.ID, strong.ID}; !slices.Equal(got, want) {
 		t.Fatalf("no input: order %v, want %v", got, want)
+	}
+}
+
+// 기본 설정(켬, 문턱 0.1)의 순서: 점수 차가 문턱보다 크면 약하게 걸린 확정보다 잘 맞는 후보가 앞서고, 차가 문턱 안이면
+// 확정이 앞선다. 재검토 지남은 점수와 확정이 같을 때만 뒤로 간다.
+func TestRank_기본_설정은_점수_차가_문턱보다_클_때만_후보가_확정_앞이다(t *testing.T) {
+	if cfg := config.Default(); !cfg.RankByScore || cfg.RankScoreMargin != 0.1 {
+		t.Fatalf("default rankByScore %v margin %v, want on and 0.1", cfg.RankByScore, cfg.RankScoreMargin)
+	}
+	s := store(t)
+	weak := saveRank(t, s, "약하게 걸린 확정 기억", true, false)
+	strong := saveRank(t, s, "잘 맞는 후보 기억", false, false)
+	near := saveRank(t, s, "조금 덜 맞는 확정 기억", true, false)
+	cand := saveRank(t, s, "조금 더 맞는 후보 기억", false, false)
+	def := config.Default()
+	// 점수 차 0.4가 문턱 0.1보다 크다: 후보가 앞선다.
+	hits := []memory.RecallHit{{Memory: weak, Score: 0.4, Coverage: 0.5}, {Memory: strong, Score: 0.8, Coverage: 0.5}}
+	if got, want := rankIDs(t, s, def, hits), []string{strong.ID, weak.ID}; !slices.Equal(got, want) {
+		t.Fatalf("large gap: order %v, want %v", got, want)
+	}
+	// 점수 차 0.08이 문턱 안이다: 확정이 앞선다.
+	hits = []memory.RecallHit{{Memory: cand, Score: 0.8, Coverage: 0.5}, {Memory: near, Score: 0.72, Coverage: 0.5}}
+	if got, want := rankIDs(t, s, def, hits), []string{near.ID, cand.ID}; !slices.Equal(got, want) {
+		t.Fatalf("small gap: order %v, want %v", got, want)
 	}
 }

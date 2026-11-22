@@ -843,7 +843,8 @@ func recallRelative(cfg config.Config) float64 {
 }
 
 // recallHits are the memories of byID, less those the session was told, that pass both thresholds
-// (설계 5.1 3·4단계) and the relative floor (recallFloor), best first: confirmed before candidates (A2),
+// (설계 5.1 3·4단계) and the relative floor (recallFloor), best first by the rank rule (rankPolicy: a find
+// score gap beyond the margin first when rankByScore is on, else confirmed before candidates, A2),
 // then find score, share of the request's words, this place's own before the user's (S3 명세 2.8), age
 // (newer first), net usage (followed − irrelevant) over the ledger window, last edit, id.
 func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told, held map[string]bool) []memory.RecallHit {
