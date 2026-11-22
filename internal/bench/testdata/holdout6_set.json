@@ -1,0 +1,994 @@
+{
+  "about": "0.20.0 판정 전용(holdout6) 평가 묶음(모델 호출 없음, 개인 내용 없음). 구현과 지난 측정값을 보지 않고 「사람이 보기에 이 요청에 이 기억이 와야 하는가」만으로 정답을 적었다. 기억과 사례는 모두 새로 지어낸 것이다. 네 증상을 고르게 담았다: 폐기·만료 뒤 회상, 동의어·한영 표기 차이, 약하게 걸린 확정과 딱 맞는 후보, 도구 입력과 무관한 기억. 기억 b-notes는 어느 사례도 가리키지 않는 방해물이다. 학습에 쓰지 않고 한 번만 판정에 쓴다. 사례 칸과 지표는 README.md에 있다.",
+  "now": "2026-11-03T09:00:00+09:00",
+  "cwd": "/bench/app",
+  "seed": "orbit-mem-holdout6-1",
+  "memories": [
+    {
+      "key": "a-lint-old",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "title": "커밋 전에 린트를 전체 파일에 돌린다",
+      "topic": "앱 린트 범위",
+      "ageDays": 200
+    },
+    {
+      "key": "a-lint-new",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "커밋 전에 린트는 바뀐 파일에만 돌린다",
+      "body": "전체 린트는 CI가 맡는다.",
+      "topic": "앱 린트 범위",
+      "ageDays": 12
+    },
+    {
+      "key": "a-freeze-gone",
+      "kind": "fact",
+      "scope": "global",
+      "title": "결제 모듈 배포 동결은 이번 주까지",
+      "retention": "volatile",
+      "ttlDays": 2,
+      "ageDays": 9
+    },
+    {
+      "key": "a-freeze-live",
+      "kind": "fact",
+      "scope": "global",
+      "title": "검색 모듈 배포 동결은 금요일까지",
+      "retention": "volatile",
+      "ttlDays": 7,
+      "ageDays": 2
+    },
+    {
+      "key": "a-hidden-skip",
+      "kind": "lesson",
+      "scope": "project:/bench/app",
+      "title": "느린 시험은 건너뛰고 병합한다",
+      "ageDays": 30,
+      "state": "hidden"
+    },
+    {
+      "key": "a-window-gone",
+      "kind": "fact",
+      "scope": "global",
+      "title": "스테이징 점검 창은 어제 밤이었다",
+      "retention": "volatile",
+      "ttlDays": 1,
+      "ageDays": 6
+    },
+    {
+      "key": "a-state-old",
+      "kind": "decision",
+      "scope": "project:/bench/app",
+      "title": "전역 상태는 redux 스토어 하나로 모은다",
+      "topic": "앱 전역 상태 선택",
+      "ageDays": 250,
+      "state": "stale"
+    },
+    {
+      "key": "a-state-new",
+      "kind": "decision",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "앱 전역 상태는 zustand로 둔다",
+      "body": "redux는 걷어 낸다.",
+      "topic": "앱 전역 상태 선택",
+      "ageDays": 20
+    },
+    {
+      "key": "a-ci-old",
+      "kind": "rule",
+      "scope": "global",
+      "title": "CI 재실행은 실패한 작업 전체를 다시 돌린다",
+      "topic": "CI 재실행 방식",
+      "ageDays": 180,
+      "state": "stale",
+      "tools": [
+        "mcp__ci__rerun"
+      ]
+    },
+    {
+      "key": "a-ci-new",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "CI 재실행은 실패한 작업만 다시 돌린다",
+      "topic": "CI 재실행 방식",
+      "ageDays": 15,
+      "tools": [
+        "mcp__ci__rerun"
+      ]
+    },
+    {
+      "key": "a-cache-old",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "빌드 캐시가 꼬이면 저장소를 새로 클론한다",
+      "ageDays": 220,
+      "state": "stale"
+    },
+    {
+      "key": "a-ticket-hidden",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "이슈 번호는 커밋 제목에 넣지 않는다",
+      "ageDays": 44,
+      "state": "hidden"
+    },
+    {
+      "key": "a-pr-vol-gone",
+      "kind": "fact",
+      "scope": "project:/bench/app",
+      "title": "이번 PR 리뷰는 김 담당만 승인한다",
+      "retention": "volatile",
+      "ttlDays": 3,
+      "ageDays": 10
+    },
+    {
+      "key": "b-test",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "시험은 병렬로 돌리지 않는다",
+      "body": "공유 DB를 쓰므로 순서대로 돌린다.",
+      "topic": "앱 시험 실행 방식",
+      "ageDays": 25
+    },
+    {
+      "key": "b-config",
+      "kind": "decision",
+      "scope": "project:/bench/app",
+      "title": "설정 파일은 환경별로 나눠 둔다",
+      "body": "dev·stage·prod 세 파일을 쓴다.",
+      "topic": "앱 설정 구조",
+      "ageDays": 30
+    },
+    {
+      "key": "b-commit",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "커밋 메시지는 영어 명령형으로 쓴다",
+      "topic": "커밋 메시지 언어",
+      "ageDays": 40
+    },
+    {
+      "key": "b-deploy",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "운영 배포 전에는 변경 요약을 먼저 쓴다",
+      "body": "요약이 비면 승인이 막힌다.",
+      "ageDays": 8
+    },
+    {
+      "key": "b-post",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "배포 후에는 오류율 화면을 10분 본다",
+      "ageDays": 6
+    },
+    {
+      "key": "b-compound",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "캐시초기화는 빌드 직전에만 한다",
+      "ageDays": 14
+    },
+    {
+      "key": "b-notes",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "릴리스노트는 사용자가 쓰는 말로 적는다",
+      "topic": "릴리스노트 문체",
+      "ageDays": 22
+    },
+    {
+      "key": "b-rollback",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "배포가 깨졌을 때 rollback은 직전 버전 하나로만 한다",
+      "ageDays": 12
+    },
+    {
+      "key": "b-branch",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "브랜치 이름은 feat/ 또는 fix/ 로 시작한다",
+      "topic": "브랜치 이름 꼴",
+      "ageDays": 33
+    },
+    {
+      "key": "b-review",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "코드 리뷰를 올리기 전에 바뀐 줄을 직접 훑어본다",
+      "ageDays": 9
+    },
+    {
+      "key": "c-w-deploy",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "운영 배포 전에는 알림 채널에 공지한다",
+      "topic": "배포 공지",
+      "ageDays": 60
+    },
+    {
+      "key": "c-w-deploy2",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "운영 배포는 평일 오전에만 한다",
+      "topic": "배포 시간대",
+      "ageDays": 75
+    },
+    {
+      "key": "c-w-deploy3",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "운영 배포 담당은 그 주 당직자가 맡는다",
+      "topic": "배포 담당",
+      "ageDays": 66
+    },
+    {
+      "key": "c-x-monitor",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "배포 후 모니터링 대시보드는 운영 보드 하나만 본다",
+      "body": "운영 보드 외의 보드는 지연된다.",
+      "ageDays": 5
+    },
+    {
+      "key": "c-w-test",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "실패한 시험 이름도 한글로 쓴다",
+      "topic": "시험 이름 언어",
+      "ageDays": 70
+    },
+    {
+      "key": "c-w-test2",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "시험이 실패하면 데이터부터 다시 만든다",
+      "topic": "시험 데이터 수명",
+      "ageDays": 64
+    },
+    {
+      "key": "c-x-flaky",
+      "kind": "lesson",
+      "scope": "project:/bench/app",
+      "title": "간헐 실패 시험은 재실행 전에 로그를 먼저 모은다",
+      "body": "재실행하면 원인 로그가 지워진다.",
+      "ageDays": 4
+    },
+    {
+      "key": "c-w-db",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "DB 쿼리는 읽기 전용 계정으로 돌린다",
+      "topic": "DB 쿼리 계정",
+      "ageDays": 90
+    },
+    {
+      "key": "c-w-db2",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "DB 인덱스 이름은 idx_로 시작한다",
+      "topic": "DB 인덱스 이름",
+      "ageDays": 85
+    },
+    {
+      "key": "c-w-db3",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "느린 DB 연결은 20개를 넘기지 않는다",
+      "topic": "DB 연결 수",
+      "ageDays": 77
+    },
+    {
+      "key": "c-x-index",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "느린 쿼리는 인덱스 추가 전에 실행 계획부터 본다",
+      "body": "실행 계획 없이 인덱스를 더하면 쓰기만 느려진다.",
+      "ageDays": 6
+    },
+    {
+      "key": "c-w-log",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "로그 파일에는 개인 정보를 남기지 않는다",
+      "topic": "로그 개인 정보",
+      "ageDays": 100
+    },
+    {
+      "key": "c-w-log2",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "운영 로그 파일 레벨은 info로 둔다",
+      "topic": "로그 레벨",
+      "ageDays": 95
+    },
+    {
+      "key": "c-w-log3",
+      "kind": "decision",
+      "scope": "global",
+      "quote": true,
+      "title": "로그 보관 위치는 /var/log/app 아래로 한다",
+      "topic": "로그 위치",
+      "ageDays": 88
+    },
+    {
+      "key": "c-x-rotate",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "로그 파일 보관 기간은 14일로 줄이고 순환 주기를 일 단위로 둔다",
+      "ageDays": 3
+    },
+    {
+      "key": "c-close-a",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "변경 영역 이름으로 시작한다",
+      "body": "PR 제목 꼴은 이렇게 정한다.",
+      "topic": "PR 제목 꼴",
+      "ageDays": 35
+    },
+    {
+      "key": "c-close-b",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "PR 제목 꼴이 영역 이름 없이 쓰이면 자동 라벨이 붙지 않는다",
+      "ageDays": 10
+    },
+    {
+      "key": "c-close-b2",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "PR 제목 꼴이 길어지면 목록 화면에서 잘려 보인다",
+      "ageDays": 9
+    },
+    {
+      "key": "c-close-b3",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "PR 제목 꼴이 이슈 번호로 끝나면 링크가 자동으로 걸린다",
+      "ageDays": 8
+    },
+    {
+      "key": "c-close-c",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "한 번에 한 표만 바꾼다",
+      "body": "마이그레이션 파일 단위는 표 하나다.",
+      "topic": "마이그레이션 단위",
+      "ageDays": 45
+    },
+    {
+      "key": "c-close-d",
+      "kind": "lesson",
+      "scope": "project:/bench/app",
+      "title": "마이그레이션 파일 단위가 크면 되돌리기가 어려워진다",
+      "ageDays": 11
+    },
+    {
+      "key": "c-close-d2",
+      "kind": "lesson",
+      "scope": "project:/bench/app",
+      "title": "마이그레이션 파일 단위를 날짜로 구분하지 않으면 실행 순서가 꼬인다",
+      "ageDays": 10
+    },
+    {
+      "key": "c-close-d3",
+      "kind": "lesson",
+      "scope": "project:/bench/app",
+      "title": "마이그레이션 파일 단위가 길면 락 시간이 늘어난다",
+      "ageDays": 7
+    },
+    {
+      "key": "c-w-misc",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "문서 제목은 명사형으로 끝낸다",
+      "topic": "문서 제목 꼴",
+      "ageDays": 80
+    },
+    {
+      "key": "d-git-commit",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": "git commit 전에 시험을 돌려 통과를 확인한다",
+      "topic": "커밋 전 시험",
+      "ageDays": 21,
+      "tools": [
+        "Bash"
+      ]
+    },
+    {
+      "key": "d-edit-lock",
+      "kind": "rule",
+      "scope": "project:/bench/app",
+      "quote": true,
+      "title": "package.json 의존성을 고칠 때는 lock 파일도 함께 고친다",
+      "topic": "의존성 lock 동기화",
+      "ageDays": 28,
+      "tools": [
+        "Edit"
+      ]
+    },
+    {
+      "key": "d-read-env",
+      "kind": "rule",
+      "scope": "global",
+      "quote": true,
+      "title": ".env 파일은 읽어도 내용을 대화에 옮기지 않는다",
+      "topic": "env 파일 취급",
+      "ageDays": 50,
+      "tools": [
+        "Read"
+      ]
+    },
+    {
+      "key": "d-rm",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "rm -rf 를 쓰기 전에 지울 경로를 한 번 더 확인한다",
+      "ageDays": 13,
+      "tools": [
+        "Bash"
+      ]
+    },
+    {
+      "key": "d-git-push",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "git push 전에 원격 브랜치 이름을 확인한다",
+      "ageDays": 9,
+      "tools": [
+        "Bash"
+      ]
+    },
+    {
+      "key": "d-edit-gen",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "생성된 파일은 손으로 고치지 않고 생성기를 다시 돌린다",
+      "ageDays": 12,
+      "tools": [
+        "Edit"
+      ]
+    },
+    {
+      "key": "d-read-big",
+      "kind": "lesson",
+      "scope": "global",
+      "title": "큰 로그 파일은 limit을 주고 읽는다",
+      "ageDays": 15,
+      "tools": [
+        "Read"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "v6-a-lint",
+      "prompt": "커밋하기 전에 린트는 어디까지 돌리면 돼?",
+      "expect": [
+        "a-lint-new"
+      ],
+      "forbid": [
+        "a-lint-old"
+      ],
+      "allow": [
+        "b-commit",
+        "d-git-commit"
+      ],
+      "note": "린트 범위의 현재 규칙은 새 규칙이다. 같은 주제의 옛 규칙은 밀려 낡았다. 「커밋」만 겹치는 커밋 메시지 규칙은 허용한다."
+    },
+    {
+      "id": "v6-a-freeze",
+      "prompt": "이번 주에 배포 막힌 모듈 있어?",
+      "expect": [
+        "a-freeze-live"
+      ],
+      "forbid": [
+        "a-freeze-gone"
+      ],
+      "allow": [
+        "b-deploy",
+        "c-w-deploy",
+        "c-w-deploy2",
+        "c-w-deploy3",
+        "b-post",
+        "b-rollback",
+        "c-x-monitor"
+      ],
+      "note": "기한이 남은 동결 사실만 현재 값이다. 기한이 지난 결제 동결은 아니다. 「배포」만 겹치는 배포 규칙은 허용한다."
+    },
+    {
+      "id": "v6-a-state",
+      "prompt": "프런트 전역 상태는 뭘로 가기로 했지",
+      "expect": [
+        "a-state-new"
+      ],
+      "forbid": [
+        "a-state-old"
+      ],
+      "note": "현재 결정은 zustand다. redux 결정은 폐기됐다."
+    },
+    {
+      "id": "v6-a-skip",
+      "prompt": "시험이 너무 느린데 건너뛰고 병합해도 될까",
+      "expect": [],
+      "forbid": [
+        "a-hidden-skip"
+      ],
+      "allow": [
+        "b-test",
+        "c-w-test",
+        "c-w-test2",
+        "c-x-flaky",
+        "d-git-commit"
+      ],
+      "note": "숨김 처리된 교훈은 어느 경로로도 현재 값처럼 들어오지 않는다. 「시험」을 다루는 다른 규칙은 허용한다."
+    },
+    {
+      "id": "v6-a-window",
+      "prompt": "스테이징 점검 창이 언제였지",
+      "expect": [],
+      "forbid": [
+        "a-window-gone"
+      ],
+      "note": "점검 창 사실은 기한이 지났다. 현재 값으로 말하면 안 된다."
+    },
+    {
+      "id": "v6-a-resume-1",
+      "session": "v6-a-resume",
+      "kind": "start",
+      "source": "startup",
+      "expect": []
+    },
+    {
+      "id": "v6-a-resume-2",
+      "session": "v6-a-resume",
+      "kind": "start",
+      "source": "resume",
+      "expect": []
+    },
+    {
+      "id": "v6-a-resume-3",
+      "prompt": "재개했는데 린트 범위 규칙이 뭐였더라",
+      "session": "v6-a-resume",
+      "expect": [
+        "a-lint-new"
+      ],
+      "forbid": [
+        "a-lint-old"
+      ],
+      "note": "세션을 재개해 다시 시작해도 낡은 옛 규칙이 다시 나오지 않는다."
+    },
+    {
+      "id": "v6-a-tool-new",
+      "tool": "mcp__ci__rerun",
+      "expect": [
+        "a-ci-new"
+      ],
+      "forbid": [
+        "a-ci-old"
+      ],
+      "note": "도구 이름에 걸린 현재 규칙만 붙는다. 낡은 규칙은 같은 도구에 걸려 있어도 붙지 않는다."
+    },
+    {
+      "id": "v6-a-delegate-gone",
+      "kind": "subagent",
+      "task": "PR 리뷰 단계 점검: 이번 PR 리뷰는 누가 승인하는지 확인하고 보고하라",
+      "expect": [],
+      "forbid": [
+        "a-pr-vol-gone"
+      ],
+      "allow": [
+        "b-review"
+      ],
+      "note": "위임 글이 기한 지난 휘발 사실을 가리켜도 그 사실은 넣지 않는다. 리뷰를 다루는 다른 교훈은 허용한다."
+    },
+    {
+      "id": "v6-a-delegate-cache",
+      "kind": "subagent",
+      "task": "빌드 캐시가 꼬일 때 복구 절차를 조사해 요약하라",
+      "expect": [],
+      "forbid": [
+        "a-cache-old"
+      ],
+      "allow": [
+        "b-compound"
+      ],
+      "note": "낡은 교훈은 위임 경로로도 들어가지 않는다. 캐시를 다루는 현재 교훈(캐시초기화)은 허용한다."
+    },
+    {
+      "id": "v6-a-ticket",
+      "prompt": "이슈 번호를 커밋 제목에 넣어도 돼?",
+      "expect": [],
+      "forbid": [
+        "a-ticket-hidden"
+      ],
+      "allow": [
+        "b-commit",
+        "c-close-a",
+        "c-close-b3"
+      ],
+      "note": "숨김 교훈은 요청 글에 정확히 걸려도 넣지 않는다. 커밋 메시지·제목 규칙은 허용한다."
+    },
+    {
+      "id": "v6-b-test-en",
+      "prompt": "test는 병렬로 돌리지 않기로 했지",
+      "expect": [
+        "b-test"
+      ],
+      "note": "실제로 재는 것은 한글 낱말 겹침(병렬로·돌리지)이다. test와 「시험」의 한영 차이는 별칭 없이는 이을 수단이 없어 이 사례의 정답 근거가 아니다."
+    },
+    {
+      "id": "v6-b-config-en",
+      "prompt": "config 파일은 어떻게 나눠 쓰지",
+      "expect": [
+        "b-config"
+      ],
+      "note": "실제로 재는 것은 한글 낱말 겹침(파일·나눠)이다. config와 「설정」의 한영 차이는 별칭 없이는 이을 수 없어 정답 근거가 아니다."
+    },
+    {
+      "id": "v6-b-rollback-en",
+      "prompt": "rollback은 어디까지 되돌아가지?",
+      "expect": [
+        "b-rollback"
+      ],
+      "allow": [
+        "c-close-d"
+      ],
+      "note": "영어 낱말 rollback이 기억 글 안에 그대로 들어 있다. 낱말이 같아 찾아져야 한다."
+    },
+    {
+      "id": "v6-b-josa",
+      "prompt": "배포를 마치고 오류율 화면은 얼마나 봐야 하지",
+      "expect": [
+        "b-post"
+      ],
+      "allow": [
+        "c-x-monitor",
+        "b-deploy",
+        "c-w-deploy",
+        "c-w-deploy2",
+        "c-w-deploy3",
+        "a-freeze-live",
+        "b-rollback"
+      ],
+      "note": "요청의 「배포를」을 「배포」로 떼야 기억 「배포 후에는 오류율 화면을 10분 본다」의 낱말 셋(배포·오류율·화면)이 맞는다. 낱말 하나만 겹치는 다른 배포 기억은 허용한다."
+    },
+    {
+      "id": "v6-b-compound",
+      "prompt": "빌드 초기화 시점이 언제였지",
+      "expect": [
+        "b-compound"
+      ],
+      "note": "공백 없이 붙여 쓴 「캐시초기화」의 일부 낱말 「초기화」가 맞아야 낱말 둘(빌드·초기화)이 맞는다."
+    },
+    {
+      "id": "v6-b-neg-trial",
+      "prompt": "새 폰트를 시험 삼아 써 봐도 될까",
+      "expect": [],
+      "forbid": [
+        "b-test",
+        "c-w-test",
+        "c-w-test2"
+      ],
+      "note": "「시험 삼아」는 한번 해 본다는 뜻이다. 낱말 하나 겹침의 함정이고 명세의 기대가 아니다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-b-neg-message",
+      "prompt": "단체 대화방에 올리는 공지 메시지는 어떤 말투가 좋아?",
+      "expect": [],
+      "forbid": [
+        "b-commit"
+      ],
+      "allow": [
+        "c-w-deploy"
+      ],
+      "note": "대화방 메시지다. 낱말 「메시지」만 커밋 메시지 규칙과 겹치는 약한 겹침 함정이다. 명세의 기대가 아니고 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-b-neg-name",
+      "prompt": "반려동물 이름은 어떻게 지으면 좋을까",
+      "expect": [],
+      "forbid": [
+        "b-branch",
+        "c-w-test"
+      ],
+      "note": "반려동물 이름이다. 낱말 「이름」만 브랜치 이름·시험 이름 규칙과 겹치는 약한 겹침 함정이다. 명세의 기대가 아니고 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-b-neg-folder",
+      "prompt": "책상 위 서류 파일은 어떻게 나눠 보관하면 좋아?",
+      "expect": [],
+      "forbid": [
+        "b-config"
+      ],
+      "allow": [
+        "c-x-rotate"
+      ],
+      "note": "종이 서류 정리다. 「파일」·「나눠」만 겹치는 약한 겹침 함정이다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-b-neg-setting",
+      "prompt": "그 소설 설정이 좀 억지 같지 않아?",
+      "expect": [],
+      "forbid": [
+        "b-config"
+      ],
+      "note": "소설의 설정이다. 낱말 하나 겹침의 함정이고 명세의 기대가 아니다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-c-monitor",
+      "prompt": "배포 끝났는데 모니터링 대시보드 운영 보드는 어떤 걸 봐?",
+      "expect": [
+        "c-x-monitor"
+      ],
+      "allow": [
+        "c-w-deploy",
+        "c-w-deploy2",
+        "c-w-deploy3",
+        "b-post",
+        "b-deploy",
+        "a-freeze-live",
+        "b-rollback"
+      ],
+      "note": "딱 맞는 후보는 낱말 다섯이 맞는다. 낱말 둘(배포·운영)만 맞는 확정 규칙 셋과 b-deploy가 앞 3개를 차지하려 한다. 앞 3개에 들어야 한다."
+    },
+    {
+      "id": "v6-c-flaky",
+      "prompt": "간헐 실패 시험이 떨어졌는데 재실행 전에 로그부터 모을까",
+      "expect": [
+        "c-x-flaky"
+      ],
+      "allow": [
+        "c-w-test",
+        "c-w-test2",
+        "b-test",
+        "a-ci-new",
+        "d-git-commit"
+      ],
+      "note": "딱 맞는 후보는 낱말 여섯이 맞는다. 낱말 둘(시험·실패)만 맞는 확정 규칙 셋(c-w-test·c-w-test2·a-ci-new)이 앞 3개를 차지하려 한다."
+    },
+    {
+      "id": "v6-c-index",
+      "prompt": "DB 느린 쿼리는 인덱스부터 더하면 돼?",
+      "expect": [
+        "c-x-index"
+      ],
+      "allow": [
+        "c-w-db",
+        "c-w-db2",
+        "c-w-db3",
+        "b-test"
+      ],
+      "note": "딱 맞는 후보는 낱말 넷이 맞는다. 낱말 둘이 맞는 확정 규칙 셋이 앞 3개를 차지하려 한다."
+    },
+    {
+      "id": "v6-c-rotate",
+      "prompt": "로그 파일 보관 기간이랑 순환 주기 정해 줘",
+      "expect": [
+        "c-x-rotate"
+      ],
+      "allow": [
+        "c-w-log",
+        "c-w-log2",
+        "c-w-log3",
+        "c-x-flaky",
+        "d-read-big"
+      ],
+      "note": "딱 맞는 후보는 낱말 여섯이 맞는다. 낱말 둘이 맞는 확정 규칙 셋과 큰 로그 교훈이 앞 3개를 차지하려 한다."
+    },
+    {
+      "id": "v6-c-close-pr",
+      "prompt": "PR 제목 꼴이 뭐였지",
+      "expect": [
+        "c-close-a"
+      ],
+      "allow": [
+        "c-close-b",
+        "c-close-b2",
+        "c-close-b3",
+        "c-w-misc"
+      ],
+      "note": "점수 차가 작으면 확정된 규칙이 앞이다. 확정과 후보 셋이 같은 낱말 셋(PR·제목·꼴)을 맞추되 후보는 제목에서, 확정은 주제·본문에서 맞춘다. 점수순이면 후보 셋이 앞 3개를 차지하고 확정이 밀린다. 얼마나 작은 차이가 문턱 안인지는 이 묶음이 정하지 않는다."
+    },
+    {
+      "id": "v6-c-close-mig",
+      "prompt": "마이그레이션 파일 쪼개는 단위가 뭐였지",
+      "expect": [
+        "c-close-c"
+      ],
+      "allow": [
+        "c-close-d",
+        "c-close-d2",
+        "c-close-d3",
+        "c-x-rotate"
+      ],
+      "note": "점수 차가 작으면 확정된 규칙이 앞이다. 확정과 후보 셋이 같은 낱말 셋(마이그레이션·파일·단위)을 맞추되 후보는 제목에서, 확정은 주제·본문에서 맞춘다. 점수순이면 후보 셋이 앞이다."
+    },
+    {
+      "id": "v6-c-neg-notice",
+      "prompt": "새 팀원 환영 공지는 어디에 올리면 좋을까",
+      "expect": [],
+      "forbid": [
+        "c-w-deploy"
+      ],
+      "note": "환영 인사 공지다. 낱말 「공지」만 배포 공지 규칙과 겹치는 약한 겹침 함정이다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-c-neg-title",
+      "prompt": "노래 제목 추천해 줘",
+      "expect": [],
+      "forbid": [
+        "c-w-misc",
+        "c-close-a"
+      ],
+      "note": "낱말 「제목」만 문서 제목 규칙과 겹치는 약한 겹침 함정이다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-c-neg-exam",
+      "prompt": "시험 점수가 안 나와서 고민이야",
+      "expect": [],
+      "forbid": [
+        "b-test",
+        "c-w-test",
+        "c-w-test2"
+      ],
+      "note": "학업 고민이다. 낱말 「시험」만 시험 규칙들과 겹치는 약한 겹침 함정이다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-c-neg-link",
+      "prompt": "노트북 연결 포트가 부족한데 허브 추천해 줘",
+      "expect": [],
+      "forbid": [
+        "c-w-db3"
+      ],
+      "note": "노트북 포트 이야기다. 낱말 「연결」만 DB 연결 규칙과 겹치는 약한 겹침 함정이다. 판정에서 따로 읽는다."
+    },
+    {
+      "id": "v6-d-commit",
+      "tool": "Bash",
+      "input": "git commit -m \"fix: handle empty input\"",
+      "expect": [
+        "d-git-commit"
+      ],
+      "allow": [
+        "d-git-push"
+      ],
+      "note": "Bash에 걸린 확정 규칙이고 입력에 git commit이 있다. push 교훈은 낱말 git만 겹쳐 허용한다."
+    },
+    {
+      "id": "v6-d-rm",
+      "tool": "Bash",
+      "input": "rm -rf ./build ./dist",
+      "expect": [
+        "d-rm"
+      ],
+      "allow": [
+        "d-git-commit"
+      ],
+      "note": "입력에 rm -rf가 있어 삭제 경로 확인 교훈이 맞다. Bash 확정 규칙은 도구 이름으로 붙으므로 허용한다."
+    },
+    {
+      "id": "v6-d-push",
+      "tool": "Bash",
+      "input": "git push origin feat/search",
+      "expect": [
+        "d-git-push"
+      ],
+      "allow": [
+        "d-git-commit"
+      ],
+      "note": "입력에 git push가 있어 푸시 전 확인 교훈이 맞다. Bash 확정 규칙은 허용한다."
+    },
+    {
+      "id": "v6-d-edit-pkg",
+      "tool": "Edit",
+      "input": "/bench/app/package.json",
+      "expect": [
+        "d-edit-lock"
+      ],
+      "note": "Edit 대상이 package.json이라 lock 동기화 규칙이 맞다."
+    },
+    {
+      "id": "v6-d-read-env",
+      "tool": "Read",
+      "input": "/bench/app/.env",
+      "expect": [
+        "d-read-env"
+      ],
+      "note": "Read 대상이 .env라 env 취급 규칙이 맞다."
+    },
+    {
+      "id": "v6-d-ls",
+      "tool": "Bash",
+      "input": "ls -la ./src",
+      "expect": [],
+      "forbid": [
+        "d-rm",
+        "d-git-push"
+      ],
+      "allow": [
+        "d-git-commit"
+      ],
+      "note": "Bash 입력(목록 보기)과 관련 있는 교훈은 없다. Bash에 걸린 확정 규칙은 도구 이름만으로 붙으므로 허용한다."
+    },
+    {
+      "id": "v6-d-gotest",
+      "tool": "Bash",
+      "input": "go test ./... -count=1",
+      "expect": [],
+      "forbid": [
+        "d-rm",
+        "d-git-push"
+      ],
+      "allow": [
+        "d-git-commit"
+      ],
+      "note": "입력이 시험 실행뿐이다. 삭제·푸시 교훈은 붙지 않는다. Bash 확정 규칙은 허용한다."
+    },
+    {
+      "id": "v6-d-status",
+      "tool": "Bash",
+      "input": "git status --short",
+      "expect": [],
+      "forbid": [
+        "d-rm"
+      ],
+      "allow": [
+        "d-git-commit",
+        "d-git-push"
+      ],
+      "note": "git 명령이지만 commit도 push도 아니다. push 교훈은 낱말 git 하나만 겹쳐 문턱 값에 따라 갈리므로 허용한다."
+    },
+    {
+      "id": "v6-d-edit-src",
+      "tool": "Edit",
+      "input": "/bench/app/src/index.ts",
+      "expect": [],
+      "forbid": [
+        "d-edit-gen"
+      ],
+      "allow": [
+        "d-edit-lock"
+      ],
+      "note": "Edit 대상이 손으로 쓰는 소스 파일이다. 생성 파일 교훈은 붙지 않는다. Edit 확정 규칙은 도구 이름으로 붙으므로 허용한다."
+    },
+    {
+      "id": "v6-d-read-readme",
+      "tool": "Read",
+      "input": "/bench/app/README.md",
+      "expect": [],
+      "forbid": [
+        "d-read-big"
+      ],
+      "allow": [
+        "d-read-env"
+      ],
+      "note": "Read 대상이 README다. 큰 로그 파일 교훈은 붙지 않는다. Read 확정 규칙은 허용한다."
+    }
+  ]
+}

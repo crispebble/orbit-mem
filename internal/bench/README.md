@@ -20,6 +20,7 @@ flowchart LR
 | 판정 전용 | `internal/bench/testdata/holdout_set.json`(저장소 안) | 문턱을 맞춘 뒤 한 번 재는 판정. 아래 「판정 전용 묶음」 |
 | 판정 전용 둘째 | `internal/bench/testdata/holdout2_set.json`(저장소 안) | 회상 182건. 회상 구현과 측정값을 보지 않고 새로 적은 두 번째 블라인드 묶음. 747055f에서 한 번 판정에 썼고 그 뒤 중복 문턱(b6d)의 개발 자료가 됐다. |
 | 중복 판정 전용 | `internal/bench/testdata/holdout3_dup_set.json`·`holdout4_dup_set.json`·`holdout5_dup_set.json`(저장소 안) | 중복 저장만 보는 블라인드 묶음(35·46·57건). 각각 한 번 판정에 썼다(아래 「판정 기록」). 앞의 둘은 그 뒤 개발 자료가 됐다. |
+| 0.20.0 판정용 | `internal/bench/testdata/holdout6_set.json`(저장소 안) | 0.20.0 판정용, 한 번만 씀. 구현을 보지 않고 새로 지은 기억 54개와 사례 42건(요청·위임·도구 40건, 세션 시작 2건)이다. 폐기·만료 뒤 회상, 동의어·한영 표기 차이, 약하게 걸린 확정과 딱 맞는 후보, 도구 입력과 무관한 기억을 증상마다 10건씩 담았다. 형식만 `TestHoldout6SetData`가 본다. |
 | 이 PC 재생 | `$ORBIT_HOME/bench/replay/`(저장소 밖) | 이 PC의 실제 기억 DB 사본과 대화 기록에서 뽑은 사례. 저장소에 넣지 않는다. |
 
 공개 고정 묶음의 정답은 현재 회상 코드가 맞히는지가 아니라 참을 기준으로 적는다. 그래서 지금 판은 일부 사례에서 틀리고, 그 점수가 기준선으로 기록된다.
