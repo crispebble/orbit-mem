@@ -616,6 +616,33 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string
 	return scope, lb, warns, nil
 }
 
+// checkQuote checks a quote source against what the user said (S-4) and says whether it may count as the
+// user's checked words (memory.SaveInput.QuoteMatched), with what the caller should know. A source that is
+// not a quote is left alone. A save by a person's own channel (TrustLimit owner) is not checked: the person
+// wrote it. An excerpt not found in the user's recorded utterances is not taken as the user's words: src
+// becomes a session source, so the memory is saved as an AI's candidate. Without utterances to compare with
+// (a host that does not record them), or when the check fails, the quote stays as it was, unchecked.
+func (h handlers) checkQuote(src *memory.Source) (bool, []string) {
+	if src.Kind != memory.SourceQuote {
+		return false, nil
+	}
+	if h.o.TrustLimit == memory.TrustOwner {
+		return true, nil
+	}
+	m, err := h.s.MatchQuote(src.Excerpt)
+	if err != nil {
+		m = memory.QuoteUnchecked
+	}
+	switch m {
+	case memory.QuoteMatched:
+		return true, nil
+	case memory.QuoteNotFound:
+		src.Kind = memory.SourceSession
+		return false, []string{i18n.T("memory.save.quote_not_found", memory.UtteranceDays)}
+	}
+	return false, []string{i18n.T("memory.save.quote_unchecked", memory.UtteranceDays)}
+}
+
 // checkRuleApplies refuses a rule saved without saying whom it applies to (S3-R3): a person's way of
 // working is usually user, and a rule bound to this folder by default would be missing everywhere else.
 // The refusal names the choices and this folder's products.
@@ -670,6 +697,11 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
 		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin,
 		Session: h.o.Session}
+	// 사용자 말 대조(S-4)는 Screen보다 먼저 한다: Screen은 사용자 말 출처를 달리 다룬다(진행 상황 거부를 면하고 발췌를
+	// 치환하지 않는다). 기록에 없어 session으로 낮춘 출처는 AI 출처로 걸러야 한다.
+	var quoteWarns []string
+	si.QuoteMatched, quoteWarns = h.checkQuote(&si.Source)
+	warns = append(warns, quoteWarns...)
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {
@@ -707,7 +739,8 @@ const (
 
 // SaveOut is memory_save's result. Saved is always there: true when the memory was saved, updated or
 // superseded (Memory), false when nothing was written — similar memories to pick from (Similar, Choices),
-// or the caller picked skip (Resolve, Memory the one kept).
+// or the caller picked skip (Resolve, Memory the one kept), or the title is a rejected memory's and the save
+// was not the user's checked words (Memory that rejected one, the reason in Warnings).
 type SaveOut struct {
 	Saved bool `json:"saved"`
 	MemoryOut
@@ -839,6 +872,13 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	m, rep, err := h.s.SaveWith(si)
 	if err != nil {
 		return SaveOut{}, err
+	}
+	if rep.Rejected != "" { // 거절된 기억의 제목: 아무것도 쓰지 않았다(S-2). 링크도 걸지 않는다
+		reason := i18n.T("memory.save.rejected", rep.Rejected)
+		if si.Source.Kind == memory.SourceQuote { // 기록에 없는 사용자 말은 이미 session으로 낮췄다: 남은 것은 대조 못 한 말이다
+			reason = i18n.T("memory.save.rejected_unchecked", rep.Rejected)
+		}
+		return SaveOut{MemoryOut: MemoryOut{Memory: m, Warnings: []string{reason}}}, nil
 	}
 	if len(links) > 0 || rep.Replayed != nil {
 		if m, err = h.applyLinks(m.ID, links, nil); err != nil {

@@ -113,5 +113,9 @@
   "memory.save.not_replaced": "supersede:%s replaced nothing: that memory is already out of date or rejected, or it has the same title and took the new source",
   "memory.save.body_kept": "The body was not changed: a memory with the same title (%s) already exists, so only the source and the day it came again were added. To edit the body, call memory_update",
   "memory.save.fields_kept": "Fields not changed: %s. A memory with the same title (%s) already exists, so the new value was not applied. To change them, call memory_update",
-  "memory.save.not_pinned": "update:%s was applied but the memory was not put into the core: %v"
+  "memory.save.not_pinned": "update:%s was applied but the memory was not put into the core: %v",
+  "memory.save.quote_not_found": "Not taken as the user's words: the excerpt is not in the user's utterances of the last %d days, so the source became session (what an AI learned in the conversation) and the memory was saved as a candidate. If the user said it, give their exact words as the excerpt",
+  "memory.save.quote_unchecked": "User's words not checked: no user utterances of the last %d days are recorded (the prompt recall hook records them), so the excerpt was saved as the user's words without a check",
+  "memory.save.rejected": "Not saved: the memory with the same title (%s) was rejected. It comes back only when saved again with the user's words (quote) found in the user's utterances",
+  "memory.save.rejected_unchecked": "Not saved: the memory with the same title (%s) was rejected, and no user utterances are recorded to check these words against, so it was not brought back"
 }

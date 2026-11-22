@@ -37,7 +37,8 @@ type TidyResult struct {
 // reverts the automatic changes judged harmful, then confirms the candidates whose evidence
 // came in, closes the settled proposals, marks expired volatile memories (and, when asked,
 // long-unused candidates) stale, moves product:? memories onto the product map and drops
-// old session bundles and idempotency keys. Every change it makes is an automatic change in the ledger.
+// old session bundles, idempotency keys and utterance records (UtteranceDays). Every change it makes to a
+// memory is an automatic change in the ledger.
 func (s *Store) Tidy(o TidyOptions) TidyResult {
 	r := TidyResult{Errors: []string{}}
 	fail := func(err error) {
@@ -76,6 +77,8 @@ func (s *Store) Tidy(o TidyOptions) TidyResult {
 	fail(err)
 	fail(s.PruneSessionState(SessionStateDays))
 	_, err = s.PruneSaveRequests(SaveRequestDays)
+	fail(err)
+	_, err = s.PruneUtterances(UtteranceDays)
 	fail(err)
 	return r
 }

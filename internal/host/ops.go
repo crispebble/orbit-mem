@@ -254,6 +254,17 @@ func (c *call) statesOf(ids []string) map[string]string {
 	return states
 }
 
+// utterance keeps what a person said (words, as inject.PersonWords told them from the host's blocks) for
+// the check of the user's words a memory_save quote gets (S-4): only the hashes of its pieces are kept.
+// It is the first record of the call: the save that quotes it may come right after the answer, so it
+// should not wait behind the other records for the time left. A record that cannot be written is
+// skipped like the others; that quote is then not found and is saved as a candidate with a notice.
+func (c *call) utterance(words string) {
+	c.after = append(c.after, func() {
+		_ = c.store.RecordUtterance(c.req.Host, words)
+	})
+}
+
 // activity keeps the session in the activity log (under the session, not the subagent).
 func (c *call) activity(kind, prompt string) {
 	c.after = append(c.after, func() {
@@ -349,6 +360,7 @@ func (c *call) recall() (any, *Error) {
 	if out, err, done := c.openRecall(limit); done {
 		return out, err
 	}
+	c.utterance(words)
 	c.relocate(false)
 	// 사소한 요청은 요청 회상만 건너뛰고 세션 중 바뀐 것은 싣는다.
 	inj := inject.PromptInjectionFor(c.store, c.cfg, c.where, text, c.req.Host, c.req.Session, inject.Options{NewsOnly: trivial})
