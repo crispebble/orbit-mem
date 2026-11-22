@@ -134,7 +134,8 @@ func TestRank_도구_직전_회상도_같은_순위_규칙을_쓴다(t *testing.
 	strong := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
 	n := 0
 	order := func(cfg config.Config, input string) []string {
-		n++ // 호출마다 다른 세션이라 앞 호출의 표시가 남지 않는다
+		cfg.ToolInputGate = false // 이 시험은 순위만 본다: 입력 문이 약한 기억을 먼저 거르지 않게 끈다
+		n++                       // 호출마다 다른 세션이라 앞 호출의 표시가 남지 않는다
 		return ToolInjection(s, cfg, here, "claude", "S"+string(rune('a'+n)), "Bash", input).MemoryIDs
 	}
 	const input = "rsync -av 원본 경로 빗금 대상"

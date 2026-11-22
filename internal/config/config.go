@@ -135,10 +135,10 @@ type Config struct {
 	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
 	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
 	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
-	// 도구 입력 문(명세 T-1): 켜면 도구 직전 회상은 호스트가 도구 입력(명령·경로)을 준 호출에서, 확정된 규칙이 아닌 기억
+	// 도구 입력 문(명세 T-1): 기본은 켬이다. 켜면 도구 직전 회상은 호스트가 도구 입력(명령·경로)을 준 호출에서, 확정된 규칙이 아닌 기억
 	// (교훈·사실·결정, 그리고 모든 후보)을 그 입력과의 회상 점수(요청 회상과 같은 점수 함수)가 toolInputMinScore 이상일 때만
 	// 넣는다. 끄면 그 기억들도 도구 이름만으로 판정한다. 입력 조건(tools 칸의 Bash(git commit), T-2)은 이 스위치와 관계없이
-	// 지킨다. 문턱은 평가 묶음과 실제 기록 재생으로 정한다(T-3). toolInputMinScore는 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다.
+	// 지킨다. 문턱 기본값은 0.5다. toolInputMinScore는 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다.
 	// IDF는 도구 트리거가 달린 기억 집합 기준이라(memory.ToolInputScores) 요청 회상의 점수와 값이 다를 수 있다.
 	ToolInputGate     bool    `json:"toolInputGate"`
 	ToolInputMinScore float64 `json:"toolInputMinScore"`
@@ -188,10 +188,10 @@ const (
 	DefaultTaskRecallMinWords       = 3
 	DefaultTaskRecallMinRelative    = 0.3
 	DefaultTaskRecallMinTitleShare  = 0.05
-	// DefaultToolInputMinScore는 요청 회상의 점수 문턱과 같은 값으로 둔 출발점이다. 스위치(toolInputGate)는 기본으로 꺼져
-	// 있어 켠 사람의 출발점이다. 어느 값도 명세 T-3의 끝 기준(무관 반복 사례가 재생에서 사라진다)을 채우지 못해 끈 채로 둔다:
-	// 값을 올릴수록 무관 반복은 줄지만 0이 되지 않고, 입력과 관련 있어 보이는 기억도 함께 막힌다.
-	DefaultToolInputMinScore = DefaultRecallMinScore
+	// DefaultToolInputMinScore는 도구 입력 문(toolInputGate)의 점수 문턱이다. 스위치는 기본으로 켜져 있다. 점수가 낱말이
+	// 겹치는지에 따라 거의 이진이라 0.5는 입력과 낱말이 겹치지 않는 기억을 막고, 겹치는 기억은 지난다. 값을 올릴수록 무관
+	// 반복은 줄지만 입력과 관련 있는 기억도 함께 막힌다. 요청 회상의 문턱(DefaultRecallMinScore)과는 따로 둔다.
+	DefaultToolInputMinScore = 0.5
 	// DefaultRankScoreMargin은 순위 스위치(rankByScore)의 점수 차 문턱이다. 스위치는 기본으로 켜져 있고, 평가 묶음과 실제
 	// 기록 재생에서 0.1~0.2가 같은 결과여서 그 가운데 가장 작은 값을 쓴다(명세 R-2).
 	DefaultRankScoreMargin = 0.1
@@ -281,7 +281,7 @@ func Default() Config {
 		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
-		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputMinScore: DefaultToolInputMinScore, RankByScore: true, RankScoreMargin: DefaultRankScoreMargin,
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputGate: true, ToolInputMinScore: DefaultToolInputMinScore, RankByScore: true, RankScoreMargin: DefaultRankScoreMargin,
 		FindStripParticles: false}
 }
 

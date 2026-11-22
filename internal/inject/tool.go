@@ -67,7 +67,7 @@ const markToolCall = "tool.call"
 //
 // input is the text of the call's input (host.ToolInputText; "" when the host gives none). A trigger with an input
 // condition, Bash(git commit), matches only when its words are in input, whatever the settings; with no input it
-// matches by the tool's name (memory.Memory.TriggeredByInput, 명세 T-2·T-4). With toolInputGate on and an input,
+// matches by the tool's name (memory.Memory.TriggeredByInput, 명세 T-2·T-4). With toolInputGate on (the default) and an input,
 // a memory that is not a confirmed rule (a lesson, fact or decision, or any candidate) comes only when its recall
 // score against input (memory.ToolInputScores) is at least toolInputMinScore (명세 T-1); confirmed rules come by
 // the tool's name. The input is read for this judgment only: it is not in the text, the marks or the result.

@@ -86,6 +86,26 @@ func TestToolInjection_확정_규칙은_도구_이름만으로_붙는다(t *test
 	}
 }
 
+// 기본 설정에서 도구 입력 문은 켜져 있다: 입력과 관련 없는 비규칙 기억은 도구 직전에 붙지 않고, 확정 규칙은 도구 이름으로 붙고,
+// 관련 있는 입력에는 비규칙 기억도 붙는다.
+func TestToolInjection_기본_설정은_입력과_무관한_비규칙_기억을_붙이지_않는다(t *testing.T) {
+	cfg := config.Default()
+	if !cfg.ToolInputGate || cfg.ToolInputMinScore != 0.5 {
+		t.Fatalf("default gate %v min %v", cfg.ToolInputGate, cfg.ToolInputMinScore)
+	}
+	s := store(t)
+	rule := saveOn(t, s, memory.KindRule, "셸 명령의 결과는 요약해서 보고한다", "출력 전체를 붙이지 않는다", []string{"Bash"}, true)
+	lesson := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
+	got := ToolInjection(s, cfg, here, "claude", "S", "Bash", "ls -la")
+	if !slices.Equal(got.MemoryIDs, []string{rule.ID}) {
+		t.Fatalf("ids %v, want only the confirmed rule %s (lesson %s gated):\n%s", got.MemoryIDs, rule.ID, lesson.ID, got.Text)
+	}
+	got = ToolInjection(s, cfg, here, "claude", "S2", "Bash", "rsync -a src/ backup")
+	if !slices.Contains(got.MemoryIDs, lesson.ID) {
+		t.Fatalf("related input did not bring the lesson: %v", got.MemoryIDs)
+	}
+}
+
 // 입력 조건(Bash(git commit))은 사용자가 단 조건이라 스위치와 관계없이 지킨다: ls에는 붙지 않고 git commit에는 붙는다.
 func TestToolInjection_입력_조건이_달린_규칙은_ls에_붙지_않고_git_commit에_붙는다(t *testing.T) {
 	for _, gate := range []bool{true, false} {
@@ -113,12 +133,10 @@ func TestToolInjection_입력이_없으면_이름으로만_판정한다(t *testi
 	}
 }
 
-// 기본값은 스위치가 꺼져 있다(문턱은 평가로 정한다, T-3). 끄면 입력이 있어도 조건 없는 기억은 입력이 없을 때와 같은 글·id다.
+// 스위치를 끄면 입력이 있어도 조건 없는 기억은 입력이 없을 때와 같은 글·id다.
 func TestToolInjection_toolInputGate를_끄면_지금_동작이다(t *testing.T) {
 	cfg := config.Default()
-	if cfg.ToolInputGate {
-		t.Fatal("toolInputGate is on by default")
-	}
+	cfg.ToolInputGate = false
 	s := store(t)
 	saveOn(t, s, memory.KindLesson, "jq 필터가 비면 입력 전체를 그대로 낸다", "빈 필터는 점 하나로 적는다", []string{"Bash"}, false)
 	saveOn(t, s, memory.KindFact, "시험 DB는 컨테이너로 띄운다", "포트 5433", []string{"Bash"}, false)

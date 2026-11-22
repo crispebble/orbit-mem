@@ -31,20 +31,20 @@
             "den": 73,
             "value": 0.9315
           },
-          "injected": 86,
+          "injected": 82,
           "correct": 75,
           "neutral": 3,
           "wrong": {
-            "num": 8,
-            "den": 86,
-            "value": 0.093
+            "num": 4,
+            "den": 82,
+            "value": 0.0488
           },
-          "forbid": 5,
-          "forbidCases": 4,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
-            "num": 32,
+            "num": 33,
             "den": 35,
-            "value": 0.9143
+            "value": 0.9429
           },
           "chars": {
             "n": 90,
@@ -79,14 +79,14 @@
           },
           "b2Chars": {
             "n": 18,
-            "mean": 143.4444,
-            "median": 170,
-            "max": 301
+            "mean": 124.5556,
+            "median": 160.5,
+            "max": 239
           },
           "sessionChars": {
             "n": 72,
-            "mean": 708.8056,
-            "median": 696.5,
+            "mean": 704.0833,
+            "median": 695,
             "max": 1074
           },
           "startChars": {
@@ -191,18 +191,18 @@
           },
           "tool": {
             "calls": 18,
-            "injections": 14,
+            "injections": 13,
             "chars": {
               "n": 18,
-              "mean": 143.4444,
-              "median": 170,
-              "max": 301
+              "mean": 124.5556,
+              "median": 160.5,
+              "max": 239
             },
             "injectionChars": {
-              "n": 14,
-              "mean": 184.4286,
-              "median": 183.5,
-              "max": 301
+              "n": 13,
+              "mean": 172.4615,
+              "median": 183,
+              "max": 239
             },
             "dead": 0,
             "deadCalls": 0
@@ -235,16 +235,16 @@
             "den": 31,
             "value": 0.871
           },
-          "injected": 50,
+          "injected": 30,
           "correct": 27,
-          "neutral": 17,
+          "neutral": 1,
           "wrong": {
-            "num": 6,
-            "den": 50,
-            "value": 0.12
+            "num": 2,
+            "den": 30,
+            "value": 0.0667
           },
-          "forbid": 4,
-          "forbidCases": 3,
+          "forbid": 1,
+          "forbidCases": 1,
           "empty": {
             "num": 14,
             "den": 15,
@@ -283,15 +283,15 @@
           },
           "b2Chars": {
             "n": 7,
-            "mean": 383.5714,
-            "median": 316,
-            "max": 589
+            "mean": 200.8571,
+            "median": 187,
+            "max": 311
           },
           "sessionChars": {
             "n": 30,
-            "mean": 759.2333,
+            "mean": 716.6,
             "median": 708,
-            "max": 1209
+            "max": 931
           },
           "startChars": {
             "n": 30,
@@ -398,15 +398,15 @@
             "injections": 7,
             "chars": {
               "n": 7,
-              "mean": 383.5714,
-              "median": 316,
-              "max": 589
+              "mean": 200.8571,
+              "median": 187,
+              "max": 311
             },
             "injectionChars": {
               "n": 7,
-              "mean": 383.5714,
-              "median": 316,
-              "max": 589
+              "mean": 200.8571,
+              "median": 187,
+              "max": 311
             },
             "dead": 0,
             "deadCalls": 0
@@ -439,20 +439,20 @@
             "den": 104,
             "value": 0.9135
           },
-          "injected": 136,
+          "injected": 112,
           "correct": 102,
-          "neutral": 20,
+          "neutral": 4,
           "wrong": {
-            "num": 14,
-            "den": 136,
-            "value": 0.1029
+            "num": 6,
+            "den": 112,
+            "value": 0.0536
           },
-          "forbid": 9,
-          "forbidCases": 7,
+          "forbid": 2,
+          "forbidCases": 2,
           "empty": {
-            "num": 46,
+            "num": 47,
             "den": 50,
-            "value": 0.92
+            "value": 0.94
           },
           "chars": {
             "n": 129,
@@ -487,15 +487,15 @@
           },
           "b2Chars": {
             "n": 25,
-            "mean": 210.68,
-            "median": 184,
-            "max": 589
+            "mean": 145.92,
+            "median": 183,
+            "max": 311
           },
           "sessionChars": {
             "n": 102,
-            "mean": 723.6373,
-            "median": 699,
-            "max": 1209
+            "mean": 707.7647,
+            "median": 698,
+            "max": 1074
           },
           "startChars": {
             "n": 102,
@@ -599,18 +599,18 @@
           },
           "tool": {
             "calls": 25,
-            "injections": 21,
+            "injections": 20,
             "chars": {
               "n": 25,
-              "mean": 210.68,
-              "median": 184,
-              "max": 589
+              "mean": 145.92,
+              "median": 183,
+              "max": 311
             },
             "injectionChars": {
-              "n": 21,
-              "mean": 250.8095,
-              "median": 187,
-              "max": 589
+              "n": 20,
+              "mean": 182.4,
+              "median": 183.5,
+              "max": 311
             },
             "dead": 0,
             "deadCalls": 0
@@ -5676,11 +5676,9 @@
           "tool": {
             "ids": [
               "m-000000000229",
-              "m-000000000228",
-              "m-000000000230",
-              "m-000000000231"
+              "m-000000000228"
             ],
-            "chars": 285
+            "chars": 164
           }
         },
         {
@@ -5690,11 +5688,9 @@
           "part": "test",
           "tool": {
             "ids": [
-              "m-000000000229",
-              "m-000000000230",
-              "m-000000000231"
+              "m-000000000229"
             ],
-            "chars": 316
+            "chars": 117
           }
         },
         {
@@ -5705,10 +5701,9 @@
           "tool": {
             "ids": [
               "m-000000000229",
-              "m-000000000230",
-              "m-000000000231"
+              "m-000000000230"
             ],
-            "chars": 316
+            "chars": 241
           }
         },
         {
@@ -5719,10 +5714,9 @@
           "tool": {
             "ids": [
               "m-000000000229",
-              "m-000000000231",
-              "m-000000000230"
+              "m-000000000231"
             ],
-            "chars": 301
+            "chars": 239
           }
         },
         {
@@ -5743,10 +5737,8 @@
           "kind": "request",
           "part": "train",
           "tool": {
-            "ids": [
-              "m-000000000232"
-            ],
-            "chars": 157
+            "ids": [],
+            "chars": 0
           }
         },
         {
@@ -5757,14 +5749,9 @@
           "tool": {
             "ids": [
               "m-000000000233",
-              "m-000000000234",
-              "m-000000000241",
-              "m-000000000240",
-              "m-000000000239",
-              "m-000000000238",
-              "m-000000000237"
+              "m-000000000234"
             ],
-            "chars": 589
+            "chars": 311
           }
         },
         {
@@ -5774,15 +5761,9 @@
           "part": "test",
           "tool": {
             "ids": [
-              "m-000000000234",
-              "m-000000000233",
-              "m-000000000241",
-              "m-000000000240",
-              "m-000000000239",
-              "m-000000000238",
-              "m-000000000237"
+              "m-000000000234"
             ],
-            "chars": 589
+            "chars": 192
           }
         },
         {
@@ -5792,15 +5773,9 @@
           "part": "test",
           "tool": {
             "ids": [
-              "m-000000000235",
-              "m-000000000241",
-              "m-000000000240",
-              "m-000000000239",
-              "m-000000000238",
-              "m-000000000237",
-              "m-000000000236"
+              "m-000000000235"
             ],
-            "chars": 505
+            "chars": 175
           }
         }
       ]

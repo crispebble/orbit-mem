@@ -444,7 +444,7 @@ func TestRequest는_사람이_아닌_글을_회상하지_않는다(t *testing.T)
 }
 
 // 재생의 도구 사례는 사례의 input을 계약의 toolInput으로 넘긴다(명세 T-1·T-4). --set으로 켠 도구 입력 문이 그 글로 판정해, 후보
-// 교훈은 관련 없는 명령에서 빠지고 관련 있는 명령에서 든다. 끄면(기본) 지금처럼 도구 이름만으로 든다.
+// 교훈은 관련 없는 명령에서 빠지고 관련 있는 명령에서 든다. 기본은 켠 상태이고, 끄면 지금처럼 도구 이름만으로 든다.
 func TestTool은_사례_입력을_toolInput으로_넘기고_set의_도구_입력_문을_따른다(t *testing.T) {
 	const toolSet = `{"about":"t","now":"2026-11-03T09:00:00+09:00","cwd":"/bench/app","seed":"s",
 "memories":[{"key":"lock","kind":"lesson","scope":"global","title":"pnpm install은 lock 파일을 고친다","body":"설치 뒤 pnpm-lock.yaml 변경을 확인한다","tools":["Bash"],"ageDays":1}],
@@ -468,7 +468,8 @@ func TestTool은_사례_입력을_toolInput으로_넘기고_set의_도구_입력
 	}{
 		{gate, "a", "ls -la", false},
 		{gate, "b", "pnpm install", true},
-		{nil, "c", "ls -la", true},
+		{nil, "c", "ls -la", false},
+		{map[string]string{"toolInputGate": "false"}, "d", "ls -la", true},
 	} {
 		db, err := p.Copy()
 		if err != nil {
