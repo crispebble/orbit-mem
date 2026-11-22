@@ -103,7 +103,7 @@ func cmdMCP(a *app, args []string) error {
 	defer s.Close()
 	ctx, cancel := signalContext()
 	defer cancel()
-	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version,
+	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Top: p.Top, Version: version.Version,
 		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err

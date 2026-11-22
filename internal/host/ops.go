@@ -418,7 +418,13 @@ func (c *call) tool() (any, *Error) {
 	if actor == "" {
 		actor = memory.ActorAI
 	}
-	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp,
+	// 재확인의 루트인 작업 트리 최상위: 방금 git으로 푼 프로젝트가 가지고 있다. 세션의 활동 줄에서 다시 쓴 프로젝트는 최상위를
+	// 담지 않으므로 memory_save만 한 번 묻는다(project.GitTop은 재확인의 1초 안에서 끝낸다).
+	top := c.p.Top
+	if top == "" && c.p.Git && name == "memory_save" {
+		top = project.GitTop(c.p.Dir)
+	}
+	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp, Top: top,
 		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin})
 	if lvl, _ := c.req.trustLevel(); lvl != "" { // check가 이미 걸러 냈다
 		var lerr error

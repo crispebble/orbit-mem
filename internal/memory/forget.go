@@ -69,8 +69,6 @@ var forgetTables = []forgetTable{
 	{idColumn{"judgments", "memory_id"}, forgetDelete},
 	{idColumn{"audit_flags", "memory_id"}, forgetDelete},
 	{idColumn{"audit_flags", "other_id"}, forgetDelete},
-	// 되돌린 자동 대체 쌍(C-3): 새 기억이 없으면 막을 것이 없다. 옛 기억 쪽은 keepTables에 둔다.
-	{idColumn{"supersede_reverts", "new_id"}, forgetDelete},
 	{idColumn{"memory_index", "memory_id"}, forgetCustom},      // unindexTx: memory_fts 줄도 함께
 	{idColumn{"memory_index_late", "memory_id"}, forgetCustom}, // unindexTx
 	{idColumn{"activity", "session"}, forgetCustom},            // 일지에서 옮긴 줄: JournalSession(id)
@@ -90,9 +88,12 @@ var keepTables = []idColumn{
 	{"session_marks", "memory_id"},
 	{"save_requests", "memory_id"}, // 같은 키의 재시도를 「지웠다」로 거절하는 근거. 30일 정리에 맡긴다
 	{"forgotten", "id"},            // 되살아남을 막는 기록 자체
-	// 옛 기억을 지워도 되돌린 쌍 줄은 id만 남아 새 기억의 자동 확정을 계속 막는다(confirmBlocked): 사람이 그 대체를 되돌린
-	// 판단은 옛 기억이 없어져도 그대로다. 줄은 id·원장 id·시각뿐이라 지운 기억의 글은 남지 않는다.
+	// 되돌린 자동 대체 쌍(C-3)은 어느 쪽을 지워도 줄이 id만 남는다. 사람이 그 대체를 되돌린 판단은 두 기억이 없어져도
+	// 그대로다: 옛 기억을 지우면 새 기억의 자동 확정을 계속 막고(confirmBlocked, new_id), 새 기억을 지우면 같은 옛 기억을 다른
+	// 기억이 다시 자동 대체하지 못하게 계속 막는다(revertedOldTx, old_id). 줄은 id·원장 id·시각뿐이라 지운 기억의 글은 남지
+	// 않는다. 지운 id는 forgotten에 남아 되살아나지 않으므로 남은 줄이 다른 기억에 걸리지 않는다.
 	{"supersede_reverts", "old_id"},
+	{"supersede_reverts", "new_id"},
 }
 
 // ForgetInput asks to forget memories.
