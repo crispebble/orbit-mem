@@ -1130,6 +1130,10 @@ type FindInput struct {
 	// Current leaves out what the Viewer does not judge a current value (stale, expired, an older value of
 	// its topic) before the limit cuts the list. Only a find shown to a person sets it; recall does not.
 	Current bool
+	// WithNotCurrent adds, to the memories of States, the candidate and confirmed ones the Viewer does not
+	// judge a current value (expired, an older value of its topic). A current one is returned only when its
+	// state is in States. Current and WithNotCurrent are not set together.
+	WithNotCurrent bool
 	// SkipUnknownTokens leaves the query tokens no memory has out of the score (rank.go). The recall of a
 	// request and a task sets it; memory_find does not.
 	SkipUnknownTokens bool
@@ -1181,12 +1185,21 @@ func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	if s.rankStep != nil {
 		s.rankStep()
 	}
-	if in.Current {
+	if in.Current || in.WithNotCurrent {
 		v, err := s.Viewer()
 		if err != nil {
 			return nil, err
 		}
-		read.all = slices.DeleteFunc(read.all, func(m Memory) bool { return v.Why(m) != WhyCurrent })
+		asked := in.States
+		if len(asked) == 0 {
+			asked = []string{StateCandidate, StateConfirmed}
+		}
+		read.all = slices.DeleteFunc(read.all, func(m Memory) bool {
+			if in.Current {
+				return v.Why(m) != WhyCurrent
+			}
+			return !contains(asked, m.State) && v.Why(m) == WhyCurrent
+		})
 	}
 	return rankFind(in, read), nil
 }
@@ -1203,6 +1216,14 @@ func (s *Store) readFind(q querier, in FindInput) (findRead, error) {
 	states := in.States
 	if len(states) == 0 {
 		states = []string{StateCandidate, StateConfirmed}
+	}
+	if in.WithNotCurrent {
+		// 후보·확정 중 현재 값이 아닌 것도 읽어야 하므로 두 상태를 더한다. 요청하지 않은 상태의 현재 값은 FindScored가 거른다.
+		for _, st := range []string{StateCandidate, StateConfirmed} {
+			if !contains(states, st) {
+				states = append(slices.Clone(states), st)
+			}
+		}
 	}
 	// 빈 질의(공백뿐)는 색인을 거치지 않고 모두 1점이다. 토큰이 없는 질의(기호뿐)는 아무것도 맞지 않는다.
 	r := findRead{empty: strings.TrimSpace(in.Query) == ""}

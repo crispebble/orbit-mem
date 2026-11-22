@@ -137,13 +137,10 @@ func findLimit(n int) int {
 	return n
 }
 
-// findItem shapes one hit that is a current value.
-func findItem(m memory.Memory, detail string) FindItem { return findItemNoted(m, detail, "") }
-
-// findItemNoted shapes one hit with note (what whyNote gives, "" for a current value). The index line is
+// findItem shapes one hit with note (what whyNote gives, "" for a current value). The index line is
 // held to findItemBudget serialized runes, whatever the characters are, the note included: the title is cut
 // first, then the applies-to.
-func findItemNoted(m memory.Memory, detail, note string) FindItem {
+func findItem(m memory.Memory, detail, note string) FindItem {
 	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note,
 		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
@@ -253,9 +250,6 @@ func untrustedOf(m memory.Memory) string {
 	return ""
 }
 
-// linkTitles gives the title of the memory at the other end of each link; "" when it is gone.
-type linkTitles func(id string) string
-
 // linkPeers gives the title of the memory at the other end of a link and, when that memory is not a current
 // value, its note (peerNote). The note is "" for a current one, so its line gets nothing added.
 type linkPeers func(id string) (title, note string)
@@ -300,13 +294,9 @@ func linkLines(links []memory.MemoryLink, peer linkPeers, full bool) []string {
 // by cutting the body (at most 2,000 runes) to the room left. Only when that room is under
 // 1,000 runes are other parts left out, in this order: links, sources, tags and tools,
 // stale reason and topic, title (not below 100 runes); the body then takes the room left.
-func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
-	return memoryViewNoted(m, "", func(id string) (string, string) { return title(id), "" }, full)
-}
-
-// memoryViewNoted is memoryView with the warning head notice (noticeOf) and the peers' notes on the links.
-// The notice counts toward the budget like any other field, so the body gives way to it.
-func memoryViewNoted(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
+// notice is the warning head (noticeOf, "" for a current value) and title gives the peers' titles and notes
+// on the links. The notice counts toward the budget like any other field, so the body gives way to it.
+func memoryView(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
 	v := MemoryView{Notice: notice, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}

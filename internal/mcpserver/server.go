@@ -234,7 +234,7 @@ type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal"`
 	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더에서 보이는 것)·global(user만)·all"`
-	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)"`
+	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)·hidden. 만료·옛 버전은 stale을 주면 보임"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"하나라도 가진 기억만"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"기본 8, 최대 30"`
 	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그)"`
@@ -278,9 +278,11 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		r, _ := toolError(err)
 		return r, FindOut{}, nil
 	}
-	// 기본 조회는 현재 값만 보인다. states에 stale을 주면 사람이 지난 값을 보려는 것이라 모두 내고 줄마다 표시한다.
+	// 기본 조회는 현재 값만 보인다. states에 stale이나 hidden을 주면 사람이 지난 값을 보려는 것이라 거르지 않고 줄마다 표시한다.
+	// stale을 주면 상태가 후보·확정이어도 만료됐거나 옛 버전인 기억까지 나온다(명세 F-3). 현재 값은 요청한 상태일 때만 나온다.
 	withStale := slices.Contains(in.States, memory.StateStale)
-	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !withStale}
+	marked := withStale || slices.Contains(in.States, memory.StateHidden)
+	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
 	switch in.Scope {
 	case "", "here":
 		here := h.o.here()
@@ -301,15 +303,15 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	out := FindOut{Items: []FindItem{}}
 	// 표시는 줄마다 판정만 하고 후계는 읽지 않는다(후계 id는 memory_get과 연결에서 보인다). 판정기는 호출마다 만든다.
 	var v memory.Viewer
-	if withStale {
+	if marked {
 		v, _ = h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠지고 폐기·만료 표시는 그대로다
 	}
 	for _, m := range ms {
 		note := ""
-		if withStale {
+		if marked {
 			note = whyNote(v.Why(m))
 		}
-		out.Items = append(out.Items, findItemNoted(m, detail, note))
+		out.Items = append(out.Items, findItem(m, detail, note))
 	}
 	return nil, out, nil
 }
@@ -347,7 +349,7 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		if vis.Why == memory.WhyOlder {
 			successor = v.Superseding(m)
 		}
-		out.Items = append(out.Items, memoryViewNoted(m, noticeOf(m, vis.Why, successor), peers, in.Full))
+		out.Items = append(out.Items, memoryView(m, noticeOf(m, vis.Why, successor), peers, in.Full))
 		if in.History {
 			if out.History == nil {
 				out.History = map[string][]memory.Version{}
