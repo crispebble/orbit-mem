@@ -29,6 +29,7 @@ type TidyResult struct {
 	Reviewed  int      `json:"reviewed"`  // 기한이 지나 낡음으로 바꾼 휘발 기억
 	Expired   int      `json:"expired"`   // 오래 쓰지 않아 낡음으로 바꾼 후보
 	Moved     int      `json:"moved"`     // 제품 지도로 옮긴 product:? 기억
+	DeadLinks int      `json:"deadLinks"` // 살아 있는 기억이 낡음·숨김 기억을 가리키는 연결(DeadLinkCount)
 	Errors    []string `json:"errors"`
 }
 
@@ -70,6 +71,8 @@ func (s *Store) Tidy(o TidyOptions) TidyResult {
 	}
 	moved, err := s.MoveUnknown(o.Products)
 	r.Moved = len(moved)
+	fail(err)
+	r.DeadLinks, err = s.DeadLinkCount()
 	fail(err)
 	fail(s.PruneSessionState(SessionStateDays))
 	_, err = s.PruneSaveRequests(SaveRequestDays)
