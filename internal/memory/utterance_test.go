@@ -411,6 +411,74 @@ func TestMatchQuote_낱말을_바꾸거나_떼거나_붙인_발췌는_길이와_
 	}
 }
 
+// 대조 규칙의 조건 하나씩을 따로 고정한다. 각 시험은 해당 조건만 어겨야 not_found가 되도록 비율은 통과하는 길이로 짠다.
+func numberedWords(from, to int) string {
+	var w []string
+	for i := from; i < to; i++ {
+		w = append(w, fmt.Sprintf("낱말%d", i))
+	}
+	return strings.Join(w, " ")
+}
+
+// 첫 조각과 끝 조각이 그 발언에 있어야 한다: 처음(끝) 낱말을 바꾸고 바로 생략 표시를 두면 빠진 조각은 표시한 이음매의
+// 하나뿐이라 다른 조건으로는 막히지 않는다.
+func TestMatchQuote_처음이나_끝_낱말을_바꾸고_바로_생략_표시를_둔_발췌는_not_found다(t *testing.T) {
+	for n := 6; n <= 20; n++ {
+		s, _ := newTestStore(t)
+		mustRecord(t, s, numberedWords(0, n+5))
+		head := "바꾼말 … " + numberedWords(3, 3+n-1)
+		tail := numberedWords(3, 3+n-1) + " … 바꾼말"
+		for name, ex := range map[string]string{"처음": head, "끝": tail} {
+			if got := mustMatch(t, s, ex); got != QuoteNotFound {
+				t.Errorf("%d낱말 %s 바꾸기: %s, want not_found (%q)", n, name, got, ex)
+			}
+		}
+	}
+}
+
+// 잇달은 두 조각이 함께 빠지면 안 된다: 낱말 하나를 사이에 두고 생략 표시가 둘이면 잇달은 조각 둘이 빠진다.
+func TestMatchQuote_낱말_하나를_사이에_둔_두_생략_표시_발췌는_not_found다(t *testing.T) {
+	for n := 6; n <= 40; n++ {
+		s, _ := newTestStore(t)
+		mustRecord(t, s, numberedWords(0, n+10))
+		left := (n - 1) / 2
+		ex := numberedWords(0, left) + " … " + numberedWords(left+2, left+3) + " … " + numberedWords(left+4, left+4+(n-left-2))
+		if got := mustMatch(t, s, ex); got != QuoteNotFound {
+			t.Errorf("%d낱말: %s, want not_found (%q)", n, got, ex)
+		}
+	}
+}
+
+// 맞은 조각은 0.8 이상이어야 한다: 생략 표시 하나로 조각 하나가 빠지면 4낱말은 2/3, 5낱말은 3/4라 떨어지고,
+// 6낱말은 4/5라 맞는다.
+func TestMatchQuote_생략_표시_하나가_있는_4_5낱말_발췌는_비율이_모자라_not_found다(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustRecord(t, s, numberedWords(0, 12))
+	cases := []struct {
+		name, ex string
+		want     QuoteMatch
+	}{
+		{"4낱말", "낱말0 낱말1 … 낱말3 낱말4", QuoteNotFound},
+		{"5낱말", "낱말0 낱말1 … 낱말3 낱말4 낱말5", QuoteNotFound},
+		{"6낱말", "낱말0 낱말1 … 낱말3 낱말4 낱말5 낱말6", QuoteMatched},
+	}
+	for _, c := range cases {
+		if got := mustMatch(t, s, c.ex); got != c.want {
+			t.Errorf("%s: %s, want %s", c.name, got, c.want)
+		}
+	}
+}
+
+// 알려진 한계의 시험이다(나중에 막으면 이 시험을 뒤집는다): 조각을 위치 없이 맞추므로, 한 발언에 같은 낱말이 두 번
+// 나오면 첫 곳 앞과 둘째 곳 뒤를 표시 없이 이어 붙인 발췌도 matched다. 뜻은 「배포 하지 마」에서 「배포 해」로 뒤집힌다.
+func TestMatchQuote_한계_같은_낱말이_두_번_나오면_표시_없이_이어_붙인_발췌도_matched다(t *testing.T) {
+	s, _ := newTestStore(t)
+	mustRecord(t, s, "금요일에 배포 하지 마 그리고 월요일에 배포 해")
+	if got := mustMatch(t, s, "금요일에 배포 해"); got != QuoteMatched {
+		t.Fatalf("한계가 바뀌었다: %s", got)
+	}
+}
+
 // 대조는 저장될 발췌(8KB로 자른 것)로 하고, 조각이 많아도 질의를 나눠 보내 결과를 합친다.
 func TestMatchQuote_큰_발췌는_저장될_만큼만_나눠_대조한다(t *testing.T) {
 	s, _ := newTestStore(t)
@@ -481,5 +549,43 @@ func TestMatchQuote_맞은_발언의_가장_늦은_시각을_준다(t *testing.T
 	}
 	if _, at, _ := s.MatchQuote("금요일에는 배포하지 않는다"); at != 0 {
 		t.Fatalf("not_found의 시각 = %d", at)
+	}
+}
+
+// 거절 시각은 마지막 거절이다: 거절 → 되살림 → 다시 거절한 기억은, 첫 거절 뒤 둘째 거절 앞에 한 발언으로는 되살아나지
+// 않고 둘째 거절 뒤의 발언으로만 되살아난다.
+func TestSave_다시_거절한_기억은_마지막_거절_뒤_발언으로만_되살아난다(t *testing.T) {
+	s, c := newTestStore(t)
+	in := SaveInput{Kind: KindFact, Title: "로그 보관은 7일", Body: "7일 지나면 지운다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "s"}}
+	m, _ := s.Save(in)
+	quote := func(at int64) SaveInput {
+		again := in
+		again.Source, again.QuoteMatched, again.QuoteAt = Source{Kind: SourceQuote, Excerpt: "로그는 7일 지나면 지워도 돼"}, true, at
+		return again
+	}
+	c.t = c.t.Add(time.Hour)
+	if _, err := s.SetState(m.ID, StateHidden, "첫 거절"); err != nil {
+		t.Fatal(err)
+	}
+	first := c.t.UnixMilli()
+	c.t = c.t.Add(time.Hour)
+	if _, rep, err := s.SaveWith(quote(first + 1)); err != nil || !rep.Revived {
+		t.Fatalf("첫 되살림: rep=%+v err=%v", rep, err)
+	}
+	c.t = c.t.Add(time.Hour)
+	if _, err := s.SetState(m.ID, StateHidden, "둘째 거절"); err != nil {
+		t.Fatal(err)
+	}
+	second := c.t.UnixMilli()
+	c.t = c.t.Add(time.Hour)
+	got, rep, err := s.SaveWith(quote(second - 1)) // 첫 거절 뒤, 둘째 거절 앞
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Revived || rep.NotRevived != ReviveBeforeRejection || got.State != StateHidden {
+		t.Fatalf("둘째 거절 앞의 발언으로 되살아났다: rep=%+v state=%s", rep, got.State)
+	}
+	if _, rep, err := s.SaveWith(quote(second + 1)); err != nil || !rep.Revived {
+		t.Fatalf("둘째 거절 뒤의 발언: rep=%+v err=%v", rep, err)
 	}
 }
