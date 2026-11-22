@@ -23,11 +23,10 @@ func TestTool_memory_save는_git_밖_폴더의_파일을_재확인하지_않는�
 	t.Setenv("HOME", fake) // 이 아래부터 홈은 시험의 가짜 폴더다(홈 규칙과 git의 사용자 설정이 이 PC에 기대지 않게)
 	t.Setenv("USERPROFILE", fake)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	s := seed(t)
-	if _, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "배포는 make deploy", Topic: "배포 명령", Scope: "project:github.com/me/app",
-		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "배포는 make deploy"}}); err != nil {
-		t.Fatal(err)
-	}
+	// 같은 주제의 사용자 말 사실을 두지 않는다: 자동 모드가 꺼진 기본 상태에서는 그 사실과 어긋나 재확인한 새 사실도 후보로
+	// 남아 state가 재확인 여부를 가르는 신호가 되지 못한다(mcpserver의 recheck_root_test.go가 그 응답을 본다). 여기서는 어긋남이
+	// 없을 때의 즉시 확정으로 재확인 여부를 본다.
+	seed(t)
 	const line = "aws_secret_access_key = AKIA-test-only-0000"
 	write := func(path string) string {
 		t.Helper()

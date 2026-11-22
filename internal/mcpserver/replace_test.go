@@ -11,8 +11,8 @@ import (
 )
 
 // 검증 출처의 재확인(명세 C-1·E-4): memory_save는 검증 출처의 근거가 절대경로 파일이면 서버가 그 파일을 직접 읽어 발췌가
-// 있는지 본다. 있으면 재확인한 근거라 같은 범위·주제의 사용자 말 사실을 스스로 대체하고 바로 확정된다. 읽은 파일의 다른
-// 내용은 어디에도 남지 않는다.
+// 있는지 본다. 있으면 재확인한 근거라 어긋남이 없을 때 바로 확정된다. 같은 범위·주제의 사용자 말 사실은 자동 모드가 꺼져 있으면
+// 재확인한 근거로도 대체하지 않고 어긋남으로 남기며, 자동 모드를 켜면 대체한다. 읽은 파일의 다른 내용은 어디에도 남지 않는다.
 
 const replaceApplies = "repo:github.com/me/app"
 
@@ -57,7 +57,7 @@ func verifiedArgs(title, topic, ref, excerpt string) map[string]any {
 		"source": map[string]any{"kind": "verification", "ref": ref, "excerpt": excerpt}}
 }
 
-func TestSave_서버가_파일을_읽어_확인한_검증_출처만_사용자_말_사실을_자동_대체한다(t *testing.T) {
+func TestSave_자동_모드를_켜면_서버가_파일을_읽어_확인한_검증_출처도_사용자_말_사실을_자동_대체하고_끄면_어긋남으로_알린다(t *testing.T) {
 	dir := realDir(t, t.TempDir()) // 작업 트리 최상위(재확인이 인정하는 루트)
 	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o700); err != nil {
 		t.Fatal(err)
@@ -68,17 +68,22 @@ func TestSave_서버가_파일을_읽어_확인한_검증_출처만_사용자_�
 	if err := os.WriteFile(file, []byte("# "+marker+"\nbuild:\n\tgo build ./cmd/app\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// 파일에 없는 발췌·상대경로는 재확인이 아니다: 자동 모드 끔이면 어긋남만 남는다.
+	// 자동 모드 끔: 파일에 없는 발췌·상대경로의 근거도, 서버가 읽어 확인한 근거도 사용자 말 사실을 대체하지 않고 어긋남으로
+	// 알린다. 새 사실은 후보로 남아 현재 값을 빼앗지 않는다.
 	old := userFactAt(t, s, "빌드는 make all", "빌드 명령")
 	for _, args := range []map[string]any{
 		verifiedArgs("빌드는 go build ./...", "빌드 명령", file, "build: go build ./..."),
 		verifiedArgs("빌드는 go build ./cmd/app", "빌드 명령", "Makefile", "build: go build ./cmd/app"),
+		verifiedArgs("빌드 대상은 ./cmd/app 하나", "빌드 명령", file, "build:\n  go build ./cmd/app"), // 서버가 읽어 확인한다
 	} {
-		out := save(args) // 앞 저장의 새 사실(AI 후보)은 지금처럼 대체한다. 사용자 말 사실만 남긴다
-		if got, _ := s.Get(old.ID); !slices.Contains(out.Conflicts, old.ID) || slices.Contains(out.Superseded, old.ID) || got.State != memory.StateConfirmed {
+		out := save(args)
+		if got, _ := s.Get(old.ID); !slices.Contains(out.Conflicts, old.ID) || slices.Contains(out.Superseded, old.ID) || got.State != memory.StateConfirmed ||
+			out.Memory.State != memory.StateCandidate {
 			t.Fatalf("%v: %+v", args["source"], out.MemoryOut)
 		}
 	}
+	// 자동 모드 켬: 서버가 읽어 확인한 근거는 같은 범위·주제의 사용자 말 사실을 자동 대체하고 바로 확정된다.
+	s.Policy.AutoMode = true
 	out := save(verifiedArgs("빌드 대상은 ./cmd/app", "빌드 명령", file, "build:\n  go build ./cmd/app"))
 	if !slices.Contains(out.Superseded, old.ID) {
 		t.Fatalf("not replaced: %+v", out.MemoryOut)
@@ -123,7 +128,8 @@ func TestSave_설정을_다시_읽는_서버는_자동_모드_변경을_다음_�
 
 // 재확인은 그 저장의 작업 트리 안 파일만 본다: 폴더 밖 절대경로, 폴더 안에서 밖을 가리키는 링크(파일·중간 디렉터리), ..로 나가는
 // 경로, 점 폴더·점 파일 아래, 작업 트리를 모를 때는 모두 재확인이 아니다. 그때 사용자 말 사실은 대체되지 않고 새 기억은 즉시
-// 확정되지 않는다. 응답이 왜 재확인이 안 됐는지 가르지 않는 것은 recheck_root_test.go가 본다.
+// 확정되지 않는다(자동 모드를 켜서 비교한다: 끄면 재확인 여부와 관계없이 어긋남이라 응답이 같다). 응답이 왜 재확인이 안 됐는지
+// 가르지 않는 것은 recheck_root_test.go가 본다.
 func TestSave_작업_폴더_밖이나_점_폴더의_파일은_재확인하지_않는다(t *testing.T) {
 	base := realDir(t, t.TempDir())
 	root, outside := filepath.Join(base, "repo"), filepath.Join(base, "elsewhere")
@@ -155,10 +161,12 @@ func TestSave_작업_폴더_밖이나_점_폴더의_파일은_재확인하지_�
 		{"작업 폴더 안 보통 파일", root, filepath.Join(root, "Makefile")},
 	} {
 		s, save := replaceServer(t, Options{Dir: c.dir, Top: c.dir})
+		s.Policy.AutoMode = true
 		old := userFactAt(t, s, "배포는 make deploy", "배포 명령")
 		out := save(verifiedArgs("배포는 release.sh", "배포 명령", c.path, line))
 		ok := c.name == "작업 폴더 안 보통 파일"
-		if slices.Contains(out.Superseded, old.ID) != ok || (out.Memory.State == memory.StateConfirmed) != ok {
+		// 자동 모드를 켜면 근거가 적힌 사실은 재확인이 아니어도 대체한다: 재확인은 즉시 확정만 가른다.
+		if !slices.Contains(out.Superseded, old.ID) || (out.Memory.State == memory.StateConfirmed) != ok {
 			t.Errorf("%s: superseded %v state %s", c.name, out.Superseded, out.Memory.State)
 		}
 	}

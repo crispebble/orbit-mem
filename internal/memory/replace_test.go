@@ -84,7 +84,7 @@ func TestReplace_표의_각_줄을_자동_모드_켬과_끔으로_가른다(t *t
 		{"user 범위 교훈은 대화로 못 바꿈", KindLesson, GroundTalk, OldQuoteUserScope, false, false, C, C},
 		{"규칙은 재확인 출처여도 어긋남", KindRule, GroundRechecked, OldQuote, false, false, C, C},
 		{"결정은 근거 적힌 출처여도 어긋남", KindDecision, GroundStated, OldQuote, false, false, C, C},
-		{"재확인 사실은 자동 대체", KindFact, GroundRechecked, OldQuote, false, false, A, A},
+		{"재확인 사실은 자동 모드에서만 자동 대체", KindFact, GroundRechecked, OldQuote, false, false, C, A},
 		{"근거 적힌 사실은 자동 모드에서만 자동 대체", KindFact, GroundStated, OldQuote, false, false, C, A},
 		{"대화로 배운 사실은 어긋남", KindFact, GroundTalk, OldQuote, false, false, C, C},
 		{"믿을 수 없는 사실은 어긋남", KindFact, GroundUntrusted, OldQuote, false, false, C, C},
@@ -134,8 +134,9 @@ func TestReplace_표의_각_줄을_자동_모드_켬과_끔으로_가른다(t *t
 	}
 }
 
-func TestSave_서버가_다시_확인한_검증_사실은_사용자_말_사실을_자동_대체한다(t *testing.T) {
+func TestSave_자동_모드_켬이면_서버가_다시_확인한_검증_사실은_사용자_말_사실을_자동_대체한다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	cur, rep := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 	got := stateOf(t, s, old.ID)
@@ -147,7 +148,7 @@ func TestSave_서버가_다시_확인한_검증_사실은_사용자_말_사실�
 	if last := h[len(h)-1]; last.Action != "supersede" || !strings.Contains(last.Reason, cur.Title) {
 		t.Fatalf("history %+v", last)
 	}
-	// 재확인한 검증 사실은 바로 확정된다(E-4).
+	// 재확인한 검증 사실은 어긋남이 없으면 바로 확정된다(E-4).
 	if c := stateOf(t, s, cur.ID); c.State != StateConfirmed {
 		t.Fatalf("new state %s", c.State)
 	}
@@ -361,7 +362,7 @@ func TestRevert_자동_사실_대체를_되돌리면_옛_것은_확정_새_것�
 		name string
 		auto bool
 		in   func(string, string) SaveInput
-	}{{"재확인 사실", false, checkedFact}, {"자동 모드의 근거 적힌 사실", true, statedFact}} {
+	}{{"자동 모드의 재확인 사실", true, checkedFact}, {"자동 모드의 근거 적힌 사실", true, statedFact}} {
 		t.Run(c.name, func(t *testing.T) {
 			s := supStore(t)
 			s.Policy.AutoMode = c.auto
@@ -424,6 +425,7 @@ func TestRevert_자동_사실_대체를_되돌리면_옛_것은_확정_새_것�
 
 func TestRevert_즉시_확정과_같은_제목_재저장_뒤에도_되돌리기가_성공한다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	cur, _ := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 	if c := stateOf(t, s, cur.ID); c.State != StateConfirmed || c.Version < 2 {
@@ -490,6 +492,7 @@ func TestSave_두_연결이_같은_사용자_말_사실을_동시에_자동_대�
 				t.Fatal(err)
 			}
 			defer s.Close()
+			s.Policy.AutoMode = true
 			stores = append(stores, s)
 		}
 		old, _ := mustSave(t, stores[0], userFact("빌드 명령은 make all", "빌드 명령"))
@@ -665,7 +668,7 @@ func TestSave_다른_주제나_범위의_사용자_말_사실은_supersedes로_�
 // 사람이 한 번 되돌린 옛 기억은 제목만 바꾼 새 기억(새 id)으로도 사용자 말이 아닌 근거로는 다시 자동 대체하지 않는다(C-3).
 // 사용자 말은 대체한다(C-6).
 func TestRevert_되돌린_옛_기억은_제목을_바꾼_새_기억으로도_다시_자동_대체되지_않는다(t *testing.T) {
-	for _, auto := range []bool{false, true} {
+	for _, auto := range []bool{true} { // 되돌릴 자동 대체가 있으려면 자동 모드가 켜져 있어야 한다
 		s := supStore(t)
 		s.Policy.AutoMode = auto
 		old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
@@ -717,6 +720,7 @@ func TestSave_종류가_다른_사용자_말_기억은_재확인_사실로도_�
 // 자동 대체의 원장 줄을 쓰지 못하면 저장 전체가 되돌아간다: 옛 기억은 확정 그대로이고 새 기억·제안은 남지 않는다.
 func TestSave_자동_대체의_원장을_쓰지_못하면_저장_전체가_되돌아간다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	if _, err := s.DB().Exec(`CREATE TRIGGER ledger_down BEFORE INSERT ON ledger BEGIN SELECT RAISE(ABORT, 'ledger down'); END`); err != nil {
 		t.Fatal(err)

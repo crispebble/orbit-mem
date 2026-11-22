@@ -204,9 +204,11 @@ func TestSessionStart_핵심_기억에_어긋남이_있으면_새_사실과_확�
 	}
 }
 
-// verifiedReplace saves a user's fact and then a checked fact on its topic, so the second replaces the first by itself.
+// verifiedReplace saves a user's fact and then a checked fact on its topic with the auto mode on, so the second
+// replaces the first by itself (with the mode off it would be a conflict).
 func verifiedReplace(t *testing.T, s *memory.Store, topic string) (old, nw memory.Memory) {
 	t.Helper()
+	s.Policy.AutoMode = true
 	old, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "빌드는 make all로 한다 " + topic, Topic: topic, Scope: here,
 		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "빌드는 make all로 한다 " + topic}})
 	if err != nil {

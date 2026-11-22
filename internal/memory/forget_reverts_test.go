@@ -11,6 +11,7 @@ import (
 func TestForget_되돌린_대체_쌍은_어느_쪽을_지워도_남는다(t *testing.T) {
 	pair := func(t *testing.T) (*Store, Memory, Memory) {
 		s := supStore(t)
+		s.Policy.AutoMode = true // 되돌릴 자동 대체를 만든다
 		old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 		cur, _ := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 		revertAuto(t, s, old.ID)

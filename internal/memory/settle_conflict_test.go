@@ -175,6 +175,7 @@ func TestSettle_다른_자리_쌍은_옛_쪽을_풀어도_새_쪽을_막지_않�
 // 옛 쪽이 현재 값이 된다.
 func TestSettle_가려진_옛_쪽에_사용자_말이_붙으면_가리는_쪽이_대체된다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	mid, _ := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 	head, _ := mustSave(t, s, userFact("빌드 명령은 task build", "빌드 명령")) // mid를 대체해 머리가 된다
@@ -197,6 +198,7 @@ func TestSettle_가려진_옛_쪽에_사용자_말이_붙으면_가리는_쪽이
 // 대체가 막히면 가려짐 쌍도 닫지 않는다.
 func TestSettle_가려진_옛_쪽의_대체가_막히면_쌍을_닫지_않는다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 	head, _ := mustSave(t, s, userFact("빌드 명령은 task build", "빌드 명령"))
@@ -216,6 +218,7 @@ func TestSettle_가려진_옛_쪽의_대체가_막히면_쌍을_닫지_않는다
 // 가려짐 쌍은 가리는 쪽이 실제 현재 값(주제 머리)일 때만 연다: 후보는 확정을 가리지 못한다.
 func TestRevert_가리는_쪽이_후보면_가려짐_쌍을_열지_않는다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
 	cand, _ := mustSave(t, s, SaveInput{Kind: KindFact, Title: "빌드 명령은 task build", Topic: "빌드 명령", Scope: replScope,
@@ -237,6 +240,7 @@ func TestRevert_가리는_쪽이_후보면_가려짐_쌍을_열지_않는다(t *
 // 읽기 뒤에 시각을 잡는 구현은 그 줄을 floor 밑으로 묻어 알림이 영영 나오지 않는다.
 func TestAutoSupersedesUnnoticed_시각은_읽기_전에_잡는다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
 	base, armed := s.Now, true
 	s.Now = func() time.Time {

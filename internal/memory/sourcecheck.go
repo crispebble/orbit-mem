@@ -41,7 +41,8 @@ var (
 
 // RecheckExcerpt says whether the server, reading the file itself at this moment, finds excerpt in it: the check
 // that makes a verification source a ground the server confirmed (Source.Rechecked), so that a verified fact may
-// be confirmed at once (E-4) and replace the user's words on its own (C-1). It never fails a save: anything it
+// be confirmed at once when nothing conflicts with it (E-4). It does not decide a replacement: the user's words are
+// replaced by a verified fact only with the auto mode on, rechecked or not (replace.go). It never fails a save: anything it
 // cannot check is false, and the source is then a ground only written by the AI.
 //
 // It reads only a file inside one of roots, which are the top folders of git work trees (mcpserver gives the

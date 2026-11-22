@@ -30,11 +30,13 @@ func hostFile(t *testing.T, path string) string {
 }
 
 // verified saves a verified fact whose evidence is file from the session folder cwd (a session that started there
-// when start is true) and says whether the server's own check held: the user's words were replaced and the new
-// memory confirmed at once.
+// when start is true) and says whether the server's own check held: the new memory was confirmed at once. The
+// auto mode is on, so the user's words are replaced either way (a fact that only states its evidence replaces them
+// too) and only the confirmation tells.
 func verified(t *testing.T, cwd, file string, start bool) bool {
 	t.Helper()
 	e := newEnv(t) // 호출마다 새 저장소: 앞 호출이 남긴 기억이 판정에 끼지 않게
+	e.cfg.AutoMode = true
 	s := e.store()
 	pin(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말", Body: "반말 금지", Scope: memory.ScopeGlobal}) // 빈 세션은 활동 줄을 남기지 않는다
 	old, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: "배포는 make deploy", Topic: "배포 명령", Scope: "project:github.com/me/app",
@@ -58,10 +60,11 @@ func verified(t *testing.T, cwd, file string, start bool) bool {
 	}
 	r := out.(host.CallOut).Result.(mcpserver.SaveOut)
 	replaced := slices.Contains(r.Superseded, old.ID)
-	if confirmed := r.Memory.State == memory.StateConfirmed; replaced != confirmed {
+	confirmed := r.Memory.State == memory.StateConfirmed
+	if confirmed && !replaced {
 		t.Errorf("대체 %v 확정 %v", replaced, confirmed)
 	}
-	return replaced
+	return confirmed
 }
 
 func TestCall_memory_save의_재확인_루트는_cwd가_속한_작업_트리_최상위다(t *testing.T) {
