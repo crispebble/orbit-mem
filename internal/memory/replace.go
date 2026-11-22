@@ -9,7 +9,9 @@ package memory
 //   - 사실은 서버가 근거를 다시 확인했을 때만 사용자 말 사실을 스스로 대체한다(C-1). 근거만 적힌 사실은 자동 모드를 켰을 때만
 //     대체한다(C-8). 대화로 배운 사실은 대체하지 않는다(C-7). 사람의 방식·사정(user 범위) 사실은 대상이 아니다(C-1).
 //   - 자동 대체는 원장에 자동 변경으로 남아 감사 목록에서 되돌린다(C-3, supersede.go의 recordAutoReplaceTx).
-//   - 되돌린 쌍은 사용자 말이 아니면 다시 대체하지 않는다(C-3 「다시 자동으로 대체되지 않고」).
+//   - 자동 대체는 같은 범위·주제의 옛 사실만이다(C-1). supersedes로 다른 자리를 지목해도 어긋남이다.
+//   - 사람이 자동 대체를 되돌린 옛 기억은 어떤 새 기억으로든 사용자 말이 아니면 다시 대체하지 않는다(C-3 「다시 자동으로
+//     대체되지 않고」). 제목만 바꿔 같은 근거로 다시 저장해도 같다.
 //   - 표에 없는 조합은 어긋남이다: 표를 빠뜨려도 사용자 말이 밀려나지 않는다.
 
 import (
@@ -77,12 +79,14 @@ const (
 const kindMixed = ""
 
 // replaceRow is one row of the table: the kinds it covers (nil is every kind), the grounds of the new and the
-// old memory, and the outcome with the auto mode off and on.
+// old memory, whether it holds only for an old memory of the new one's own place (SameSlot: the same scope and
+// the same, non-empty topic), and the outcome with the auto mode off and on.
 type replaceRow struct {
-	Kinds   []string
-	New     []NewGround
-	Old     []OldGround
-	Off, On Outcome
+	Kinds    []string
+	New      []NewGround
+	Old      []OldGround
+	SameSlot bool
+	Off, On  Outcome
 }
 
 var (
@@ -93,37 +97,41 @@ var (
 
 // replaceTable is read top to bottom; the first row that matches decides.
 var replaceTable = []replaceRow{
-	{nil, []NewGround{GroundQuote}, anyOld, OutcomeSupersede, OutcomeSupersede}, // 사용자 말은 무엇이든 대체한다(D1)
-	{nil, notQuote, []OldGround{OldQuoteUserScope}, OutcomeConflict, OutcomeConflict},
-	{[]string{KindRule, KindDecision}, notQuote, []OldGround{OldQuote}, OutcomeConflict, OutcomeConflict},
-	{[]string{KindFact}, []NewGround{GroundRechecked}, []OldGround{OldQuote}, OutcomeAutoSupersede, OutcomeAutoSupersede},
-	{[]string{KindFact}, []NewGround{GroundStated}, []OldGround{OldQuote}, OutcomeConflict, OutcomeAutoSupersede},
-	{[]string{KindFact}, []NewGround{GroundTalk, GroundUntrusted}, []OldGround{OldQuote}, OutcomeConflict, OutcomeConflict},
-	{nil, notQuote, []OldGround{OldQuote}, OutcomeConflict, OutcomeConflict},
-	{nil, []NewGround{GroundUntrusted}, []OldGround{OldUntrusted}, OutcomeSupersede, OutcomeSupersede},
-	{nil, []NewGround{GroundUntrusted}, []OldGround{OldOther}, OutcomeConflict, OutcomeConflict},
-	{nil, trustedNw, []OldGround{OldOther, OldUntrusted}, OutcomeSupersede, OutcomeSupersede},
+	{nil, []NewGround{GroundQuote}, anyOld, false, OutcomeSupersede, OutcomeSupersede}, // 사용자 말은 무엇이든 대체한다(D1)
+	{nil, notQuote, []OldGround{OldQuoteUserScope}, false, OutcomeConflict, OutcomeConflict},
+	{[]string{KindRule, KindDecision}, notQuote, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
+	// 자동 대체는 같은 범위·주제의 사실만이다(C-1): supersedes로 다른 자리를 지목하면 아래 줄(어긋남)로 떨어진다.
+	{[]string{KindFact}, []NewGround{GroundRechecked}, []OldGround{OldQuote}, true, OutcomeAutoSupersede, OutcomeAutoSupersede},
+	{[]string{KindFact}, []NewGround{GroundStated}, []OldGround{OldQuote}, true, OutcomeConflict, OutcomeAutoSupersede},
+	{[]string{KindFact}, []NewGround{GroundTalk, GroundUntrusted}, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
+	{nil, notQuote, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
+	{nil, []NewGround{GroundUntrusted}, []OldGround{OldUntrusted}, false, OutcomeSupersede, OutcomeSupersede},
+	{nil, []NewGround{GroundUntrusted}, []OldGround{OldOther}, false, OutcomeConflict, OutcomeConflict},
+	{nil, trustedNw, []OldGround{OldOther, OldUntrusted}, false, OutcomeSupersede, OutcomeSupersede},
 }
 
-// replaceRowOf is the index of the first row of replaceTable that matches, or -1.
-func replaceRowOf(kind string, nw NewGround, old OldGround) int {
+// replaceRowOf is the index of the first row of replaceTable that matches, or -1. sameSlot says the old memory
+// has the new one's scope and its same, non-empty topic.
+func replaceRowOf(kind string, nw NewGround, old OldGround, sameSlot bool) int {
 	for i, r := range replaceTable {
-		if (r.Kinds == nil || slices.Contains(r.Kinds, kind)) && slices.Contains(r.New, nw) && slices.Contains(r.Old, old) {
+		if (r.Kinds == nil || slices.Contains(r.Kinds, kind)) && slices.Contains(r.New, nw) && slices.Contains(r.Old, old) && (!r.SameSlot || sameSlot) {
 			return i
 		}
 	}
 	return -1
 }
 
-// decideReplace is the outcome of the table for a pair. revertedPair is true when the person undid an automatic
-// replacement of this very pair before (supersede_reverts): it is a conflict unless the new ground is the
-// user's words. A pair the table does not cover is a conflict. The trust levels are also checked by mayOverride
-// in supersedeTx, and the more careful answer wins there.
-func decideReplace(kind string, nw NewGround, old OldGround, autoMode, revertedPair bool) Outcome {
-	if revertedPair && nw != GroundQuote {
+// decideReplace is the outcome of the table for a pair. sameSlot says the old memory has the new one's scope and
+// same, non-empty topic. revertedOld is true when the person undid an automatic replacement of the old memory
+// before, by any new memory (supersede_reverts): it is a conflict unless the new ground is the user's words —
+// saving the same ground again under another title must not replace it again. A pair the table does not cover
+// is a conflict. The trust levels are also checked by mayOverride in supersedeTx, and the more careful answer
+// wins there.
+func decideReplace(kind string, nw NewGround, old OldGround, sameSlot, autoMode, revertedOld bool) Outcome {
+	if revertedOld && nw != GroundQuote {
 		return OutcomeConflict
 	}
-	i := replaceRowOf(kind, nw, old)
+	i := replaceRowOf(kind, nw, old, sameSlot)
 	if i < 0 {
 		return OutcomeConflict
 	}
@@ -182,11 +190,18 @@ func oldGroundOf(q querier, old Memory) (OldGround, error) {
 	return OldOther, nil
 }
 
-// revertedPairTx says whether the person undid an automatic replacement of old by nw before.
-func revertedPairTx(q querier, old, nw string) (bool, error) {
+// revertedOldTx says whether the person undid an automatic replacement of memory old before, by whatever new
+// memory. Undoing that undo (ledger.go) takes the pair out again.
+func revertedOldTx(q querier, old string) (bool, error) {
 	var n int
-	err := q.QueryRow(`SELECT COUNT(*) FROM supersede_reverts WHERE old_id=? AND new_id=?`, old, nw).Scan(&n)
+	err := q.QueryRow(`SELECT COUNT(*) FROM supersede_reverts WHERE old_id=?`, old).Scan(&n)
 	return n > 0, err
+}
+
+// sameSlot says whether old is in the place of nw: the same scope and the same, non-empty topic (C-1 「같은
+// 범위·주제」). A memory named in supersedes or met on the same-title path may be anywhere.
+func sameSlot(nw, old Memory) bool {
+	return nw.Topic != "" && old.Scope == nw.Scope && TopicKey(old.Topic) == TopicKey(nw.Topic)
 }
 
 // autoMode is the auto mode a save is decided under: the save's own (a server that reads the setting on every

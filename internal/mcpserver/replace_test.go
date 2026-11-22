@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -32,6 +33,16 @@ func replaceServer(t *testing.T, o Options) (*memory.Store, func(args map[string
 	return s, save
 }
 
+// realDir is dir with its links resolved, as the assembly point gives Options.Dir (project.Resolve).
+func realDir(t *testing.T, dir string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.ToSlash(real)
+}
+
 func userFactAt(t *testing.T, s *memory.Store, title, topic string) memory.Memory {
 	t.Helper()
 	m, err := s.Save(memory.SaveInput{Kind: memory.KindFact, Title: title, Topic: topic, Scope: "project:github.com/me/app",
@@ -48,8 +59,8 @@ func verifiedArgs(title, topic, ref, excerpt string) map[string]any {
 }
 
 func TestSave_서버가_파일을_읽어_확인한_검증_출처만_사용자_말_사실을_자동_대체한다(t *testing.T) {
-	s, save := replaceServer(t, Options{})
-	dir := t.TempDir()
+	dir := realDir(t, t.TempDir()) // 작업 폴더(재확인이 인정하는 루트)
+	s, save := replaceServer(t, Options{Dir: dir})
 	file := filepath.Join(dir, "Makefile")
 	const marker = "다른줄표식-zq81"
 	if err := os.WriteFile(file, []byte("# "+marker+"\nbuild:\n\tgo build ./cmd/app\n"), 0o600); err != nil {
@@ -105,5 +116,57 @@ func TestSave_설정을_다시_읽는_서버는_자동_모드_변경을_다음_�
 	out := save(verifiedArgs("시험은 go test -race ./...", "시험 명령", "go test -race ./...", "ok  github.com/me/app  1.2s"))
 	if !slices.Contains(out.Superseded, old.ID) || out.Memory.State != memory.StateCandidate {
 		t.Fatalf("켬: %+v", out.MemoryOut)
+	}
+}
+
+// 재확인은 그 저장의 작업 폴더 안 파일만 본다: 폴더 밖 절대경로, 폴더 안에서 밖을 가리키는 링크(파일·중간 디렉터리), ..로 나가는
+// 경로, 점 폴더·점 파일 아래, 작업 폴더를 모를 때는 모두 재확인이 아니다. 그때 사용자 말 사실은 대체되지 않고 새 기억은 즉시
+// 확정되지 않으며, 응답은 왜 재확인이 안 됐는지 경로별로 가르지 않는다.
+func TestSave_작업_폴더_밖이나_점_폴더의_파일은_재확인하지_않는다(t *testing.T) {
+	base := realDir(t, t.TempDir())
+	root, outside := filepath.Join(base, "repo"), filepath.Join(base, "elsewhere")
+	for _, d := range []string{filepath.Join(root, "sub"), filepath.Join(root, ".git"), outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const line = "deploy: ./scripts/release.sh"
+	for _, f := range []string{filepath.Join(root, "Makefile"), filepath.Join(outside, "Makefile"), filepath.Join(root, ".git", "config"), filepath.Join(root, ".env")} {
+		if err := os.WriteFile(f, []byte(line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(outside, "Makefile"), filepath.Join(root, "outlink")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "outdir")); err != nil {
+		t.Fatal(err)
+	}
+	var notes []string
+	for _, c := range []struct{ name, dir, path string }{
+		{"폴더 밖 절대경로", root, filepath.Join(outside, "Makefile")},
+		{"밖을 가리키는 파일 링크", root, filepath.Join(root, "outlink")},
+		{"밖을 가리키는 중간 디렉터리 링크", root, filepath.Join(root, "outdir", "Makefile")},
+		{"..으로 나감", root, filepath.Join(root, "sub", "..", "..", "elsewhere", "Makefile")},
+		{"점 폴더 아래", root, filepath.Join(root, ".git", "config")},
+		{"점 파일", root, filepath.Join(root, ".env")},
+		{"작업 폴더를 모름", "", filepath.Join(root, "Makefile")},
+		{"작업 폴더 안 보통 파일", root, filepath.Join(root, "Makefile")},
+	} {
+		s, save := replaceServer(t, Options{Dir: c.dir})
+		old := userFactAt(t, s, "배포는 make deploy", "배포 명령")
+		out := save(verifiedArgs("배포는 release.sh", "배포 명령", c.path, line))
+		ok := c.name == "작업 폴더 안 보통 파일"
+		if slices.Contains(out.Superseded, old.ID) != ok || (out.Memory.State == memory.StateConfirmed) != ok {
+			t.Errorf("%s: superseded %v state %s", c.name, out.Superseded, out.Memory.State)
+		}
+		if !ok {
+			notes = append(notes, strings.Join(out.Warnings, "|"))
+		}
+	}
+	for _, n := range notes[1:] { // 재확인이 안 된 까닭은 경고로 드러나지 않는다(모든 경우 같은 응답)
+		if n != notes[0] {
+			t.Errorf("경고가 경우마다 다르다: %q vs %q", n, notes[0])
+		}
 	}
 }

@@ -438,10 +438,10 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 
 // SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
 type SaveReport struct {
-	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판(자동 대체 포함: 그것은 원장에도 남는다)
+	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 버전(자동 대체 포함: 그것은 원장에도 남는다)
 	// Conflicts are the old memories the save left as they were and marked as going against it: the user's words it
-	// may not replace, an owner·agent memory an untrusted new one met, or a pair whose automatic replacement the
-	// person undid (replace.go).
+	// may not replace (a fact of another scope or topic included), an owner·agent memory an untrusted new one met,
+	// or an old memory whose automatic replacement the person undid (replace.go).
 	Conflicts []string `json:"conflicts,omitempty"`
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
@@ -465,7 +465,7 @@ type SaveReport struct {
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
 
-	untrusted []string // Conflicts 가운데 새 판의 출처가 믿을 수 없는 것뿐이라 남긴 것
+	untrusted []string // Conflicts 가운데 새 버전의 출처가 믿을 수 없는 것뿐이라 남긴 것
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of

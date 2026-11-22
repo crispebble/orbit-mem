@@ -43,33 +43,96 @@ var (
 // be confirmed at once (E-4) and replace the user's words on its own (C-1). It never fails a save: anything it
 // cannot check is false, and the source is then a ground only written by the AI.
 //
-// It reads only path that is absolute (a relative path is not resolved against any folder) and is a regular
-// file of at most recheckMaxBytes, by its last element: a symbolic link, a directory, a device, a FIFO or a
-// socket is false without opening it, and so is a file that turned into something else when opened. A missing
-// file, one it may not read, an excerpt shorter than recheckMinRunes, or one not in the file is false. Runs of
-// white space count as one space on both sides. The read gives up after recheckTimeout and is false; a read
-// stuck in the system then ends on its own later.
+// It reads only a file inside one of roots: the folders of the save's own work (mcpserver gives the session
+// folder and, when the project key is a folder, that folder). Without a root it reads nothing. A root that is not
+// absolute, the file system's root, the home folder or a folder above it is not one: a session opened there would
+// make any file of the person a ground. The server may read files the host was told not to read, so a save must
+// not become a way to probe them: what its answer (confirmed or candidate) can tell is held to the work's files.
 //
-// What it reads is only compared and dropped: the file's content is not stored, logged or returned.
-func RecheckExcerpt(path, excerpt string) bool {
+// path must be absolute (a relative path is not resolved against any folder). It is cleaned and its symbolic
+// links resolved, and the real path must lie under a root (its links resolved too), so a link or a ".." that
+// leads out is false. No folder or file below the root on the way may start with a dot (.git, .env, .ssh). The
+// file must be a regular file of at most recheckMaxBytes, checked again on the open file; a directory, a device,
+// a FIFO or a socket is false without opening it. A missing file, one it may not read, an excerpt shorter than
+// recheckMinRunes, or one not in the file is false. Runs of white space count as one space on both sides. The
+// whole check gives up after recheckTimeout and is false; a step stuck in the system then ends on its own later.
+//
+// The answer is only true or false and why a path was not taken is told to no one, so the reasons cannot be
+// told apart to learn what exists. What it reads is only compared and dropped: the file's content is not
+// stored, logged or returned.
+func RecheckExcerpt(roots []string, path, excerpt string) bool {
 	path = strings.TrimSpace(path)
 	want := strings.Join(strings.Fields(excerpt), " ")
-	if !filepath.IsAbs(path) || utf8.RuneCountInString(want) < recheckMinRunes {
-		return false
-	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > recheckMaxBytes {
+	if !filepath.IsAbs(path) || utf8.RuneCountInString(want) < recheckMinRunes || len(roots) == 0 {
 		return false
 	}
 	open, limit := recheckOpen, recheckTimeout
-	done := make(chan bool, 1) // 한도가 지나 아무도 받지 않아도 읽기 고루틴이 멈추지 않게 한 칸을 둔다
-	go func() { done <- fileHolds(open, path, want) }()
+	done := make(chan bool, 1) // 한도가 지나 아무도 받지 않아도 확인 고루틴이 멈추지 않게 한 칸을 둔다
+	go func() {
+		real := insideRoots(roots, path)
+		done <- real != "" && fileHolds(open, real, want)
+	}()
 	select {
 	case ok := <-done:
 		return ok
 	case <-time.After(limit):
 		return false
 	}
+}
+
+// insideRoots is path cleaned with its links resolved when that real path is a regular file of at most
+// recheckMaxBytes under one of roots (their links resolved) with no dot-named folder or file below the root,
+// else "". Roots that may not be one (see RecheckExcerpt) are skipped.
+func insideRoots(roots []string, path string) string {
+	real, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return ""
+	}
+	if info, err := os.Lstat(real); err != nil || !info.Mode().IsRegular() || info.Size() > recheckMaxBytes {
+		return ""
+	}
+	home := ""
+	if h, err := os.UserHomeDir(); err == nil && h != "" {
+		if r, err := filepath.EvalSymlinks(h); err == nil {
+			home = r
+		} else {
+			home = filepath.Clean(h)
+		}
+	}
+	for _, root := range roots {
+		root = filepath.FromSlash(strings.TrimSpace(root))
+		if !filepath.IsAbs(root) {
+			continue
+		}
+		r, err := filepath.EvalSymlinks(filepath.Clean(root))
+		if err != nil || filepath.Dir(r) == r || (home != "" && (r == home || below(r, home) != "")) {
+			continue // 파일 시스템 뿌리·홈·홈 위는 루트가 아니다
+		}
+		rel := below(r, real)
+		if rel == "" {
+			continue
+		}
+		dotted := false
+		for _, part := range strings.Split(rel, string(filepath.Separator)) {
+			if strings.HasPrefix(part, ".") {
+				dotted = true
+				break
+			}
+		}
+		if !dotted {
+			return real
+		}
+	}
+	return ""
+}
+
+// below is p relative to dir when p lies strictly under dir, else "".
+func below(dir, p string) string {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return ""
+	}
+	return rel
 }
 
 // fileHolds reads path (a regular file of at most recheckMaxBytes, checked again on the open file) and says

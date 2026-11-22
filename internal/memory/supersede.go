@@ -47,14 +47,14 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 	}
 	// 새 근거는 이번 저장의 출처로만 정한다: m이 예전에 받은 사용자 말 출처로 정하면 AI의 재저장이 사용자 말로 읽힌다.
 	ground := newGroundOf(in.Source)
-	// 고른 옛 판(Replaces)은 SupersedeAs처럼 막는다: 사람이 아닌 쓰는 쪽이 사용자 말 기억을 고르면 save가 guardTx로 사용자 말
+	// 고른 옛 버전(Replaces)은 SupersedeAs처럼 막는다: 사람이 아닌 쓰는 쪽이 사용자 말 기억을 고르면 save가 guardTx로 사용자 말
 	// (userQuote)을 이미 요구했다. 그래서 사람이 고른 것과 사용자 말을 함께 준 것은 그 말이 근거다(지금 동작).
 	explicitGround := ground
 	if in.Who.human() || in.Who.quote() != "" {
 		explicitGround = GroundQuote
 	}
 	auto := s.autoMode(in)
-	// 믿음 등급 축은 mayOverride가 따로 본다: 출처가 믿을 수 없는 것뿐인 새 판은 owner·agent 기억을 대체하지 못한다(D7).
+	// 믿음 등급 축은 mayOverride가 따로 본다: 출처가 믿을 수 없는 것뿐인 새 버전은 owner·agent 기억을 대체하지 못한다(D7).
 	newTrust, err := memoryTrustTx(tx, m.ID)
 	if err != nil {
 		return rep, err
@@ -74,7 +74,7 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 		if err != nil {
 			return rep, err
 		}
-		reverted, err := revertedPairTx(tx, id, m.ID)
+		reverted, err := revertedOldTx(tx, id)
 		if err != nil {
 			return rep, err
 		}
@@ -82,9 +82,9 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 		if id == in.Replaces {
 			nw, words = explicitGround, in.Who.quote()
 		}
-		out := decideReplace(replaceKind(m.Kind, old.Kind), nw, oldGround, auto, reverted)
+		out := decideReplace(replaceKind(m.Kind, old.Kind), nw, oldGround, sameSlot(m, old), auto, reverted)
 		trustBlocked := false
-		// 사용자 말 출처의 새 판은 owner라 늘 지난다. 사람이 고른 Replaces도 여기서는 사용자 말이 아니다(지금처럼 막는다).
+		// 사용자 말 출처의 새 버전은 owner라 늘 지난다. 사람이 고른 Replaces도 여기서는 사용자 말이 아니다(지금처럼 막는다).
 		if out != OutcomeConflict && !mayOverride(newTrust, old.Trust, words) {
 			out, trustBlocked = OutcomeConflict, true // 표와 믿음 등급이 어긋나면 더 보수적인 쪽(어긋남)이다
 		}
@@ -99,7 +99,7 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 			}
 			return rep, fmt.Errorf("%w: %s", ErrProtected, id)
 		case OutcomeConflict:
-			rep.Conflicts = append(rep.Conflicts, id) // 대체하지 않고 어긋남으로 둔다(사용자 말·믿을 수 없는 출처·되돌린 쌍)
+			rep.Conflicts = append(rep.Conflicts, id) // 대체하지 않고 어긋남으로 둔다(사용자 말·믿을 수 없는 출처·되돌린 옛 기억)
 			if untrusted {
 				rep.untrusted = append(rep.untrusted, id)
 			}
