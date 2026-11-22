@@ -54,21 +54,27 @@ func (s *Store) Viewer() (Viewer, error) {
 // shows as expired and its state is left alone, a user's words included), then an older value of its
 // topic. Only a memory with a superseded_by costs a DB read (Successor).
 func (v Viewer) Of(m Memory) Visibility {
-	out := Visibility{ReviewDue: m.Freshness(v.now) == FreshReviewDue}
-	switch {
-	case m.State == StateStale:
-		out.Why = WhyStale
-	case m.State == StateHidden:
-		out.Why = WhyRejected
-	case m.Freshness(v.now) == FreshExpired:
-		out.Why = WhyExpired
-	case v.heads.Superseding(m) != "":
-		out.Why = WhyOlder
-	}
+	out := Visibility{Why: v.Why(m), ReviewDue: m.Freshness(v.now) == FreshReviewDue}
 	if next, ok := v.Successor(m); ok {
 		out.Successor = next.ID
 	}
 	return out
+}
+
+// Why is Of's verdict without the successor, so it reads nothing. A list that only marks which lines are not
+// current uses it, and asks for a successor only for the memory it shows whole.
+func (v Viewer) Why(m Memory) Why {
+	switch {
+	case m.State == StateStale:
+		return WhyStale
+	case m.State == StateHidden:
+		return WhyRejected
+	case m.Freshness(v.now) == FreshExpired:
+		return WhyExpired
+	case v.heads.Superseding(m) != "":
+		return WhyOlder
+	}
+	return WhyCurrent
 }
 
 // OfID reads the memory and judges it. An id the DB does not have (forgotten or never kept), or one it

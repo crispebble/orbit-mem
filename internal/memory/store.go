@@ -1127,6 +1127,9 @@ type FindInput struct {
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
 	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
+	// Current leaves out what the Viewer does not judge a current value (stale, expired, an older value of
+	// its topic) before the limit cuts the list. Only a find shown to a person sets it; recall does not.
+	Current bool
 	// SkipUnknownTokens leaves the query tokens no memory has out of the score (rank.go). The recall of a
 	// request and a task sets it; memory_find does not.
 	SkipUnknownTokens bool
@@ -1177,6 +1180,13 @@ func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	}
 	if s.rankStep != nil {
 		s.rankStep()
+	}
+	if in.Current {
+		v, err := s.Viewer()
+		if err != nil {
+			return nil, err
+		}
+		read.all = slices.DeleteFunc(read.all, func(m Memory) bool { return v.Why(m) != WhyCurrent })
 	}
 	return rankFind(in, read), nil
 }

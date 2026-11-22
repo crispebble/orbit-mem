@@ -111,6 +111,8 @@ type FindItem struct {
 	Tags      []string `json:"tags,omitempty"`
 	Pinned    bool     `json:"pinned,omitempty"`
 	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
+	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"). A current line has none.
+	Note string `json:"note,omitempty"`
 }
 
 // findDetail checks the detail argument of memory_find.
@@ -135,10 +137,14 @@ func findLimit(n int) int {
 	return n
 }
 
-// findItem shapes one hit. The index line is held to findItemBudget serialized runes,
-// whatever the characters are: the title is cut first, then the applies-to.
-func findItem(m memory.Memory, detail string) FindItem {
-	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State,
+// findItem shapes one hit that is a current value.
+func findItem(m memory.Memory, detail string) FindItem { return findItemNoted(m, detail, "") }
+
+// findItemNoted shapes one hit with note (what whyNote gives, "" for a current value). The index line is
+// held to findItemBudget serialized runes, whatever the characters are, the note included: the title is cut
+// first, then the applies-to.
+func findItemNoted(m memory.Memory, detail, note string) FindItem {
+	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note,
 		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
 		it.Summary = clip(oneLine(m.Body), findSummaryRunes)
@@ -160,6 +166,46 @@ func findItem(m memory.Memory, detail string) FindItem {
 	return it
 }
 
+// whyNote is the short mark of a memory that is not a current value; "" for a current one. A rejected
+// candidate reads as discarded, like a stale one.
+func whyNote(w memory.Why) string {
+	switch w {
+	case memory.WhyStale, memory.WhyRejected:
+		return "폐기됨"
+	case memory.WhyExpired:
+		return "만료됨"
+	case memory.WhyOlder:
+		return "옛 버전"
+	}
+	return ""
+}
+
+// peerNote is whyNote with the successor, for the other end of a link: "폐기됨, 후계 m-…".
+func peerNote(w memory.Why, successor string) string {
+	n := whyNote(w)
+	if n != "" && successor != "" {
+		n += ", 후계 " + successor
+	}
+	return n
+}
+
+// noticeOf is the warning head memory_get puts before a memory that is not a current value: the state, the
+// reason and the successor ("" for a current one). successor is the live replacement, or for an older value
+// the newer value of its topic.
+func noticeOf(m memory.Memory, w memory.Why, successor string) string {
+	n := whyNote(w)
+	if n == "" {
+		return ""
+	}
+	if r := clip(oneLine(m.StaleReason), getStaleRunes); r != "" && (w == memory.WhyStale || w == memory.WhyRejected) {
+		n += " (사유: " + r + ")"
+	}
+	if successor != "" {
+		n += ", 후계 " + successor
+	}
+	return n + ": 지금 값으로 쓰지 마세요"
+}
+
 // SourceView is a source as memory_get shows it.
 type SourceView struct {
 	Kind    string `json:"kind"`
@@ -171,6 +217,9 @@ type SourceView struct {
 // serialized runes (a body of 2,000 runes at most); full: true gives the whole body, every
 // source and every link.
 type MemoryView struct {
+	// Notice is the warning head of a memory that is not a current value: its state, the reason and the
+	// successor. It is the first field so it comes before the body. A current memory has none.
+	Notice       string       `json:"notice,omitempty"`
 	ID           string       `json:"id"`
 	Kind         string       `json:"kind"`
 	State        string       `json:"state"`
@@ -207,9 +256,13 @@ func untrustedOf(m memory.Memory) string {
 // linkTitles gives the title of the memory at the other end of each link; "" when it is gone.
 type linkTitles func(id string) string
 
+// linkPeers gives the title of the memory at the other end of a link and, when that memory is not a current
+// value, its note (peerNote). The note is "" for a current one, so its line gets nothing added.
+type linkPeers func(id string) (title, note string)
+
 // linkLines writes the links of m. Cut, it lists the first getLinks with titles of getLinkTitle
-// runes and counts the rest.
-func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string {
+// runes and counts the rest. A peer that is not a current value gets its note in parentheses.
+func linkLines(links []memory.MemoryLink, peer linkPeers, full bool) []string {
 	if len(links) == 0 {
 		return nil
 	}
@@ -219,13 +272,17 @@ func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string 
 	}
 	out := make([]string, 0, len(shown)+1)
 	for _, l := range shown {
-		t := oneLine(title(l.MemoryID))
+		title, note := peer(l.MemoryID)
+		t := oneLine(title)
 		if !full {
 			t = clip(t, getLinkTitle)
 		}
 		line := l.MemoryID
 		if t != "" {
 			line = t + " — " + l.MemoryID
+		}
+		if note != "" {
+			line += " (" + note + ")"
 		}
 		if full && l.Note != "" {
 			line += " · " + oneLine(l.Note)
@@ -244,7 +301,13 @@ func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string 
 // 1,000 runes are other parts left out, in this order: links, sources, tags and tools,
 // stale reason and topic, title (not below 100 runes); the body then takes the room left.
 func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
-	v := MemoryView{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
+	return memoryViewNoted(m, "", func(id string) (string, string) { return title(id), "" }, full)
+}
+
+// memoryViewNoted is memoryView with the warning head notice (noticeOf) and the peers' notes on the links.
+// The notice counts toward the budget like any other field, so the body gives way to it.
+func memoryViewNoted(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
+	v := MemoryView{Notice: notice, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {

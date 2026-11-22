@@ -184,3 +184,23 @@ func TestViewer_후보_상태의_후계도_살아있는_것으로_인정한다(t
 		t.Fatalf("후보 후계: %q %v", got.ID, ok)
 	}
 }
+
+// 조회 경로는 현재 값이 아닌 것을 한도 앞에서 뺀다: 한도 1에 옛 버전이 먼저 와도 현재 값이 나온다.
+func TestFind_Current는_현재_값이_아닌_것을_한도_앞에서_뺀다(t *testing.T) {
+	s := supStore(t)
+	base, _ := mustSave(t, s, userSays(KindRule, "기본은 A", "기본값"))
+	in := userSays(KindRule, "이번 주만 B", "기본값")
+	in.Retention, in.TTLDays = RetentionVolatile, 1
+	tmp, _ := mustSave(t, s, in)
+	all, err := s.Find(FindInput{AllProjects: true, Limit: 10})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("Current 없이는 둘 다 나온다: %d %v", len(all), err)
+	}
+	got, err := s.Find(FindInput{AllProjects: true, Limit: 1, Current: true})
+	if err != nil || len(got) != 1 || got[0].ID != tmp.ID {
+		t.Fatalf("Current: %v %v, want %s only (옛 버전 %s 제외)", got, err, tmp.ID, base.ID)
+	}
+	if w := viewer(t, s).Why(base); w != WhyOlder {
+		t.Fatalf("Why = %q, want %q", w, WhyOlder)
+	}
+}
