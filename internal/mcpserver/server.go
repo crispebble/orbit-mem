@@ -122,7 +122,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	// memory for good, and only on the user's words (Store.Forget). proposal_decide
 	// can overwrite or remove a user's file (apply_file, revert); a decided
 	// proposal is not decided again.
-	addPlain(srv, &mcp.Tool{Name: "memory_find", Description: "기억을 찾는다. 설계·결정·규칙 확인, 문서 위치·작업 방식이 애매할 때 먼저 부른다. 결과는 색인이라 쓰기 전에 memory_get으로 읽는다.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "memory_find", Description: "기억을 찾는다. 설계·결정·규칙·문서 위치·작업 방식이 애매할 때 먼저 부른다. 결과는 색인이니 쓰기 전에 memory_get으로 읽는다.", Annotations: readHints()},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
 			for _, m := range out.Items {
@@ -130,7 +130,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope, "ids": ids, "tags": len(in.Tags)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 본문·출처·links(함께 읽을 관련 기억).", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억 여러 개를 읽는다. 본문·출처·links(함께 읽을 기억).", Annotations: readHints()},
 		track(h, "memory_get", h.get, func(in GetIn, out GetOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
 			for _, m := range out.Items {
@@ -138,28 +138,28 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다. 저장됐는데 near가 있으면 같은 주장인지 보고 하나만 남긴다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절. saved:false면 similar의 choices 하나를 resolve로 주어 다시 부른다. 저장됐어도 near가 같은 주장이면 하나만 남긴다.", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out SaveOut) map[string]any {
 			return saveData(in, out)
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 사용자 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 그 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_forget", Description: "기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 memory_update의 stale·supersede로 고친다. 사용자가 지우라고 한 말을 userQuote로 줄 때만 부른다.", Annotations: writeHints(true, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_forget", Description: "기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 memory_update(stale·supersede)로 고친다. 사용자가 지우라고 한 말을 userQuote로 줄 때만 부른다.", Annotations: writeHints(true, false)},
 		track(h, "memory_forget", h.forget, func(in ForgetIn, out ForgetOut) map[string]any {
 			// 개수만 남긴다. userQuote·reason·제목은 지우려던 글이라 사건에도 넣지 않는다.
 			return map[string]any{"count": len(in.IDs)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "proposals", Description: "감사용 목록. 기본(status=audit)은 최근 자동 변경·어긋남·반복 교정. 사용자가 요청할 때만 부른다.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "proposals", Description: "감사용 목록. 기본은 최근 자동 변경·어긋남·반복 교정. 사용자가 요청할 때만 부른다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "proposal_decide", Description: "감사 항목 결정: revert(자동 변경 되돌리기)·dismiss(어긋남·반복 교정 닫기). 사용자 답을 받은 뒤에만 부른다. approve·reject는 남은 옛 대기 제안만.", Annotations: writeHints(true, true)},
+	addPlain(srv, &mcp.Tool{Name: "proposal_decide", Description: "감사 항목 결정: revert(자동 변경 되돌리기)·dismiss(어긋남·반복 교정 닫기). 사용자 답을 받은 뒤에만 부른다. approve·reject는 옛 대기 제안만.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "activity_find", Description: "세션 활동 기록(언제·어느 호스트·프로젝트·요청)을 최신순으로 찾는다. 기본은 이 프로젝트, project=all이면 전부.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "activity_find", Description: "세션 활동 기록(언제·호스트·프로젝트·요청)을 최신순으로 찾는다.", Annotations: readHints()},
 		track(h, "activity_find", h.activity, func(in ActivityIn, out activity.Result) map[string]any {
 			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "project": in.Project, "results": len(out.Items)}
 		}))
@@ -233,11 +233,11 @@ func (h handlers) forget(_ context.Context, _ *mcp.CallToolRequest, in ForgetIn)
 type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal"`
-	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더에서 보이는 것)·global(user만)·all"`
+	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더)·global(user만)·all"`
 	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"하나라도 가진 기억만"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"기본 8, 최대 30"`
-	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그 포함)"`
+	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그)"`
 }
 
 // Summary is a short view of a memory in a list.
@@ -307,7 +307,7 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 type GetIn struct {
 	IDs     []string `json:"ids" jsonschema:"읽을 기억 id(1~20개)"`
 	History bool     `json:"history,omitempty" jsonschema:"true면 버전 이력도"`
-	Full    bool     `json:"full,omitempty" jsonschema:"true면 자르지 않고 전부"`
+	Full    bool     `json:"full,omitempty" jsonschema:"true면 자르지 않는다"`
 }
 
 // GetOut is memory_get's result.
@@ -352,7 +352,7 @@ func (h handlers) linkTitle(id string) string {
 type SourceIn struct {
 	Kind    string `json:"kind" jsonschema:"quote(사용자 말)·file·command·session·host_memory·verification·work"`
 	Ref     string `json:"ref,omitempty" jsonschema:"절대경로·명령·세션 id"`
-	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 사용자 말 그대로"`
+	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 그 말 그대로"`
 	Trust   string `json:"trust,omitempty" jsonschema:"untrusted(웹·도구 출력)·system으로만 낮춤"`
 }
 
@@ -363,11 +363,11 @@ type SaveIn struct {
 	Body  string   `json:"body,omitempty" jsonschema:"규칙·결정은 1,000자 이하"`
 	Tags  []string `json:"tags,omitempty"`
 	// AppliesTo is 설계 · orbit-mem 2판 4.1 (S3 명세 2.4).
-	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"규칙은 필수(사람의 일하는 방식은 대개 user). user·product[:<이름>|:?]·repo[:<키>]. 비우면 폴더 기준"`
+	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"규칙은 필수(사람의 일하는 방식은 대개 user). user·product[:이름|:?]·repo[:키]. 비우면 폴더 기준"`
 	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
-	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo). appliesTo를 쓴다"`
-	Project string   `json:"project,omitempty" jsonschema:"옛 이름: scope project의 디렉터리"`
-	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로 올린다. 사용자가 늘 지키라고 한 확정 기억만, 한도(user 3,000자·제품 2,000자) 넘으면 거절"`
+	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo)"`
+	Project string   `json:"project,omitempty" jsonschema:"옛 이름: 프로젝트 디렉터리"`
+	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로. 사용자가 늘 지키라고 한 확정 기억만(한도 user 3,000자·제품 2,000자)"`
 	Source  SourceIn `json:"source"`
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"함께 읽을 기억"`
 	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
@@ -381,8 +381,8 @@ type SaveIn struct {
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"대체하는 옛 기억 id(주제가 달라도)"`
 	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두"`
 	// Resolve and IdempotencyKey are the save-time tidy of 설계 6.1 (handlers.tidy).
-	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:<id>·supersede:<id>·skip"`
-	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키로 다시 불러도 한 번만 적용"`
+	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:ID·supersede:ID·skip"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키는 한 번만 적용"`
 }
 
 // LinkIn links to another memory.
@@ -966,18 +966,18 @@ func (h handlers) checkTopic(in SaveIn, scope string) error {
 // UpdateIn is memory_update's input.
 type UpdateIn struct {
 	ID              string     `json:"id"`
-	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 판본(바뀌었으면 거절)"`
+	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 버전(바뀌었으면 거절)"`
 	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin"`
 	Kind            *string    `json:"kind,omitempty"`
 	Title           *string    `json:"title,omitempty"`
 	Body            *string    `json:"body,omitempty"`
 	Tags            *[]string  `json:"tags,omitempty"`
-	AppliesTo       string     `json:"appliesTo,omitempty" jsonschema:"옮길 적용 대상"`
+	AppliesTo       string     `json:"appliesTo,omitempty" jsonschema:"옮길 대상"`
 	Scope           string     `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo)"`
 	Project         string     `json:"project,omitempty" jsonschema:"옛 이름: scope project의 디렉터리"`
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede의 새 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
-	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억을 바꾸거나 후보를 확정할 때 그 사용자 말"`
+	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억 변경·후보 확정 때 그 말"`
 	Tools           *[]string  `json:"tools,omitempty" jsonschema:"도구 트리거(빈 목록이면 없앰)"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"함께 읽을 기억"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다"`
@@ -1100,7 +1100,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 // ProposalsIn is proposals' input.
 type ProposalsIn struct {
 	Status string `json:"status,omitempty" jsonschema:"audit(기본)·auto·pending·approved·rejected·settled·dropped·all"`
-	Days   int    `json:"days,omitempty" jsonschema:"audit에서 볼 날 수(기본 14)"`
+	Days   int    `json:"days,omitempty" jsonschema:"audit 조회 일수(기본 14)"`
 }
 
 // ProposalView is a proposal with the memories it concerns.
@@ -1161,7 +1161,7 @@ type DecideIn struct {
 	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문"`
 	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
 	// UserQuote is the user's words behind a decision on something the user said (A2).
-	UserQuote string `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억에 닿는 결정이면 그 사용자 말"`
+	UserQuote string `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억에 닿는 결정이면 그 말"`
 }
 
 // DecideOut is proposal_decide's result: one decision, or with ids what was
