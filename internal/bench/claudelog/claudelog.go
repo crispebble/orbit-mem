@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -67,7 +68,19 @@ type Step struct {
 	Task         string    `json:"task,omitempty"` // delegation text
 }
 
-// Session is the flow of one log file.
+// Merge kinds: how the log files of one session id relate (Session.Merge).
+const (
+	// MergeCopy is a session whose log files are copies of one another: what each file holds of the session is
+	// contained in the longest file (a copy of a log, a log under a work copy's folder, the copied start of a
+	// log that a later session took over).
+	MergeCopy = "copy"
+	// MergeUnion is a session whose log files each hold records the others lack; the records of all of them
+	// are put in time order.
+	MergeUnion = "union"
+)
+
+// Session is the flow of one session id: the records of that id in one log file or, when several files hold
+// records of it, in all of them (ReadMerged).
 type Session struct {
 	ID           string    `json:"id"`
 	Project      string    `json:"project"`
@@ -76,6 +89,15 @@ type Session struct {
 	Steps        []Step    `json:"steps"`
 	BrokenLines  int       `json:"brokenLines,omitempty"`
 	HookContexts int       `json:"hookContexts,omitempty"` // system records carrying hookAdditionalContext
+	// Files is how many log files the session was read from, set only when it is more than one; Merge says how
+	// they relate (MergeCopy or MergeUnion).
+	Files int    `json:"files,omitempty"`
+	Merge string `json:"merge,omitempty"`
+	// Parent is the id of the session whose records start the log file this session is in: the session that
+	// was taken over (resumed or forked) into a new id. The records before this session's own belong to Parent.
+	Parent string `json:"parent,omitempty"`
+	// UnreadFiles counts the log files of the session that could not be read and were left out.
+	UnreadFiles int `json:"unreadFiles,omitempty"`
 }
 
 // DefaultRoot is <CLAUDE_CONFIG_DIR or ~/.claude>/projects.
@@ -173,29 +195,19 @@ func ReadSession(path string) (Session, error) {
 	return s, err
 }
 
-// fileSessionID is the session id a log file belongs to: the first session id its records carry, the file name
-// without its extension when they carry none. It stops reading at that record.
-func fileSessionID(path string) string {
-	id := ""
-	f, err := os.Open(path)
-	if err == nil {
-		defer f.Close()
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 1<<20), 1<<30)
-		for sc.Scan() {
-			var rec struct {
-				SessionID string `json:"sessionId"`
-			}
-			if json.Unmarshal(sc.Bytes(), &rec) == nil && rec.SessionID != "" {
-				id = rec.SessionID
-				break
-			}
+// scanSessionIDs lists the session ids a log file carries, in order of first appearance. A file that carries
+// none is listed under its name without the extension (the name Claude Code gives a log is its session id).
+func scanSessionIDs(path string) []string {
+	var ids []string
+	_, err := eachRecord(path, func(rec record) {
+		if rec.SessionID != "" && !slices.Contains(ids, rec.SessionID) {
+			ids = append(ids, rec.SessionID)
 		}
+	})
+	if err != nil || len(ids) == 0 {
+		return []string{strings.TrimSuffix(filepath.Base(path), ".jsonl")}
 	}
-	if id == "" {
-		id = strings.TrimSuffix(filepath.Base(path), ".jsonl")
-	}
-	return id
+	return ids
 }
 
 // stamped is a record with the time its place in a merged session is decided by.
@@ -206,28 +218,49 @@ type stamped struct {
 	pos  int
 }
 
-// ReadMerged reads log files that hold one session (the same session id: a copy of a log, a branch that took
-// over from another, the same log under a work copy's folder) as one session. A record that carries a uuid
-// counts once, from the first file (in path order) that has it, so a copy that is a prefix of a longer log adds
-// nothing and two branches add each other's tails; the records are then put in time order. A record without a
-// time stays after the record before it in its file. Records without a uuid are kept as they are; they carry
-// no step. The result does not depend on the order of paths. With one path it is ReadSession. The project is
-// that of the first path in sorted order.
-func ReadMerged(paths []string) (Session, error) {
+// ReadMerged reads the records of one session id out of the log files that hold them. A log file can hold
+// more than one session id: a session taken over into a new id starts with a copy of the earlier records, which
+// keep the earlier id, and goes on with records of the new id. The hook ran under each id on its own, so a
+// session is the records of one id, never the whole file. A record without a session id belongs to the id before
+// it in its file (the first of the file when it comes first).
+//
+// A record that carries a uuid counts once, from the first file (in path order) that has it; a copy that is
+// contained in a longer log adds nothing. With more than one file the records are put in time order (equal
+// times: file path, then place in the file; a record without a time follows the record before it in its file),
+// which does not depend on the order of paths. With one file the order is the file's. Files that cannot be read
+// are left out and counted in UnreadFiles; when none can be read it is an error, as it is for no paths. Records
+// without a uuid are kept as they are (in the logs read so far every record that makes a step carries a uuid
+// and the ones without are bookkeeping, which is an observation about the format, not a guarantee: such a
+// record would be counted once per file). The project is that of the first path in sorted order.
+func ReadMerged(paths []string, id string) (Session, error) {
+	if len(paths) == 0 {
+		return Session{}, errors.New("claudelog: no log files to read")
+	}
 	paths = slices.Clone(paths)
 	sort.Strings(paths)
-	if len(paths) == 1 {
-		return ReadSession(paths[0])
-	}
-	s := Session{Project: filepath.Base(filepath.Dir(paths[0])), ID: strings.TrimSuffix(filepath.Base(paths[0]), ".jsonl")}
+	s := Session{Project: filepath.Base(filepath.Dir(paths[0])), ID: id}
 	seen := map[string]bool{}
 	var all []stamped
+	sets := make([]map[string]bool, len(paths))
+	read := 0
 	for i, p := range paths {
 		// uuid는 다른 파일에서 이미 본 것만 건너뛴다. 같은 파일 안의 되풀이는 지금까지처럼 그대로 둔다.
 		fresh := map[string]bool{}
+		sets[i] = map[string]bool{}
 		var prev time.Time
+		cur, first := "", ""
 		pos := 0
+		var mine []stamped
 		broken, err := eachRecord(p, func(rec record) {
+			if rec.SessionID != "" {
+				cur = rec.SessionID
+			}
+			if first == "" {
+				first = cur
+			}
+			if cur != id {
+				return
+			}
 			at, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
 			if at.IsZero() {
 				at = prev
@@ -235,37 +268,70 @@ func ReadMerged(paths []string) (Session, error) {
 				prev = at
 			}
 			if u := rec.UUID; u != "" {
+				sets[i][u] = true
 				if seen[u] {
 					return
 				}
 				fresh[u] = true
 			}
-			all = append(all, stamped{rec: rec, at: at, file: i, pos: pos})
+			mine = append(mine, stamped{rec: rec, at: at, file: i, pos: pos})
 			pos++
 		})
 		if err != nil {
-			return s, err
+			s.UnreadFiles++
+			sets[i] = nil
+			continue
 		}
+		read++
 		s.BrokenLines += broken
+		if s.Parent == "" && first != "" && first != id {
+			s.Parent = first
+		}
 		for u := range fresh {
 			seen[u] = true
 		}
+		all = append(all, mine...)
 	}
-	sort.SliceStable(all, func(a, b int) bool {
-		x, y := all[a], all[b]
-		if !x.at.Equal(y.at) {
-			return x.at.Before(y.at)
-		}
-		if x.file != y.file {
-			return x.file < y.file
-		}
-		return x.pos < y.pos
-	})
+	if read == 0 {
+		return s, errors.New("claudelog: none of the log files could be read")
+	}
+	if read > 1 {
+		s.Files, s.Merge = read, mergeKind(sets)
+		sort.SliceStable(all, func(a, b int) bool {
+			x, y := all[a], all[b]
+			if !x.at.Equal(y.at) {
+				return x.at.Before(y.at)
+			}
+			if x.file != y.file {
+				return x.file < y.file
+			}
+			return x.pos < y.pos
+		})
+	}
 	haveID := false
 	for _, r := range all {
 		s.add(r.rec, &haveID)
 	}
 	return s, nil
+}
+
+// mergeKind says whether the uuid sets of the files of a session are copies of one another (each contained in
+// the largest) or hold records of their own. Files that could not be read (nil sets) are ignored.
+func mergeKind(sets []map[string]bool) string {
+	largest := -1
+	for i, st := range sets {
+		if st != nil && (largest < 0 || len(st) > len(sets[largest])) {
+			largest = i
+		}
+	}
+	for _, st := range sets {
+		for u := range st {
+			if !sets[largest][u] {
+				return MergeUnion
+			}
+		}
+	}
+	return MergeCopy
 }
 
 func (s *Session) add(rec record, haveID *bool) {
@@ -510,14 +576,16 @@ func hasStart(s Session) bool {
 	return slices.ContainsFunc(s.Steps, func(st Step) bool { return st.Kind == KindStart })
 }
 
-// Select picks sessions from the roots (each a "projects" directory). It takes the
-// newest session of each project in turn, so one project does not dominate, and
-// stops once both minimums are met or a maximum is reached. Same input, same result.
+// Select picks sessions from the roots (each a "projects" directory). A session is what one session id
+// recorded, whichever log files hold it: the files of a session id are read together (ReadMerged), and a log
+// file that a later session took over into a new id (it starts with a copy of the earlier session's records)
+// gives the new id its own session. So no id comes out twice, and the case ids built from it do not repeat.
+// It takes the newest session of each project in turn, so one project does not dominate, and stops once both
+// minimums are met or a maximum is reached. Same input, same result. A session whose files cannot be read at
+// all is left out.
 func Select(roots []string, opts Options) ([]Session, error) {
 	opts = opts.withDefaults()
 	byProject := map[string][]Session{}
-	// 같은 세션 id의 기록 파일은 한 세션으로 합친다(ReadMerged). 세션 id가 같은 파일을 묶는 것은 파일 이름이 아니라
-	// 기록 안의 id로 한다: 이어받은 사본은 파일 이름이 달라도 id가 같다.
 	var files []string
 	for _, root := range roots {
 		found, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
@@ -528,20 +596,36 @@ func Select(roots []string, opts Options) ([]Session, error) {
 	}
 	sort.Strings(files)
 	files = slices.Compact(files)
+	// 세션 id가 같은 파일을 묶는 것은 파일 이름이 아니라 기록 안의 id로 한다. 한 파일이 여러 id를 가질 수 있다.
 	groups := map[string][]string{}
+	idsOf := map[string][]string{}
 	var order []string
 	for _, p := range files {
-		id := fileSessionID(p)
-		if _, ok := groups[id]; !ok {
-			order = append(order, id)
+		ids := scanSessionIDs(p)
+		idsOf[p] = ids
+		for _, id := range ids {
+			if _, ok := groups[id]; !ok {
+				order = append(order, id)
+			}
+			groups[id] = append(groups[id], p)
 		}
-		groups[id] = append(groups[id], p)
 	}
+	seenID := map[string]bool{}
 	for _, id := range order {
-		s, err := ReadMerged(groups[id])
+		var s Session
+		var err error
+		if paths := groups[id]; len(paths) == 1 && len(idsOf[paths[0]]) == 1 {
+			s, err = ReadSession(paths[0])
+		} else {
+			s, err = ReadMerged(paths, id)
+		}
 		if err != nil {
 			continue
 		}
+		if seenID[s.ID] {
+			return nil, fmt.Errorf("claudelog: session id %q read twice", s.ID)
+		}
+		seenID[s.ID] = true
 		if inTempDir(s.Cwd) {
 			continue
 		}

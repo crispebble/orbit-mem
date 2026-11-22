@@ -25,6 +25,7 @@
   "cli.bench.report_written": "보고를 썼습니다: %s",
   "cli.bench.out_in_repo": "--out이 git 작업 트리 안입니다(%s): 저장소 밖 폴더를 고르세요",
   "cli.bench.no_sessions": "projects 폴더에서 요청이 있는 세션을 찾지 못했습니다",
+  "cli.bench.extract_merged": "합친 세션 %d · 이어받은 세션 %d · 못 읽은 기록 파일 %d (sessions.json의 files·merge·parent·unreadFiles로 가려 볼 수 있습니다)",
   "cli.bench.extract_done": "%s에 썼습니다: 세션 %d · 세션 시작 사례 %d · 요청 %d · 위임 %d · 도구 사례 %d",
   "flag.bench.db_audit": "감사할 기억 DB(열지 않고 사본으로 읽는다)",
   "cli.bench.audit": "주입 사건 %d건 · 실린 id %d개 · 그 시각에 현재 값이 아니던 id %d개(사건 %d건 · 세션·기억 쌍 %d · 기억 %d) · 지금 DB에 없어 판정 못 함 %d개",

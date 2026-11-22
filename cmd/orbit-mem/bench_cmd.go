@@ -232,19 +232,9 @@ type benchCaseFile struct {
 	Cases []benchCase `json:"cases"`
 }
 
-// repeatedFlag is a string flag that may be given more than once; the values come in the order given.
-type repeatedFlag []string
-
-func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
-
-func (r *repeatedFlag) Set(v string) error {
-	*r = append(*r, v)
-	return nil
-}
-
 func benchExtract(a *app, args []string) error {
 	fs := a.flags("bench extract")
-	var projects repeatedFlag
+	var projects multiFlag
 	fs.Var(&projects, "projects", i18n.T("flag.bench.projects"))
 	db := fs.String("db", paths().DB(), i18n.T("flag.bench.db_extract"))
 	out := fs.String("out", filepath.Join(paths().Home, "bench", "replay"), i18n.T("flag.bench.out"))
@@ -298,8 +288,15 @@ func benchExtract(a *app, args []string) error {
 		CWD:   sessions[0].Cwd,
 		Seed:  "replay-" + now.Format("20060102"),
 	}
-	var starts, reqs, subs, tools int
+	var starts, reqs, subs, tools, merged, forked, unread int
 	for _, s := range sessions {
+		if s.Files > 1 {
+			merged++
+		}
+		if s.Parent != "" {
+			forked++
+		}
+		unread += s.UnreadFiles
 		n := 0
 		for _, st := range s.Steps {
 			n++
@@ -352,6 +349,9 @@ func benchExtract(a *app, args []string) error {
 		}
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), starts, reqs, subs, tools))
+	if merged+forked+unread > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_merged", merged, forked, unread))
+	}
 	return nil
 }
 

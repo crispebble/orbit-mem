@@ -25,6 +25,7 @@
   "cli.bench.report_written": "report written: %s",
   "cli.bench.out_in_repo": "--out is inside a git working tree (%s): choose a folder outside the repository",
   "cli.bench.no_sessions": "no session with a request was found in the projects folder",
+  "cli.bench.extract_merged": "merged sessions %d · taken-over sessions %d · unreadable log files %d (told apart in sessions.json by files, merge, parent and unreadFiles)",
   "cli.bench.extract_done": "written to %s: sessions %d, session start cases %d, requests %d, delegations %d, tool cases %d",
   "flag.bench.db_audit": "memory DB to audit (read from a copy, never opened)",
   "cli.bench.audit": "injection events %d · ids put in %d · ids that were not a current value then %d (events %d · session-memory pairs %d · memories %d) · not in the DB now, not judged %d",
