@@ -249,7 +249,7 @@ func TestSave_재확인이_안_된_까닭은_응답에_드러나지_않는다(t 
 	outside := filepath.Join(e.base, "elsewhere")
 	good := e.file(t, filepath.Join(repo, "Makefile"))
 	e.file(t, filepath.Join(repo, "sub", "x"))
-	e.file(t, filepath.Join(repo, ".git", "config"))
+	e.file(t, filepath.Join(repo, ".git", "info", "note")) // .git/config 같은 git 자신의 파일을 덮으면 git rev-parse가 깨져 어느 사례도 재확인하지 못한다
 	e.file(t, filepath.Join(repo, ".env"))
 	secret := e.file(t, filepath.Join(outside, "Makefile"))
 	if err := os.Symlink(secret, filepath.Join(repo, "outlink")); err != nil {
@@ -270,13 +270,17 @@ func TestSave_재확인이_안_된_까닭은_응답에_드러나지_않는다(t 
 		b, _ := json.Marshal(got)
 		return string(b)
 	}
+	// 시험이 실제로 재확인하는 저장소인지 본다: 어긋남이 없는 별도 저장(새 저장소)은 서버가 읽어 확인해 즉시 확정된다.
+	if !e.rechecked(t, repo, good) {
+		t.Fatal("시험 저장소에서 재확인이 일어나지 않는다")
+	}
 	baseline := view(repo, good, "go vet ./... passes") // 루트 안 보통 파일, 발췌 없음
 	for _, c := range []struct{ name, dir, ref, excerpt string }{
 		{"밖 절대경로", repo, secret, rootLine},
 		{"밖을 가리키는 파일 링크", repo, filepath.Join(repo, "outlink"), rootLine},
 		{"밖을 가리키는 중간 디렉터리 링크", repo, filepath.Join(repo, "outdir", "Makefile"), rootLine},
 		{"..으로 나감", repo, filepath.Join(repo, "sub", "..", "..", "elsewhere", "Makefile"), rootLine},
-		{"점 폴더 아래", repo, filepath.Join(repo, ".git", "config"), rootLine},
+		{"점 폴더 아래", repo, filepath.Join(repo, ".git", "info", "note"), rootLine},
 		{"점 파일", repo, filepath.Join(repo, ".env"), rootLine},
 		{"없는 파일", repo, filepath.Join(repo, "none"), rootLine},
 		{"상대경로", repo, "Makefile", rootLine},

@@ -86,9 +86,10 @@ type Policy struct {
 	SeenDays           int `json:"confirmSeenDays"`          // ① 세션도 날도 서로 다른 다시 나옴 수(지금 규칙 2, seenApartTx)
 	FollowedVerified   int `json:"confirmFollowedVerified"`  // ② 따르고 검증 통과·교정 없는 세션 수
 	CorrectionSessions int `json:"correctionRepeatSessions"` // 반복 교정 표시: 같은 대상 교정이 나온 세션 수
-	// AutoMode is the setting autoMode (C-9, off by default): on, a verified fact whose ground the server could
-	// not read again (a command's output) still replaces the user's words on its own, kept in the ledger to be
-	// undone (replace.go). Off, it stays a conflict. Rules and decisions are never replaced either way.
+	// AutoMode is the setting autoMode (C-9, off by default): on, a verified fact with a written ground replaces the
+	// user's words on its own, whether or not the server read the ground again, kept in the ledger to be undone
+	// (replace.go). Off, it stays a conflict either way; reading the ground again only decides the immediate
+	// confirmation when there is no conflict. Rules and decisions are never replaced either way.
 	AutoMode bool `json:"autoMode"`
 }
 
