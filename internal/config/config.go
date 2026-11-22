@@ -135,6 +135,12 @@ type Config struct {
 	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
 	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
 	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
+	// 도구 입력 문(명세 T-1): 켜면 도구 직전 회상은 호스트가 도구 입력(명령·경로)을 준 호출에서, 확정된 규칙이 아닌 기억
+	// (교훈·사실·결정, 그리고 모든 후보)을 그 입력과의 회상 점수(요청 회상과 같은 점수 함수)가 toolInputMinScore 이상일 때만
+	// 넣는다. 끄면 그 기억들도 도구 이름만으로 판정한다. 입력 조건(tools 칸의 Bash(git commit), T-2)은 이 스위치와 관계없이
+	// 지킨다. 문턱은 평가 묶음과 실제 기록 재생으로 정한다(T-3). toolInputMinScore는 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다.
+	ToolInputGate     bool    `json:"toolInputGate"`
+	ToolInputMinScore float64 `json:"toolInputMinScore"`
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
@@ -162,6 +168,9 @@ const (
 	DefaultTaskRecallMinWords       = 3
 	DefaultTaskRecallMinRelative    = 0.3
 	DefaultTaskRecallMinTitleShare  = 0.05
+	// DefaultToolInputMinScore는 요청 회상의 점수 문턱과 같은 값으로 둔 출발점이다. 스위치(toolInputGate)가 기본으로 꺼져
+	// 있어 지금은 쓰이지 않는다. 켤지와 값은 평가 묶음과 실제 기록 재생으로 정한다(명세 T-3).
+	DefaultToolInputMinScore = DefaultRecallMinScore
 )
 
 // MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
@@ -248,7 +257,7 @@ func Default() Config {
 		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
-		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare}
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputMinScore: DefaultToolInputMinScore}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -310,6 +319,9 @@ func (c Config) Validate() error {
 	}
 	if !(c.TaskRecallMinTitleShare > 0 && c.TaskRecallMinTitleShare <= 1) {
 		return i18n.Errorf("config.err.task_recall_min_title_share", c.TaskRecallMinTitleShare)
+	}
+	if !(c.ToolInputMinScore > 0 && c.ToolInputMinScore <= 1) {
+		return i18n.Errorf("config.err.tool_input_min_score", c.ToolInputMinScore)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

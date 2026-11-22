@@ -75,7 +75,7 @@ func TestRecall_on_demand는_세션_시작을_규칙으로_채우고_요청_회�
 			if p := PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "s1", Options{}); p.Chars != 0 || p.Text != "" {
 				t.Fatalf("on_demand request recall: %q", p.Text)
 			}
-			if tool := ToolInjection(s, cfg, here, "claude", "s1", docsTool); tool.Chars == 0 || !strings.Contains(tool.Text, "발행 위치 본문") {
+			if tool := ToolInjection(s, cfg, here, "claude", "s1", docsTool, ""); tool.Chars == 0 || !strings.Contains(tool.Text, "발행 위치 본문") {
 				t.Fatalf("on_demand tool recall: %q", tool.Text)
 			}
 		})
@@ -103,7 +103,7 @@ func TestRecall_off는_어디에도_기억을_넣지_않고_안내_줄만_남긴
 			for what, n := range map[string]int{
 				"session start without notes": SessionBundleWith(s, cfg, here, "claude", "s2", nil).Chars,
 				"prompt":                      PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "s1", Options{}).Chars,
-				"tool":                        ToolInjection(s, cfg, here, "claude", "s1", docsTool).Chars,
+				"tool":                        ToolInjection(s, cfg, here, "claude", "s1", docsTool, "").Chars,
 				"subagent":                    SubagentStart(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요").Chars,
 			} {
 				if n != 0 {
@@ -257,7 +257,7 @@ func TestRecall_옛_inject_키만_있는_설정은_같은_뜻으로_돈다(t *te
 				got[i] = [3]string{
 					SessionStart(s, cfg, here),
 					PromptInjectionFor(s, cfg, here, "codex exec를 백그라운드에서 돌렸더니 멈춰요", "claude", "", Options{}).Text,
-					ToolInjection(s, cfg, here, "claude", fmt.Sprintf("t%d", i), docsTool).Text,
+					ToolInjection(s, cfg, here, "claude", fmt.Sprintf("t%d", i), docsTool, "").Text,
 				}
 			}
 			if got[0] != got[1] {

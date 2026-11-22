@@ -61,6 +61,10 @@ const (
 // Request is one contract request: the common fields and those of every operation (an operation
 // reads its own). Trust is one word (memory.Trusts): it lowers the trust limit of the call, never raises it. Profile, ReadScope, Sandboxed and RequestID are taken
 // and not used yet. IdempotencyKey goes into the args of call memory_save that have none (callArgs).
+//
+// ToolInput is the text of the tool call's input in tool-context (ToolInputText: a command, a path), an optional
+// field of contract 1 (명세 T-4). Without it the tool recall goes by the tool's name alone. It is read for the recall
+// only and kept nowhere (not in the result, the marks or the events): a command may hold a secret.
 type Request struct {
 	Contract  int             `json:"contract,omitempty"` // 없으면 1
 	Host      string          `json:"host,omitempty"`     // 기록에만 쓴다
@@ -83,9 +87,10 @@ type Request struct {
 	Prompt         string          `json:"prompt,omitempty"`    // recall
 	Origin         string          `json:"origin,omitempty"`    // recall, 없으면 user
 	RequestID      string          `json:"requestId,omitempty"`
-	Tool           string          `json:"tool,omitempty"` // tool-context
-	Name           string          `json:"name,omitempty"` // call
-	Args           json.RawMessage `json:"args,omitempty"` // call
+	Tool           string          `json:"tool,omitempty"`      // tool-context
+	ToolInput      string          `json:"toolInput,omitempty"` // tool-context, 선택 칸: 도구 입력의 글(ToolInputText)
+	Name           string          `json:"name,omitempty"`      // call
+	Args           json.RawMessage `json:"args,omitempty"`      // call
 	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
 	MemoryIDs      []string        `json:"memoryIds,omitempty"` // delivered
 }

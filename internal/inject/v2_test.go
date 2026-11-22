@@ -175,15 +175,15 @@ func TestAC8_세션_시작_뒤_확정된_기억은_새_기억으로_도구_직�
 		t.Fatalf("session C started after the save:\n%s", c.Text)
 	}
 
-	tool := ToolInjection(s, config.Default(), here, "claude", "A", "mcp__atlas__write_page")
+	tool := ToolInjection(s, config.Default(), here, "claude", "A", "mcp__atlas__write_page", "")
 	if !strings.Contains(tool.Text, doc.ID) || !strings.Contains(tool.Text, "onidot Space에 쓰지 않는다") || tool.Chars > MaxToolRunes {
 		t.Fatalf("tool context:\n%s", tool.Text)
 	}
 	RecordShown(s, "claude", "A", tool)
-	if again := ToolInjection(s, config.Default(), here, "claude", "A", "mcp__atlas__write_page"); again.Text != "" {
+	if again := ToolInjection(s, config.Default(), here, "claude", "A", "mcp__atlas__write_page", ""); again.Text != "" {
 		t.Fatalf("tool context repeated in the session:\n%s", again.Text)
 	}
-	if b := ToolInjection(s, config.Default(), here, "claude", "B", "mcp__atlas__read"); b.Text != "" {
+	if b := ToolInjection(s, config.Default(), here, "claude", "B", "mcp__atlas__read", ""); b.Text != "" {
 		t.Fatalf("another tool:\n%s", b.Text)
 	}
 }
@@ -197,12 +197,12 @@ func TestToolInjection_접두_트리거와_개수_글자_한도(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlas__write_page")
+	got := ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlas__write_page", "")
 	// 줄은 2개까지, 나머지 셋은 가리키기 줄로(1-6 b6r).
 	if len(got.MemoryIDs) != 5 || strings.Count(got.Text, "\n  길다") != MaxToolMemories || got.Chars > MaxToolRunes {
 		t.Fatalf("ids=%d chars=%d:\n%s", len(got.MemoryIDs), got.Chars, got.Text)
 	}
-	if ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlassian__x").Text != "" {
+	if ToolInjection(s, config.Default(), here, "claude", "s", "mcp__atlassian__x", "").Text != "" {
 		t.Fatal("a prefix must stop at the server name")
 	}
 }

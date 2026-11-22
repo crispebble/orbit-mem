@@ -322,7 +322,7 @@ func TestTool_믿을_수_없는_기억은_도구_직전_줄에_표시가_붙는�
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash").Text
+	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash", "").Text
 	lineOf := func(id string) string {
 		for _, l := range strings.Split(got, "\n") {
 			if strings.Contains(l, id) {

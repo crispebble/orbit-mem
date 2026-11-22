@@ -249,10 +249,10 @@ func (r *recaller) Request(session, cwd, prompt string) (bench.Shown, error) {
 	return r.do(host.OpRecall, host.Request{Session: session, Cwd: cwd, Prompt: prompt, Origin: host.OriginUser})
 }
 
-// Tool is the recall before a tool call. The contract of 0.19.0 carries no tool input, so input is not handed on
-// and the recall goes by the tool's name, as the hook's does.
+// Tool is the recall before a tool call. input (the case's host.ToolInputText) goes in the contract's toolInput as
+// the hooks put it; a case without one is recalled by the tool's name, as from a host that gives no input.
 func (r *recaller) Tool(session, cwd, tool, input string) (bench.Shown, error) {
-	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool})
+	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool, ToolInput: input})
 }
 
 // Subagent goes the way of a delegation in a host session (설계 · orbit-mem 4.1·11절): the delegation tool's

@@ -84,7 +84,7 @@ func TestPromptNews_도구_직전으로만_넣은_기억을_지우면_지움_무
 	if b := SessionBundle(s, cfg, here, "claude", "s1"); slices.Contains(b.MemoryIDs, m.ID) {
 		t.Fatalf("준비가 어긋났습니다: 묶음에 든 기억입니다\n%s", b.Text)
 	}
-	tool := ToolInjection(s, cfg, here, "claude", "s1", "Bash")
+	tool := ToolInjection(s, cfg, here, "claude", "s1", "Bash", "")
 	if !slices.Contains(tool.MemoryIDs, m.ID) {
 		t.Fatalf("준비가 어긋났습니다: 도구 직전 회상이 없습니다\n%s", tool.Text)
 	}

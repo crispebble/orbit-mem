@@ -442,3 +442,49 @@ func TestRequest는_사람이_아닌_글을_회상하지_않는다(t *testing.T)
 		t.Fatalf("a task notification was recalled: %+v", got)
 	}
 }
+
+// 재생의 도구 사례는 사례의 input을 계약의 toolInput으로 넘긴다(명세 T-1·T-4). --set으로 켠 도구 입력 문이 그 글로 판정해, 후보
+// 교훈은 관련 없는 명령에서 빠지고 관련 있는 명령에서 든다. 끄면(기본) 지금처럼 도구 이름만으로 든다.
+func TestTool은_사례_입력을_toolInput으로_넘기고_set의_도구_입력_문을_따른다(t *testing.T) {
+	const toolSet = `{"about":"t","now":"2026-11-03T09:00:00+09:00","cwd":"/bench/app","seed":"s",
+"memories":[{"key":"lock","kind":"lesson","scope":"global","title":"pnpm install은 lock 파일을 고친다","body":"설치 뒤 pnpm-lock.yaml 변경을 확인한다","tools":["Bash"],"ageDays":1}],
+"cases":[{"id":"c1","origin":"user","kind":"request","prompt":"설치","expect":[]}]}`
+	set, err := bench.Parse([]byte(toolSet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := bench.Prepare(set, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { p.Close() })
+	lock := p.IDOf("lock")
+	gate := map[string]string{"toolInputGate": "true", "toolInputMinScore": "0.3"}
+	for _, tc := range []struct {
+		set     map[string]string
+		session string
+		input   string
+		want    bool
+	}{
+		{gate, "a", "ls -la", false},
+		{gate, "b", "pnpm install", true},
+		{nil, "c", "ls -la", true},
+	} {
+		db, err := p.Copy()
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := hostpath.FactoryWith(hostpath.Options{Set: tc.set})(db, set)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := env.Recaller.Tool(tc.session, "/bench/app", "Bash", tc.input)
+		env.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(got.IDs, lock) != tc.want {
+			t.Errorf("set %v input %q: ids %v, want the lesson %v", tc.set, tc.input, got.IDs, tc.want)
+		}
+	}
+}

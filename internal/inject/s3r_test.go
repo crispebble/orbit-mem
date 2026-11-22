@@ -81,7 +81,7 @@ func TestAC3_상위_폴더_기억은_아래_모든_폴더와_저장소에서_보
 		if got := strings.Contains(PromptInjection(s, cfg, dir, "커밋 전 make check 규칙").Text, rule.ID); got != want {
 			t.Errorf("%s 요청: folder rule %v, want %v", name, got, want)
 		}
-		if got := strings.Contains(ToolInjection(s, cfg, dir, "h", "s-"+name, "mcp__atlas__write_page").Text, toolRule.ID); got != want {
+		if got := strings.Contains(ToolInjection(s, cfg, dir, "h", "s-"+name, "mcp__atlas__write_page", "").Text, toolRule.ID); got != want {
 			t.Errorf("%s 도구 직전: folder tool rule %v, want %v", name, got, want)
 		}
 	}

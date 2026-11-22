@@ -63,7 +63,14 @@ const markToolCall = "tool.call"
 // and the pointer line names what still fits. Memories it could not bring or name stay candidates for a
 // later call. MemoryIDs are the memories brought, then the ones named. With nothing to bring and nothing
 // new to name within the session sum it adds nothing.
-func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
+//
+// input is the text of the call's input (host.ToolInputText; "" when the host gives none). A trigger with an input
+// condition, Bash(git commit), matches only when its words are in input, whatever the settings; with no input it
+// matches by the tool's name (memory.Memory.TriggeredByInput, 명세 T-2·T-4). With toolInputGate on and an input,
+// a memory that is not a confirmed rule (a lesson, fact or decision, or any candidate) comes only when its recall
+// score against input (memory.ToolInputScores) is at least toolInputMinScore (명세 T-1); confirmed rules come by
+// the tool's name. The input is read for this judgment only: it is not in the text, the marks or the result.
+func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool, input string) Injection {
 	var inj Injection
 	var b strings.Builder
 	if cfg.RecallMode() == config.RecallOff || strings.TrimSpace(tool) == "" {
@@ -82,13 +89,29 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		exact bool
 	}
 	var hits []hit
+	// 도구 입력 문(명세 T-1)은 스위치가 켜지고 호스트가 입력을 준 호출에만 연다(T-4). 점수는 이미 읽은 기억과 입력으로만
+	// 매기고, 문을 지날 기억이 있을 때 한 번만 센다.
+	gate := cfg.ToolInputGate && strings.TrimSpace(input) != ""
+	var scores map[string]float64
+	scored := false
 	for _, m := range active {
 		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || !vw.Of(m).Current() {
 			continue
 		}
-		if exact, ok := m.TriggeredBy(tool); ok {
-			hits = append(hits, hit{m, exact})
+		exact, ok := m.TriggeredByInput(tool, input)
+		if !ok {
+			continue
 		}
+		if gate && !confirmedRule(m) {
+			if !scored {
+				scores, scored = memory.ToolInputScores(active, input), true
+			}
+			// 막힌 기억은 넣은 것도 가리킨 것도 아니다: 표시를 남기지 않아 관련 있는 입력의 호출에서 다시 후보가 된다.
+			if scores[m.ID] < cfg.ToolInputMinScore {
+				continue
+			}
+		}
+		hits = append(hits, hit{m, exact})
 	}
 	if len(hits) == 0 {
 		return inj.done(&b)
@@ -164,6 +187,12 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	}
 	inj.mark(markToolCall, fmt.Sprintf("%d:%s", inj.Chars, first))
 	return inj
+}
+
+// confirmedRule says whether m comes by the tool's name alone under the tool input gate (명세 T-1·T-2): a rule the
+// user confirmed is a standing instruction for the tool, the rest are recalled only when they bear on the input.
+func confirmedRule(m memory.Memory) bool {
+	return m.Kind == memory.KindRule && m.State == memory.StateConfirmed
 }
 
 // toolHead is the head line of a tool recall, the tool name cut to maxToolNameRunes.

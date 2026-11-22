@@ -364,7 +364,7 @@ func (c *call) toolContext() (any, *Error) {
 	}
 	c.delegate()
 	c.relocate(false)
-	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool)
+	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool, c.req.ToolInput)
 	c.shown(memory.EventInjectTool, inj)
 	return recallOf(inj, limit), nil
 }

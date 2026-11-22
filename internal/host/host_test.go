@@ -442,6 +442,38 @@ func TestToolContext는_ToolInjection이고_agent_키로_한_번만_준다(t *te
 	}
 }
 
+// 도구 입력(toolInput, 명세 T-2·T-4)은 판정에만 쓴다: 입력 조건이 달린 규칙은 그 낱말이 든 입력에서만 들고, 명령에 섞일 수 있는
+// 비밀값이 결과 글·사건·표시를 포함해 DB 폴더의 어느 파일에도 남지 않는다.
+func TestToolContext_도구_입력은_판정에만_쓰고_어디에도_남기지_않는다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	m := save(t, s, memory.SaveInput{Kind: memory.KindRule, Title: "커밋 전에 시험을 돌린다", Body: "실패하면 커밋하지 않는다", Topic: "커밋 전 시험",
+		Scope: memory.ScopeGlobal, Tools: []string{"Bash(git commit)"}})
+	a := e.adapter("s-1")
+	if got := a.recall(host.OpToolContext, map[string]any{"tool": "Bash", "toolInput": "ls -la"}); len(got.MemoryIDs) != 0 {
+		t.Fatalf("ls brought %+v", got)
+	}
+	const secret = "tok3n-s3cr3t-0042"
+	got := a.recall(host.OpToolContext, map[string]any{"tool": "Bash", "toolInput": "TOKEN=" + secret + " git commit -m x"})
+	if !slices.Equal(got.MemoryIDs, []string{m.ID}) || strings.Contains(got.Text, secret) {
+		t.Fatalf("git commit = %+v", got)
+	}
+	e.svc.Wait()
+	if evs := events(t, s); len(evs) != 1 || strings.Contains(string(evs[0].Data), secret) {
+		t.Fatalf("events = %+v", evs)
+	}
+	files, err := os.ReadDir(e.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(filepath.Join(e.dir, f.Name()))
+		if err == nil && strings.Contains(string(b), secret) {
+			t.Fatalf("%s holds the tool input", f.Name())
+		}
+	}
+}
+
 // 사건 조건(M4): inject off면 아무 사건도 없고, 빈 요청은 inject.prompt가 아니다.
 func TestInject_수준과_빈_요청은_사건을_남기지_않는다(t *testing.T) {
 	e := newEnv(t)
