@@ -168,6 +168,36 @@ func (s *Store) OpenFlags() ([]Flag, error) {
 	return out, rows.Err()
 }
 
+// closeOtherPlaceFlagsOf settles, as resolution, the open marks of memory m (its newer side) whose other memory is
+// not a live one of m's own place: the marks settleConflictsAfterQuote only closes. It keeps their resolution what
+// closeFlagsOf gave before the user's words settled the same-place pairs first, so an old memory of another place
+// does not read as one the user picked over m (revertedOldTx counts user_words). Best effort, like closeFlagsOf.
+func (s *Store) closeOtherPlaceFlagsOf(m Memory, resolution string) {
+	rows, err := s.db.Query(`SELECT id, other_id FROM audit_flags WHERE memory_id=? AND resolved_at=0`, m.ID)
+	if err != nil {
+		return
+	}
+	type mark struct{ flag, other string }
+	var open []mark
+	for rows.Next() {
+		var f mark
+		if rows.Scan(&f.flag, &f.other) == nil {
+			open = append(open, f)
+		}
+	}
+	rows.Close() // 다 읽고 닫은 뒤에 다른 기억을 읽는다: 연결 하나를 쥔 채 다시 읽으면 막힌다
+	var away []string
+	for _, f := range open {
+		if o, err := getTx(s.db, f.other); err == nil && (o.State == StateCandidate || o.State == StateConfirmed) && sameSlot(m, o) {
+			continue
+		}
+		away = append(away, f.flag)
+	}
+	for _, flag := range away {
+		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=?, resolution=? WHERE id=? AND resolved_at=0`, s.nowMs(), resolution, flag)
+	}
+}
+
 // closeFlagsOf settles the open marks of a memory that is no longer a candidate.
 func (s *Store) closeFlagsOf(memoryID, resolution string) {
 	_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=?, resolution=? WHERE memory_id=? AND resolved_at=0`, s.nowMs(), resolution, memoryID)

@@ -5,6 +5,7 @@
   "cli.audit.conflicts": "Conflicts with your rules",
   "cli.audit.corrections": "Repeated corrections (threshold: %d sessions)",
   "cli.audit.dismissed": "Dismissed %s.",
+  "cli.audit.dismissed_conflict": "Closed conflict %s: the old value stays (to take the new value, confirm the newer memory with the user's words).",
   "cli.audit.evidence": "evidence %s",
   "cli.audit.harness": "harness improvement candidate",
   "cli.audit.none": "none",

@@ -5,6 +5,7 @@
   "cli.audit.conflicts": "사용자 규칙과 어긋남",
   "cli.audit.corrections": "반복 교정(기준: 세션 %d개)",
   "cli.audit.dismissed": "%s를 확인함으로 닫았습니다.",
+  "cli.audit.dismissed_conflict": "어긋남 %s를 닫았습니다. 옛 값을 유지합니다(새 값으로 바꾸려면 새 쪽을 사용자 말로 확정합니다).",
   "cli.audit.evidence": "증거 %s",
   "cli.audit.harness": "하네스 개선 후보",
   "cli.audit.none": "없음",

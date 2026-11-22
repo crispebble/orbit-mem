@@ -162,9 +162,10 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // side the user kept with their own words (resolutionKeepOld).
 const blockKeptOld = "kept_old"
 
-// blockUserValue is why confirmBlocked stops a candidate, with the auto mode off, whose place (the same scope and
-// the same, non-empty topic) holds a live confirmed memory of the user's words: confirming it would make it the
-// topic's current value (TopicHeads) in place of what the user said.
+// blockUserValue is why confirmBlocked stops a candidate whose place (the same scope and the same, non-empty topic)
+// holds a live confirmed memory of the user's words that the replacement table (replace.go) keeps from anything but
+// the user's words: confirming the candidate would make it the topic's current value (TopicHeads) in place of what
+// the user said. Which pairs it holds is userValueHeld's.
 const blockUserValue = "user_value"
 
 // confirmBlocked is confirmBlockedUnder with the auto mode of the store's policy.
@@ -175,8 +176,8 @@ func (s *Store) confirmBlocked(id string) (string, error) {
 // confirmBlockedUnder is why memory id may not be confirmed automatically under autoMode: its sources are all
 // untrusted, the person undid its automatic replacement of another memory (blockRevertedReplace, C-3), an open
 // mark (conflict, or hold: the person put it back to candidate), the user kept the old value of its same-place
-// pair with their own words (blockKeptOld), the user's words hold its place with the auto mode off
-// (blockUserValue), or the person undid an automatic confirmation of it before. "" when nothing blocks it.
+// pair with their own words (blockKeptOld), the user's words hold its place (blockUserValue: any kind but a fact
+// in both modes, a fact with the auto mode off), or the person undid an automatic confirmation of it before. "" when nothing blocks it.
 //
 // Every automatic confirmation passes here (ConfirmByEvidence, and AutoApply's check of a confirm change), so
 // blockUserValue holds whether a conflict mark was written, is still open, or was closed for whatever reason. A
@@ -214,14 +215,13 @@ func (s *Store) confirmBlockedUnder(id string, autoMode bool) (string, error) {
 	} else if kept > 0 {
 		return blockKeptOld, nil
 	}
-	// 자동 모드가 꺼져 있으면 사용자 말로 확정된 값은 어떤 길로도 스스로 대체되지 않는다(C-1): 같은 자리의 새 후보는 어긋남 표시가
-	// 열려 있든, 사람이 닫았든(dismiss = 옛 값 유지), 표시를 쓰지 못했든 여기서 막힌다. 새 값으로 바꾸는 것은 사용자 말뿐이다.
-	if !autoMode {
-		if held, err := userValueHeld(s.db, id, s.nowMs()); err != nil {
-			return "", err
-		} else if held {
-			return blockUserValue, nil
-		}
+	// 사용자 말로 확정된 값은 대체 정책 표가 허락하지 않는 한 어떤 길로도 스스로 대체되지 않는다(C-1·C-4): 같은 자리의 새 후보는
+	// 어긋남 표시가 열려 있든, 사람이 닫았든(dismiss = 옛 값 유지), 표시를 쓰지 못했든 여기서 막힌다. 새 값으로 바꾸는 것은
+	// 사용자 말뿐이다.
+	if held, err := userValueHeld(s.db, id, s.nowMs(), autoMode); err != nil {
+		return "", err
+	} else if held {
+		return blockUserValue, nil
 	}
 	rows, err := s.db.Query(`SELECT targets FROM ledger WHERE proposal_kind=? AND reverted_by<>''`, ProposalConfirm)
 	if err != nil {
@@ -246,15 +246,30 @@ func (s *Store) confirmBlockedUnder(id string, autoMode bool) (string, error) {
 
 // userValueHeld says whether memory id, which carries no user's words itself, has in its place (the same scope
 // and the same, non-empty topic) another memory of the user's words (a quote source) that is confirmed and still
-// the current value (not a volatile one past its days, as TopicHeads counts it).
-func userValueHeld(q querier, id string, now int64) (bool, error) {
-	var n int
-	err := q.QueryRow(`SELECT COUNT(*) FROM memories n JOIN memories o ON o.scope=n.scope AND o.topic=n.topic AND o.id<>n.id
+// the current value (not a volatile one past its days, as TopicHeads counts it), and that the replacement table
+// keeps under autoMode: a rule, a decision, a lesson or a pair of two kinds is never replaced by what is not the
+// user's words, in either mode (its rows 「모두」 and 「규칙·결정」); a fact by a fact only with the auto mode on
+// (C-1·C-8).
+func userValueHeld(q querier, id string, now int64, autoMode bool) (bool, error) {
+	rows, err := q.Query(`SELECT n.kind, o.kind FROM memories n JOIN memories o ON o.scope=n.scope AND o.topic=n.topic AND o.id<>n.id
 		WHERE n.id=? AND n.topic<>'' AND o.state=? AND NOT (o.expires_at>0 AND o.expires_at<=?)
 		AND EXISTS (SELECT 1 FROM sources WHERE memory_id=o.id AND kind=?)
 		AND NOT EXISTS (SELECT 1 FROM sources WHERE memory_id=n.id AND kind=?)`,
-		id, StateConfirmed, now, SourceQuote, SourceQuote).Scan(&n)
-	return n > 0, err
+		id, StateConfirmed, now, SourceQuote, SourceQuote)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var newKind, oldKind string
+		if err := rows.Scan(&newKind, &oldKind); err != nil {
+			return false, err
+		}
+		if !autoMode || replaceKind(newKind, oldKind) != KindFact {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // EvidenceFor is the first evidence that confirms candidate id, or "" when there is none.

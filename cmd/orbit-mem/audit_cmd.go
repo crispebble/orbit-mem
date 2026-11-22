@@ -68,15 +68,17 @@ func cmdAudit(a *app, args []string) error {
 		if len(pos) != 1 {
 			return errUsage
 		}
+		// 반복 교정은 확인함으로, 어긋남은 옛 값 유지로 닫는다(memory.Store.ResolveFlag).
+		var msg string
 		if strings.HasPrefix(pos[0], "correction:") {
-			err = s.Acknowledge(pos[0], who)
+			err, msg = s.Acknowledge(pos[0], who), i18n.T("cli.audit.dismissed", pos[0])
 		} else {
-			err = s.ResolveFlag(pos[0], "dismissed", who)
+			err, msg = s.ResolveFlag(pos[0], "dismissed", who), i18n.T("cli.audit.dismissed_conflict", pos[0])
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.audit.dismissed", pos[0]))
+		fmt.Fprintln(a.stdout, msg)
 		return nil
 	}
 	return errUsage

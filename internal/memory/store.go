@@ -1178,6 +1178,8 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	quote := userWordsOf(in.Who, srcs)
 	settled := false
 	if quote != "" && m.State == StateConfirmed {
+		// 다른 자리 쌍은 예전처럼 상태(확정)로 닫는다: 쌍 풀기에 맡기면 사용자 말로 닫혀, 다른 자리의 옛 쪽이 「사용자가 고른 값」이 된다.
+		s.closeOtherPlaceFlagsOf(m, m.State)
 		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
 		settled = true
 	}

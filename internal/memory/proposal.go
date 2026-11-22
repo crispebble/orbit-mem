@@ -474,9 +474,24 @@ func (s *Store) finish(p *Proposal, status, note string) error {
 func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 	switch p.Kind {
 	case ProposalConfirm:
+		// 사람이 아닌 쪽이 사용자 말 없이 옛 대기 확정 제안을 승인하는 것은 자동 확정과 같다: 같은 자리의 사용자 말 값이 막는
+		// 후보(confirmBlockedUnder의 blockUserValue)는 확정하지 않는다. 하나라도 막히면 아무것도 확정하지 않는다.
+		if p.Status != StatusAuto && !in.Who.human() && in.Who.quote() == "" {
+			for _, id := range p.MemoryIDs {
+				if held, err := userValueHeld(s.db, id, s.nowMs(), s.Policy.AutoMode); err != nil {
+					return err
+				} else if held {
+					return fmt.Errorf("%w: %s", ErrProtected, id)
+				}
+			}
+		}
 		for _, id := range p.MemoryIDs {
 			confirmed := StateConfirmed
 			u := UpdateInput{ID: id, State: &confirmed, Reason: "제안 승인 " + p.ID, Action: "confirm"}
+			if in.Who.quote() != "" {
+				// 사용자 말로 승인했으면 그 말로 확정한다: 어긋남 쌍이 사용자가 고른 쪽으로 한 번에 풀린다(settleConflictsAfterQuote).
+				u.Who = in.Who
+			}
 			if p.Status == StatusAuto {
 				// 자동 확정은 후보일 때만: 다른 프로세스가 먼저 확정했으면 겹쳐 쓰지 않는다.
 				u.ExpectState, u.Reason = StateCandidate, "자동 확정 "+p.ID+": "+p.Payload.Evidence
