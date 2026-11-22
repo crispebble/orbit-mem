@@ -194,13 +194,14 @@ func oldGroundOf(q querier, old Memory) (OldGround, error) {
 
 // revertedOldTx says whether the person chose memory old over a newer one before, so that only the user's words
 // replace it: the person undid an automatic replacement of it, by whatever new memory (undoing that undo,
-// ledger.go, takes the pair out again), or closed a conflict mark against it as dismissed or by the user's words
-// (the mark's other side is the old memory, ResolveFlag·settleConflictsAfterQuote): the user kept it.
+// ledger.go, takes the pair out again), or closed a conflict mark against it as dismissed (ResolveFlag) or with
+// their words on the old side (settleConflictsAfterQuote: keep_old in the same place, user_words elsewhere): the
+// user kept it.
 func revertedOldTx(q querier, old string) (bool, error) {
 	var n int
 	err := q.QueryRow(`SELECT (SELECT COUNT(*) FROM supersede_reverts WHERE old_id=?)
-		+ (SELECT COUNT(*) FROM audit_flags WHERE kind=? AND other_id=? AND resolved_at>0 AND resolution IN ('dismissed','user_words'))`,
-		old, FlagConflict, old).Scan(&n)
+		+ (SELECT COUNT(*) FROM audit_flags WHERE kind=? AND other_id=? AND resolved_at>0 AND resolution IN ('dismissed','user_words',?))`,
+		old, FlagConflict, old, resolutionKeepOld).Scan(&n)
 	return n > 0, err
 }
 
