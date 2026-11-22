@@ -146,7 +146,7 @@ func (o Options) who(quote, ref string) memory.Who {
 const maxAIReviewDays = 365
 
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 일이 규칙·결정·교훈에 닿을 법하면 memory_find로 먼저 찾는다(결과는 id·제목 색인). 쓸 기억은 memory_get으로 본문을 읽는다(memory_get의 links는 함께 읽을 관련 기억). 부르는 때: 설계·결정·규칙을 확인할 때, 문서 위치·작업 방식이 애매할 때, 사용자가 "전에"를 말할 때.
-사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정, 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
+사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정(사용자 발언 기록에 없으면 후보로 낮아진다), 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 같은 주제의 사용자 말과 어긋난 후보는 사용자가 고를 때까지 후보다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
 규칙·결정은 topic(주제 키)이 있어야 하고, 규칙은 appliesTo(사람의 일하는 방식은 대개 user)가 있어야 하며, 본문은 한 주장에 1,000자 이하다. 아니면 거절된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다. 「이번엔」처럼 임시라는 말은 retention volatile로 남기고, 옛 결정을 바꾸는 말인지 애매하면 저장 전에 사용자에게 묻는다.
 pin은 사용자가 늘 지키라고 한 확정된 user·제품 기억만 상시 핵심에 올린다(한도 user 3,000자·제품마다 2,000자, 넘으면 거절). 도구를 부르기 직전에 떠올릴 규칙은 tools에 도구 이름이나 접두(mcp__atlas__*)를 단다.
 memory_forget은 기억을 DB에서 지우며 되돌릴 수 없다. 사용자가 지우라고 한 말이 있을 때만 그 말을 userQuote로 주어 부른다.
@@ -1488,7 +1488,8 @@ func (h handlers) auditDecide(id, decision, note, quote string) (memory.DecideRe
 	case strings.HasPrefix(id, "correction:"):
 		return memory.DecideResult{}, h.s.Acknowledge(id, w)
 	default:
-		// 어긋남을 닫으면 그 후보가 자동 확정될 수 있다: 사람이 아니면 사용자 말이 있어야 한다.
+		// 어긋남을 닫는 것은 옛 값을 유지하기로 한 사용자의 결정이다(새 값으로 바꾸려면 새 쪽에 사용자 말을 붙인다): 사람이
+		// 아니면 사용자 말이 있어야 한다.
 		if w.Actor != memory.ActorUser && strings.TrimSpace(quote) == "" {
 			return memory.DecideResult{}, fmt.Errorf("%w: %s", memory.ErrProtected, id)
 		}

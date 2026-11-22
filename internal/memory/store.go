@@ -527,7 +527,7 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	if in.noEvidence || len(rep.Conflicts) > 0 {
 		return m, rep, nil
 	}
-	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
+	if _, ok, err := s.confirmByEvidenceUnder(m.ID, s.autoMode(in)); err != nil || !ok {
 		return m, rep, nil // 확정하지 못해도 저장은 됐다
 	}
 	m, err = s.Get(m.ID)
@@ -1172,14 +1172,22 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	if err := tx.Commit(); err != nil {
 		return m, err
 	}
+	// 사용자 말(사용자 말 출처나 함께 준 말)이 어긋남 쌍의 어느 쪽에 닿았으면 쌍을 푼다(settleConflictsAfterQuote).
+	// 사용자 말로 확정했으면 표시를 상태로 닫기 전에 푼다: 먼저 닫으면 쌍을 찾지 못해 옛 쪽이 대체되지 않은 채 둘 다 확정으로
+	// 남고 핵심 자리도 넘어가지 않는다. 낡음·숨김은 표시를 그 상태로 먼저 닫아, 버린 새 쪽이 옛 쪽을 대체하지 않게 한다.
+	quote := userWordsOf(in.Who, srcs)
+	settled := false
+	if quote != "" && m.State == StateConfirmed {
+		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
+		settled = true
+	}
 	if m.State != StateCandidate {
 		s.closeFlagsOf(m.ID, m.State)
 	} else if prevState == StateConfirmed && in.Who.human() {
 		// 사람이 확정을 후보로 내렸다: 자동화가 같은 증거로 다시 확정하지 않게 보류로 남긴다(사람이 확정하면 풀린다).
 		s.holdConfirm(m.ID, in.Who)
 	}
-	// 사용자 말(사용자 말 출처나 함께 준 말)이 어긋남 쌍의 어느 쪽에 닿았으면 쌍을 푼다(settleConflictsAfterQuote).
-	if quote := userWordsOf(in.Who, srcs); quote != "" {
+	if quote != "" && !settled {
 		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
 	}
 	return s.Get(m.ID)

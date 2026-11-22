@@ -162,12 +162,26 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // side the user kept with their own words (resolutionKeepOld).
 const blockKeptOld = "kept_old"
 
-// confirmBlocked is why memory id may not be confirmed automatically: an open
-// conflict mark, the person put it back to candidate (hold), the person
-// undid an automatic confirmation of it before, or the person undid its
-// automatic replacement of another memory (blockRevertedReplace, C-3), or the user kept the old value of its
-// same-place pair with their own words (blockKeptOld).
+// blockUserValue is why confirmBlocked stops a candidate, with the auto mode off, whose place (the same scope and
+// the same, non-empty topic) holds a live confirmed memory of the user's words: confirming it would make it the
+// topic's current value (TopicHeads) in place of what the user said.
+const blockUserValue = "user_value"
+
+// confirmBlocked is confirmBlockedUnder with the auto mode of the store's policy.
 func (s *Store) confirmBlocked(id string) (string, error) {
+	return s.confirmBlockedUnder(id, s.Policy.AutoMode)
+}
+
+// confirmBlockedUnder is why memory id may not be confirmed automatically under autoMode: its sources are all
+// untrusted, the person undid its automatic replacement of another memory (blockRevertedReplace, C-3), an open
+// mark (conflict, or hold: the person put it back to candidate), the user kept the old value of its same-place
+// pair with their own words (blockKeptOld), the user's words hold its place with the auto mode off
+// (blockUserValue), or the person undid an automatic confirmation of it before. "" when nothing blocks it.
+//
+// Every automatic confirmation passes here (ConfirmByEvidence, and AutoApply's check of a confirm change), so
+// blockUserValue holds whether a conflict mark was written, is still open, or was closed for whatever reason. A
+// confirmation that carries the user's words (Save with a quote source, Update with userQuote) does not come here.
+func (s *Store) confirmBlockedUnder(id string, autoMode bool) (string, error) {
 	// 출처가 믿을 수 없는 것뿐이면 증거가 쌓여도 스스로 확정하지 않는다(D7, 확정 길 ①).
 	if t, err := memoryTrustTx(s.db, id); err != nil {
 		return "", err
@@ -200,6 +214,15 @@ func (s *Store) confirmBlocked(id string) (string, error) {
 	} else if kept > 0 {
 		return blockKeptOld, nil
 	}
+	// 자동 모드가 꺼져 있으면 사용자 말로 확정된 값은 어떤 길로도 스스로 대체되지 않는다(C-1): 같은 자리의 새 후보는 어긋남 표시가
+	// 열려 있든, 사람이 닫았든(dismiss = 옛 값 유지), 표시를 쓰지 못했든 여기서 막힌다. 새 값으로 바꾸는 것은 사용자 말뿐이다.
+	if !autoMode {
+		if held, err := userValueHeld(s.db, id, s.nowMs()); err != nil {
+			return "", err
+		} else if held {
+			return blockUserValue, nil
+		}
+	}
 	rows, err := s.db.Query(`SELECT targets FROM ledger WHERE proposal_kind=? AND reverted_by<>''`, ProposalConfirm)
 	if err != nil {
 		return "", err
@@ -219,6 +242,19 @@ func (s *Store) confirmBlocked(id string) (string, error) {
 		}
 	}
 	return "", rows.Err()
+}
+
+// userValueHeld says whether memory id, which carries no user's words itself, has in its place (the same scope
+// and the same, non-empty topic) another memory of the user's words (a quote source) that is confirmed and still
+// the current value (not a volatile one past its days, as TopicHeads counts it).
+func userValueHeld(q querier, id string, now int64) (bool, error) {
+	var n int
+	err := q.QueryRow(`SELECT COUNT(*) FROM memories n JOIN memories o ON o.scope=n.scope AND o.topic=n.topic AND o.id<>n.id
+		WHERE n.id=? AND n.topic<>'' AND o.state=? AND NOT (o.expires_at>0 AND o.expires_at<=?)
+		AND EXISTS (SELECT 1 FROM sources WHERE memory_id=o.id AND kind=?)
+		AND NOT EXISTS (SELECT 1 FROM sources WHERE memory_id=n.id AND kind=?)`,
+		id, StateConfirmed, now, SourceQuote, SourceQuote).Scan(&n)
+	return n > 0, err
 }
 
 // EvidenceFor is the first evidence that confirms candidate id, or "" when there is none.
@@ -394,11 +430,17 @@ func (s *Store) cleanVerifiedUses(id string) (int, error) {
 // ConfirmByEvidence confirms candidate id when it has evidence and nothing
 // blocks it, as an automatic change kept in the ledger. It reports whether it did.
 func (s *Store) ConfirmByEvidence(id string) (DecideResult, bool, error) {
+	return s.confirmByEvidenceUnder(id, s.Policy.AutoMode)
+}
+
+// confirmByEvidenceUnder is ConfirmByEvidence under autoMode: a save decides it under its own auto mode
+// (SaveInput.AutoMode), which may be newer than the store's policy.
+func (s *Store) confirmByEvidenceUnder(id string, autoMode bool) (DecideResult, bool, error) {
 	ev, err := s.EvidenceFor(id)
 	if err != nil || ev == "" {
 		return DecideResult{}, false, err
 	}
-	if why, err := s.confirmBlocked(id); err != nil || why != "" {
+	if why, err := s.confirmBlockedUnder(id, autoMode); err != nil || why != "" {
 		return DecideResult{}, false, err
 	}
 	m, err := getTx(s.db, id)
@@ -406,7 +448,7 @@ func (s *Store) ConfirmByEvidence(id string) (DecideResult, bool, error) {
 		return DecideResult{}, false, err
 	}
 	res, err := s.AutoApply(AutoInput{Kind: ProposalConfirm, Title: "자동 확정: " + m.Title, Body: evidenceText(ev),
-		MemoryIDs: []string{id}, Evidence: ev, Who: Who{Actor: ActorAutomation}})
+		MemoryIDs: []string{id}, Evidence: ev, Who: Who{Actor: ActorAutomation}, autoMode: &autoMode})
 	if errors.Is(err, ErrAutoSkip) {
 		return res, false, nil
 	}

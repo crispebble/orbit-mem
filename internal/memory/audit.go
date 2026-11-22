@@ -37,6 +37,10 @@ const (
 // the person kept the old value, so the newer candidate of the pair is not confirmed automatically (blockKeptOld).
 const resolutionKeepOld = "keep_old"
 
+// resolutionDismissed is the resolution of a mark the person closed from the audit list (ResolveFlag). On a
+// conflict it means the same as resolutionKeepOld: the old value stays. The record keeps which control closed it.
+const resolutionDismissed = "dismissed"
+
 // holdConfirm keeps the person's choice to put a memory back to candidate.
 func (s *Store) holdConfirm(memoryID string, w Who) {
 	var n int
@@ -114,7 +118,11 @@ func (s *Store) FlagConflict(memoryID, ruleID, note string, w Who) (Flag, error)
 	return f, err
 }
 
-// ResolveFlag closes a mark with how it was settled (dismissed, confirmed, hidden…).
+// ResolveFlag closes a mark with how it was settled (dismissed, confirmed, hidden…). Closing a conflict as
+// dismissed keeps the old value: nothing is replaced, and with the auto mode off the newer candidate of a
+// same-place pair whose old side is the user's confirmed words never confirms itself afterwards
+// (confirmBlockedUnder, blockUserValue). Only the user's words on the newer side make it the current value then
+// (settleConflictsAfterQuote reads the dismissed pair as a kept one).
 func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	res, err := s.db.Exec(`UPDATE audit_flags SET resolved_at=?, resolution=?, resolved_by=? WHERE id=? AND resolved_at=0`, s.nowMs(), resolution, w.actor(), id)
 	if err != nil {
@@ -125,7 +133,7 @@ func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	}
 	// 사람이(또는 사용자 말을 들고) 어긋남을 dismissed로 닫는 것은 옛 기억을 유지하기로 한 것이다: 어긋나는 새 것이 아닌 옛 기억
 	// 쪽을 확인한 것으로 센다(L-1). revertedOldTx도 이 쌍의 옛 기억을 사람이 고른 값으로 본다.
-	if resolution == "dismissed" && (w.Actor == ActorUser || w.quote() != "") {
+	if resolution == resolutionDismissed && (w.Actor == ActorUser || w.quote() != "") {
 		var oldID string
 		if s.db.QueryRow(`SELECT other_id FROM audit_flags WHERE id=? AND kind=?`, id, FlagConflict).Scan(&oldID) == nil && oldID != "" {
 			s.confirmKept(oldID, w)
@@ -813,14 +821,18 @@ func (s *Store) OpenConflictCount() (int, error) {
 // also join memories of other places (the AI names them in conflictsWith or supersedes), and those are both
 // current values, so the user's words on one never put the other out of date.
 //
-//   - id is the newer side, same place: the old memory is replaced by it (stale, superseded_by, a version reason),
-//     the newer one is confirmed, and a core place (pin) of the old one passes to it (inheritPin). When the
-//     replacement fails the pair stays open and nothing is closed: the pair must not look settled when it is not.
+//   - id is the newer side, still live, same place: the old memory is replaced by it (stale, superseded_by, a
+//     version reason), the newer one is confirmed, and a core place (pin) of the old one passes to it
+//     (inheritPin). When the replacement fails the pair stays open and nothing is closed: the pair must not look
+//     settled when it is not. This holds for an open pair and for one closed as the old value kept
+//     (resolutionKeepOld, or resolutionDismissed from the audit list): the user changed their mind.
 //   - id is the newer side, another place: only the mark is closed; both stay as they are, and the newer one is
 //     left to the rules of its own save or edit (nothing here confirms it).
 //   - id is the old side, same place, the newer one a candidate: the person kept the old value. The mark is
 //     closed as resolutionKeepOld and confirmBlocked keeps the newer candidate from confirming itself later; the
 //     user's words on that candidate afterwards (a changed mind) replace the old one as in the first case.
+//   - id is the newer side and was put out of date or rejected with the user's words: the open mark was closed
+//     by that state (closeFlagsOf) before this runs, and a pair closed as kept is left as it is.
 //   - id is the old side, same place, the newer one confirmed (a confirmed value masking it, the pair an undone
 //     automatic replacement opens): the newer one is replaced by the old one, which becomes the current value.
 //   - id is the old side in another place: only the mark is closed (resolution user_words).
@@ -828,9 +840,11 @@ func (s *Store) OpenConflictCount() (int, error) {
 // A closed mark says who closed it (resolved_by = the user). It reports whether it changed a memory, and the id
 // of a pinned memory that left the core because its heir could not take the place.
 func (s *Store) settleConflictsAfterQuote(id, quote string) (changed bool, unpinned string) {
-	// 옛 값 유지로 닫힌 쌍도 읽는다: 그 새 쪽에 나중에 사용자 말이 붙으면 마음을 바꾼 것이라 새 쪽이 이긴다.
+	// 옛 값 유지로 닫힌 쌍(사용자 말로 유지, 감사 목록에서 닫음)도 읽는다: 그 새 쪽에 나중에 사용자 말이 붙으면 마음을 바꾼
+	// 것이라 새 쪽이 이긴다.
 	rows, err := s.db.Query(`SELECT id, memory_id, other_id, resolved_at FROM audit_flags WHERE kind=? AND
-		((resolved_at=0 AND (memory_id=? OR other_id=?)) OR (resolved_at>0 AND resolution=? AND memory_id=?))`, FlagConflict, id, id, resolutionKeepOld, id)
+		((resolved_at=0 AND (memory_id=? OR other_id=?)) OR (resolved_at>0 AND resolution IN (?,?) AND memory_id=?))`,
+		FlagConflict, id, id, resolutionKeepOld, resolutionDismissed, id)
 	if err != nil {
 		return false, ""
 	}
@@ -869,7 +883,7 @@ func (s *Store) settleConflictsAfterQuote(id, quote string) (changed bool, unpin
 		inPlace := err == nil && live(old) && sameSlot(nw, old)
 		resolution := "user_words"
 		switch {
-		case p.newID == id && inPlace:
+		case p.newID == id && inPlace && live(nw): // 사용자 말과 함께 낡게·숨긴 새 쪽은 옛 쪽을 대체하지 않는다
 			if _, err := s.SupersedeAs(p.oldID, p.newID, "사용자 말로 대체: "+nw.Title, w); err != nil {
 				continue // 막힌 쌍은 열어 둔다
 			}
@@ -895,7 +909,8 @@ func (s *Store) settleConflictsAfterQuote(id, quote string) (changed bool, unpin
 		}
 		// 마음을 바꿔 닫힌 옛 값 유지 쌍은 사유만 사용자 말로 바꾼다(닫은 때는 그대로).
 		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=CASE WHEN resolved_at=0 THEN ? ELSE resolved_at END,
-			resolution=CASE WHEN resolution IN ('',?) THEN ? ELSE resolution END, resolved_by=? WHERE id=?`, s.nowMs(), resolutionKeepOld, resolution, ActorUser, p.flag)
+			resolution=CASE WHEN resolution IN ('',?,?) THEN ? ELSE resolution END, resolved_by=? WHERE id=?`,
+			s.nowMs(), resolutionKeepOld, resolutionDismissed, resolution, ActorUser, p.flag)
 	}
 	return changed, unpinned
 }

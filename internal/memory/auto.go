@@ -43,6 +43,10 @@ type AutoInput struct {
 	// topic, or a supersession by the newer memory that source precedence allows. Its content does not
 	// change, so it moves a memory holding the user's words too.
 	PlanMove bool
+
+	// autoMode, when set, is the auto mode a confirm change is checked under (confirmBlockedUnder) instead of the
+	// store's policy: the auto mode of the save that asked for the confirmation.
+	autoMode *bool
 }
 
 // AutoApply applies one automatic change: it checks the rules (what the user
@@ -172,7 +176,11 @@ func (s *Store) autoReady(in AutoInput, pi ProposalInput) (string, error) {
 			if ev == "" {
 				return "", fmt.Errorf("%w: %s", ErrNoEvidence, id)
 			}
-			if why, err := s.confirmBlocked(id); err != nil {
+			auto := s.Policy.AutoMode
+			if in.autoMode != nil {
+				auto = *in.autoMode
+			}
+			if why, err := s.confirmBlockedUnder(id, auto); err != nil {
 				return "", err
 			} else if why != "" {
 				return "", fmt.Errorf("%w: %s (%s)", ErrAutoSkip, id, why)
