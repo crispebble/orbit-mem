@@ -58,6 +58,10 @@ type Options struct {
 	// set, reads it on every save instead.
 	SaveNearMin     float64
 	LoadSaveNearMin func() float64
+	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
+	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
+	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1).
+	Session string
 }
 
 // checkMins are the scores of memory_save's judgment now: the threshold of its similar memories and the floor
@@ -663,7 +667,8 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
-		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin}
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin,
+		Session: h.o.Session}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {

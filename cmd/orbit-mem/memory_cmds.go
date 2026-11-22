@@ -105,8 +105,20 @@ func cmdMCP(a *app, args []string) error {
 		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err
-		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf})
+		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf,
+		// 저장의 세션(E-1): 호스트가 준 세션 id, 없으면 이 서버 실행 하나를 세션으로 본다(실행마다 새 id).
+		Session: firstNonEmpty(claudecode.MCPSession(os.Getenv), "run-"+memory.NewID(""))})
 	return srv.Run(ctx, &mcp.StdioTransport{})
+}
+
+// firstNonEmpty is the first of values that is not empty, or "".
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // hookAdapter is the adapter of a hook's --host: how that host's hook input becomes contract

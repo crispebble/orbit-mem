@@ -131,8 +131,9 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 			return "", err
 		}
 	}
+	// 내보낸 줄은 다시 나온 날만 알고 세션은 모른다: 스키마 6 이행처럼 세션 하나(legacySession)로 들인다.
 	for _, day := range m.Days {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+		if err := recordSightingTx(tx, m.ID, "", day, now); err != nil {
 			return "", err
 		}
 	}

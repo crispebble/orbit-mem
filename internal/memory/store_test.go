@@ -50,10 +50,12 @@ func TestSave_인용이_아니면_후보로_시작한다(t *testing.T) {
 	}
 }
 
-func TestSave_후보는_서로_다른_날_두번_나오면_확정된다(t *testing.T) {
+// E-1: 날만 달라서는 안 되고 세션도 달라야 한다(같은 세션의 날 넘김은 TestEvidence_같은_세션에서_날만_넘겨_두번_저장하면_확정되지_않는다).
+func TestSave_후보는_다른_세션에서_다른_날_다시_나오면_확정된다(t *testing.T) {
 	s, c := newTestStore(t)
-	in := SaveInput{Kind: KindLesson, Title: "codex exec는 stdin을 닫는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	in := SaveInput{Kind: KindLesson, Title: "codex exec는 stdin을 닫는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Session: "s-1"}
 	first, _ := s.Save(in)
+	in.Session = "s-2"
 	again, err := s.Save(in) // 같은 날
 	if err != nil {
 		t.Fatal(err)

@@ -70,9 +70,10 @@ func TestAC7_감사_목록과_되돌리기와_확인함(t *testing.T) {
 	clock := time.Date(2026, 11, 1, 9, 0, 0, 0, time.Local)
 	s.Now = func() time.Time { return clock }
 	rule := quotedRule(t, s, "배포는 직전 승인")
-	in := memory.SaveInput{Kind: memory.KindLesson, Title: "launchd plist는 지우고 다시 건다", Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}}
+	in := memory.SaveInput{Kind: memory.KindLesson, Title: "launchd plist는 지우고 다시 건다", Scope: memory.ScopeGlobal, Source: memory.Source{Kind: memory.SourceSession}, Session: "s-1"}
 	m, _ := s.Save(in)
 	clock = clock.Add(24 * time.Hour)
+	in.Session = "s-2" // 증거 ①은 다른 세션·다른 날이다
 	if got, _ := s.Save(in); got.State != memory.StateConfirmed {
 		t.Fatalf("증거 ① 확정 안 됨: %s", got.State)
 	}

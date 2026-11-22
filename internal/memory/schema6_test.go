@@ -528,13 +528,14 @@ func TestRewind_다시_나온_세션_기록도_그_시각까지만_있다(t *tes
 	if err := r.To(at[1] + 1); err != nil {
 		t.Fatal(err)
 	}
-	if count(a.ID) != 1 || count(b.ID) != 0 {
+	// 후보 저장도 세션을 모르는 줄(legacy) 하나를 남기므로 기억마다 그 줄과 넣은 줄, 둘이다.
+	if count(a.ID) != 2 || count(b.ID) != 0 {
 		t.Fatalf("sighting_sessions at t2: a %d b %d", count(a.ID), count(b.ID))
 	}
 	if err := r.To(at[3] + 1); err != nil {
 		t.Fatal(err)
 	}
-	if count(a.ID) != 1 || count(b.ID) != 1 {
+	if count(a.ID) != 2 || count(b.ID) != 2 {
 		t.Fatalf("sighting_sessions now: a %d b %d", count(a.ID), count(b.ID))
 	}
 }

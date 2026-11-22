@@ -26,8 +26,9 @@ CREATE TABLE IF NOT EXISTS supersede_reverts (old_id TEXT NOT NULL, new_id TEXT 
 PRAGMA user_version=6;
 `
 
-// legacySession is the session of the sightings schema 5 kept by (memory, day) only. They count as one
-// session, so two old days alone never make "seen in another session".
+// legacySession is the session of the sightings schema 5 kept by (memory, day) only, and of a later save
+// that brings no session (recordSightingTx). They count as one session, so two old days, or two saves of an
+// unknown session, alone never make "seen in another session".
 const legacySession = "legacy"
 
 // backfill6Tx fills what a DB below schema 6 lacks, in migrate's transaction, so a failure leaves the DB as

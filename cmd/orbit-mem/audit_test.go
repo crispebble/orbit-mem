@@ -17,9 +17,10 @@ func TestAudit_감사_목록과_되돌리기와_확인함(t *testing.T) {
 	s := seed(t)
 	clock := time.Now().Add(-72 * time.Hour) // 확인함은 지금 시각으로 남는다: 사건은 그 전이다
 	s.Now = func() time.Time { return clock }
-	in := memory.SaveInput{Kind: "lesson", Title: "plist는 지우고 다시 건다", Source: memory.Source{Kind: "session"}}
+	in := memory.SaveInput{Kind: "lesson", Title: "plist는 지우고 다시 건다", Source: memory.Source{Kind: "session"}, Session: "s-1"}
 	m, _ := s.Save(in)
 	clock = clock.Add(24 * time.Hour)
+	in.Session = "s-2" // 증거 ①은 다른 세션·다른 날이다
 	if got, _ := s.Save(in); got.State != memory.StateConfirmed {
 		t.Fatalf("state %s", got.State)
 	}
