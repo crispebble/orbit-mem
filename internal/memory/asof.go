@@ -428,7 +428,13 @@ func (h *History) Rewind(path string) (*Rewinder, error) {
 func (r *Rewinder) Close() error { return r.db.Close() }
 
 // To puts the copy at the state of at (ms), in one transaction, writing only what differs from the state it
-// was last put at.
+// was last put at. What the Rewinder remembers of the copy changes only after the transaction commits, so a To
+// that fails and rolls back leaves it as the copy is.
+//
+// The target state of every link is worked out first and the writes go in two rounds: the links that stop being
+// alive first, the ones that come alive after. Two links of one (a, b, kind) can exist (one made, removed, and
+// made again), and the table keeps only one live row of each; writing in creation order could bring the older
+// one alive while the newer one still is.
 func (r *Rewinder) To(at int64) error {
 	day := Day(time.UnixMilli(at))
 	tx, err := r.db.Begin()
@@ -437,6 +443,7 @@ func (r *Rewinder) To(at int64) error {
 	}
 	defer tx.Rollback()
 	exists := map[string]bool{}
+	nextMems := map[string]memPhase{}
 	for _, id := range r.h.ids {
 		m := r.h.mems[id]
 		want := m.phase(at, day)
@@ -447,27 +454,34 @@ func (r *Rewinder) To(at int64) error {
 		if err := r.putMemory(tx, id, m, want); err != nil {
 			return fmt.Errorf("rewind %s: %w", id, err)
 		}
-		r.mems[id] = want
+		nextMems[id] = want
 	}
+	nextLinks := make([]int8, len(r.h.links))
 	for i, l := range r.h.links {
-		var want int8
 		switch {
 		case l.created > at || !exists[l.a] || !exists[l.b]:
+			nextLinks[i] = 0
 		case l.removed != 0 && l.removed <= at:
-			want = 2
+			nextLinks[i] = 2
 		default:
-			want = 1
+			nextLinks[i] = 1
 		}
-		if want == r.links[i] {
-			continue
-		}
-		if err := r.putLink(tx, l, want); err != nil {
-			return err
-		}
-		r.links[i] = want
 	}
+	for _, alive := range []bool{false, true} {
+		for i, l := range r.h.links {
+			want := nextLinks[i]
+			if want == r.links[i] || (want == 1) != alive {
+				continue
+			}
+			if err := r.putLink(tx, l, want); err != nil {
+				return err
+			}
+		}
+	}
+	nextEvents := make([]bool, len(r.h.events))
 	for i, e := range r.h.events {
 		want := e.at <= at
+		nextEvents[i] = want
 		if want == r.events[i] {
 			continue
 		}
@@ -479,9 +493,15 @@ func (r *Rewinder) To(at int64) error {
 				return err
 			}
 		}
-		r.events[i] = want
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for id, p := range nextMems {
+		r.mems[id] = p
+	}
+	r.links, r.events = nextLinks, nextEvents
+	return nil
 }
 
 func (r *Rewinder) putMemory(tx *sql.Tx, id string, m *memHistory, p memPhase) error {

@@ -234,7 +234,8 @@ type benchCaseFile struct {
 
 func benchExtract(a *app, args []string) error {
 	fs := a.flags("bench extract")
-	projects := fs.String("projects", claudelog.DefaultRoot(), i18n.T("flag.bench.projects"))
+	var projects multiFlag
+	fs.Var(&projects, "projects", i18n.T("flag.bench.projects"))
 	db := fs.String("db", paths().DB(), i18n.T("flag.bench.db_extract"))
 	out := fs.String("out", filepath.Join(paths().Home, "bench", "replay"), i18n.T("flag.bench.out"))
 	minSessions := fs.Int("min-sessions", 0, i18n.T("flag.bench.min_sessions"))
@@ -269,7 +270,11 @@ func benchExtract(a *app, args []string) error {
 	if _, err := os.Stat(*db); err != nil {
 		return err
 	}
-	sessions, err := claudelog.Select([]string{*projects}, pick)
+	roots := []string(projects)
+	if len(roots) == 0 {
+		roots = []string{claudelog.DefaultRoot()}
+	}
+	sessions, rep, err := claudelog.SelectReport(roots, pick)
 	if err != nil {
 		return err
 	}
@@ -283,8 +288,16 @@ func benchExtract(a *app, args []string) error {
 		CWD:   sessions[0].Cwd,
 		Seed:  "replay-" + now.Format("20060102"),
 	}
-	var starts, reqs, subs, tools int
+	var starts, reqs, subs, tools, merged, forked, unread, unkeyed int
 	for _, s := range sessions {
+		if s.Files > 1 {
+			merged++
+		}
+		if s.Parent != "" {
+			forked++
+		}
+		unread += s.UnreadFiles
+		unkeyed += s.UnkeyedSteps
 		n := 0
 		for _, st := range s.Steps {
 			n++
@@ -337,6 +350,9 @@ func benchExtract(a *app, args []string) error {
 		}
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), starts, reqs, subs, tools))
+	if merged+forked+unread+unkeyed+rep.LostFiles > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_merged", merged, forked, unread, rep.LostFiles, unkeyed))
+	}
 	return nil
 }
 
