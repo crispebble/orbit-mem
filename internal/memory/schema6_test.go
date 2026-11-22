@@ -264,7 +264,12 @@ func TestOpen_올린_뒤_모든_기억이_다시_색인된다(t *testing.T) {
 	f := v5DB(t, path)
 	// 옛 버전의 낱말 나누기로 만든 색인 글: 색인 줄의 시각은 기억과 맞고 늦은 표시도 없어 전체 검사로도 늦지 않다.
 	// 업그레이드는 이런 줄까지 지금 규칙으로 다시 색인해야 한다(Q-3).
-	rawExec(t, path, `UPDATE memory_fts SET body='옛색인글' WHERE rowid=(SELECT rowid FROM memory_index WHERE memory_id='`+f.cand.ID+`')`)
+	// 재검토일을 채우는 기억(cand)뿐 아니라 채우지 않는 기억(낡음 stale, 이미 재검토일이 있는 영구 durable)에도 손댄다:
+	// 채우기 둘째 단계의 UPDATE 트리거는 이 둘을 표시하지 않으므로, 이 둘이 다시 색인되는 것은 셋째 단계의 표시 덕이다.
+	oldText := map[string]string{f.cand.ID: "옛색인글", f.stale.ID: "낡은옛글", f.durable.ID: "영구옛글"}
+	for id, text := range oldText {
+		rawExec(t, path, `UPDATE memory_fts SET body='`+text+`' WHERE rowid=(SELECT rowid FROM memory_index WHERE memory_id='`+id+`')`)
+	}
 	if r, _, err := OpenRead(path); err != nil {
 		t.Fatal(err)
 	} else {
@@ -292,8 +297,13 @@ func TestOpen_올린_뒤_모든_기억이_다시_색인된다(t *testing.T) {
 	for _, m := range ms {
 		wantIndexed(t, s, m.ID)
 	}
-	if ftsHits(t, s, `"옛색인글"`) != 0 {
-		t.Fatal("the old index text is still there")
+	for _, id := range []string{f.stale.ID, f.durable.ID} { // List가 이 둘을 빠뜨려도 직접 본다
+		wantIndexed(t, s, id)
+	}
+	for id, text := range oldText {
+		if ftsHits(t, s, `"`+text+`"`) != 0 {
+			t.Errorf("%s keeps the old index text %q", id, text)
+		}
 	}
 }
 
