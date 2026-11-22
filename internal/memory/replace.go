@@ -260,13 +260,15 @@ func (s *Store) SetAutoNoticeAt(scope string, at int64) error {
 // (AutoNoticeAt). It reads the ledger only past the floor, and a ledger found to hold no automatic replacement
 // at all moves the floor to now, so a DB that never had one is not scanned again at every session start.
 func (s *Store) AutoSupersedesUnnoticed(sees func(scope, project string) bool) ([]AutoSupersede, error) {
+	// 시각은 읽기 전에 잡는다: 읽은 뒤에 잡으면 읽기와 옮기기 사이에 다른 프로세스가 쓴 자동 대체가 floor 밑에 묻힌다.
+	asOf := s.nowMs()
 	floor, _ := strconv.ParseInt(s.Meta(metaAutoNoticeFloor), 10, 64)
 	all, err := s.AutoSupersedesSince(floor)
 	if err != nil {
 		return nil, err
 	}
 	if len(all) == 0 {
-		_ = s.SetMeta(metaAutoNoticeFloor, strconv.FormatInt(s.nowMs(), 10))
+		_ = s.SetMeta(metaAutoNoticeFloor, strconv.FormatInt(asOf, 10))
 		return nil, nil
 	}
 	marks := map[string]int64{}

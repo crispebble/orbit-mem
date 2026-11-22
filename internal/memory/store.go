@@ -498,8 +498,15 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 		m, rep.Unpinned = s.inheritPin(m, rep.Superseded, in.Who)
 	}
 	// 사용자 말 출처가 어긋남 쌍의 어느 쪽에 붙었으면 사람이 고른 것이라 쌍을 푼다(settleConflictsAfterQuote).
-	if in.Source.Kind == SourceQuote && s.settleConflictsAfterQuote(m.ID, in.Source.Excerpt) {
-		m, _ = s.Get(m.ID)
+	if in.Source.Kind == SourceQuote {
+		if changed, gone := s.settleConflictsAfterQuote(m.ID, in.Source.Excerpt); changed {
+			if m, err = s.Get(m.ID); err != nil {
+				return m, rep, err
+			}
+			if rep.Unpinned == "" {
+				rep.Unpinned = gone
+			}
+		}
 	}
 	if m.State != StateCandidate {
 		return m, rep, nil
@@ -1141,7 +1148,7 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	}
 	// 사용자 말(사용자 말 출처나 함께 준 말)이 어긋남 쌍의 어느 쪽에 닿았으면 쌍을 푼다(settleConflictsAfterQuote).
 	if quote := userWordsOf(in.Who, srcs); quote != "" {
-		s.settleConflictsAfterQuote(m.ID, quote)
+		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
 	}
 	return s.Get(m.ID)
 }

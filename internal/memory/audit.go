@@ -33,6 +33,10 @@ const (
 	FlagHold     = "hold"     // 사람이 확정을 후보로 내림: 자동화가 다시 확정하지 않는다
 )
 
+// resolutionKeepOld is the resolution of a same-place conflict mark closed by the user's words on its old side:
+// the person kept the old value, so the newer candidate of the pair is not confirmed automatically (blockKeptOld).
+const resolutionKeepOld = "keep_old"
+
 // holdConfirm keeps the person's choice to put a memory back to candidate.
 func (s *Store) holdConfirm(memoryID string, w Who) {
 	var n int
@@ -760,27 +764,42 @@ func (s *Store) OpenConflictCount() (int, error) {
 }
 
 // settleConflictsAfterQuote settles the open conflict pairs of memory id after the user's own words were added to
-// it (a quote source on a save or an edit), so the value the person chose is the current one (명세 C-6, and the
-// first row of the replacement table: the user's words replace any memory):
+// it (a quote source on a save or an edit), so the value the person chose is the current one (명세 C-6). A pair
+// replaces a memory only in the same place (sameSlot: the same scope and the same, non-empty topic): a mark may
+// also join memories of other places (the AI names them in conflictsWith or supersedes), and those are both
+// current values, so the user's words on one never put the other out of date.
 //
-//   - id is the newer side: it is confirmed and the old memory is replaced by it, as a replacement (stale,
-//     superseded_by, a version reason). When the replacement is refused (a trust or protection check) the pair
-//     stays open and nothing is closed: the pair must not look settled when it is not.
-//   - id is the old side: it stays the current value; the mark is closed and the newer candidate is left as it
-//     is. Nothing here keeps that candidate from confirming itself later (see confirmBlocked: the open mark was
-//     what blocked it).
+//   - id is the newer side, same place: the old memory is replaced by it (stale, superseded_by, a version reason),
+//     the newer one is confirmed, and a core place (pin) of the old one passes to it (inheritPin). When the
+//     replacement fails the pair stays open and nothing is closed: the pair must not look settled when it is not.
+//   - id is the newer side, another place: only the mark is closed; both stay as they are, and the newer one is
+//     left to the rules of its own save or edit (nothing here confirms it).
+//   - id is the old side, same place, the newer one a candidate: the person kept the old value. The mark is
+//     closed as resolutionKeepOld and confirmBlocked keeps the newer candidate from confirming itself later; the
+//     user's words on that candidate afterwards (a changed mind) replace the old one as in the first case.
+//   - id is the old side, same place, the newer one confirmed (a confirmed value masking it, the pair an undone
+//     automatic replacement opens): the newer one is replaced by the old one, which becomes the current value.
+//   - id is the old side in another place: only the mark is closed (resolution user_words).
 //
-// A closed mark says who closed it (resolved_by = the user). It reports whether it changed a memory.
-func (s *Store) settleConflictsAfterQuote(id, quote string) bool {
-	rows, err := s.db.Query(`SELECT id, memory_id, other_id FROM audit_flags WHERE kind=? AND resolved_at=0 AND (memory_id=? OR other_id=?)`, FlagConflict, id, id)
+// A closed mark says who closed it (resolved_by = the user). It reports whether it changed a memory, and the id
+// of a pinned memory that left the core because its heir could not take the place.
+func (s *Store) settleConflictsAfterQuote(id, quote string) (changed bool, unpinned string) {
+	// 옛 값 유지로 닫힌 쌍도 읽는다: 그 새 쪽에 나중에 사용자 말이 붙으면 마음을 바꾼 것이라 새 쪽이 이긴다.
+	rows, err := s.db.Query(`SELECT id, memory_id, other_id, resolved_at FROM audit_flags WHERE kind=? AND
+		((resolved_at=0 AND (memory_id=? OR other_id=?)) OR (resolved_at>0 AND resolution=? AND memory_id=?))`, FlagConflict, id, id, resolutionKeepOld, id)
 	if err != nil {
-		return false
+		return false, ""
 	}
-	type pair struct{ flag, newID, oldID string }
+	type pair struct {
+		flag, newID, oldID string
+		closed             bool
+	}
 	var pairs []pair
 	for rows.Next() {
 		var p pair
-		if rows.Scan(&p.flag, &p.newID, &p.oldID) == nil {
+		var resolvedAt int64
+		if rows.Scan(&p.flag, &p.newID, &p.oldID, &resolvedAt) == nil {
+			p.closed = resolvedAt > 0
 			pairs = append(pairs, p)
 		}
 	}
@@ -789,29 +808,50 @@ func (s *Store) settleConflictsAfterQuote(id, quote string) bool {
 		quote = "사용자 말"
 	}
 	w := Who{Actor: ActorAI, UserQuote: quote}
-	changed := false
+	live := func(m Memory) bool { return m.State == StateCandidate || m.State == StateConfirmed }
+	keepPin := func(heirID, replacedID string) {
+		if heir, err := s.Get(heirID); err == nil {
+			if _, gone := s.inheritPin(heir, []string{replacedID}, w); gone != "" {
+				unpinned = gone
+			}
+		}
+	}
 	for _, p := range pairs {
-		if p.newID == id {
-			nw, err := getTx(s.db, p.newID)
-			if err != nil {
-				continue
+		nw, err := getTx(s.db, p.newID)
+		if err != nil {
+			continue
+		}
+		old, err := getTx(s.db, p.oldID)
+		inPlace := err == nil && live(old) && sameSlot(nw, old)
+		resolution := "user_words"
+		switch {
+		case p.newID == id && inPlace:
+			if _, err := s.SupersedeAs(p.oldID, p.newID, "사용자 말로 대체: "+nw.Title, w); err != nil {
+				continue // 막힌 쌍은 열어 둔다
 			}
-			if old, err := getTx(s.db, p.oldID); err == nil && (old.State == StateCandidate || old.State == StateConfirmed) {
-				if _, err := s.SupersedeAs(p.oldID, p.newID, "사용자 말로 대체: "+nw.Title, w); err != nil {
-					continue // 막힌 쌍은 열어 둔다
-				}
-				changed = true
-			}
+			changed = true
 			if nw.State == StateCandidate {
 				confirmed := StateConfirmed
 				if _, err := s.Update(UpdateInput{ID: nw.ID, State: &confirmed, Who: w, Reason: "사용자 말로 정함"}); err != nil {
 					continue
 				}
-				changed = true
 			}
+			keepPin(p.newID, p.oldID)
+		case p.closed:
+			continue // 닫힌 쌍은 마음을 바꾼 위 갈래에서만 다시 다룬다
+		case p.oldID == id && inPlace && nw.State == StateConfirmed:
+			// 되돌린 자동 대체의 옛 기억을 다른 현재 값이 가리고 있었다: 가리던 쪽을 옛 쪽으로 대체해 옛 쪽을 현재 값으로 만든다.
+			if _, err := s.SupersedeAs(p.newID, p.oldID, "사용자 말로 대체: "+old.Title, w); err != nil {
+				continue
+			}
+			changed = true
+			keepPin(p.oldID, p.newID)
+		case p.oldID == id && inPlace && nw.State == StateCandidate:
+			resolution = resolutionKeepOld
 		}
+		// 마음을 바꿔 닫힌 옛 값 유지 쌍은 사유만 사용자 말로 바꾼다(닫은 때는 그대로).
 		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=CASE WHEN resolved_at=0 THEN ? ELSE resolved_at END,
-			resolution=CASE WHEN resolution='' THEN 'user_words' ELSE resolution END, resolved_by=? WHERE id=?`, s.nowMs(), ActorUser, p.flag)
+			resolution=CASE WHEN resolution IN ('',?) THEN ? ELSE resolution END, resolved_by=? WHERE id=?`, s.nowMs(), resolutionKeepOld, resolution, ActorUser, p.flag)
 	}
-	return changed
+	return changed, unpinned
 }

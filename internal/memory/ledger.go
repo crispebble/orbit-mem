@@ -595,16 +595,18 @@ func undoAutoReplaceTx(tx *sql.Tx, e LedgerEntry, revertID string, now int64, re
 // replacement's new memory replaced) and the other current value of its scope and topic that still stands over it
 // (another memory replaced the new one meanwhile): the undo brought the old memory back as confirmed, but the
 // topic's head is that other value, so nothing would show the undo had no effect. The newer side is that current
-// value, the old side the restored memory (the shape FlagConflict has). Nothing is opened when no other current
-// value stands over it, or when the pair is already open.
+// value, the old side the restored memory (the shape FlagConflict has). Only a confirmed value stands over it: a
+// candidate never leads a topic that has a confirmed memory. Nothing is opened when no other confirmed value
+// stands over it, or when the pair is already open.
 func flagMaskedRevertTx(tx *sql.Tx, restoredID, revertedNewID string, now int64) error {
 	m, err := getTx(tx, restoredID)
 	if err != nil || m.Topic == "" || (m.State != StateCandidate && m.State != StateConfirmed) {
 		return nil
 	}
 	var other string
-	err = tx.QueryRow(`SELECT id FROM memories WHERE scope=? AND topic=? AND id NOT IN (?,?) AND state IN ('candidate','confirmed')
-		ORDER BY state='confirmed' DESC, created_at DESC, id LIMIT 1`, m.Scope, m.Topic, restoredID, revertedNewID).Scan(&other)
+	// 가리는 쪽은 확정 값뿐이다: 후보는 주제 머리가 되지 못해 확정을 가리지 못한다(TopicHeads).
+	err = tx.QueryRow(`SELECT id FROM memories WHERE scope=? AND topic=? AND id NOT IN (?,?) AND state='confirmed'
+		ORDER BY created_at DESC, id LIMIT 1`, m.Scope, m.Topic, restoredID, revertedNewID).Scan(&other)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	} else if err != nil {

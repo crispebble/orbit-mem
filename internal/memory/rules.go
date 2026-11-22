@@ -157,10 +157,15 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 
 // --- 증거 확정 ---
 
+// blockKeptOld is why confirmBlocked stops a candidate that is the newer side of a same-place pair whose old
+// side the user kept with their own words (resolutionKeepOld).
+const blockKeptOld = "kept_old"
+
 // confirmBlocked is why memory id may not be confirmed automatically: an open
 // conflict mark, the person put it back to candidate (hold), the person
 // undid an automatic confirmation of it before, or the person undid its
-// automatic replacement of another memory (blockRevertedReplace, C-3).
+// automatic replacement of another memory (blockRevertedReplace, C-3), or the user kept the old value of its
+// same-place pair with their own words (blockKeptOld).
 func (s *Store) confirmBlocked(id string) (string, error) {
 	// 출처가 믿을 수 없는 것뿐이면 증거가 쌓여도 스스로 확정하지 않는다(D7, 확정 길 ①).
 	if t, err := memoryTrustTx(s.db, id); err != nil {
@@ -183,6 +188,16 @@ func (s *Store) confirmBlocked(id string) (string, error) {
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", err
+	}
+	// 사용자가 같은 자리의 옛 값을 말로 유지한 쌍의 새 쪽이다: 옛 값이 아직 살아 있는 동안 스스로 확정해 그것을 가리지 않는다.
+	// 새 쪽에 사용자 말이 붙으면(마음을 바꿈) settle이 대체하는 길이라 여기서 막지 않는다.
+	var kept int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_flags f JOIN memories o ON o.id=f.other_id
+		WHERE f.kind=? AND f.memory_id=? AND f.resolved_at>0 AND f.resolution=? AND o.state IN ('candidate','confirmed')`,
+		FlagConflict, id, resolutionKeepOld).Scan(&kept); err != nil {
+		return "", err
+	} else if kept > 0 {
+		return blockKeptOld, nil
 	}
 	rows, err := s.db.Query(`SELECT targets FROM ledger WHERE proposal_kind=? AND reverted_by<>''`, ProposalConfirm)
 	if err != nil {
