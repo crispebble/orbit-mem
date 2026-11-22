@@ -363,3 +363,20 @@ func TestRecallLine_자동_대체를_되돌린_뒤에도_현재_값은_하나이
 		t.Fatalf("어긋남이 붙지 않았습니다:\n%s", got.Text)
 	}
 }
+
+// 자동 대체가 한 건도 없으면 세션 시작에 자동 대체 알림 줄이 없다: 어긋남만 있어도(끔·켬 모두) 「바꿨다」고 알리지 않는다.
+func TestSessionStart_자동_대체_알림_줄은_0건이면_없다(t *testing.T) {
+	const replaceMark = "검증된 사실로 바꿨다"
+	s := store(t)
+	on := config.Default()
+	on.AutoMode = true
+	if text := SessionBundleWith(s, on, here, "claude", "A", nil).Text; strings.Contains(text, replaceMark) {
+		t.Fatalf("0건인데 줄이 있습니다:\n%s", text)
+	}
+	conflictPair(t, s)
+	for i, cfg := range []config.Config{on, config.Default()} {
+		if text := SessionBundleWith(s, cfg, here, "claude", "B"+string(rune('0'+i)), nil).Text; strings.Contains(text, replaceMark) {
+			t.Fatalf("어긋남만 있는데 대체 줄이 있습니다(자동 모드 %v):\n%s", cfg.AutoMode, text)
+		}
+	}
+}

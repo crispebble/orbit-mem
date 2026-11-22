@@ -149,3 +149,42 @@ func TestSave_자동_모드_켬이어도_user_범위_규칙_결정_다른_자리
 		}
 	}
 }
+
+// 어긋남 표시를 쓰지 못해도(쓰기 실패) 새 사실은 즉시 확정돼 주제의 현재 값을 빼앗지 않는다: 이 저장에서 어긋남이 생겼으면
+// 즉시 확정을 시도하지 않는다.
+func TestSave_어긋남_표시를_쓰지_못해도_새_사실이_즉시_확정되지_않는다(t *testing.T) {
+	s := supStore(t)
+	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
+	if _, err := s.DB().Exec(`CREATE TRIGGER audit_flags_block BEFORE INSERT ON audit_flags BEGIN SELECT RAISE(ABORT, 'blocked'); END`); err != nil {
+		t.Fatal(err)
+	}
+	cur, rep := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
+	if !slices.Contains(rep.Conflicts, old.ID) {
+		t.Fatalf("어긋남이 보고되지 않았다 %+v", rep)
+	}
+	if c := stateOf(t, s, cur.ID); c.State != StateCandidate {
+		t.Fatalf("새 사실이 확정돼 현재 값을 빼앗았다: %s", c.State)
+	}
+	if got := stateOf(t, s, old.ID); got.State != StateConfirmed || got.SupersededBy != "" {
+		t.Fatalf("옛 사실이 바뀌었다: %+v", got)
+	}
+}
+
+// 사용자가 옛 사실을 유지하기로 한 뒤에는 자동 모드를 켜고 다시 확인된 검증 사실을 저장해도 그 옛 사실은 자동 대체되지 않는다.
+func TestSave_옛_사실을_유지하기로_한_뒤에는_자동_모드_켬이어도_대체하지_않는다(t *testing.T) {
+	s := supStore(t)
+	old, _ := mustSave(t, s, userFact("빌드 명령은 make all", "빌드 명령"))
+	cur, _ := mustSave(t, s, checkedFact("빌드 명령은 go build", "빌드 명령"))
+	quoteUpdate(t, s, old.ID)
+	if _, res, ok := flagOf(t, s, cur.ID, old.ID); !ok || res != resolutionKeepOld {
+		t.Fatalf("유지 표시가 없다 %q %v", res, ok)
+	}
+	s.Policy.AutoMode = true
+	next, rep := mustSave(t, s, checkedFact("빌드 명령은 go build -race", "빌드 명령"))
+	if got := stateOf(t, s, old.ID); got.State != StateConfirmed || got.SupersededBy != "" {
+		t.Fatalf("유지하기로 한 옛 사실이 대체됐다: %+v (저장 %+v, 새 %s)", got, rep, next.ID)
+	}
+	if n := len(autoReplaceLines(t, s, old.ID)); n != 0 {
+		t.Fatalf("자동 대체 원장 %d줄", n)
+	}
+}

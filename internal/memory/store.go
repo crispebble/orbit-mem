@@ -479,12 +479,13 @@ type SaveReport struct {
 // the same scope and topic and the memories in in.Supersedes, by the replacement table
 // (replace.go): the user's words replace anything (D1, no userQuote needed: the new words
 // are the ground); what an AI learned or an automation wrote does not replace the user's
-// words and is marked as going against them instead — except a fact of the same kind whose
-// verification ground the server read again (or, with the auto mode on, only wrote down),
-// which replaces a user's fact outside the user scope as an automatic change kept in the
-// ledger, to be undone from the audit list (C-1·C-3·C-8). Rules and decisions are never
-// replaced that way. A volatile memory (the user said it is for now) does not replace its
-// topic's value.
+// words and is marked as going against them instead — except, with the auto mode on, a fact
+// of the same kind whose verification ground is written down (whether or not the server read
+// it again), which replaces a user's fact outside the user scope as an automatic change kept
+// in the ledger, to be undone from the audit list (C-1·C-3·C-8). With the auto mode off it
+// stays a conflict; reading the ground again only decides the immediate confirmation when
+// the save made no conflict. Rules and decisions are never replaced that way. A
+// volatile memory (the user said it is for now) does not replace its topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
 	if err != nil || rep.Replayed != nil || rep.Rejected != "" { // 다시 온 키·거절된 제목: 이번에는 아무것도 쓰지 않았다
@@ -522,7 +523,8 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 		}
 		_, _ = s.FlagConflict(m.ID, id, note, in.Who)
 	}
-	if in.noEvidence {
+	// 이 저장에서 어긋남이 생겼으면 즉시 확정하지 않는다: 위 표시를 쓰지 못했어도 새 사실이 주제의 현재 값을 빼앗지 않게 한다.
+	if in.noEvidence || len(rep.Conflicts) > 0 {
 		return m, rep, nil
 	}
 	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
