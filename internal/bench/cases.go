@@ -88,16 +88,26 @@ type Case struct {
 	// Input is the text of the tool call's input (host.ToolInputText), on a case with a tool only.
 	Input string `json:"input,omitempty"`
 	// Source is how the session started, on a start case only (StartSources).
-	Source string   `json:"source,omitempty"`
-	Task   string   `json:"task,omitempty"`
-	Save   *Draft   `json:"save,omitempty"`
-	Expect []string `json:"expect,omitempty"`
-	Allow  []string `json:"allow,omitempty"`
-	Forbid []string `json:"forbid,omitempty"`
-	Note   string   `json:"note,omitempty"`
+	Source string `json:"source,omitempty"`
+	// Changes are what happens to memories before the case runs, on a start case only: a memory that goes stale
+	// or is rejected between two starts of one session. The run applies them to the path's DB copy, then calls the
+	// start. A path that cannot change a memory (Env.Change empty) runs the case without them.
+	Changes []Change `json:"changes,omitempty"`
+	Task    string   `json:"task,omitempty"`
+	Save    *Draft   `json:"save,omitempty"`
+	Expect  []string `json:"expect,omitempty"`
+	Allow   []string `json:"allow,omitempty"`
+	Forbid  []string `json:"forbid,omitempty"`
+	Note    string   `json:"note,omitempty"`
 	// At is when the case happened (RFC3339), for cases taken from logs: the run puts the DB at its state of
 	// that time and moves the recall path's clock there. A file gives it on every case or on none.
 	At string `json:"at,omitempty"`
+}
+
+// Change is the move of one memory to a state (memory.StateStale or memory.StateHidden) before a case.
+type Change struct {
+	Memory string `json:"memory"` // key (a set with memories) or id (a DB given)
+	State  string `json:"state"`
 }
 
 // Time is the time of the case (false without one).
@@ -278,6 +288,17 @@ func (s *Set) checkCase(c Case, keys map[string]bool) error {
 	}
 	if c.Source != "" && c.CaseKind() != KindStart {
 		return errors.New("source is for a start case only")
+	}
+	if len(c.Changes) > 0 && c.CaseKind() != KindStart {
+		return errors.New("changes are for a start case only")
+	}
+	for _, ch := range c.Changes {
+		if ch.State != memory.StateStale && ch.State != memory.StateHidden {
+			return fmt.Errorf("change of %q to %q: the state is stale or hidden", ch.Memory, ch.State)
+		}
+		if len(s.Memories) > 0 && !keys[ch.Memory] {
+			return fmt.Errorf("no memory with key %q", ch.Memory)
+		}
 	}
 	if c.Input != "" && c.Tool == "" {
 		return errors.New("input is for a case with a tool only")
