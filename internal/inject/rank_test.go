@@ -120,27 +120,27 @@ func TestRank_rankByScore를_끄면_지금_순위와_같다(t *testing.T) {
 	}
 }
 
-// 도구 직전 회상도 같은 순위 규칙이다: 이름이 맞은 확정 규칙보다 입력과 훨씬 잘 맞는 후보 교훈이 앞서고(점수 차가 문턱보다
-// 큼), rankByScore를 끄거나 입력이 없으면 확정이 앞선 지금 순서다.
+// 도구 직전 회상도 같은 순위 규칙이다: 확정 규칙이 아닌 기억끼리는 입력과 훨씬 잘 맞는 후보 교훈이 약하게 맞는 확정 교훈보다
+// 앞서고(점수 차가 문턱보다 큼), rankByScore를 끄거나 입력이 없으면 확정이 앞선 지금 순서다.
 func TestRank_도구_직전_회상도_같은_순위_규칙을_쓴다(t *testing.T) {
 	s := store(t)
-	rule := saveOn(t, s, memory.KindRule, "셸 명령은 한 줄에 하나만 쓴다", "여러 명령을 이어 붙이지 않는다", []string{"Bash"}, true)
-	lesson := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
+	weak := saveOn(t, s, memory.KindLesson, "빗금 하나로 결과가 갈리는 일이 있다", "경로 끝을 살핀다", []string{"Bash"}, true)
+	strong := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
 	n := 0
 	order := func(cfg config.Config, input string) []string {
 		n++ // 호출마다 다른 세션이라 앞 호출의 표시가 남지 않는다
 		return ToolInjection(s, cfg, here, "claude", "S"+string(rune('a'+n)), "Bash", input).MemoryIDs
 	}
 	const input = "rsync -av 원본 경로 빗금 대상"
-	on := gated()
+	on := config.Default()
 	on.RankByScore, on.RankScoreMargin = true, 0.1
-	if got, want := order(on, input), []string{lesson.ID, rule.ID}; !slices.Equal(got, want) {
+	if got, want := order(on, input), []string{strong.ID, weak.ID}; !slices.Equal(got, want) {
 		t.Fatalf("on: order %v, want %v", got, want)
 	}
-	if got, want := order(gated(), input), []string{rule.ID, lesson.ID}; !slices.Equal(got, want) {
+	if got, want := order(config.Default(), input), []string{weak.ID, strong.ID}; !slices.Equal(got, want) {
 		t.Fatalf("off: order %v, want %v", got, want)
 	}
-	if got, want := order(on, ""), []string{rule.ID, lesson.ID}; !slices.Equal(got, want) {
+	if got, want := order(on, ""), []string{weak.ID, strong.ID}; !slices.Equal(got, want) {
 		t.Fatalf("no input: order %v, want %v", got, want)
 	}
 }

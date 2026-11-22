@@ -142,10 +142,11 @@ type Config struct {
 	// IDF는 도구 트리거가 달린 기억 집합 기준이라(memory.ToolInputScores) 요청 회상의 점수와 값이 다를 수 있다.
 	ToolInputGate     bool    `json:"toolInputGate"`
 	ToolInputMinScore float64 `json:"toolInputMinScore"`
-	// 순위 스위치(명세 R-1): 켜면 회상 순위(요청·위임·도구 직전)가 점수 차가 rankScoreMargin보다 크면 점수가 큰 쪽을 먼저 두고,
-	// 그 안이면 확정된 기억을 먼저 둔다. 끄면 지금 순위(확정이 먼저, 그다음 점수)다. 재검토 후보를 뒤로 보내는 것(R-3)은 이
-	// 스위치와 관계없다. rankScoreMargin은 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다. 켤지와 문턱은 평가 묶음으로
-	// 정한다(R-2).
+	// 순위 스위치(명세 R-1): 스위치는 점수 단계 하나만 켜고 끈다. 켜면 회상 순위(요청·위임·도구 직전)가 점수 차가
+	// rankScoreMargin보다 크면 점수가 큰 쪽을 먼저 두고, 그 안이면 확정된 기억을 먼저 둔다. 끄면 확정이 먼저이고 그다음 점수다.
+	// 점수와 확정이 같을 때 재검토 지남(Memory.ReviewAt이 지난 기억)을 뒤로 보내는 것(R-3)은 스위치와 관계없이 늘 적용된다.
+	// 도구 직전 회상에서는 확정된 규칙이 점수 단계에서 밀리지 않는다(명세 T-2). rankScoreMargin은 0 < x ≤ 1이고, 이 키가 없는
+	// 옛 파일은 기본값이다. 켤지와 문턱은 평가 묶음으로 정한다(R-2).
 	RankByScore     bool    `json:"rankByScore"`
 	RankScoreMargin float64 `json:"rankScoreMargin"`
 }

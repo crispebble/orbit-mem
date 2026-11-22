@@ -2,6 +2,7 @@ package inject
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,24 +122,30 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	if len(hits) == 0 {
 		return inj.done(&b)
 	}
-	// 순서는 이름이 정확히 맞은 것이 먼저이고, 그 안에서 요청 회상과 같은 순위 규칙(rankPolicy)이며, 그다음 이 장소, 최근 고침, id다.
+	// 순서는 이름이 정확히 맞은 것이 먼저이고, 그 안에서 순위 규칙(rankPolicy.beforeTool: 요청 회상과 같되 확정 규칙은 점수 단계에서
+	// 밀리지 않는다, 명세 T-2), 그다음 이 장소, 최근 고침, id다.
 	// 순위의 점수는 도구 입력과의 점수(memory.ToolInputScores)다. 입력이 없으면 점수가 없어(0) 점수 단계는 아무것도 가르지 않고,
 	// rankByScore를 끄면 점수는 쓰이지 않는다: 둘 다 확정이 먼저인 지금 순서다.
 	policy := rankPolicyOf(cfg)
 	var rankScores map[string]float64
-	if policy.byScore && hasInput {
+	if policy.byScore && hasInput && len(hits) > 1 { // 하나면 가를 것이 없다: 점수를 세지 않는다(입력 문이 이미 센 것은 그대로 쓴다)
 		rankScores = inputScores()
 	}
 	key := func(h hit) rankKey {
-		return rankKey{score: rankScores[h.m.ID], confirmed: h.m.State == memory.StateConfirmed, reviewDue: h.due}
+		return rankKey{score: rankScores[h.m.ID], confirmed: h.m.State == memory.StateConfirmed, reviewDue: h.due, rule: confirmedRule(h.m)}
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, c := hits[i], hits[j]
 		if a.exact != c.exact {
 			return a.exact
 		}
-		if first, decided := policy.before(key(a), key(c)); decided {
+		ka, kc := key(a), key(c)
+		if first, decided := policy.beforeTool(ka, kc); decided {
 			return first
+		}
+		// 문턱 안의 점수 차는 위에서 가려지지 않는다: 점수를 꼬리 앞에 두어야 비교가 전순서다(rankHits의 꼬리도 점수부터다).
+		if sa, sc := math.Round(ka.score*1e9), math.Round(kc.score*1e9); sa != sc {
+			return sa > sc
 		}
 		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
 			return la

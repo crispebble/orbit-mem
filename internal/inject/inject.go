@@ -826,8 +826,7 @@ func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Pl
 			kept = append(kept, h)
 		}
 	}
-	vw, _ := s.Viewer()
-	return rankHits(s, cfg, vw, pl, prompt, kept)
+	return rankHits(s, cfg, memory.Viewer{}, pl, prompt, kept) // 순위는 Viewer를 읽지 않는다(rankHits): 요청마다 주제 표를 읽지 않는다
 }
 
 // recallFloor is the hits of byID that pass the gate (thresholds.pass), and the relative floor (설계 보완, 1-6 b6):
