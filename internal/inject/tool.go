@@ -164,11 +164,18 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	}
 	callUsed, brought := 0, 0
 	var entries strings.Builder
+	// 어긋남은 줄로 실릴 수 있는 앞쪽 기억만 한 번에 읽는다(호출마다 기억 수만큼 읽지 않는다).
+	var maybe []string
+	for _, h := range hits[:min(len(hits), MaxToolMemories)] {
+		maybe = append(maybe, h.m.ID)
+	}
+	conflicts := newConflictReader(s, cfg, host, session, maybe)
 	for _, h := range hits {
 		if brought == MaxToolMemories {
 			break
 		}
-		line := toolLine(h.m)
+		note, info := conflicts.note(h.m.ID)
+		line := toolLine(h.m, note)
 		n := runes(line)
 		// 세션 합계에서 멈춘다(설계 5.2절): 순서를 건너뛰어 더 짧은 기억을 넣지 않는다.
 		if callUsed+n > MaxToolCallRunes || used+n > room {
@@ -180,6 +187,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		brought++
 		inj.MemoryIDs = append(inj.MemoryIDs, h.m.ID)
 		inj.mark(memory.MarkTool, h.m.ID)
+		inj.markAsked(info)
 	}
 	var rest []memory.Memory
 	for _, h := range hits[brought:] { // 넣은 것은 hits 앞에서부터다
@@ -255,8 +263,11 @@ func toolPointerLine(rest []memory.Memory, limit int) (string, []string) {
 }
 
 // toolLine is how a tool call shows one memory: its title line and, under it, as much of the body as
-// fits in MaxToolMemoryRunes. The session sum redraws the memories it was given with it.
-func toolLine(m memory.Memory) string {
+// fits in MaxToolMemoryRunes, then conflict, the note line of a memory with an open conflict ("" for one
+// without). The note is outside the 160 runes: it says whether the memory can be relied on, and the call's own
+// limits (MaxToolCallRunes, the session sum) still bound it. The session sum redraws the memories it was given
+// with it and without the note, which is not known then.
+func toolLine(m memory.Memory, conflict string) string {
 	tail := fmt.Sprintf(" (%s · %s %s)\n", m.ID, kindName(m.Kind), toolState(m))
 	title := m.Title
 	if room := MaxToolMemoryRunes - runes(tail) - 2; runes(title) > room {
@@ -271,7 +282,7 @@ func toolLine(m memory.Memory) string {
 			line += "  " + memory.ClipRunes(text, room) + "\n"
 		}
 	}
-	return line
+	return line + conflict
 }
 
 // toolState is the state word of a tool memory line, with the untrusted note (D7) when the memory's
@@ -319,7 +330,7 @@ func toolSessionUsed(s *memory.Store, host, session string, active []memory.Memo
 			}
 			m = got
 		}
-		lines += runes(toolLine(m))
+		lines += runes(toolLine(m, ""))
 	}
 	return max(calls, lines)
 }

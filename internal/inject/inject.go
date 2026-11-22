@@ -156,7 +156,7 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			_ = s.ResetSession(host, session)
 		}
 	}
-	inj := buildBundle(s, cfg, scope, notes)
+	inj := buildBundle(s, cfg, scope, host, session, notes)
 	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
 		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
@@ -177,7 +177,7 @@ func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 	if changed, err := vw.NotCurrent(ids); err != nil || len(changed) == 0 {
 		return Injection{}, false
 	}
-	inj := buildBundle(s, cfg, scope, notes)
+	inj := buildBundle(s, cfg, scope, host, session, notes)
 	var dropped []string
 	for _, id := range ids {
 		if !slices.Contains(inj.MemoryIDs, id) {
@@ -193,14 +193,19 @@ func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 	return inj, true
 }
 
-// buildBundle is a new session-start bundle with the note lines of notes at its end, within MaxSessionStartRunes.
-func buildBundle(s *memory.Store, cfg config.Config, scope string, notes func() []string) Injection {
-	note := noteText(noteLines(notes))
+// buildBundle is a new session-start bundle with the note lines at its end, within MaxSessionStartRunes: the
+// notices of the session start itself (autoNoticeLines) and the lines of notes. It is the only place that
+// tells an automatic replacement and keeps that it was told (Store.SetAutoNoticeAt): a request or a tool call
+// builds no bundle, so the notice is told once, at a session start, and a replay of session starts alone sees the
+// same as a replay of everything.
+func buildBundle(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
+	own, told := autoNoticeLines(s, cfg)
+	note := noteText(append(own, noteLines(notes)...))
 	limit := MaxSessionStartRunes
 	if note != "" {
 		limit -= runes(note) + 1 // 묶음과 안내 줄 사이 줄바꿈
 	}
-	inj := sessionStart(s, cfg, scope, limit)
+	inj := sessionStartFor(s, cfg, scope, limit, host, session)
 	if note != "" {
 		var b strings.Builder
 		b.WriteString(inj.Text)
@@ -215,6 +220,7 @@ func buildBundle(s *memory.Store, cfg config.Config, scope string, notes func() 
 		}
 		inj = inj.done(&b)
 	}
+	told.keep(s, inj.Text)
 	return inj
 }
 
@@ -253,6 +259,12 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	return sessionStart(s, cfg, scope, MaxSessionStartRunes)
 }
 
+// sessionStart is sessionStartFor for a caller with no session: what a request without a bundle takes the
+// session start to put in. It tells no instruction to ask (the session cannot count it once) and keeps nothing.
+func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) Injection {
+	return sessionStartFor(s, cfg, scope, limit, "", "")
+}
+
 // SessionStartInjectionWith is SessionStartInjection; Options carries no choice any more.
 func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, _ Options) Injection {
 	return SessionStartInjection(s, cfg, scope)
@@ -262,11 +274,11 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 // (설계 · orbit-mem 지연 회상 7판 4절).
 const findLine = "[" + Label + " 기억 · 먼저 찾는 곳] 규칙·결정이 일에 닿으면 memory_find로 먼저 찾는다.\n"
 
-// sessionStart is the session start within limit runes (S3-R6, 7판 4절 A층): the core layers, the find
+// sessionStartFor is the session start within limit runes (S3-R6, 7판 4절 A층): the core layers, the find
 // line and the automatic-revert line. The other memories come through the request recall, the tool
 // recall and memory_find (S3-R7). Only recall=on_demand, which has no request recall, fills the rest
 // with confirmed rules in full as before. Nothing with recall=off.
-func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) Injection {
+func sessionStartFor(s *memory.Store, cfg config.Config, scope string, limit int, host, session string) Injection {
 	var inj Injection
 	var b strings.Builder
 	mode := cfg.RecallMode()
@@ -279,6 +291,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 	}
 	pl := at(cfg, scope)
 	vw, _ := s.Viewer()
+	conflicts := newConflictReaderAll(s, cfg, host, session) // 열린 어긋남이 없으면 한 번 읽고 끝이다
 	// 상시 핵심(S3 명세 2.7): user 핵심, 그리고 한 제품 폴더면 그 제품의 핵심. 여러 제품 폴더는 제품 핵심을 넣지 않는다.
 	var core strings.Builder
 	layer := func(scope, heading string) {
@@ -298,6 +311,11 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 			}
 			body.WriteString(entry)
 			used += runes(entry)
+			// 어긋남 줄은 핵심 한도에 세지 않는다: 한도는 사용자가 늘 지키라고 한 글의 몫이고, 이 줄은 그 글을 믿어도 되는지 알린다.
+			if note, info := conflicts.note(m.ID); note != "" {
+				body.WriteString(note)
+				inj.markAsked(info)
+			}
 			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 		}
 		if used > 0 {
@@ -383,11 +401,14 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 	} else {
 		room -= runes(reverts) + 1
 	}
-	recent, recentIDs := recentDecisionsLine(decisions, cfg.RecentDecisions, room-1)
+	recent, recentIDs, recentAsked := recentDecisionsLine(decisions, cfg.RecentDecisions, room-1, conflicts)
 	b.WriteString(find)
 	if recent != "" {
 		b.WriteString(recent + "\n")
 		inj.MemoryIDs = append(inj.MemoryIDs, recentIDs...)
+		for _, info := range recentAsked {
+			inj.markAsked(info)
+		}
 	}
 	if reverts != "" {
 		b.WriteString(reverts + "\n")
@@ -402,13 +423,20 @@ func runes(s string) int { return utf8.RuneCountInString(s) }
 
 // recentDecisionsLine is the titles and ids of up to n decisions, in the order given, on one line of at
 // most min(maxDecisionRunes, room) runes, each title cut to decisionTitleRunes. No body: memory_get has it.
-// It is "" when not even the first fits.
-func recentDecisionsLine(decisions []memory.Memory, n, room int) (string, []string) {
+// A decision with an open conflict carries the note of the newer value in brackets after its id. It is ""
+// when not even the first fits. The notes of the decisions it names come back so the caller marks their
+// questions asked once the line is in.
+func recentDecisionsLine(decisions []memory.Memory, n, room int, conflicts conflictReader) (string, []string, []conflictInfo) {
 	limit := min(maxDecisionRunes, room)
 	line := "[" + Label + " 기억 · 최근 결정] 본문은 memory_get — "
 	var ids []string
+	var infos []conflictInfo
 	for i := 0; i < len(decisions) && i < n; i++ {
 		entry := fmt.Sprintf("%s(%s)", clipTitle(decisions[i].Title, decisionTitleRunes), decisions[i].ID)
+		info, has := conflicts.of(decisions[i].ID)
+		if has {
+			entry += " [" + info.text + "]"
+		}
 		if i > 0 {
 			entry = " · " + entry
 		}
@@ -417,11 +445,14 @@ func recentDecisionsLine(decisions []memory.Memory, n, room int) (string, []stri
 		}
 		line += entry
 		ids = append(ids, decisions[i].ID)
+		if has {
+			infos = append(infos, info)
+		}
 	}
 	if len(ids) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
-	return line, ids
+	return line, ids, infos
 }
 
 // revertLine says how many harmful automatic changes the daily tidy undid lately (효과 원장이
@@ -513,7 +544,7 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 	}
 	b.WriteString(news)
 	if !opts.NewsOnly {
-		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), idSet(bundleIDs), MaxHookRunes-runes(news)))
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), idSet(bundleIDs), host, session, MaxHookRunes-runes(news)))
 	}
 	return inj.done(&b)
 }
@@ -872,8 +903,9 @@ func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Mem
 }
 
 // recallLine is a work recall line: title (80 characters at most), id, kind and state, with the marks of
-// a memory past its review day and of one whose sources are all untrusted (D7).
-func recallLine(m memory.Memory, now time.Time) string {
+// a memory past its review day and of one whose sources are all untrusted (D7). conflict is the note line of
+// a memory with an open conflict (conflictInfo.line), "" for one without; it goes right under the title line.
+func recallLine(m memory.Memory, now time.Time, conflict string) string {
 	state := "확정"
 	if m.State == memory.StateCandidate {
 		state = "후보"
@@ -884,7 +916,7 @@ func recallLine(m memory.Memory, now time.Time) string {
 	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
 		state += " · " + note
 	}
-	return fmt.Sprintf("- %s — %s · %s %s\n", clipTitle(m.Title, recallTitleRunes), m.ID, kindName(m.Kind), state)
+	return fmt.Sprintf("- %s — %s · %s %s\n", clipTitle(m.Title, recallTitleRunes), m.ID, kindName(m.Kind), state) + conflict
 }
 
 // recallEntries is the work recall of a request (B1, 설계 5.1 5단계): the heading, then at most
@@ -892,7 +924,7 @@ func recallLine(m memory.Memory, now time.Time) string {
 // how to find them, and under the first memory line one summary line (its body's start). All of it
 // stays within cfg.PromptRecallChars and limit. Memories already named in this injection or told in
 // the session are left out; what it lists is marked shown.
-func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told, held map[string]bool, limit int) string {
+func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told, held map[string]bool, host, session string, limit int) string {
 	skip := map[string]bool{}
 	for id := range told {
 		skip[id] = true
@@ -925,6 +957,14 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		domainAt[d] = len(items)
 		items = append(items, item{domain: d, ids: []string{h.Memory.ID}})
 	}
+	// 어긋남은 줄로 실릴 기억(앞 maxRecallLines개)만 한 번에 읽는다: 어긋남이 없으면 질의 하나가 늘 뿐이다.
+	var shownIDs []string
+	for _, it := range items {
+		if it.domain == "" && len(shownIDs) < maxRecallLines {
+			shownIDs = append(shownIDs, it.m.ID)
+		}
+	}
+	conflicts := newConflictReader(s, cfg, host, session, shownIDs)
 	budget := min(cfg.PromptRecallChars(), limit)
 	head := recallHead + "\n"
 	used := runes(head)
@@ -937,6 +977,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 			break
 		}
 		var line string
+		var info conflictInfo // 이 줄이 묻는 쌍: 줄이 실릴 때만 표시한다
 		if it.domain != "" {
 			n := 0
 			for _, m := range byID {
@@ -948,7 +989,9 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 			line = fmt.Sprintf("- 분야 「%s」 신호 %d개 · 가장 맞은 것 「%s」 %s — memory_find tags=%s%s\n",
 				it.domain, n, clipTitle(best.Title, newsTitleRunes), best.ID, memory.DomainPrefix, it.domain)
 		} else {
-			line = recallLine(it.m, now)
+			var note string
+			note, info = conflicts.note(it.m.ID)
+			line = recallLine(it.m, now, note)
 		}
 		if used+runes(line) > budget {
 			break
@@ -962,6 +1005,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		}
 		inj.MemoryIDs = append(inj.MemoryIDs, it.m.ID)
 		inj.mark(memory.MarkShown, it.m.ID)
+		inj.markAsked(info)
 		if first < 0 {
 			first, top = len(lines)-1, it.m
 		}

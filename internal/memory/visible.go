@@ -30,7 +30,8 @@ type Visibility struct {
 	Successor string
 	// ReviewDue is set when the review day has passed. The memory still shows as current.
 	ReviewDue bool
-	// Conflicts holds the newer sides of open conflicts. Not filled yet.
+	// Conflicts holds the ids of the newer values that disagree with the memory, while it is a current value
+	// (명세 C-5). Of fills it only for a Viewer made by WithConflicts, and only for the ids that call named.
 	Conflicts []string
 }
 
@@ -40,9 +41,10 @@ func (v Visibility) Current() bool { return v.Why == WhyCurrent }
 // Viewer judges memories against one reading of the store: the topic heads and the time are fixed when it
 // is made, so a verdict does not change between two calls of one operation. Make a new one per operation.
 type Viewer struct {
-	s     *Store
-	now   time.Time
-	heads TopicHeads
+	s         *Store
+	now       time.Time
+	heads     TopicHeads
+	conflicts map[string][]string // WithConflicts가 한 번에 읽은 열린 어긋남(옛 id → 새 id들)
 }
 
 // Viewer reads the topic heads and the clock (Store.Now) and returns the judge. It only reads. When the
@@ -61,7 +63,26 @@ func (v Viewer) Of(m Memory) Visibility {
 	if next, ok := v.Successor(m); ok {
 		out.Successor = next.ID
 	}
+	if out.Why == WhyCurrent {
+		out.Conflicts = v.conflicts[m.ID] // 이미 읽어 둔 것만 본다: 기억마다 DB를 치지 않는다
+	}
 	return out
+}
+
+// WithConflicts is the Viewer with the open conflicts of ids read in one query (OpenConflictsOf), so Of fills
+// Visibility.Conflicts for them without reading again. Of never reads conflicts itself: a Viewer judges many
+// memories (every live one, on a recall), and a read per memory would cost a query each. A caller that shows
+// a few memories names them here once. When the read fails the Viewer is returned unchanged beside the error.
+func (v Viewer) WithConflicts(ids []string) (Viewer, error) {
+	if v.s == nil { // 만들지 않은 Viewer(순위용 빈 값)는 읽을 곳이 없다
+		return v, nil
+	}
+	got, err := v.s.OpenConflictsOf(ids)
+	if err != nil {
+		return v, err
+	}
+	v.conflicts = got
+	return v, nil
 }
 
 // Why is Of's verdict without the successor, so it reads nothing. A list that only marks which lines are not

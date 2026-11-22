@@ -123,6 +123,11 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 		return ""
 	}
 	now := s.Now()
+	hitIDs := make([]string, len(hits))
+	for i, h := range hits {
+		hitIDs[i] = h.Memory.ID
+	}
+	conflicts := newConflictReader(s, cfg, "", "", hitIDs)
 	head := taskRecallHead + "\n"
 	oldLine := ""
 	if n := oldVersions(s, th, pl, task, found); n > 0 {
@@ -136,7 +141,8 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	entries := make([]entry, 0, len(hits))
 	fixed := runes(head) + runes(oldLine)
 	for _, h := range hits {
-		top := recallLine(h.Memory, now) + reasonLine(h)
+		note, _ := conflicts.note(h.Memory.ID) // 위임에는 세션이 없어 확인 지시는 붙지 않고 새 사실만 나란히 보인다
+		top := recallLine(h.Memory, now, note) + reasonLine(h)
 		if fixed+runes(top) > maxTaskRecallRunes {
 			break
 		}
