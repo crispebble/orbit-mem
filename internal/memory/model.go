@@ -98,6 +98,12 @@ type Memory struct {
 	ExpiresAt    int64        `json:"expiresAt,omitempty"`  // 휘발 기억이 회상에서 빠지는 때(Unix ms)
 	Topic        string       `json:"topic,omitempty"`      // 주제 키: 같은 범위·주제는 최신 판만 회상
 	Tools        []string     `json:"tools,omitempty"`      // 도구 트리거: 이 도구(이름 또는 접두*)를 부르기 직전에 회상
+	// Aliases are other words for the same thing (a synonym, another spelling, the English name of a Korean
+	// title) that only help it be found: they are indexed with the topic and tags and counted by the recall
+	// score, but they are not part of the body (its size limit does not count them), and no recall line, find
+	// line or session start carries them. At most MaxAliases of at most MaxAliasRunes each (aliases.go).
+	// Version snapshots and the export keep them; the export leaves the key out when there are none.
+	Aliases []string `json:"aliases,omitempty"`
 	// AppliesTo is the scope as the tools show it (user, repo:<키>, product:<이름>, product:?), read from Scope.
 	AppliesTo string `json:"appliesTo"`
 	// Pinned is the always-on core (상시 핵심): put into every session start of its layer (설계 · orbit-mem 2판 4.4).

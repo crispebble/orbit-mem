@@ -425,7 +425,8 @@ func (c *call) tool() (any, *Error) {
 		top = project.GitTop(c.p.Dir)
 	}
 	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp, Top: top,
-		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin})
+		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin,
+		LoadFindStripParticles: func() bool { return c.cfg.FindStripParticles }})
 	if lvl, _ := c.req.trustLevel(); lvl != "" { // check가 이미 걸러 냈다
 		var lerr error
 		if t, lerr = t.Lower(lvl); lerr != nil {

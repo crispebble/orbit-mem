@@ -84,13 +84,17 @@ func noIndexTable(err error) bool {
 	return strings.Contains(msg, "no such table: memory_index") || strings.Contains(msg, "no such table: memory_fts")
 }
 
-// indexFields are the three FTS texts of a memory.
-func indexFields(title, topic, tags, body string) (string, string, string) {
+// indexFields are the three FTS texts of a memory. The aliases (a JSON array, as the column holds them) go into
+// the second text with the topic and tags, so a word only an alias has finds the memory at the weight of a tag.
+func indexFields(title, topic, tags, aliases, body string) (string, string, string) {
 	var ts []string
 	if json.Unmarshal([]byte(tags), &ts) != nil {
 		ts = []string{tags}
 	}
-	return indexText(title), indexText(strings.Join(append([]string{topic}, ts...), " ")), indexText(body)
+	ts = append([]string{topic}, ts...)
+	// 별칭 칸의 글이 JSON 배열이 아니면 별칭이 없는 것이다(태그처럼 통째로 색인하지 않는다).
+	ts = append(ts, parseAliases(aliases)...)
+	return indexText(title), indexText(strings.Join(ts, " ")), indexText(body)
 }
 
 // indexTx makes memory id's index row match the memory as it is in tx. Without the index tables it does nothing.
@@ -106,8 +110,8 @@ func indexTx(tx execQuerier, id string) error {
 	if err != nil {
 		return err
 	}
-	var title, topic, tags, body, at string
-	if err := tx.QueryRow(`SELECT title, topic, tags, body, CAST(updated_at AS TEXT) FROM memories WHERE id=?`, id).Scan(&title, &topic, &tags, &body, &at); err != nil {
+	var title, topic, tags, aliases, body, at string
+	if err := tx.QueryRow(`SELECT title, topic, tags, aliases, body, CAST(updated_at AS TEXT) FROM memories WHERE id=?`, id).Scan(&title, &topic, &tags, &aliases, &body, &at); err != nil {
 		return err
 	}
 	if rowid.Valid {
@@ -126,7 +130,7 @@ func indexTx(tx execQuerier, id string) error {
 			return err
 		}
 	}
-	ti, ke, bo := indexFields(title, topic, tags, body)
+	ti, ke, bo := indexFields(title, topic, tags, aliases, body)
 	if _, err := tx.Exec(`INSERT INTO memory_fts(rowid, title, keys, body) VALUES(?,?,?,?)`, rowid.Int64, ti, ke, bo); err != nil {
 		return err
 	}

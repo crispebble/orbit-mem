@@ -329,6 +329,10 @@ type SaveInput struct {
 	Supersedes []string
 	// Tools are the tool names or prefixes (ending in *) right before whose call the memory is recalled.
 	Tools []string
+	// Aliases are other words that find the memory (Memory.Aliases). More than MaxAliases, one over
+	// MaxAliasRunes, or one that looks like a secret refuses the save (ErrInvalid). A save of an existing title
+	// does not apply them (SaveReport.FieldsKept says so).
+	Aliases []string
 	// Pin puts the memory into the core of its layer (설계 · orbit-mem 2판 4.4). A save that cannot get it
 	// (not confirmed, not a user or product memory, past the limit) is refused before anything is written.
 	Pin bool
@@ -416,6 +420,9 @@ func (in *SaveInput) validate() error {
 		return err
 	}
 	in.Tools = tools
+	if in.Aliases, err = cleanAliases(in.Aliases); err != nil {
+		return err
+	}
 	if err := in.Idem.validate(); err != nil {
 		return err
 	}
@@ -450,7 +457,7 @@ type SaveReport struct {
 	// change. A save without a body never sets it.
 	BodyKept bool `json:"bodyKept,omitempty"`
 	// FieldsKept names the other fields of that same-title save that were given, differ from the stored
-	// value and were therefore not applied: tags, topic, tools, retention, ttlDays, reviewAfterDays. A field the save
+	// value and were therefore not applied: tags, topic, tools, aliases, retention, ttlDays, reviewAfterDays. A field the save
 	// did not give, or gave with the stored value, is not listed. Change them with Update.
 	FieldsKept []string `json:"fieldsKept,omitempty"`
 	// Rejected is the id of the rejected (hidden) memory whose title the save took when the save could not
@@ -632,7 +639,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		}
 	}
 	m := Memory{ID: NewID("m-"), Kind: in.Kind, Scope: in.Scope, Project: in.Project, State: state, Title: in.Title,
-		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID, Tools: in.Tools}
+		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID, Tools: in.Tools, Aliases: in.Aliases}
 	in.lifecycle(&m, at)
 	var legacy any
 	if in.LegacyID != "" {
@@ -640,8 +647,8 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,legacy_id,
-		retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools)); err != nil {
+		retention,review_days,review_at,expires_at,topic,tools,aliases) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), aliasesJSON(m.Aliases)); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
@@ -711,6 +718,9 @@ func keptFields(cur Memory, in SaveInput, given givenLifecycle) []string {
 	}
 	if len(in.Tools) > 0 && !slices.Equal(sorted(in.Tools), sorted(cur.Tools)) {
 		out = append(out, "tools")
+	}
+	if len(in.Aliases) > 0 && !slices.Equal(sorted(in.Aliases), sorted(cur.Aliases)) {
+		out = append(out, "aliases")
 	}
 	if given.Retention != "" && in.Retention != cur.Retention { // in.Retention is the checked class of the given name
 		out = append(out, "retention")
@@ -845,9 +855,9 @@ func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=?,
-		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,pinned=? WHERE id=?`,
+		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,aliases=?,pinned=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.Pinned, m.ID); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), aliasesJSON(m.Aliases), m.Pinned, m.ID); err != nil {
 		return err
 	}
 	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 고친 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
@@ -869,15 +879,16 @@ type querier interface {
 }
 
 const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,''),
-	retention,review_days,review_at,expires_at,topic,tools,pinned`
+	retention,review_days,review_at,expires_at,topic,tools,pinned,aliases`
 
 func scanMemory(row interface{ Scan(...any) error }) (Memory, error) {
 	var m Memory
-	var tags, tools string
+	var tags, tools, aliases string
 	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID,
-		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools, &m.Pinned); err != nil {
+		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools, &m.Pinned, &aliases); err != nil {
 		return m, err
 	}
+	m.Aliases = parseAliases(aliases)
 	m.AppliesTo = place.AppliesTo(m.Scope)
 	_ = json.Unmarshal([]byte(tools), &m.Tools)
 	if len(m.Tools) == 0 {
@@ -955,6 +966,7 @@ type UpdateInput struct {
 	Body            *string
 	Tags            *[]string
 	Tools           *[]string // 도구 트리거를 바꾼다(빈 목록이면 없앤다)
+	Aliases         *[]string // 별칭을 통째로 바꾼다(빈 목록이면 비운다). 한도를 넘으면 ErrInvalid(aliases.go)
 	Scope           *string
 	Project         *string
 	Topic           *string // 주제를 바꾼다(이전 계획, S4)
@@ -1071,6 +1083,13 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 			return m, err
 		}
 		m.Tools = tools
+	}
+	if in.Aliases != nil {
+		aliases, err := cleanAliases(*in.Aliases)
+		if err != nil {
+			return m, err
+		}
+		m.Aliases = aliases
 	}
 	if in.Scope != nil {
 		if !validScope(*in.Scope) {

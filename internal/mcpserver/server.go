@@ -66,6 +66,10 @@ type Options struct {
 	// (config autoMode, 명세 C-9) applies from the next save of a long-lived server. Unset, the store's
 	// Policy (read when the store was opened) decides.
 	LoadPolicy func() memory.Policy
+	// LoadFindStripParticles, when set, says on every memory_find whether the stems of the query's words are
+	// added (config findStripParticles, 명세 Q-2), so a long-lived server follows config.json. Unset, they are
+	// not (the setting's default).
+	LoadFindStripParticles func() bool
 	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
 	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
 	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1). With the run id,
@@ -314,7 +318,11 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	// stale을 주면 상태가 후보·확정이어도 만료됐거나 옛 버전인 기억까지 나온다(명세 F-3). 현재 값은 요청한 상태일 때만 나온다.
 	withStale := slices.Contains(in.States, memory.StateStale)
 	marked := withStale || slices.Contains(in.States, memory.StateHidden)
-	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
+	query := in.Query
+	if h.o.LoadFindStripParticles != nil && h.o.LoadFindStripParticles() {
+		query = memory.StripParticlesQuery(query)
+	}
+	f := memory.FindInput{Query: query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
 	switch in.Scope {
 	case "", "here":
 		here := h.o.here()
@@ -359,6 +367,9 @@ type GetIn struct {
 type GetOut struct {
 	Items   []MemoryView                `json:"items"`
 	History map[string][]memory.Version `json:"history,omitempty"`
+	// Aliases are the aliases of the memories that have some, by id, only for a read with full: the default
+	// view is cut to its budget (view.go), which aliases would exceed.
+	Aliases map[string][]string `json:"aliases,omitempty"`
 }
 
 func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp.CallToolResult, GetOut, error) {
@@ -382,6 +393,12 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 			successor = v.Superseding(m)
 		}
 		out.Items = append(out.Items, memoryView(m, noticeOf(m, vis.Why, successor), peers, in.Full))
+		if in.Full && len(m.Aliases) > 0 {
+			if out.Aliases == nil {
+				out.Aliases = map[string][]string{}
+			}
+			out.Aliases[id] = m.Aliases
+		}
 		if in.History {
 			if out.History == nil {
 				out.History = map[string][]memory.Version{}
@@ -430,6 +447,8 @@ type SaveIn struct {
 	Title string   `json:"title" jsonschema:"200자 이하"`
 	Body  string   `json:"body,omitempty" jsonschema:"규칙·결정은 1,000자 이하"`
 	Tags  []string `json:"tags,omitempty"`
+	// Aliases are other words that find the memory (memory.Memory.Aliases): they are not counted in the body's size.
+	Aliases []string `json:"aliases,omitempty" jsonschema:"찾기용 다른 말·표기. 10개 이하, 각 50자 이하"`
 	// AppliesTo is 설계 · orbit-mem 2판 4.1 (S3 명세 2.4).
 	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"규칙은 필수(사람의 일하는 방식은 대개 user). user·product[:이름|:?]·repo[:키]. 비우면 폴더 기준"`
 	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
@@ -718,13 +737,17 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, SaveOut{}, nil
 	}
+	if err := checkAliases(in.Aliases); err != nil {
+		r, _ := toolError(err)
+		return r, SaveOut{}, nil
+	}
 	if err := h.checkTopic(in, scope); err != nil {
 		r, _ := toolError(err)
 		return r, SaveOut{}, nil
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
-		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin,
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Aliases: in.Aliases, Pin: in.Pin,
 		Session: h.o.Session}
 	// 사용자 말 대조(S-4)는 Screen보다 먼저 한다: Screen은 사용자 말 출처를 달리 다룬다(진행 상황 거부를 면하고 발췌를
 	// 치환하지 않는다). 기록에 없어 session으로 낮춘 출처는 AI 출처로 걸러야 한다.
@@ -951,7 +974,7 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	return out, nil
 }
 
-// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic and tools of
+// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic, tools and aliases of
 // the save (what the save leaves empty stays) by the Update path, so the user's words are kept by the same
 // guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
 // the userQuote of the change (D1).
@@ -982,6 +1005,9 @@ func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveO
 	}
 	if si.Tools != nil {
 		u.Tools = &si.Tools
+	}
+	if len(si.Aliases) > 0 {
+		u.Aliases = &si.Aliases
 	}
 	if si.Topic != "" {
 		u.Topic = &si.Topic
@@ -1039,6 +1065,21 @@ func (h handlers) skip(id string, si memory.SaveInput) (SaveOut, error) {
 // maxClaimRunes bounds the body of a rule or decision: one memory holds one claim, so a
 // later value replaces all of it (설계 · orbit-mem 2판 4.3.1, AC-9).
 const maxClaimRunes = 1000
+
+// checkAliases refuses aliases past the limits or with a secret in them, with the reason (the domain would
+// refuse them too, without one): they are never cut silently.
+func checkAliases(aliases []string) error {
+	kept, trimmed := memory.NormalizeAliases(aliases)
+	if trimmed {
+		return fmt.Errorf("%w: aliases는 %d개 이하, 각 %d자 이하, 제어 문자 없이 적습니다", memory.ErrInvalid, memory.MaxAliases, memory.MaxAliasRunes)
+	}
+	for _, a := range kept {
+		if memory.MaskSecrets(a) != a {
+			return fmt.Errorf("%w: aliases에 비밀값이 있습니다", memory.ErrInvalid)
+		}
+	}
+	return nil
+}
 
 func (h handlers) checkClaim(kind, body string) error {
 	if (kind == memory.KindRule || kind == memory.KindDecision) && utf8.RuneCountInString(body) > maxClaimRunes {
@@ -1118,13 +1159,14 @@ type UpdateIn struct {
 	Reason          string     `json:"reason,omitempty"`
 	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억 변경·후보 확정 때 그 말"`
 	Tools           *[]string  `json:"tools,omitempty" jsonschema:"도구 트리거(빈 목록이면 없앰)"`
+	Aliases         *[]string  `json:"aliases,omitempty" jsonschema:"별칭을 통째로 바꿈(빈 목록이면 비움). 지금 값은 get full"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"함께 읽을 기억"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다"`
 }
 
 // edits says whether the update changes the memory itself (not only its links).
 func (in UpdateIn) edits() bool {
-	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Scope != "" || in.AppliesTo != "" || in.SupersededBy != ""
+	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Aliases != nil || in.Scope != "" || in.AppliesTo != "" || in.SupersededBy != ""
 }
 
 func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn) (*mcp.CallToolResult, MemoryOut, error) {
@@ -1153,7 +1195,13 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
-		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Tools: in.Tools, Reason: in.Reason, Action: in.Action,
+		if in.Aliases != nil {
+			if err := checkAliases(*in.Aliases); err != nil {
+				r, _ := toolError(err)
+				return r, MemoryOut{}, nil
+			}
+		}
+		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Tools: in.Tools, Aliases: in.Aliases, Reason: in.Reason, Action: in.Action,
 			Who: h.o.who(in.UserQuote, "")}
 		if in.Body != nil || in.Kind != nil { // 고친 뒤의 종류·본문으로 본다
 			if cur, gerr := h.s.Get(in.ID); gerr == nil {

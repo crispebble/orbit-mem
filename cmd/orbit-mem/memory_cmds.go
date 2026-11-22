@@ -115,6 +115,8 @@ func cmdMCP(a *app, args []string) error {
 			}
 			return s.Policy
 		},
+		// 찾기 질의의 조사 떼기(Q-2)도 찾을 때마다 설정을 다시 읽는다. 읽지 못하면 기본값(끔)이다.
+		LoadFindStripParticles: findStripParticlesOf,
 		// 저장의 세션(E-1): 호스트가 준 세션 id, 없으면 이 서버 실행 하나를 세션으로 본다(실행마다 새 id).
 		// 한계: 그때 같은 대화에서 서버가 다시 뜨면 다른 세션으로 세어지고, 확정을 막는 것은 날 조건뿐이다.
 		Session: firstNonEmpty(claudecode.MCPSession(os.Getenv), "run-"+memory.NewID(""))})

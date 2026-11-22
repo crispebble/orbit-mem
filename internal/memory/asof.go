@@ -65,6 +65,7 @@ type versionSnapshot struct {
 	SupersededBy string   `json:"supersededBy"`
 	StaleReason  string   `json:"staleReason"`
 	Pinned       bool     `json:"pinned"`
+	Aliases      []string `json:"aliases"`
 }
 
 type timedRow struct {
@@ -314,13 +315,14 @@ func (h *History) rowAt(m *memHistory, v int) []any {
 		tags = []string{}
 	}
 	tagsJSON, _ := json.Marshal(tags)
+	aliases := aliasesJSON(snap.Aliases)
 	pinned := 0
 	if snap.Pinned {
 		pinned = 1
 	}
 	set := map[string]any{"kind": snap.Kind, "scope": snap.Scope, "state": snap.State, "title": snap.Title, "title_key": TitleKey(snap.Title),
 		"body": snap.Body, "tags": string(tagsJSON), "version": int64(snap.Version), "updated_at": snap.UpdatedAt,
-		"superseded_by": snap.SupersededBy, "stale_reason": snap.StaleReason, "pinned": int64(pinned)}
+		"superseded_by": snap.SupersededBy, "stale_reason": snap.StaleReason, "pinned": int64(pinned), "aliases": aliases}
 	for i, c := range h.cols["memories"] {
 		if v, ok := set[c]; ok {
 			row[i] = v
