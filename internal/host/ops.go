@@ -254,6 +254,20 @@ func (c *call) statesOf(ids []string) map[string]string {
 	return states
 }
 
+// utterance keeps what a person said (words, as inject.PersonWords told them from the host's blocks) for
+// the check of the user's words a memory_save quote gets (S-4): only the hashes of its pieces are kept.
+// It is written at once, before the recall is computed, not in the record stage: the record stage is
+// skipped when the computing runs past the time limit, and a quote of words not kept is not taken as the
+// user's. It runs even when opening the DB ran past the limit (the store is there; a DB this binary does
+// not read has none). A record that cannot be written is dropped; that quote is then saved as a candidate
+// with a notice.
+func (c *call) utterance(words string) {
+	if c.store == nil {
+		return
+	}
+	_ = c.store.RecordUtterance(c.req.Host, words)
+}
+
 // activity keeps the session in the activity log (under the session, not the subagent).
 func (c *call) activity(kind, prompt string) {
 	c.after = append(c.after, func() {
@@ -346,7 +360,9 @@ func (c *call) recall() (any, *Error) {
 	if !trivial { // 요청 회상이 돌지 않으면 요청 회상 사용도 아니다
 		c.request = text
 	}
-	if out, err, done := c.openRecall(limit); done {
+	out, err, done := c.openRecall(limit)
+	c.utterance(words) // 열기가 한도를 넘겼어도(c.store가 있으면) 남긴다
+	if done {
 		return out, err
 	}
 	c.relocate(false)

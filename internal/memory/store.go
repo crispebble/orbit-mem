@@ -349,6 +349,15 @@ type SaveInput struct {
 	// known, counted with the sightings of before schema 6 as one session, so saves that bring none never make
 	// "another session" among themselves.
 	Session string
+	// QuoteMatched says the quote source was checked as the user's own words: its excerpt was found in the
+	// user's recorded utterances (MatchQuote QuoteMatched), or the save came by a person's own channel. Only
+	// such a quote brings back a rejected (hidden) memory of the same title, confirmed (S-2). A quote without
+	// it is still the user's words for everything else (an unchecked host keeps the old behavior, S-4).
+	QuoteMatched bool
+	// QuoteAt is when the user said the checked quote: the record time (Unix ms) of the latest utterance it
+	// matched (MatchQuote), or now for a person's own channel. A rejected memory comes back only by words said
+	// after it was rejected, at least quoteMinWords words long.
+	QuoteAt int64
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -414,8 +423,10 @@ func (in *SaveInput) validate() error {
 // title (same kind and scope) again adds the source, the session and the day. A candidate
 // with evidence (seen in different sessions on different days, followed in verified work, a project
 // fact the work's verification checked) is then confirmed automatically and
-// the confirmation kept in the ledger (A2). A hidden (rejected) candidate
-// stays hidden unless the new source is the user's own quote.
+// the confirmation kept in the ledger (A2). A save of the title of a hidden (rejected) memory writes
+// nothing and reports it (SaveReport.Rejected), unless its source is the user's quote checked against what
+// the user said after the rejection (SaveInput.QuoteMatched, QuoteAt), of at least three words: that brings
+// the memory back, confirmed (S-2).
 func (s *Store) Save(in SaveInput) (Memory, error) {
 	m, _, err := s.SaveWith(in)
 	return m, err
@@ -435,6 +446,14 @@ type SaveReport struct {
 	// value and were therefore not applied: tags, topic, tools, retention, ttlDays, reviewAfterDays. A field the save
 	// did not give, or gave with the stored value, is not listed. Change them with Update.
 	FieldsKept []string `json:"fieldsKept,omitempty"`
+	// Rejected is the id of the rejected (hidden) memory whose title the save took when the save could not
+	// bring it back, and NotRevived says why: nothing was written, and the memory returned is that hidden
+	// one as it was (S-2).
+	Rejected   string        `json:"rejected,omitempty"`
+	NotRevived ReviveRefusal `json:"notRevived,omitempty"`
+	// Revived is true when the save brought a rejected memory of its title back, confirmed. Its body stays
+	// the one it had (BodyKept says the save brought another).
+	Revived bool `json:"revived,omitempty"`
 
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
@@ -450,7 +469,7 @@ type SaveReport struct {
 // memory (the user said it is for now) does not replace its topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
-	if err != nil || rep.Replayed != nil { // 다시 온 키: 이번에는 아무것도 쓰지 않았다
+	if err != nil || rep.Replayed != nil || rep.Rejected != "" { // 다시 온 키·거절된 제목: 이번에는 아무것도 쓰지 않았다
 		return m, rep, err
 	}
 	for _, id := range rep.Superseded {
@@ -545,7 +564,24 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			in.Kind, in.Scope, key).Scan(&existingID)
 	}
 	if existingID != "" {
-		if err := sightTx(tx, existingID, in.Source, in.Session, day, now); err != nil {
+		prev, err := getTx(tx, existingID)
+		if err != nil {
+			return Memory{}, rep, err
+		}
+		revive := false
+		if prev.State == StateHidden {
+			why, err := reviveRefusal(tx, existingID, in)
+			if err != nil {
+				return Memory{}, rep, err
+			}
+			if why != "" {
+				// 거절된 기억에 출처만 더하고 성공으로 답하던 길을 닫는다(S-2): 아무것도 쓰지 않고(멱등 키도) 알린다.
+				rep.Rejected, rep.NotRevived = existingID, why
+				return prev, rep, nil
+			}
+			revive = true
+		}
+		if err := sightTx(tx, existingID, in.Source, in.Session, day, now, revive); err != nil {
 			return Memory{}, rep, err
 		}
 		cur, err := getTx(tx, existingID)
@@ -563,6 +599,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			rep.BodyKept = true
 		}
 		rep.FieldsKept = keptFields(cur, in, given)
+		rep.Revived = revive
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -714,9 +751,10 @@ func recordSightingTx(tx *sql.Tx, id, session, day string, now int64) error {
 }
 
 // sightTx records that memory id came up again in session on day with src. A quote of
-// the user confirms it; the evidence of the other sessions and days is checked after the
+// the user confirms a candidate, and a rejected (hidden) memory too when revive says the quote was
+// checked (S-2); the evidence of the other sessions and days is checked after the
 // transaction (ConfirmByEvidence), so the confirmation is in the ledger.
-func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64) error {
+func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64, revive bool) error {
 	m, err := getTx(tx, id)
 	if err != nil {
 		return err
@@ -727,9 +765,12 @@ func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64) 
 	if err := recordSightingTx(tx, m.ID, session, day, now); err != nil {
 		return err
 	}
-	next := m.State
-	if src.Kind == SourceQuote && m.State == StateCandidate {
+	next, reason := m.State, "다시 나옴: "+day
+	switch {
+	case src.Kind == SourceQuote && m.State == StateCandidate:
 		next = StateConfirmed
+	case src.Kind == SourceQuote && m.State == StateHidden && revive:
+		next, reason = StateConfirmed, "사용자 말로 다시 저장해 되살림: "+day
 	}
 	action := "seen"
 	if next != m.State {
@@ -738,7 +779,7 @@ func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64) 
 	}
 	m.Version++
 	m.UpdatedAt = now
-	return writeTx(tx, m, action, "다시 나옴: "+day, now)
+	return writeTx(tx, m, action, reason, now)
 }
 
 // AddSource attaches another source to an existing memory without a new version.
@@ -771,11 +812,7 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if at == 0 {
 		at = now
 	}
-	excerpt := MaskSecrets(src.Excerpt)
-	if len(excerpt) > 8<<10 {
-		excerpt = truncateBytes(excerpt, 8<<10)
-	}
-	src.Excerpt = excerpt
+	src.Excerpt, _ = storedExcerpt(src.Excerpt) // MatchQuote가 대조하는 것과 같은 발췌
 	return insertSourceTx(tx, NewID("s-"), id, src, at)
 }
 
