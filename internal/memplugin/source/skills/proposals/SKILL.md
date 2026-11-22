@@ -15,7 +15,7 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 
 | `status` | 보이는 것 |
 | --- | --- |
-| `audit` (기본) | 감사 목록: 최근 자동 확정·자동 정리·고치기와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 사용자 규칙과 어긋나는 후보, 기준을 넘은 반복 교정·하네스 개선 후보 |
+| `audit` (기본) | 감사 목록: 최근 자동 확정·자동 정리·고치기와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 자동 대체(되돌리기)와 사용자 규칙과 어긋나는 후보, 재검토 후보, 기준을 넘은 반복 교정·하네스 개선 후보 |
 | `auto` | 자동 변경 |
 | `pending` | 대기열을 없애기 전에 남은 옛 제안과 그 대상 기억. 정리는 `orbit-mem proposals drain` |
 | `approved` · `rejected` · `settled` · `dropped` · `all` | 옛 제안을 그 상태별로, `all`은 전부 |
@@ -25,7 +25,7 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 ## 사용자에게 보이는 순서
 
 1. 감사 목록을 세 묶음으로 보인다. 묶음마다 머리에 이름과 건수를 쓴다.
-   - 자동 변경(`changes`): 종류(confirm·merge·stale·supersede·link·retag·edit·reclassify·apply_file·revert), 제목, 확정이면 증거(`seen_days` 다른 날 다시 나옴, `followed_verified` 검증된 일에서 따름, `verified_fact` 작업이 검증한 사실), 효과 판정(관찰 중·도움됨·해로움·효과 없음·섞임), 날짜. 해로움으로 판정돼 스스로 되돌린 것(`autoReverted`)은 따로 짚는다.
+   - 자동 변경(`changes`): 종류(confirm·merge·stale·supersede·link·retag·edit·reclassify·apply_file·revert), 제목, 확정이면 증거(`seen_days` 세션도 날도 다른 두 번 나옴, `followed_verified` 검증된 일에서 따름, `verified_fact` 서버가 근거를 다시 확인한 검증 사실), 효과 판정(관찰 중·도움됨·해로움·효과 없음·섞임), 날짜. 해로움으로 판정돼 스스로 되돌린 것(`autoReverted`)은 따로 짚는다.
    - 어긋남(`conflicts`): 후보 제목과 어긋나는 사용자 규칙 제목, 표시한 쪽과 이유.
    - 반복 교정(`corrections`): 대상(기억·스킬·역할), 교정이 나온 세션 수와 기준, 최근 사용자 말. 스킬·역할, 서로 다른 작업 여럿에서 나온 절차(`procedure`)면 「하네스 개선 후보」로 짚는다(고치는 일은 orbit-code 개발 과정이다. 이 PC에서는 교정을 기억으로 바로 따른다).
    - 기준 횟수(`policy`)가 사용자 결정 대기(`policyPending`)면 그 사실을 한 줄로 알린다.
