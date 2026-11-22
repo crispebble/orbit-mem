@@ -346,12 +346,28 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	if marked {
 		v, _ = h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠지고 폐기·만료 표시는 그대로다
 	}
+	// 어긋남은 보인 기억 전부를 질의 하나로 읽는다(C-5). 읽지 못하면 표시만 빠진다.
+	ids := make([]string, len(ms))
+	for i, m := range ms {
+		ids[i] = m.ID
+	}
+	// 새 쪽은 보임 판정을 지나고 지금 자리에서 보이는 범위일 때만 싣는다(memory.Viewer.ShownSides). 어긋남이 없으면 주제 머리는
+	// 읽지 않는다.
+	sides, _ := h.s.OpenConflictSides(ids)
+	var cv memory.Viewer
+	if len(sides) > 0 {
+		cv, _ = h.s.Viewer()
+		cv = cv.WithConflictSides(sides)
+	}
 	for _, m := range ms {
-		note := ""
+		note, conflict := "", ""
 		if marked {
 			note = whyNote(v.Why(m))
 		}
-		out.Items = append(out.Items, findItem(m, detail, note))
+		if note == "" && len(sides) > 0 { // 현재 값에만 붙인다
+			conflict = conflictNote(cv.ShownSides(m.ID, f.Place))
+		}
+		out.Items = append(out.Items, findItemWith(m, detail, note, conflict))
 	}
 	return nil, out, nil
 }
@@ -381,6 +397,7 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 	// 판정기는 호출마다 만든다: 만든 시각과 주제 머리가 고정되므로 오래 사는 서버가 쥐지 않는다.
 	v, _ := h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠진다
 	peers := h.peers(v)
+	cv, _ := v.WithConflicts(in.IDs) // 어긋남은 읽을 기억 전부를 질의 하나로 읽는다(C-5). 연결의 상대에는 붙이지 않는다
 	for _, id := range in.IDs {
 		m, err := h.s.Get(id)
 		if err != nil {
@@ -392,7 +409,11 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		if vis.Why == memory.WhyOlder {
 			successor = v.Superseding(m)
 		}
-		out.Items = append(out.Items, memoryView(m, noticeOf(m, vis.Why, successor), peers, in.Full))
+		conflict := ""
+		if vis.Why == memory.WhyCurrent { // 읽는 id마다 범위는 보지 않는다: id로 직접 읽는 도구라 보임 판정만 본다
+			conflict = conflictNote(cv.ShownSides(m.ID, nil))
+		}
+		out.Items = append(out.Items, memoryViewWith(m, noticeOf(m, vis.Why, successor), conflict, peers, in.Full))
 		if in.Full && len(m.Aliases) > 0 {
 			if out.Aliases == nil {
 				out.Aliases = map[string][]string{}

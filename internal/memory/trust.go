@@ -138,8 +138,11 @@ func noTrustColumn(err error) bool {
 // default), so the usual row is the one older versions write. Without the column a raised trust (owner on
 // a source that is not a quote) is kept as the kind's, and a lowered one is refused (ErrTrustNotStored).
 func insertSourceTx(ex execQuerier, srcID, memoryID string, src Source, at int64) error {
-	if err := insertSourceRowTx(ex, srcID, memoryID, src, at); err != nil || !src.Rechecked {
+	if err := insertSourceRowTx(ex, srcID, memoryID, src, at); err != nil {
 		return err
+	}
+	if !src.Rechecked {
+		return nil
 	}
 	// 서버가 다시 확인한 출처만 표시한다(C-1·E-4). 열이 없는 DB(스키마 6 전의 사본을 연 채 되돌린 것)는 표시 없이 남긴다:
 	// 확인하지 않은 출처로 읽히는 쪽이 안전하다.

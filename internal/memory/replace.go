@@ -15,7 +15,9 @@ package memory
 //   - 표에 없는 조합은 어긋남이다: 표를 빠뜨려도 사용자 말이 밀려나지 않는다.
 
 import (
+	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -216,3 +218,118 @@ func (s *Store) autoMode(in SaveInput) bool {
 // blockRevertedReplace is why confirmBlocked stops a memory the person put back to candidate by undoing its
 // automatic replacement of another (C-3).
 const blockRevertedReplace = "reverted_replace"
+
+// AutoSupersede is one automatic replacement of a user's fact (replace.go OutcomeAutoSupersede) as the session
+// start tells it: the old and new memory with the titles they have now (the old one's from before the change).
+type AutoSupersede struct {
+	LedgerID string
+	At       int64
+	OldID    string
+	OldTitle string
+	Scope    string // 옛 기억의 범위: 알림은 그 기억이 보이는 자리에서만 낸다
+	Project  string
+	NewID    string
+	NewTitle string // 새 기억을 읽을 수 없으면(지웠다) ""
+}
+
+// metaAutoNoticeAt is the prefix of the meta keys that keep, per scope, the time (ms) of the newest automatic
+// replacement a session start told there. metaAutoNoticeFloor keeps the time up to which the ledger was found to
+// hold no automatic replacement at all.
+const (
+	metaAutoNoticeAt    = "notice.auto_supersede_at:"
+	metaAutoNoticeFloor = "notice.auto_supersede_floor"
+)
+
+// AutoNoticeAt is the time (ms) up to which automatic replacements of memories in scope were told at a session
+// start, 0 when none was. The mark is per scope: a session in one project telling its own replacements must not
+// use up the notice of another project's.
+func (s *Store) AutoNoticeAt(scope string) int64 {
+	n, _ := strconv.ParseInt(s.Meta(metaAutoNoticeAt+scope), 10, 64)
+	return n
+}
+
+// SetAutoNoticeAt keeps that the automatic replacements of scope up to at (ms) were told. Only a real session
+// start (a bundle kept for a session) sets it: a request or a tool call never does, so the notice is told at the
+// next session start and then not again (명세 C-2).
+func (s *Store) SetAutoNoticeAt(scope string, at int64) error {
+	return s.SetMeta(metaAutoNoticeAt+scope, strconv.FormatInt(at, 10))
+}
+
+// AutoSupersedesUnnoticed lists the automatic replacements a session start has not told yet where sees says the
+// old memory shows (the session's place), oldest first: each one newer than the mark of its own scope
+// (AutoNoticeAt). It reads the ledger only past the floor, and a ledger found to hold no automatic replacement
+// at all moves the floor to now, so a DB that never had one is not scanned again at every session start.
+func (s *Store) AutoSupersedesUnnoticed(sees func(scope, project string) bool) ([]AutoSupersede, error) {
+	floor, _ := strconv.ParseInt(s.Meta(metaAutoNoticeFloor), 10, 64)
+	all, err := s.AutoSupersedesSince(floor)
+	if err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		_ = s.SetMeta(metaAutoNoticeFloor, strconv.FormatInt(s.nowMs(), 10))
+		return nil, nil
+	}
+	marks := map[string]int64{}
+	var out []AutoSupersede
+	for _, a := range all {
+		if !sees(a.Scope, a.Project) {
+			continue
+		}
+		at, ok := marks[a.Scope]
+		if !ok {
+			at = s.AutoNoticeAt(a.Scope)
+			marks[a.Scope] = at
+		}
+		if a.At > at {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// AutoSupersedesSince lists the automatic replacements of a user's fact made after at (ms), in any scope, oldest first, that
+// the person has not undone: the ones the next session start tells (명세 C-2). It is the supersede lines of the
+// ledger kept as auto whose proposal names the new memory (Payload.NewID), so the daily tidy's own automatic
+// changes are not among them.
+func (s *Store) AutoSupersedesSince(at int64) ([]AutoSupersede, error) {
+	rows, err := s.db.Query(`SELECT `+prefixed("l.", ledgerCols)+`, p.title, p.payload FROM ledger l JOIN proposals p ON p.id=l.proposal_id
+		WHERE p.status=? AND p.kind=? AND l.at>? AND l.revert_of='' AND l.reverted_by='' ORDER BY l.at, l.rowid`, StatusAuto, ProposalSupersede, at)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AutoSupersede
+	for rows.Next() {
+		var title, payload string
+		e, err := scanLedgerWith(rows, &title, &payload)
+		if err != nil {
+			return nil, err
+		}
+		var pl Payload
+		if json.Unmarshal([]byte(payload), &pl) != nil || pl.NewID == "" || len(e.Targets) == 0 {
+			continue
+		}
+		a := AutoSupersede{LedgerID: e.ID, At: e.At, OldID: e.Targets[0], NewID: pl.NewID}
+		if len(e.Before.Memories) > 0 {
+			b := e.Before.Memories[0]
+			a.OldTitle, a.Scope, a.Project = b.Title, b.Scope, b.Project
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if m, err := getTx(s.db, out[i].NewID); err == nil {
+			out[i].NewTitle = m.Title
+		}
+	}
+	return out, nil
+}
+
+// MarkConflictAsk is the session mark kind of an instruction to ask the user about a conflict that a recall line
+// has already given. The mark's id is the pair, ConflictPairKey: a pair is asked once a session.
+const MarkConflictAsk = "conflict.ask"
+
+// ConflictPairKey is the session mark id of the conflict between an old memory and a newer value.
+func ConflictPairKey(oldID, newID string) string { return oldID + ">" + newID }

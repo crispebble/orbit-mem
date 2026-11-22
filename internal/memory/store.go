@@ -497,6 +497,10 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	if !in.Pin {
 		m, rep.Unpinned = s.inheritPin(m, rep.Superseded, in.Who)
 	}
+	// 사용자 말 출처가 어긋남 쌍의 어느 쪽에 붙었으면 사람이 고른 것이라 쌍을 푼다(settleConflictsAfterQuote).
+	if in.Source.Kind == SourceQuote && s.settleConflictsAfterQuote(m.ID, in.Source.Excerpt) {
+		m, _ = s.Get(m.ID)
+	}
 	if m.State != StateCandidate {
 		return m, rep, nil
 	}
@@ -1135,7 +1139,28 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		// 사람이 확정을 후보로 내렸다: 자동화가 같은 증거로 다시 확정하지 않게 보류로 남긴다(사람이 확정하면 풀린다).
 		s.holdConfirm(m.ID, in.Who)
 	}
+	// 사용자 말(사용자 말 출처나 함께 준 말)이 어긋남 쌍의 어느 쪽에 닿았으면 쌍을 푼다(settleConflictsAfterQuote).
+	if quote := userWordsOf(in.Who, srcs); quote != "" {
+		s.settleConflictsAfterQuote(m.ID, quote)
+	}
 	return s.Get(m.ID)
+}
+
+// userWordsOf is the user's words a change carries: the words given with it, else a quote source's excerpt; ""
+// when it carries none.
+func userWordsOf(w Who, srcs []Source) string {
+	if q := w.quote(); q != "" {
+		return q
+	}
+	for _, src := range srcs {
+		if src.Kind == SourceQuote {
+			if q := strings.TrimSpace(src.Excerpt); q != "" {
+				return q
+			}
+			return "사용자 말"
+		}
+	}
+	return ""
 }
 
 // SetState moves a memory to state with a reason.

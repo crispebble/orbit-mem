@@ -113,6 +113,8 @@ type FindItem struct {
 	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
 	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"). A current line has none.
 	Note string `json:"note,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict string `json:"conflict,omitempty"`
 }
 
 // findDetail checks the detail argument of memory_find.
@@ -141,7 +143,13 @@ func findLimit(n int) int {
 // held to findItemBudget serialized runes, whatever the characters are, the note included: the title is cut
 // first, then the applies-to.
 func findItem(m memory.Memory, detail, note string) FindItem {
-	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note,
+	return findItemWith(m, detail, note, "")
+}
+
+// findItemWith is findItem with conflict, the note of a memory with an open conflict (conflictNote, "" for none),
+// held to the same budget.
+func findItemWith(m memory.Memory, detail, note, conflict string) FindItem {
+	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note, Conflict: conflict,
 		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
 		it.Summary = clip(oneLine(m.Body), findSummaryRunes)
@@ -152,11 +160,29 @@ func findItem(m memory.Memory, detail, note string) FindItem {
 	if jsonLen(it) <= findItemBudget {
 		return it
 	}
+	// 어긋남 칸이 먼저 줄어든다(제목은 기억을 가리키는 것이라 나중이다). 칸의 앞 conflictFloor룬은 남긴다.
+	if conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok && utf8Count(c) >= conflictFloor {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = clip(conflict, conflictFloor)
+	}
 	title := it.Title
 	fits, ok := fitClip(title, findTitleRunes, func(c string) bool { it.Title = c; return jsonLen(it) <= findItemBudget })
 	it.Title = fits
 	if ok {
 		return it
+	}
+	// 제목이 한 글자도 못 들면 어긋남 칸을 바닥 아래로 더 줄인다. 그래도 안 들면 칸을 뺀다(색인 줄의 크기가 앞선다).
+	if it.Conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = ""
 	}
 	applies := it.AppliesTo
 	it.AppliesTo, _ = fitClip(applies, findAppliesRunes, func(c string) bool { it.AppliesTo = c; return jsonLen(it) <= findItemBudget })
@@ -175,6 +201,27 @@ func whyNote(w memory.Why) string {
 		return "옛 버전"
 	}
 	return ""
+}
+
+const (
+	// conflictTitleRunes is how much of the newer value's title a conflict note shows.
+	conflictTitleRunes = 40
+	// conflictFloor is the least of a conflict note a size cut leaves: the words and the start of the title.
+	conflictFloor = 40
+)
+
+// conflictNote is what memory_find and memory_get say beside a current memory that has open conflicts (명세
+// C-5): the newer value that disagrees with it, by title and id, and how many more there are. sides are the
+// newer values already judged shown (memory.Viewer.ShownSides). "" when there are none.
+func conflictNote(sides []memory.Memory) string {
+	if len(sides) == 0 {
+		return ""
+	}
+	note := fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clip(oneLine(sides[0].Title), conflictTitleRunes), sides[0].ID)
+	if n := len(sides) - 1; n > 0 {
+		note += fmt.Sprintf(" 외 %d건", n)
+	}
+	return note
 }
 
 // peerNote is whyNote with the successor, for the other end of a link: "폐기됨, 후계 m-…".
@@ -216,7 +263,9 @@ type SourceView struct {
 type MemoryView struct {
 	// Notice is the warning head of a memory that is not a current value: its state, the reason and the
 	// successor. It is the first field so it comes before the body. A current memory has none.
-	Notice       string       `json:"notice,omitempty"`
+	Notice string `json:"notice,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict     string       `json:"conflict,omitempty"`
 	ID           string       `json:"id"`
 	Kind         string       `json:"kind"`
 	State        string       `json:"state"`
@@ -297,7 +346,13 @@ func linkLines(links []memory.MemoryLink, peer linkPeers, full bool) []string {
 // notice is the warning head (noticeOf, "" for a current value) and title gives the peers' titles and notes
 // on the links. The notice counts toward the budget like any other field, so the body gives way to it.
 func memoryView(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
-	v := MemoryView{Notice: notice, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
+	return memoryViewWith(m, notice, "", title, full)
+}
+
+// memoryViewWith is memoryView with conflict, the note of a memory with an open conflict (conflictNote, "" for
+// none). It counts toward the budget like the notice, so the body gives way to it.
+func memoryViewWith(m memory.Memory, notice, conflict string, title linkPeers, full bool) MemoryView {
+	v := MemoryView{Notice: notice, Conflict: conflict, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {
@@ -359,6 +414,7 @@ func memoryView(m memory.Memory, notice string, title linkPeers, full bool) Memo
 		func() { v.Sources, v.SourcesMore = nil, len(m.Sources) },
 		func() { v.Tags, v.Tools = []string{}, nil },
 		func() { v.StaleReason, v.Topic = "", "" },
+		func() { v.Conflict = clip(v.Conflict, conflictFloor) },
 		func() {
 			v.Title, _ = fitClip(oneLine(m.Title), utf8Count(m.Title), func(c string) bool {
 				w := v

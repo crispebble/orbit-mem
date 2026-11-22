@@ -585,7 +585,38 @@ func undoAutoReplaceTx(tx *sql.Tx, e LedgerEntry, revertID string, now int64, re
 		}
 		res.Changed = append(res.Changed, m.ID)
 	}
-	_, err = tx.Exec(`INSERT OR IGNORE INTO supersede_reverts(old_id, new_id, ledger_id, at) VALUES(?,?,?,?)`, mids[0], m.ID, e.ID, now)
+	if _, err = tx.Exec(`INSERT OR IGNORE INTO supersede_reverts(old_id, new_id, ledger_id, at) VALUES(?,?,?,?)`, mids[0], m.ID, e.ID, now); err != nil {
+		return err
+	}
+	return flagMaskedRevertTx(tx, mids[0], m.ID, now)
+}
+
+// flagMaskedRevertTx opens a conflict between a memory an undo put back (restored, with the reverted automatic
+// replacement's new memory replaced) and the other current value of its scope and topic that still stands over it
+// (another memory replaced the new one meanwhile): the undo brought the old memory back as confirmed, but the
+// topic's head is that other value, so nothing would show the undo had no effect. The newer side is that current
+// value, the old side the restored memory (the shape FlagConflict has). Nothing is opened when no other current
+// value stands over it, or when the pair is already open.
+func flagMaskedRevertTx(tx *sql.Tx, restoredID, revertedNewID string, now int64) error {
+	m, err := getTx(tx, restoredID)
+	if err != nil || m.Topic == "" || (m.State != StateCandidate && m.State != StateConfirmed) {
+		return nil
+	}
+	var other string
+	err = tx.QueryRow(`SELECT id FROM memories WHERE scope=? AND topic=? AND id NOT IN (?,?) AND state IN ('candidate','confirmed')
+		ORDER BY state='confirmed' DESC, created_at DESC, id LIMIT 1`, m.Scope, m.Topic, restoredID, revertedNewID).Scan(&other)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM audit_flags WHERE kind=? AND resolved_at=0 AND ((memory_id=? AND other_id=?) OR (memory_id=? AND other_id=?))`,
+		FlagConflict, other, restoredID, restoredID, other).Scan(&n); err != nil || n > 0 {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO audit_flags(id,kind,memory_id,other_id,note,actor,at) VALUES(?,?,?,?,?,?,?)`, NewID("f-"), FlagConflict, other, restoredID,
+		"되돌린 자동 대체의 옛 기억이 같은 자리·주제의 다른 현재 값에 가려짐: "+m.Scope+" · "+m.Topic, ActorUser, now)
 	return err
 }
 
