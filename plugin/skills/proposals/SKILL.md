@@ -24,10 +24,11 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 
 ## 사용자에게 보이는 순서
 
-1. 감사 목록을 세 묶음으로 보인다. 묶음마다 머리에 이름과 건수를 쓴다.
+1. 감사 목록을 네 묶음으로 보인다. 묶음마다 머리에 이름과 건수를 쓴다.
    - 자동 변경(`changes`): 종류(confirm·merge·stale·supersede·link·retag·edit·reclassify·apply_file·revert), 제목, 확정이면 증거(`seen_days` 세션도 날도 다른 두 번 나옴, `followed_verified` 검증된 일에서 따름, `verified_fact` 서버가 근거를 다시 확인한 검증 사실), 효과 판정(관찰 중·도움됨·해로움·효과 없음·섞임), 날짜. 해로움으로 판정돼 스스로 되돌린 것(`autoReverted`)은 따로 짚는다.
    - 어긋남(`conflicts`): 후보 제목과 어긋나는 사용자 규칙 제목, 표시한 쪽과 이유.
    - 반복 교정(`corrections`): 대상(기억·스킬·역할), 교정이 나온 세션 수와 기준, 최근 사용자 말. 스킬·역할, 서로 다른 작업 여럿에서 나온 절차(`procedure`)면 「하네스 개선 후보」로 짚는다(고치는 일은 orbit-code 개발 과정이다. 이 PC에서는 교정을 기억으로 바로 따른다).
+   - 재검토 후보(`reviewDue`, 전체 수 `reviewDueCount`): 제목과 재검토일. 아직 맞다고 사용자가 말하면 그 말을 `userQuote`로 `memory_update action=reviewed`, 아니면 `action=stale`(낡음)로 한다.
    - 기준 횟수(`policy`)가 사용자 결정 대기(`policyPending`)면 그 사실을 한 줄로 알린다.
    - 대기열을 없애기 전에 남은 옛 제안 수(`pending`)가 있으면 한 줄로 알리고, 정리는 `orbit-mem proposals drain`(먼저 `orbit-mem backup`, 미리 보기는 `--dry-run`)으로 한다고 안내한다.
 2. 사용자의 답을 받은 뒤에만 `proposal_decide`를 부른다. 답을 받기 전에는 부르지 않는다.
@@ -43,7 +44,7 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 
 `note`에 결정 이유를 적는다.
 
-- 자동 변경이 틀렸으면 `decision=revert`, `note`에 사용자가 말한 이유. 이전 판으로 돌아가고(자동 확정은 후보로, 자동 낡음은 다시 살아남), 같은 변경은 자동화가 다시 하지 않는다.
+- 자동 변경이 틀렸으면 `decision=revert`, `note`에 사용자가 말한 이유. 이전 판으로 돌아가고(자동 확정은 후보로, 자동 낡음은 다시 살아남), 같은 변경은 자동화가 다시 하지 않는다. 되돌리는 변경이 사용자 말을 담은 기억(자동 대체의 옛 기억)에 닿으면 사용자가 그렇게 하라고 한 말을 `userQuote`에 그대로 넣어야 한다.
 - 파일 반영(`apply_file`)과 그 되돌리기는 파일만 바꾸고 커밋하지 않는다. 커밋은 사용자가 한다.
 - 어긋남: 후보가 맞으면 `memory_update`(`action=confirm`, 사용자 말을 `userQuote`에), 틀리면 `action=stale`, 문제없다고 하면 `decision=dismiss`(`id`에 `f-…`). 어긋남 표시를 닫을 때는 사용자가 그렇게 하라고 한 말을 `userQuote`에 그대로 넣는다.
 - 반복 교정을 봤다고 하면 `decision=dismiss`(`id`에 `correction:…` 키). 그 뒤 교정만 다시 센다.
