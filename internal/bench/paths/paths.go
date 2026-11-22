@@ -5,10 +5,12 @@ package paths
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
 	"github.com/crispebble/orbit-mem/internal/bench/hostpath"
 	"github.com/crispebble/orbit-mem/internal/bench/legacy"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // Names of the recall paths.
@@ -23,7 +25,7 @@ const (
 // code cannot move the legacy baseline.
 var (
 	hostFactory func(hostpath.Options) bench.Factory = hostpath.FactoryWith
-	legacyEnv   bench.Factory                        = legacy.Env
+	legacyEnv   bench.Factory                        = legacyWithChange
 )
 
 // Names is every recall path, in report order.
@@ -67,4 +69,37 @@ func FactoriesWith(names []string, o Options) ([]bench.Factory, error) {
 		seen[n] = true
 	}
 	return out, nil
+}
+
+// legacyWithChange is the frozen path with the one thing the frozen recall has no part in: moving a memory
+// to stale or hidden between two session starts (Case.Changes), through the same store call the current path
+// uses (memory.Store.SetState, on a connection of its own). The recall, the search and the similar search stay
+// the frozen copy; a case with changes is then measured on both paths instead of being counted as a miss
+// on the one that skipped them.
+func legacyWithChange(db string, set *bench.Set) (bench.Env, error) {
+	env, err := legacy.Env(db, set)
+	if err != nil {
+		return env, err
+	}
+	now := set.At()
+	setNow := env.SetNow
+	env.SetNow = func(t time.Time) {
+		now = t
+		if setNow != nil {
+			setNow(t)
+		}
+	}
+	env.Change = func(id, state string) error {
+		s, err := memory.Open(db)
+		if err != nil {
+			return fmt.Errorf("legacy: change %s: %w", id, err)
+		}
+		defer s.Close()
+		s.Now = func() time.Time { return now }
+		if _, err := s.SetState(id, state, "bench change"); err != nil {
+			return fmt.Errorf("legacy: change %s to %s: %w", id, state, err)
+		}
+		return nil
+	}
+	return env, nil
 }

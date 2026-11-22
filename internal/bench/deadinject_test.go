@@ -11,6 +11,12 @@ import (
 // publicRun runs one recall path over the public set and gives its report, with the ids of the memory keys.
 func publicRun(t *testing.T, name string) (bench.RunReport, *bench.Set, func(key string) string) {
 	t.Helper()
+	return publicRunWith(t, factory(t, name))
+}
+
+// publicRunWith is publicRun with the factory itself, for a test that wraps a path.
+func publicRunWith(t *testing.T, f bench.Factory) (bench.RunReport, *bench.Set, func(key string) string) {
+	t.Helper()
 	fixHome(t)
 	set, err := bench.Read(publicSet)
 	if err != nil {
@@ -21,11 +27,37 @@ func publicRun(t *testing.T, name string) (bench.RunReport, *bench.Set, func(key
 		t.Fatal(err)
 	}
 	defer p.Close()
-	rep, err := bench.Run(p, factory(t, name))
+	rep, err := bench.Run(p, f)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return rep.Runs[0], set, p.IDOf
+}
+
+// startTexts records the bundle text of every session start a path gives, per session in call order, so a test
+// can compare the text itself: ids and a char count alone do not tell a changed bundle from the same one.
+type startTexts struct {
+	bench.Recaller
+	texts map[string][]string
+}
+
+func (s startTexts) StartFrom(session, cwd, source string) (bench.Shown, error) {
+	var sh bench.Shown
+	var err error
+	if sf, ok := s.Recaller.(bench.SourcedStarter); ok {
+		sh, err = sf.StartFrom(session, cwd, source)
+	} else {
+		sh, err = s.Recaller.Start(session, cwd)
+	}
+	s.texts[session] = append(s.texts[session], sh.Text)
+	return sh, err
+}
+
+func (s startTexts) Reset(session string) error {
+	if r, ok := s.Recaller.(bench.Resetter); ok {
+		return r.Reset(session)
+	}
+	return nil
 }
 
 func resultOf(run bench.RunReport, id string) (bench.CaseResult, bool) {
@@ -90,7 +122,13 @@ func TestPublicSet_폐기된_기억_주입_사례가_0건이다(t *testing.T) {
 // 바뀐 기억이 없으면 재개는 얼린 묶음을 그대로 돌려준다(명세 F-1, 프롬프트 캐시). 압축 뒤에는 세션 표시를 비워 같은 기억을
 // 다시 넣는다. 둘 다 폐기 주입 사례와 같은 묶음의 재개·압축 사례다.
 func TestPublicSet_바뀐_것이_없는_재개는_같은_묶음이고_압축_뒤에는_다시_넣는다(t *testing.T) {
-	run, _, idOf := publicRun(t, paths.Current)
+	texts := map[string][]string{}
+	inner := factory(t, paths.Current)
+	run, _, idOf := publicRunWith(t, func(db string, set *bench.Set) (bench.Env, error) {
+		env, err := inner(db, set)
+		env.Recaller = startTexts{Recaller: env.Recaller, texts: texts}
+		return env, err
+	})
 	first, _ := resultOf(run, "ops-same-1")
 	again, ok := resultOf(run, "ops-same-2")
 	if first.Start == nil || !ok || again.Start == nil {
@@ -98,6 +136,9 @@ func TestPublicSet_바뀐_것이_없는_재개는_같은_묶음이고_압축_뒤
 	}
 	if !slices.Equal(first.Start.IDs, again.Start.IDs) || first.Start.Chars != again.Start.Chars || len(first.Start.IDs) == 0 {
 		t.Errorf("바뀐 것이 없는 재개: 앞 시작 %v(%d자), 재개 %v(%d자), 같은 묶음이어야 한다", first.Start.IDs, first.Start.Chars, again.Start.IDs, again.Start.Chars)
+	}
+	if got := texts["s-ops-same"]; len(got) != 2 || got[0] == "" || got[0] != got[1] {
+		t.Errorf("바뀐 것이 없는 재개: 묶음 글이 같아야 한다, 시작 글 %d개 %q", len(got), got)
 	}
 	req, ok := resultOf(run, "ops-cmp-4")
 	if !ok || req.Request == nil || !slices.Contains(req.Request.IDs, idOf("ops-fact-backup")) {

@@ -1,7 +1,7 @@
 package inject
 
 // 순위 규칙의 성질(명세 R-1·R-3): 비교가 전순서라 입력 순서가 결과를 바꾸지 않고, 스위치를 끄고 재검토 지남이 없으면
-// 05e2399의 순서(확정, 점수, 맞은 비율, 고친 시각, id)와 같고, 꺼져도 재검토 지남은 뒤로 간다.
+// 확정, 점수, 맞은 비율, 고친 시각, id 순이고, 꺼져도 재검토 지남은 뒤로 간다. 끈 설정은 기본값(켬)에 기대지 않고 rankedOff로 쓴다.
 
 import (
 	"math"
@@ -76,7 +76,7 @@ func TestRank_입력_순서가_달라도_결과가_같다(t *testing.T) {
 	s := store(t)
 	rng := rand.New(rand.NewSource(7))
 	hits := rankMix(t, s, 12, rng, true)
-	for _, cfg := range []config.Config{ranked(), config.Default()} {
+	for _, cfg := range []config.Config{ranked(), rankedOff()} {
 		want := rankIDs(t, s, cfg, slices.Clone(hits))
 		for i := 0; i < 30; i++ {
 			shuffled := slices.Clone(hits)
@@ -88,8 +88,8 @@ func TestRank_입력_순서가_달라도_결과가_같다(t *testing.T) {
 	}
 }
 
-// 스위치를 끄고 재검토 지남이 없으면 05e2399의 순서와 같다: 확정이 먼저, 점수, 맞은 비율, 고친 시각(새것 먼저), id.
-func TestRank_꺼짐은_재검토_지남이_없으면_05e2399_순서와_같다(t *testing.T) {
+// 스위치를 끄고 재검토 지남이 없으면 확정이 먼저, 그다음 점수, 맞은 비율, 고친 시각(새것 먼저), id 순이다.
+func TestRank_꺼짐은_재검토_지남이_없으면_확정_점수_맞은_비율_고친_시각_id_순이다(t *testing.T) {
 	s := store(t)
 	rng := rand.New(rand.NewSource(11))
 	hits := rankMix(t, s, 12, rng, false)
@@ -118,7 +118,7 @@ func TestRank_꺼짐은_재검토_지남이_없으면_05e2399_순서와_같다(t
 	for i := 0; i < 10; i++ {
 		shuffled := slices.Clone(hits)
 		rng.Shuffle(len(shuffled), func(a, b int) { shuffled[a], shuffled[b] = shuffled[b], shuffled[a] })
-		if got := rankIDs(t, s, config.Default(), shuffled); !slices.Equal(got, wantIDs) {
+		if got := rankIDs(t, s, rankedOff(), shuffled); !slices.Equal(got, wantIDs) {
 			t.Fatalf("shuffle %d gave %v, want %v", i, got, wantIDs)
 		}
 	}
@@ -131,11 +131,7 @@ func TestRank_꺼져도_재검토_지남은_같은_점수의_확정_기억_뒤�
 	due := saveRank(t, s, "재검토 지난 확정 기억", true, true)
 	later(s, 48*time.Hour)
 	hits := []memory.RecallHit{{Memory: due, Score: 0.5, Coverage: 0.5}, {Memory: fresh, Score: 0.5, Coverage: 0.5}}
-	cfg := config.Default()
-	if cfg.RankByScore {
-		t.Fatal("rankByScore is on by default")
-	}
-	if got, want := rankIDs(t, s, cfg, hits), []string{fresh.ID, due.ID}; !slices.Equal(got, want) {
+	if got, want := rankIDs(t, s, rankedOff(), hits), []string{fresh.ID, due.ID}; !slices.Equal(got, want) {
 		t.Fatalf("order %v, want %v", got, want)
 	}
 }

@@ -1,7 +1,6 @@
 package bench_test
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
@@ -20,10 +19,7 @@ func TestHoldout5DupSetData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(set.Memories); n > len(pub.Memories) || !reflect.DeepEqual(set.Memories, pub.Memories[:n]) {
-		// 공개 묶음은 뒤에 기억을 더할 수 있다: 판정 전용 묶음은 그 앞부분의 그대로 복사다.
-		t.Errorf("memories differ from the first of the public set, want a verbatim copy")
-	}
+	checkSharedMemories(t, set, pub)
 	ids := map[string]bool{}
 	for _, c := range pub.Cases {
 		ids[c.ID] = true
