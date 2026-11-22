@@ -212,9 +212,10 @@ func (s *Store) Links() ([]Link, error) {
 	return out, rows.Err()
 }
 
-// DeadLinkCount counts the live (not removed) links where a live memory (candidate or confirmed)
-// points at a memory that is not a current value (stale or hidden). A link counts once per live end:
-// a link between a live memory and a dead one is one, a link between two live or two dead memories is none.
+// DeadLinkCount counts the live (not removed) links with a live memory (candidate or confirmed) at one end
+// and a memory that is not a current value (stale or hidden) at the other, once per link whichever end is which.
+// A link between two live or two dead memories is not counted. A forgotten memory is gone with its links, so
+// it is not counted; a volatile memory past its days counts only once its state has become stale.
 // It measures how late the dead memories were cut from the graph (명세 · 기억 정확성 F-6).
 func (s *Store) DeadLinkCount() (int, error) {
 	var n int

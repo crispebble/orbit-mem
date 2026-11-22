@@ -90,8 +90,8 @@ func tidyAuto(a *app, args []string) error {
 		return nil
 	}
 	r := s.Tidy(tidyOptions(cfg))
-	tidyLog(p, fmt.Sprintf("ran judged %d reverted %d confirmed %d closed %d reviewed %d expired %d moved %d",
-		r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved))
+	tidyLog(p, fmt.Sprintf("ran judged %d reverted %d confirmed %d closed %d reviewed %d expired %d moved %d deadLinks %d",
+		r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved, r.DeadLinks))
 	if len(r.Errors) > 0 {
 		tidyLog(p, "error: "+strings.Join(r.Errors, "; "))
 	}

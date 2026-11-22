@@ -241,30 +241,17 @@ func (c *call) injected(kind string, inj inject.Injection) {
 	_ = c.store.RecordEvent(memory.Event{Kind: kind, Host: c.req.Host, Session: c.req.key(), Scope: c.p.Scope}, data)
 }
 
-// statesOf is the state each memory had when it was put in (id to state), kept in the use event so the
-// lateness of a retired memory can be measured later. It runs after the answer is sent (c.after), one
-// read for all the ids; an id the DB does not have is left out.
+// statesOf is the state each memory had when the event was recorded (id to state), kept in the use
+// event so the lateness of a retired memory can be measured later. It runs after the answer is sent
+// (c.after), one read for all the ids. An id the DB does not have is left out. A volatile memory past its
+// days keeps the state it was saved with, so it stays confirmed here. A failed read leaves states out of
+// the event; the event is still kept.
 func (c *call) statesOf(ids []string) map[string]string {
-	if len(ids) == 0 {
-		return nil
-	}
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	rows, err := c.store.DB().Query(`SELECT id, state FROM memories WHERE id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`, args...)
+	states, err := c.store.StatesOf(ids)
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
-	out := make(map[string]string, len(ids))
-	for rows.Next() {
-		var id, state string
-		if rows.Scan(&id, &state) == nil {
-			out[id] = state
-		}
-	}
-	return out
+	return states
 }
 
 // activity keeps the session in the activity log (under the session, not the subagent).
