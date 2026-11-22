@@ -6,6 +6,8 @@ package memory
 import (
 	"errors"
 	"time"
+
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 // Why says why a memory does not show as a current value; WhyCurrent ("") when it does.
@@ -44,7 +46,7 @@ type Viewer struct {
 	s         *Store
 	now       time.Time
 	heads     TopicHeads
-	conflicts map[string][]string // WithConflicts가 한 번에 읽은 열린 어긋남(옛 id → 새 id들)
+	conflicts map[string][]Memory // WithConflicts가 한 번에 읽은 열린 어긋남(옛 id → 새 쪽 기억들, 출처 없이)
 }
 
 // Viewer reads the topic heads and the clock (Store.Now) and returns the judge. It only reads. When the
@@ -64,25 +66,54 @@ func (v Viewer) Of(m Memory) Visibility {
 		out.Successor = next.ID
 	}
 	if out.Why == WhyCurrent {
-		out.Conflicts = v.conflicts[m.ID] // 이미 읽어 둔 것만 본다: 기억마다 DB를 치지 않는다
+		for _, m := range v.ShownSides(m.ID, nil) { // 이미 읽어 둔 것만 본다: 기억마다 DB를 치지 않는다
+			out.Conflicts = append(out.Conflicts, m.ID)
+		}
 	}
 	return out
 }
 
-// WithConflicts is the Viewer with the open conflicts of ids read in one query (OpenConflictsOf), so Of fills
-// Visibility.Conflicts for them without reading again. Of never reads conflicts itself: a Viewer judges many
-// memories (every live one, on a recall), and a read per memory would cost a query each. A caller that shows
-// a few memories names them here once. When the read fails the Viewer is returned unchanged beside the error.
+// WithConflicts is the Viewer with the open conflicts of ids read (OpenConflictSides: two queries however many
+// ids), so Of fills Visibility.Conflicts and ShownSides gives the newer values without reading again. Of never
+// reads conflicts itself: a Viewer judges many memories (every live one, on a recall), and a read per memory
+// would cost a query each. A caller that shows a few memories names them here once. When the read fails the
+// Viewer is returned unchanged beside the error.
 func (v Viewer) WithConflicts(ids []string) (Viewer, error) {
 	if v.s == nil { // 만들지 않은 Viewer(순위용 빈 값)는 읽을 곳이 없다
 		return v, nil
 	}
-	got, err := v.s.OpenConflictsOf(ids)
+	got, err := v.s.OpenConflictSides(ids)
 	if err != nil {
 		return v, err
 	}
-	v.conflicts = got
-	return v, nil
+	return v.WithConflictSides(got), nil
+}
+
+// WithConflictSides is WithConflicts for sides a caller already read (OpenConflictSides, OpenConflictSidesAll).
+func (v Viewer) WithConflictSides(sides map[string][]Memory) Viewer {
+	v.conflicts = sides
+	return v
+}
+
+// ShownSides are the newer values of the open conflicts of old memory oldID that may be shown beside it: the
+// ones that are a current value, or that are only the older value of their topic because oldID is that topic's
+// current value (a conflict between a user's fact and a candidate of the same topic is always this). One that is
+// stale, rejected, expired, or an older value to some other memory is not shown, nor is one outside pl when pl
+// is given: a conflict line must not name what the session cannot see. It reads nothing.
+func (v Viewer) ShownSides(oldID string, pl *place.Place) []Memory {
+	var out []Memory
+	for _, m := range v.conflicts[oldID] {
+		switch w := v.Why(m); {
+		case w == WhyCurrent, w == WhyOlder && v.heads.Superseding(m) == oldID:
+		default:
+			continue
+		}
+		if pl != nil && !pl.Sees(m.Scope, m.Project) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // Why is Of's verdict without the successor, so it reads nothing. A list that only marks which lines are not

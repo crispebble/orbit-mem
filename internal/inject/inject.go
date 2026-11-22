@@ -156,10 +156,11 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			_ = s.ResetSession(host, session)
 		}
 	}
-	inj := buildBundle(s, cfg, scope, host, session, notes)
+	inj, told := buildBundle(s, cfg, scope, host, session, notes)
 	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
 		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
+	told.keep(s, inj.Text) // 묶음이 정해진 뒤에 알린 것으로 센다
 	return inj
 }
 
@@ -177,29 +178,31 @@ func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 	if changed, err := vw.NotCurrent(ids); err != nil || len(changed) == 0 {
 		return Injection{}, false
 	}
-	inj := buildBundle(s, cfg, scope, host, session, notes)
+	inj, told := buildBundle(s, cfg, scope, host, session, notes)
 	var dropped []string
 	for _, id := range ids {
 		if !slices.Contains(inj.MemoryIDs, id) {
 			dropped = append(dropped, id)
 		}
 	}
-	if len(dropped) == 0 {
+	if len(dropped) == 0 { // 만든 글은 버린다: 거기 든 알림은 알린 것이 아니다(표시를 옮기지 않는다)
 		return Injection{}, false
 	}
 	// 다른 훅이 먼저 바꿨거나 쓰기가 실패하면(잠금 대기 초과 등) 저장은 건너뛰고 방금 만든 글을 돌려준다. 그때 저장된 글은
 	// 먼저 들어간 다시 만들기이거나 옛 묶음일 수 있다: 옛 묶음이면 다음 재개가 다시 판정해 다시 만든다.
 	_ = s.ReplaceSessionBundle(host, session, inj.Text, inj.MemoryIDs, dropped)
+	told.keep(s, inj.Text) // 이 글은 세션이 받는다
 	return inj, true
 }
 
 // buildBundle is a new session-start bundle with the note lines at its end, within MaxSessionStartRunes: the
 // notices of the session start itself (autoNoticeLines) and the lines of notes. It is the only place that
-// tells an automatic replacement and keeps that it was told (Store.SetAutoNoticeAt): a request or a tool call
-// builds no bundle, so the notice is told once, at a session start, and a replay of session starts alone sees the
-// same as a replay of everything.
-func buildBundle(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
-	own, told := autoNoticeLines(s, cfg)
+// tells an automatic replacement: a request or a tool call builds no bundle, so the notice is told once, at a
+// session start, and a replay of session starts alone sees the same as a replay of everything. It keeps nothing
+// itself: the caller calls the returned noticeTold's keep once the bundle is settled (kept for the session or
+// handed back), so a bundle that is thrown away does not use up the notice.
+func buildBundle(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) (Injection, noticeTold) {
+	own, told := autoNoticeLines(s, cfg, at(cfg, scope))
 	note := noteText(append(own, noteLines(notes)...))
 	limit := MaxSessionStartRunes
 	if note != "" {
@@ -220,8 +223,7 @@ func buildBundle(s *memory.Store, cfg config.Config, scope, host, session string
 		}
 		inj = inj.done(&b)
 	}
-	told.keep(s, inj.Text)
-	return inj
+	return inj, told
 }
 
 // noteLines calls notes, if any; one that panics gives no lines.
@@ -291,7 +293,7 @@ func sessionStartFor(s *memory.Store, cfg config.Config, scope string, limit int
 	}
 	pl := at(cfg, scope)
 	vw, _ := s.Viewer()
-	conflicts := newConflictReaderAll(s, cfg, host, session) // 열린 어긋남이 없으면 한 번 읽고 끝이다
+	conflicts := newConflictReaderAll(s, cfg, host, session, pl) // 열린 어긋남이 없으면 한 번 읽고 끝이다
 	// 상시 핵심(S3 명세 2.7): user 핵심, 그리고 한 제품 폴더면 그 제품의 핵심. 여러 제품 폴더는 제품 핵심을 넣지 않는다.
 	var core strings.Builder
 	layer := func(scope, heading string) {
@@ -964,7 +966,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 			shownIDs = append(shownIDs, it.m.ID)
 		}
 	}
-	conflicts := newConflictReader(s, cfg, host, session, shownIDs)
+	conflicts := newConflictReader(s, cfg, host, session, shownIDs, pl)
 	budget := min(cfg.PromptRecallChars(), limit)
 	head := recallHead + "\n"
 	used := runes(head)

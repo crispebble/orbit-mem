@@ -127,7 +127,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	for i, h := range hits {
 		hitIDs[i] = h.Memory.ID
 	}
-	conflicts := newConflictReader(s, cfg, "", "", hitIDs)
+	conflicts := newConflictReader(s, cfg, "", "", hitIDs, pl)
 	head := taskRecallHead + "\n"
 	oldLine := ""
 	if n := oldVersions(s, th, pl, task, found); n > 0 {

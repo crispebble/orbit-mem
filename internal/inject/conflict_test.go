@@ -255,13 +255,13 @@ func TestSessionStart_자동_대체_알림은_요청과_도구_경로에서_표�
 	SessionStart(s, cfg, here)
 	SessionStartInjection(s, cfg, here)
 	ToolInjection(s, cfg, here, "claude", "A", "Bash", "")
-	if at := s.AutoNoticeAt(); at != 0 {
+	if at := s.AutoNoticeAt(here); at != 0 {
 		t.Fatalf("세션 시작 밖에서 표시를 썼습니다: %d", at)
 	}
 	if first := SessionBundleWith(s, cfg, here, "claude", "A", nil); !strings.Contains(first.Text, "검증된 사실로 바꿨다") {
 		t.Fatalf("세션 시작에는 나와야 합니다:\n%s", first.Text)
 	}
-	if s.AutoNoticeAt() == 0 {
+	if s.AutoNoticeAt(here) == 0 {
 		t.Fatal("세션 시작이 표시를 쓰지 않았습니다")
 	}
 }

@@ -674,6 +674,63 @@ func (s *Store) OpenConflicts() (map[string][]string, error) {
 	return out, err
 }
 
+// OpenConflictSides is OpenConflictsOf with the newer values read as memories (without their sources): their
+// title, scope, state and days, which a caller needs to judge whether a conflict line may show them
+// (Viewer.ShownSides). Two queries however many pairs: the pairs, then the newer values together.
+func (s *Store) OpenConflictSides(ids []string) (map[string][]Memory, error) {
+	pairs, err := s.OpenConflictsOf(ids)
+	if err != nil {
+		return nil, err
+	}
+	return s.sidesOf(pairs)
+}
+
+// OpenConflictSidesAll is OpenConflictSides for every open conflict: the session start reads the whole core
+// layer and the recent decisions, so it takes them all instead of binding their ids.
+func (s *Store) OpenConflictSidesAll() (map[string][]Memory, error) {
+	pairs, err := s.OpenConflicts()
+	if err != nil {
+		return nil, err
+	}
+	return s.sidesOf(pairs)
+}
+
+func (s *Store) sidesOf(pairs map[string][]string) (map[string][]Memory, error) {
+	out := map[string][]Memory{}
+	if len(pairs) == 0 {
+		return out, nil
+	}
+	var all []string
+	for _, news := range pairs {
+		all = append(all, news...)
+	}
+	b, _ := json.Marshal(uniq(all))
+	rows, err := s.db.Query(`SELECT `+memoryCols+` FROM memories WHERE id IN (SELECT value FROM json_each(?))`, string(b))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byID := map[string]Memory{}
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		byID[m.ID] = m
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for oldID, news := range pairs {
+		for _, id := range news {
+			if m, ok := byID[id]; ok {
+				out[oldID] = append(out[oldID], m)
+			}
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) collectConflicts(out map[string][]string, query string, args ...any) error {
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -702,10 +759,59 @@ func (s *Store) OpenConflictCount() (int, error) {
 	return n, err
 }
 
-// resolveConflictsOfTx settles the open conflict marks that touch memory id, on either side, once the user's own
-// words reach it (a quote source added to it): the person has chosen, so the pair is no longer open (명세 C-6).
-func resolveConflictsOfTx(ex execQuerier, id string, at int64) error {
-	_, err := ex.Exec(`UPDATE audit_flags SET resolved_at=?, resolution='user_words' WHERE kind=? AND resolved_at=0 AND (memory_id=? OR other_id=?)`,
-		at, FlagConflict, id, id)
-	return err
+// settleConflictsAfterQuote settles the open conflict pairs of memory id after the user's own words were added to
+// it (a quote source on a save or an edit), so the value the person chose is the current one (명세 C-6, and the
+// first row of the replacement table: the user's words replace any memory):
+//
+//   - id is the newer side: it is confirmed and the old memory is replaced by it, as a replacement (stale,
+//     superseded_by, a version reason). When the replacement is refused (a trust or protection check) the pair
+//     stays open and nothing is closed: the pair must not look settled when it is not.
+//   - id is the old side: it stays the current value; the mark is closed and the newer candidate is left as it
+//     is. Nothing here keeps that candidate from confirming itself later (see confirmBlocked: the open mark was
+//     what blocked it).
+//
+// A closed mark says who closed it (resolved_by = the user). It reports whether it changed a memory.
+func (s *Store) settleConflictsAfterQuote(id, quote string) bool {
+	rows, err := s.db.Query(`SELECT id, memory_id, other_id FROM audit_flags WHERE kind=? AND resolved_at=0 AND (memory_id=? OR other_id=?)`, FlagConflict, id, id)
+	if err != nil {
+		return false
+	}
+	type pair struct{ flag, newID, oldID string }
+	var pairs []pair
+	for rows.Next() {
+		var p pair
+		if rows.Scan(&p.flag, &p.newID, &p.oldID) == nil {
+			pairs = append(pairs, p)
+		}
+	}
+	rows.Close()
+	if quote = strings.TrimSpace(quote); quote == "" {
+		quote = "사용자 말"
+	}
+	w := Who{Actor: ActorAI, UserQuote: quote}
+	changed := false
+	for _, p := range pairs {
+		if p.newID == id {
+			nw, err := getTx(s.db, p.newID)
+			if err != nil {
+				continue
+			}
+			if old, err := getTx(s.db, p.oldID); err == nil && (old.State == StateCandidate || old.State == StateConfirmed) {
+				if _, err := s.SupersedeAs(p.oldID, p.newID, "사용자 말로 대체: "+nw.Title, w); err != nil {
+					continue // 막힌 쌍은 열어 둔다
+				}
+				changed = true
+			}
+			if nw.State == StateCandidate {
+				confirmed := StateConfirmed
+				if _, err := s.Update(UpdateInput{ID: nw.ID, State: &confirmed, Who: w, Reason: "사용자 말로 정함"}); err != nil {
+					continue
+				}
+				changed = true
+			}
+		}
+		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=CASE WHEN resolved_at=0 THEN ? ELSE resolved_at END,
+			resolution=CASE WHEN resolution='' THEN 'user_words' ELSE resolution END, resolved_by=? WHERE id=?`, s.nowMs(), ActorUser, p.flag)
+	}
+	return changed
 }

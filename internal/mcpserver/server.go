@@ -336,14 +336,21 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	for i, m := range ms {
 		ids[i] = m.ID
 	}
-	conflicts, _ := h.s.OpenConflictsOf(ids)
+	// 새 쪽은 보임 판정을 지나고 지금 자리에서 보이는 범위일 때만 싣는다(memory.Viewer.ShownSides). 어긋남이 없으면 주제 머리는
+	// 읽지 않는다.
+	sides, _ := h.s.OpenConflictSides(ids)
+	var cv memory.Viewer
+	if len(sides) > 0 {
+		cv, _ = h.s.Viewer()
+		cv = cv.WithConflictSides(sides)
+	}
 	for _, m := range ms {
 		note, conflict := "", ""
 		if marked {
 			note = whyNote(v.Why(m))
 		}
-		if note == "" { // 현재 값에만 붙인다
-			conflict = conflictNote(conflicts[m.ID], h.titleOf)
+		if note == "" && len(sides) > 0 { // 현재 값에만 붙인다
+			conflict = conflictNote(cv.ShownSides(m.ID, f.Place))
 		}
 		out.Items = append(out.Items, findItemWith(m, detail, note, conflict))
 	}
@@ -384,7 +391,11 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		if vis.Why == memory.WhyOlder {
 			successor = v.Superseding(m)
 		}
-		out.Items = append(out.Items, memoryViewWith(m, noticeOf(m, vis.Why, successor), conflictNote(cv.Of(m).Conflicts, h.titleOf), peers, in.Full))
+		conflict := ""
+		if vis.Why == memory.WhyCurrent { // 읽는 id마다 범위는 보지 않는다: id로 직접 읽는 도구라 보임 판정만 본다
+			conflict = conflictNote(cv.ShownSides(m.ID, nil))
+		}
+		out.Items = append(out.Items, memoryViewWith(m, noticeOf(m, vis.Why, successor), conflict, peers, in.Full))
 		if in.History {
 			if out.History == nil {
 				out.History = map[string][]memory.Version{}

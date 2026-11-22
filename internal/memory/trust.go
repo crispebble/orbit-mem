@@ -141,13 +141,6 @@ func insertSourceTx(ex execQuerier, srcID, memoryID string, src Source, at int64
 	if err := insertSourceRowTx(ex, srcID, memoryID, src, at); err != nil {
 		return err
 	}
-	// 사용자 말이 어느 쪽이든 닿으면 그 기억의 어긋남 쌍은 사람이 고른 것이라 풀린다(명세 C-6). 사용자 말 출처는 만들 때·
-	// 다시 저장할 때·사용자 말을 곁들인 고침에서만 붙는다.
-	if src.Kind == SourceQuote {
-		if err := resolveConflictsOfTx(ex, memoryID, at); err != nil {
-			return err
-		}
-	}
 	if !src.Rechecked {
 		return nil
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/memory"
+	"github.com/crispebble/orbit-mem/internal/place"
 )
 
 const (
@@ -37,71 +38,63 @@ func (c conflictInfo) line() string {
 }
 
 // conflictReader tells which of the memories a recall shows have open conflicts, from one read of them (the ids
-// the recall is about to show), and what each note says. The zero value says nothing.
+// the recall is about to show), and what each note says. A newer value is named only when the session may see it:
+// it is a current value (or only the older value of a topic the old memory heads) and inside the session's place
+// (memory.Viewer.ShownSides), so a note never carries the title of a memory that is stale, expired, or from
+// another project. A pair that fails that gets no line and no instruction. The zero value says nothing.
 type conflictReader struct {
-	s     *memory.Store
-	byOld map[string][]string
-	ask   bool            // 지시를 붙인다: 자동 모드가 꺼져 있고 세션을 안다
-	told  map[string]bool // 이 세션이 이미 받은 쌍
+	vw   memory.Viewer
+	pl   place.Place
+	ask  bool            // 지시를 붙인다: 자동 모드가 꺼져 있고 세션을 안다
+	told map[string]bool // 이 세션이 이미 받은 쌍
 }
 
-// newConflictReader reads the open conflicts of ids in one query. The instruction is given while the auto mode
-// is off (C-8 asks nothing with it on) and only for a session that can count it once; with no session id (a task
-// handed to a subagent) the note is the side-by-side value alone. A failed read gives a reader that says nothing:
-// a recall line is never held back by it.
-func newConflictReader(s *memory.Store, cfg config.Config, host, session string, ids []string) conflictReader {
+// newConflictReader reads the open conflicts of ids. The instruction is given while the auto mode is off (C-8
+// asks nothing with it on) and only for a session that can count it once; with no session id (a task handed to a
+// subagent) the note is the side-by-side value alone. A failed read gives a reader that says nothing: a recall
+// line is never held back by it. It reads the pairs and their newer values (two queries) and, only when there is
+// a pair, the topic heads for the verdict.
+func newConflictReader(s *memory.Store, cfg config.Config, host, session string, ids []string, pl place.Place) conflictReader {
 	if len(ids) == 0 {
 		return conflictReader{}
 	}
-	byOld, err := s.OpenConflictsOf(ids)
-	if err != nil || len(byOld) == 0 {
+	sides, err := s.OpenConflictSides(ids)
+	return readerOf(s, cfg, host, session, sides, err, pl)
+}
+
+// newConflictReaderAll is newConflictReader over every open conflict: the session start looks at the whole core
+// layer and the recent decisions, so it takes all of them instead of binding their ids.
+func newConflictReaderAll(s *memory.Store, cfg config.Config, host, session string, pl place.Place) conflictReader {
+	sides, err := s.OpenConflictSidesAll()
+	return readerOf(s, cfg, host, session, sides, err, pl)
+}
+
+func readerOf(s *memory.Store, cfg config.Config, host, session string, sides map[string][]memory.Memory, err error, pl place.Place) conflictReader {
+	if err != nil || len(sides) == 0 {
 		return conflictReader{}
 	}
-	c := conflictReader{s: s, byOld: byOld, ask: !cfg.AutoMode && session != ""}
+	vw, _ := s.Viewer()
+	c := conflictReader{vw: vw.WithConflictSides(sides), pl: pl, ask: !cfg.AutoMode && session != ""}
 	if c.ask {
 		c.told = s.SessionMarks(host, session, memory.MarkConflictAsk)
 	}
 	return c
 }
 
-// newConflictReaderAll is newConflictReader over every open conflict (one query): the session start looks at
-// the whole core layer and the recent decisions, so it takes all of them instead of binding their ids.
-func newConflictReaderAll(s *memory.Store, cfg config.Config, host, session string) conflictReader {
-	byOld, err := s.OpenConflicts()
-	if err != nil || len(byOld) == 0 {
-		return conflictReader{}
-	}
-	c := conflictReader{s: s, byOld: byOld, ask: !cfg.AutoMode && session != ""}
-	if c.ask {
-		c.told = s.SessionMarks(host, session, memory.MarkConflictAsk)
-	}
-	return c
-}
-
-// of is the note for memory id, false when it has no open conflict whose newer value can be read.
+// of is the note for memory id, false when it has no open conflict whose newer value may be shown.
 func (c conflictReader) of(id string) (conflictInfo, bool) {
-	var shown *memory.Memory
-	var pairs []string
-	for _, newID := range c.byOld[id] {
-		m, err := c.s.Get(newID)
-		if err != nil {
-			continue
-		}
-		if shown == nil {
-			shown = &m
-		}
-		pairs = append(pairs, newID)
-	}
-	if shown == nil {
+	shown := c.vw.ShownSides(id, &c.pl)
+	if len(shown) == 0 {
 		return conflictInfo{}, false
 	}
-	text := fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clipTitle(shown.Title, conflictTitleRunes), shown.ID)
-	if n := len(pairs) - 1; n > 0 {
+	first := shown[0]
+	text := fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clipTitle(first.Title, conflictTitleRunes), first.ID)
+	if n := len(shown) - 1; n > 0 {
 		text += fmt.Sprintf(" 외 %d건", n)
 	}
 	var asked []string
-	for _, newID := range pairs {
-		if key := memory.ConflictPairKey(id, newID); c.ask && !c.told[key] {
+	for _, m := range shown {
+		if key := memory.ConflictPairKey(id, m.ID); c.ask && !c.told[key] {
 			asked = append(asked, key)
 		}
 	}

@@ -169,7 +169,8 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	for _, h := range hits[:min(len(hits), MaxToolMemories)] {
 		maybe = append(maybe, h.m.ID)
 	}
-	conflicts := newConflictReader(s, cfg, host, session, maybe)
+	// 서브에이전트의 키(session)로 부른 호출은 그 서브에이전트가 처음 보는 것이라 지시를 한 번 더 받는다. 의도한 동작이다.
+	conflicts := newConflictReader(s, cfg, host, session, maybe, pl)
 	for _, h := range hits {
 		if brought == MaxToolMemories {
 			break

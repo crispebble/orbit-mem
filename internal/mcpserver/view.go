@@ -160,11 +160,29 @@ func findItemWith(m memory.Memory, detail, note, conflict string) FindItem {
 	if jsonLen(it) <= findItemBudget {
 		return it
 	}
+	// 어긋남 칸이 먼저 줄어든다(제목은 기억을 가리키는 것이라 나중이다). 칸의 앞 conflictFloor룬은 남긴다.
+	if conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok && utf8Count(c) >= conflictFloor {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = clip(conflict, conflictFloor)
+	}
 	title := it.Title
 	fits, ok := fitClip(title, findTitleRunes, func(c string) bool { it.Title = c; return jsonLen(it) <= findItemBudget })
 	it.Title = fits
 	if ok {
 		return it
+	}
+	// 제목이 한 글자도 못 들면 어긋남 칸을 바닥 아래로 더 줄인다. 그래도 안 들면 칸을 뺀다(색인 줄의 크기가 앞선다).
+	if it.Conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = ""
 	}
 	applies := it.AppliesTo
 	it.AppliesTo, _ = fitClip(applies, findAppliesRunes, func(c string) bool { it.AppliesTo = c; return jsonLen(it) <= findItemBudget })
@@ -185,41 +203,25 @@ func whyNote(w memory.Why) string {
 	return ""
 }
 
-// conflictTitleRunes is how much of the newer value's title a conflict note shows.
-const conflictTitleRunes = 40
+const (
+	// conflictTitleRunes is how much of the newer value's title a conflict note shows.
+	conflictTitleRunes = 40
+	// conflictFloor is the least of a conflict note a size cut leaves: the words and the start of the title.
+	conflictFloor = 40
+)
 
 // conflictNote is what memory_find and memory_get say beside a current memory that has open conflicts (명세
-// C-5): the newer value that disagrees with it, by title and id, and how many more there are. newTitle gives
-// the title of a newer value, "" when it cannot be read; those are left out. "" when none can be named.
-func conflictNote(newIDs []string, newTitle func(id string) string) string {
-	var first string
-	n := 0
-	for _, id := range newIDs {
-		title := newTitle(id)
-		if title == "" {
-			continue
-		}
-		if n == 0 {
-			first = fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clip(oneLine(title), conflictTitleRunes), id)
-		}
-		n++
-	}
-	switch {
-	case n == 0:
-		return ""
-	case n > 1:
-		return first + fmt.Sprintf(" 외 %d건", n-1)
-	}
-	return first
-}
-
-// titleOf is the title of memory id, "" when it cannot be read.
-func (h handlers) titleOf(id string) string {
-	m, err := h.s.Get(id)
-	if err != nil {
+// C-5): the newer value that disagrees with it, by title and id, and how many more there are. sides are the
+// newer values already judged shown (memory.Viewer.ShownSides). "" when there are none.
+func conflictNote(sides []memory.Memory) string {
+	if len(sides) == 0 {
 		return ""
 	}
-	return m.Title
+	note := fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clip(oneLine(sides[0].Title), conflictTitleRunes), sides[0].ID)
+	if n := len(sides) - 1; n > 0 {
+		note += fmt.Sprintf(" 외 %d건", n)
+	}
+	return note
 }
 
 // peerNote is whyNote with the successor, for the other end of a link: "폐기됨, 후계 m-…".
@@ -412,6 +414,7 @@ func memoryViewWith(m memory.Memory, notice, conflict string, title linkPeers, f
 		func() { v.Sources, v.SourcesMore = nil, len(m.Sources) },
 		func() { v.Tags, v.Tools = []string{}, nil },
 		func() { v.StaleReason, v.Topic = "", "" },
+		func() { v.Conflict = clip(v.Conflict, conflictFloor) },
 		func() {
 			v.Title, _ = fitClip(oneLine(m.Title), utf8Count(m.Title), func(c string) bool {
 				w := v
