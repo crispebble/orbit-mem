@@ -35,12 +35,12 @@ func saveOn(t *testing.T, s *memory.Store, kind, title, body string, tools []str
 	return m
 }
 
-// 실제로 되풀이해 들어온 두 후보 교훈의 꼴: Bash에 걸려 있어 무슨 명령이든 붙었다. 입력과 관련 없는 명령에는 붙지 않고,
-// 가리키기 줄에도 나오지 않으며(넣은 것이 아니다), 세션 표시도 남기지 않아 관련 있는 명령에서는 붙는다.
+// Bash에 걸린 후보 교훈 둘: 입력과 관련 없는 명령에는 붙지 않고, 가리키기 줄에도 나오지 않으며(넣은 것이 아니다), 세션 표시도
+// 남기지 않아 관련 있는 명령에서는 붙는다.
 func TestToolInjection_교훈은_도구_입력과_관련이_없으면_붙지_않는다(t *testing.T) {
 	s := store(t)
-	rg := saveOn(t, s, memory.KindLesson, "백그라운드 셸에서 rg 명령은 검색 경로를 꼭 준다", "경로가 없으면 표준 입력을 끝없이 기다린다", []string{"Bash"}, false)
-	dom := saveOn(t, s, memory.KindLesson, "happy-dom 요소를 실패하는 assert에 넘기면 메모리가 터진다", "node 시험에서 부정 단언은 참 거짓으로 비교한다", []string{"Bash"}, false)
+	sync := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
+	jq := saveOn(t, s, memory.KindLesson, "jq 필터가 비면 입력 전체를 그대로 낸다", "빈 필터는 점 하나로 적는다", []string{"Bash"}, false)
 	cfg := gated()
 	for _, input := range []string{"ls -la", "git status", "go test ./internal/inject -count=1"} {
 		if got := ToolInjection(s, cfg, here, "claude", "S", "Bash", input); got.Text != "" || len(got.MemoryIDs) != 0 {
@@ -50,9 +50,28 @@ func TestToolInjection_교훈은_도구_입력과_관련이_없으면_붙지_않
 	if marks := s.SessionMarks("claude", "S", memory.MarkTool); len(marks) != 0 {
 		t.Fatalf("blocked memories were marked: %v", marks)
 	}
-	got := ToolInjection(s, cfg, here, "claude", "S", "Bash", "rg TODO internal")
-	if !slices.Equal(got.MemoryIDs, []string{rg.ID}) {
-		t.Fatalf("rg call brought %v, want only %s (not %s):\n%s", got.MemoryIDs, rg.ID, dom.ID, got.Text)
+	got := ToolInjection(s, cfg, here, "claude", "S", "Bash", "rsync -a src/ backup")
+	if !slices.Equal(got.MemoryIDs, []string{sync.ID}) {
+		t.Fatalf("rsync call brought %v, want only %s (not %s):\n%s", got.MemoryIDs, sync.ID, jq.ID, got.Text)
+	}
+}
+
+// 스위치가 켜지면 점수 문을 지나는 것은 상태가 아니라 종류로도 가른다: 확정된 교훈·사실·결정도 무관한 입력에서 빠지고,
+// 확정 규칙만 도구 이름으로 남는다.
+func TestToolInjection_확정된_교훈_사실_결정도_입력과_관련이_없으면_빠진다(t *testing.T) {
+	s := store(t)
+	rule := saveOn(t, s, memory.KindRule, "셸 명령의 결과는 요약해서 보고한다", "출력 전체를 붙이지 않는다", []string{"Bash"}, true)
+	var others []memory.Memory
+	for _, k := range []string{memory.KindLesson, memory.KindFact, memory.KindDecision} {
+		m := saveOn(t, s, k, "jq 필터 규약 "+k, "빈 필터는 점 하나로 적는다", []string{"Bash"}, true)
+		if m.State != memory.StateConfirmed {
+			t.Fatalf("%s saved as %s", k, m.State)
+		}
+		others = append(others, m)
+	}
+	got := ToolInjection(s, gated(), here, "claude", "S", "Bash", "ls -la")
+	if !slices.Equal(got.MemoryIDs, []string{rule.ID}) {
+		t.Fatalf("ids %v, want the confirmed rule %s only (confirmed others %v gated):\n%s", got.MemoryIDs, rule.ID, ids(others...), got.Text)
 	}
 }
 
@@ -86,7 +105,7 @@ func TestToolInjection_입력_조건이_달린_규칙은_ls에_붙지_않고_git
 // 호스트가 도구 입력을 주지 않으면(T-4) 스위치가 켜져 있어도 도구 이름만으로 판정한다: 입력 문도 입력 조건도 쓰지 않는다.
 func TestToolInjection_입력이_없으면_이름으로만_판정한다(t *testing.T) {
 	s := store(t)
-	lesson := saveOn(t, s, memory.KindLesson, "happy-dom 요소를 실패하는 assert에 넘기면 메모리가 터진다", "부정 단언은 참 거짓으로 비교한다", []string{"Bash"}, false)
+	lesson := saveOn(t, s, memory.KindLesson, "jq 필터가 비면 입력 전체를 그대로 낸다", "빈 필터는 점 하나로 적는다", []string{"Bash"}, false)
 	rule := saveOn(t, s, memory.KindRule, "커밋 전에 시험을 돌린다", "실패하면 커밋하지 않는다", []string{"Bash(git commit)"}, true)
 	got := ToolInjection(s, gated(), here, "claude", "S", "Bash", "")
 	if !slices.Equal(got.MemoryIDs, []string{rule.ID, lesson.ID}) {
@@ -101,7 +120,7 @@ func TestToolInjection_toolInputGate를_끄면_지금_동작이다(t *testing.T)
 		t.Fatal("toolInputGate is on by default")
 	}
 	s := store(t)
-	saveOn(t, s, memory.KindLesson, "happy-dom 요소를 실패하는 assert에 넘기면 메모리가 터진다", "부정 단언은 참 거짓으로 비교한다", []string{"Bash"}, false)
+	saveOn(t, s, memory.KindLesson, "jq 필터가 비면 입력 전체를 그대로 낸다", "빈 필터는 점 하나로 적는다", []string{"Bash"}, false)
 	saveOn(t, s, memory.KindFact, "시험 DB는 컨테이너로 띄운다", "포트 5433", []string{"Bash"}, false)
 	saveOn(t, s, memory.KindRule, "셸 명령의 결과는 요약해서 보고한다", "출력 전체를 붙이지 않는다", []string{"Bash"}, true)
 	with := ToolInjection(s, cfg, here, "claude", "S1", "Bash", "ls -la")

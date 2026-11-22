@@ -139,6 +139,7 @@ type Config struct {
 	// (교훈·사실·결정, 그리고 모든 후보)을 그 입력과의 회상 점수(요청 회상과 같은 점수 함수)가 toolInputMinScore 이상일 때만
 	// 넣는다. 끄면 그 기억들도 도구 이름만으로 판정한다. 입력 조건(tools 칸의 Bash(git commit), T-2)은 이 스위치와 관계없이
 	// 지킨다. 문턱은 평가 묶음과 실제 기록 재생으로 정한다(T-3). toolInputMinScore는 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다.
+	// IDF는 도구 트리거가 달린 기억 집합 기준이라(memory.ToolInputScores) 요청 회상의 점수와 값이 다를 수 있다.
 	ToolInputGate     bool    `json:"toolInputGate"`
 	ToolInputMinScore float64 `json:"toolInputMinScore"`
 }
