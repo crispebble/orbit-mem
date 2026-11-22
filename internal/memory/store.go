@@ -421,6 +421,14 @@ type SaveReport struct {
 	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말(또는 믿을 수 없는 새 판이 둔 owner·agent 기억)
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
+	// BodyKept is true when the save took the title of a memory that already exists and brought a body that
+	// differs from the stored one: only the source and the day it came again were added, the body did not
+	// change. A save without a body never sets it.
+	BodyKept bool `json:"bodyKept,omitempty"`
+	// FieldsKept names the other fields of that same-title save that were given, differ from the stored
+	// value and were therefore not applied: tags, topic, tools, retention, ttlDays, reviewAfterDays. A field the save
+	// did not give, or gave with the stored value, is not listed. Change them with Update.
+	FieldsKept []string `json:"fieldsKept,omitempty"`
 
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
@@ -472,6 +480,7 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 
 func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	var rep SaveReport
+	given := givenLifecycle{Retention: strings.TrimSpace(in.Retention), TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays} // validate가 기본값을 채우기 전의 값
 	if err := in.validate(); err != nil {
 		return Memory{}, rep, err
 	}
@@ -542,6 +551,12 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 				return Memory{}, rep, err
 			}
 		}
+		// 같은 제목은 새 기억을 만들지 않고 출처만 더하므로 새 본문과 다른 칸(태그·주제 등)은 버려진다. 호출한 쪽이 성공으로 읽지 않게 알린다(S-1).
+		// supersedeTx가 rep를 다시 채우므로 그 뒤에 정한다.
+		if nb := strings.TrimSpace(in.Body); nb != "" && nb != strings.TrimSpace(cur.Body) {
+			rep.BodyKept = true
+		}
+		rep.FieldsKept = keptFields(cur, in, given)
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -619,6 +634,40 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	}
 	m, err = s.Get(m.ID)
 	return m, rep, err
+}
+
+// givenLifecycle is the retention, ttlDays and reviewAfterDays the caller gave, before validate fills the
+// defaults in (volatile 7 days, durable review 90 days), so a default is not taken for a value the caller gave.
+type givenLifecycle struct {
+	Retention                string
+	TTLDays, ReviewAfterDays int
+}
+
+// keptFields lists the fields of in that a save of an existing title gave with a value other than the stored
+// one: that path only adds the source, so they were not applied. A field the caller did not give is not
+// compared; the lifecycle fields are compared by the value given.
+func keptFields(cur Memory, in SaveInput, given givenLifecycle) []string {
+	sorted := func(a []string) []string { return slices.Sorted(slices.Values(a)) }
+	var out []string
+	if len(in.Tags) > 0 && !slices.Equal(sorted(in.Tags), sorted(cur.Tags)) {
+		out = append(out, "tags")
+	}
+	if in.Topic != "" && TopicKey(in.Topic) != TopicKey(cur.Topic) {
+		out = append(out, "topic")
+	}
+	if len(in.Tools) > 0 && !slices.Equal(sorted(in.Tools), sorted(cur.Tools)) {
+		out = append(out, "tools")
+	}
+	if given.Retention != "" && in.Retention != cur.Retention { // in.Retention is the checked class of the given name
+		out = append(out, "retention")
+	}
+	if given.TTLDays > 0 && (cur.Retention != RetentionVolatile || int64(given.TTLDays)*dayMs != cur.ExpiresAt-cur.CreatedAt) {
+		out = append(out, "ttlDays")
+	}
+	if given.ReviewAfterDays > 0 && given.ReviewAfterDays != cur.ReviewDays {
+		out = append(out, "reviewAfterDays")
+	}
+	return out
 }
 
 // savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot

@@ -107,5 +107,7 @@
   "memory.save.resolve": "%w: resolve is one of add, update:<id>, supersede:<id> and skip (the choices memory_save gave): %q",
   "memory.save.near": "Close memories (same claim? keep one with memory_update stale/supersede): %s",
   "memory.save.not_replaced": "supersede:%s replaced nothing: that memory is already out of date or rejected, or it has the same title and took the new source",
+  "memory.save.body_kept": "The body was not changed: a memory with the same title (%s) already exists, so only the source and the day it came again were added. To edit the body, call memory_update",
+  "memory.save.fields_kept": "Fields not changed: %s. A memory with the same title (%s) already exists, so the new value was not applied. To change them, call memory_update",
   "memory.save.not_pinned": "update:%s was applied but the memory was not put into the core: %v"
 }
