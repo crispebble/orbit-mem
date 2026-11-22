@@ -205,6 +205,115 @@ func TestRewind_앞뒤로_오가도_지금으로_맞추면_원래_사본과_같�
 	}
 }
 
+// liveLinkIDs is the ids of the links alive in the copy, read straight from the table.
+func liveLinkIDs(t *testing.T, path string) []string {
+	t.Helper()
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Existing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT id FROM memory_links WHERE removed_at=0 ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// 같은 두 기억을 잇고 → 떼고 → 다시 이으면 (a, b, kind)가 같은 연결이 둘이다. 다시 이은 뒤의 사본에서 첫 연결이 살아
+// 있던 시각으로 곧장 되감을 때 두 연결이 한 순간에도 함께 살아 있으면 부분 유일 색인이 깨진다: 살아 있지 않게 되는 쪽을 먼저
+// 쓴다.
+func TestRewind_지웠다_다시_만든_연결도_그_사이_시각으로_되감긴다(t *testing.T) {
+	s, c := newTestStore(t)
+	tick := func() int64 { c.t = c.t.Add(time.Hour); return c.t.UnixMilli() }
+	tick()
+	a := saveDoc(t, s, "배포 창 규칙", "금요일 배포 금지", "배포 창")
+	b := saveDoc(t, s, "롤백 순서 기록", "롤백은 이전 태그로", "롤백")
+	t1 := tick()
+	l1, _, err := s.Link(LinkInput{From: a.ID, To: b.ID, Origin: LinkOriginAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2 := tick()
+	if ok, err := s.UnlinkID(l1.ID, LinkOriginUser, "뗀다"); err != nil || !ok {
+		t.Fatalf("unlink: %v %v", ok, err)
+	}
+	t3 := tick()
+	l2, _, err := s.Link(LinkInput{From: a.ID, To: b.ID, Origin: LinkOriginAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l1.ID == l2.ID {
+		t.Fatal("the second link must be a new row")
+	}
+	// 연결·떼기 직전의 시각: 그 시각에 살아 있던 연결만 살아 있어야 한다.
+	before, during, between, now := t1-1, t2-1, t3-1, t3
+
+	_, r := rewound(t, s.Path())
+	want := func(at int64, ids ...string) {
+		t.Helper()
+		if err := r.To(at); err != nil {
+			t.Fatalf("To(%d): %v", at, err)
+		}
+		if got := liveLinkIDs(t, s.Path()); !slices.Equal(got, ids) {
+			t.Fatalf("live links at %d = %v, want %v", at, got, ids)
+		}
+	}
+	// 「지금」(둘째 연결이 산 상태)에서 첫 연결 구간으로 곧장.
+	want(during, l1.ID)
+	want(now, l2.ID)
+	want(before)
+	want(during, l1.ID)
+	want(between)
+	want(now, l2.ID)
+	want(during, l1.ID)
+	want(now, l2.ID)
+}
+
+// To가 중간에 실패해 롤백돼도 메모리 속 상태는 DB와 같아야 한다: 실패한 뒤 다시 To 하면 DB가 목표 상태가 된다.
+// 실패는 사건 표에 거는 시험용 트리거로 넣는다.
+func TestRewind_중간에_실패한_뒤_다시_맞추면_사본이_목표_상태가_된다(t *testing.T) {
+	path, _, _, at := historyFixture(t)
+	want := dump(t, path)
+	_, r := rewound(t, path)
+	if err := r.To(at[0] - 1); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", sqlitedb.FileURI(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TRIGGER fail_event BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
+		t.Fatal(err)
+	}
+	// 기억·연결을 먼저 쓰고 사건에서 실패한다.
+	if err := r.To(at[3] + 1); err == nil {
+		t.Fatal("To must fail on the event insert")
+	}
+	if _, err := db.Exec(`DROP TRIGGER fail_event`); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.To(at[3] + 1); err != nil {
+		t.Fatal(err)
+	}
+	got := dump(t, path)
+	for table := range historyTables {
+		if !slices.Equal(got[table], want[table]) {
+			t.Fatalf("%s differs after a failed To and a retry:\n got %v\nwant %v", table, got[table], want[table])
+		}
+	}
+}
+
 // StateAt은 기록된 주입이 그 시각에 낡은 기억이었는지 가리는 감사(bench.AuditInjections)가 쓴다: 그 시각의 버전과 상태를
 // 돌려주고, 그 시각에 없던 기억은 false다.
 func TestHistory_StateAt은_그_시각의_버전과_상태를_돌려준다(t *testing.T) {
