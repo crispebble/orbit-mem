@@ -234,7 +234,7 @@ func TestReplay_실행_전_세션_상태는_섞이지_않는다(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 재생 경로의 호스트 이름은 "bench"다(hostpath). 사본을 뜬 PC의 세션이 같은 호스트·세션 id로 남긴 묶음과 표시를 흉내 낸다.
+	// 재생 경로의 호스트 이름은 "bench"다(hostpath). 사본이 이미 가진 세션 상태(같은 호스트·세션 id로 남은 묶음과 표시)를 흉내 낸다.
 	if err := h.s.SaveSessionBundle("bench", "s1", "얼린 묶음 "+planted.ID, []string{planted.ID}); err != nil {
 		t.Fatal(err)
 	}
