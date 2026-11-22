@@ -95,16 +95,26 @@ const maxTools = 10
 // toolRE is a tool name (Bash, mcp__atlas__write_page) or a prefix of one ending in *.
 var toolRE = regexp.MustCompile(`^[A-Za-z0-9_.:\-]{1,120}\*?$`)
 
-// cleanTools trims and de-duplicates tool triggers and refuses a malformed one.
+// cleanTools trims and de-duplicates tool triggers and refuses a malformed one. A trigger is a tool name, a
+// prefix ending in *, or a tool name with an input condition, Name(words) (toolcond.go), kept with the spaces of
+// its condition collapsed.
 func cleanTools(tools []string) ([]string, error) {
 	var out []string
 	for _, t := range tools {
 		t = strings.TrimSpace(t)
-		if t == "" || slices.Contains(out, t) {
+		if t == "" {
 			continue
 		}
-		if !toolRE.MatchString(t) || t == "*" {
+		if c, isCond, err := cleanCondTrigger(t); isCond {
+			if err != nil {
+				return nil, err
+			}
+			t = c
+		} else if !toolRE.MatchString(t) || t == "*" {
 			return nil, i18n.Errorf("memory.err.tool_name", ErrInvalid, t)
+		}
+		if slices.Contains(out, t) {
+			continue
 		}
 		out = append(out, t)
 	}
@@ -117,20 +127,6 @@ func cleanTools(tools []string) ([]string, error) {
 func toolsJSON(tools []string) string {
 	b, _ := json.Marshal(nonNil(tools))
 	return string(b)
-}
-
-// TriggeredBy says whether calling tool should recall m: a trigger names the tool or,
-// ending in *, a prefix of it.
-func (m Memory) TriggeredBy(tool string) (exact, ok bool) {
-	for _, t := range m.Tools {
-		if t == tool {
-			return true, true
-		}
-		if p, isPrefix := strings.CutSuffix(t, "*"); isPrefix && strings.HasPrefix(tool, p) {
-			ok = true
-		}
-	}
-	return false, ok
 }
 
 // Triggered lists the live (candidate or confirmed) memories that have tool triggers.

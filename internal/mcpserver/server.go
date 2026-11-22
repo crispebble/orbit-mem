@@ -420,7 +420,7 @@ type SaveIn struct {
 	Topic           string `json:"topic,omitempty" jsonschema:"주제 키. 규칙·결정은 필수"`
 	// Supersedes and Tools are 설계 · orbit-mem 2판 4.2·6절.
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"대체하는 옛 기억 id(주제가 달라도)"`
-	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두"`
+	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두. Bash(git commit)은 입력에 그 낱말이 있을 때만"`
 	// Resolve and IdempotencyKey are the save-time tidy of 설계 6.1 (handlers.tidy).
 	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:ID·supersede:ID·skip"`
 	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키는 한 번만 적용"`

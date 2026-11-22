@@ -67,7 +67,10 @@ var planCases = []Case{
 		[]Want{{"recall-user", map[string]any{"origin": nil}}}},
 	{"prompt in a subagent", hook.Prompt, In(map[string]any{"prompt": "보고 한국어로", "agent_id": "a-1"}),
 		[]Want{{"recall-user", map[string]any{"agent": "a-1", "origin": nil}}}},
-	{"pre-tool", hook.PreTool, In(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}}),
+	// 도구 입력은 host.ToolInputText의 글로 toolInput 칸에 싣는다(Bash면 명령). 입력이 없거나 그 칸이 없으면 칸을 비운다(T-4).
+	{"pre-tool", hook.PreTool, In(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "git commit -m x"}}),
+		[]Want{{"tool-context-input", nil}}},
+	{"pre-tool without a command", hook.PreTool, In(map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"description": "x"}}),
 		[]Want{{"tool-context-bash", nil}}},
 	{"pre-tool in a subagent", hook.PreTool, In(map[string]any{"tool_name": "Bash", "agent_id": "a-1"}),
 		[]Want{{"tool-context-bash", map[string]any{"agent": "a-1"}}}},

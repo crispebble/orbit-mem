@@ -78,3 +78,9 @@
 ## 위임 글
 
 서브에이전트에게 일을 맡기는 도구 직전의 `tool-context`에 `task`(위임 글)와 `agentKind`(서브에이전트 종류)를 실으면, 결과는 `task`가 없을 때와 같고(그 도구에 걸린 기억) 위임 글의 앞 2,000자를 세션 상태에 적는다(`tool-context-delegation`). 서브에이전트가 시작할 때의 `context`(`audience` `subagent`)는 `task`가 없으면 같은 `session`·같은 `agentKind`에서 먼저 적힌, 아직 다른 `agent`가 가져가지 않은 위임 글을 가져가 그 글로 묶음을 만든다(`context-subagent-delegated`). 같은 `agent`가 다시 부르면 가져간 글을 다시 쓴다. `task`가 있으면 그 글을 쓰고 적힌 위임 글은 건드리지 않는다(`context-subagent-task`). 짝이 없으면 상시 핵심 제목 줄만이다(`context-subagent`). `reset`·`session-end`는 그 세션의 위임 글을 지운다. 묶음은 위임 회상(2,400자 이하) 뒤 상시 핵심 제목 줄(600자 이하)이고 `budget.limit`은 3,000이다.
+
+## 도구 입력
+
+`tool-context`의 `toolInput`은 계약 1의 선택 칸이다(계약 버전은 그대로 1이다). 부르려는 도구 입력의 글 하나로, Bash면 명령, Edit·Read·Write면 `file_path`, 그 밖의 도구면 입력 객체의 문자열 값을 적힌 차례로 빈칸 하나로 이어 붙인 것이고, 앞뒤 빈칸을 떼고 2,000자에서 자른다. 줄 수 없으면 칸을 빼거나 빈 문자열로 둔다. 그러면 결과는 이 칸이 없던 때와 같다(도구 이름만으로 판정).
+
+기억의 도구 트리거(`memory_save`의 `tools`)는 도구 이름 뒤 괄호에 입력 조건을 달 수 있다: `Bash(git commit)`, `Edit(package.json)`. 조건이 달린 트리거는 `toolInput`에 조건 낱말이 있을 때만 걸린다. `toolInput`은 `;`·`&`·`|`·줄바꿈에서 명령 조각으로 자르고, 조건은 한 조각 안에서만 맞춘다. 조각과 조건은 빈칸·따옴표·셸 기호(`< > ( ) = ,`)·경로 구분자(`/ \`)에서 낱말로 나누고(하이픈·점·밑줄은 낱말 안의 글자다), 대소문자를 가리지 않는다. 조건을 빈칸으로 나눈 덩이들이 한 조각 안에 같은 차례로 나오면 맞고, 사이에 다른 낱말이 있어도 된다. 한 덩이 안의 경로 조각(`src/app`)은 입력에서도 바로 이어져야 한다. 그래서 `Bash(git commit)`은 `git commit -m x`·`git -C /w commit`에는 걸리고 `ls`·`git commit-tree`·`git status; ls commit`에는 걸리지 않으며(`tool-context-input`), `Edit(src/app)`은 `/w/src/app/x.ts`에는 걸리고 `/w/src/lib/../app/x.ts`에는 걸리지 않는다. 낱말이 없는 조건, `*`나 `; & |`가 든 조건, 제로폭 문자 같은 보이지 않는 글자가 든 조건은 저장할 때 거절된다. `toolInput`이 없으면 조건이 달린 트리거도 도구 이름만으로 걸린다. 설정 `toolInputGate`가 켜져 있으면 확정된 규칙이 아닌 기억은 `toolInput`과의 회상 점수가 `toolInputMinScore` 이상일 때만 든다. 도구 입력의 글은 결과·표시·사건 어디에도 남지 않는다.

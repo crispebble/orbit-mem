@@ -36,7 +36,8 @@ type input struct {
 	ToolName  string `json:"tool_name"`  // PreToolUse
 	AgentID   string `json:"agent_id"`   // SubagentStart, 서브에이전트 안의 훅
 	AgentType string `json:"agent_type"` // SubagentStart: 서브에이전트 종류
-	// ToolInput is the tool's input (PreToolUse). Only a delegation tool's is read, never changed.
+	// ToolInput is the tool's input (PreToolUse). It is read, never changed: its text for the recall
+	// (host.ToolInputText) and a delegation tool's task.
 	ToolInput json.RawMessage `json:"tool_input"`
 }
 
@@ -115,7 +116,8 @@ func steps(ev hook.Event, req host.Request, in input) []hook.Step {
 		req.Prompt = in.Prompt // 사람 글 후보는 prompt 칸이다. 이 훅은 예약 작업·서브에이전트 보고·다른 세션 메시지에도 돌고 입력에 출처 칸이 없어, 사람 요청인지는 recall op가 판정한다(origin은 비운다)
 		return []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
-		req.Tool = in.ToolName // 도구 입력은 바꾸지 않는다(위임 도구의 위임 글만 읽는다)
+		req.Tool = in.ToolName // 도구 입력은 바꾸지 않고 읽기만 한다
+		req.ToolInput = host.ToolInputText(in.ToolName, in.ToolInput)
 		delegate(&req, in)
 		return []hook.Step{{Op: host.OpToolContext, Request: req}}
 	case hook.SubagentStart: // 입력에 위임 글이 없다: 같은 세션·같은 종류의 먼저 온 위임 글과 짝을 맞춘다(host)

@@ -22,6 +22,11 @@ type Adapter struct{}
 func New() Adapter { return Adapter{} }
 
 // input is the part of Codex's hook input the hooks read.
+//
+// tool_input is taken to come as Claude Code's does, the shell as Bash with tool_input.command: the Codex hook relay
+// of openclaw (extensions/codex/src/app-server/native-hook-relay.ts) reads payload.tool_input, and its tests send
+// {"tool_name":"Bash","tool_input":{"command":…}}. 실제 Codex 훅 입력은 확인하지 못했다. An input without it gives
+// no text, and the tool recall then goes by the tool's name (명세 T-4).
 type input struct {
 	SessionID string          `json:"session_id"`
 	Cwd       string          `json:"cwd"`
@@ -30,7 +35,7 @@ type input struct {
 	ToolName  string          `json:"tool_name"`
 	AgentID   string          `json:"agent_id"`
 	AgentType string          `json:"agent_type"` // SubagentStart
-	ToolInput json.RawMessage `json:"tool_input"` // PreToolUse: 위임 도구의 것만 읽는다
+	ToolInput json.RawMessage `json:"tool_input"` // PreToolUse: 읽기만 한다(회상할 입력 글, 위임 도구의 위임 글)
 }
 
 // delegationTools are Codex's tools that start a subagent (Codex hooks 문서의 PreToolUse matcher).
@@ -104,6 +109,7 @@ func (Adapter) Plan(ev hook.Event, b []byte) hook.Plan {
 		steps = []hook.Step{{Op: host.OpRecall, Request: req}}
 	case hook.PreTool:
 		req.Tool = in.ToolName
+		req.ToolInput = host.ToolInputText(in.ToolName, in.ToolInput)
 		delegate(&req, in)
 		steps = []hook.Step{{Op: host.OpToolContext, Request: req}}
 	case hook.SubagentStart: // 서브에이전트 훅의 session_id는 부모 세션이다: 같은 세션·같은 종류의 위임 글과 짝을 맞춘다(host)
