@@ -42,8 +42,10 @@ func openStore() (*memory.Store, error) {
 	return s, nil
 }
 
+// policyOf is the confirmation and replacement policy of the configuration (A2 counts, autoMode C-9).
 func policyOf(cfg config.Config) memory.Policy {
-	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
+	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions,
+		AutoMode: cfg.AutoMode}
 }
 
 // 통로마다 출처 등급의 상한(결정 D6): 조립 지점이 값으로 넣는다. 도메인은 호스트 이름을 모르고, 상한은
@@ -106,6 +108,13 @@ func cmdMCP(a *app, args []string) error {
 			cfg, err := loadConfig()
 			return cfg.Products, err
 		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf,
+		// 자동 모드(C-9)는 저장마다 설정을 다시 읽어 바꾸면 다음 저장부터 적용된다. 읽지 못하면 뜰 때 읽은 정책이다.
+		LoadPolicy: func() memory.Policy {
+			if cfg, err := loadConfig(); err == nil {
+				return policyOf(cfg)
+			}
+			return s.Policy
+		},
 		// 저장의 세션(E-1): 호스트가 준 세션 id, 없으면 이 서버 실행 하나를 세션으로 본다(실행마다 새 id).
 		// 한계: 그때 같은 대화에서 서버가 다시 뜨면 다른 세션으로 세어지고, 확정을 막는 것은 날 조건뿐이다.
 		Session: firstNonEmpty(claudecode.MCPSession(os.Getenv), "run-"+memory.NewID(""))})
@@ -529,6 +538,12 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.AutoTidy = b
+	case "autoMode":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.bool", key, val)
+		}
+		cfg.AutoMode = b
 	case "hostMemory":
 		cfg.HostMemory = val
 	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays", "taskRecallMinWords":
@@ -560,7 +575,7 @@ func cmdConfig(a *app, args []string) error {
 			"recallMinCoverageOneWord": &cfg.RecallMinCoverageOneWord, "taskRecallMinScore": &cfg.TaskRecallMinScore, "taskRecallMinRelative": &cfg.TaskRecallMinRelative,
 			"taskRecallMinTitleShare": &cfg.TaskRecallMinTitleShare}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·autoMode·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

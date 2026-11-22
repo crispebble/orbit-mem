@@ -75,7 +75,7 @@ var ErrAutoSkip = i18n.Err("memory.err.auto_skip")
 const (
 	EvidenceSeenDays         = "seen_days"         // ① 서로 다른 세션·다른 날 다시 나옴(E-1). 코드는 원장에 남아 그대로 둔다
 	EvidenceFollowedVerified = "followed_verified" // ② 회상돼 따랐고 검증 통과·교정 없음
-	EvidenceVerifiedFact     = "verified_fact"     // ③ 작업 검증이 직접 확인한 프로젝트 사실
+	EvidenceVerifiedFact     = "verified_fact"     // ③ 서버가 근거를 다시 확인한 검증 출처의 프로젝트 사실(E-4)
 )
 
 // Policy holds the counts of the confirmation rules. FollowedVerified and
@@ -86,6 +86,10 @@ type Policy struct {
 	SeenDays           int `json:"confirmSeenDays"`          // ① 세션도 날도 서로 다른 다시 나옴 수(지금 규칙 2, seenApartTx)
 	FollowedVerified   int `json:"confirmFollowedVerified"`  // ② 따르고 검증 통과·교정 없는 세션 수
 	CorrectionSessions int `json:"correctionRepeatSessions"` // 반복 교정 표시: 같은 대상 교정이 나온 세션 수
+	// AutoMode is the setting autoMode (C-9, off by default): on, a verified fact whose ground the server could
+	// not read again (a command's output) still replaces the user's words on its own, kept in the ledger to be
+	// undone (replace.go). Off, it stays a conflict. Rules and decisions are never replaced either way.
+	AutoMode bool `json:"autoMode"`
 }
 
 // DefaultPolicy is the recommendation until the user decides (E2).
@@ -154,14 +158,23 @@ func attachQuoteTx(tx *sql.Tx, w Who, now int64, ids ...string) error {
 // --- 증거 확정 ---
 
 // confirmBlocked is why memory id may not be confirmed automatically: an open
-// conflict mark, the person put it back to candidate (hold), or the person
-// undid an automatic confirmation of it before.
+// conflict mark, the person put it back to candidate (hold), the person
+// undid an automatic confirmation of it before, or the person undid its
+// automatic replacement of another memory (blockRevertedReplace, C-3).
 func (s *Store) confirmBlocked(id string) (string, error) {
 	// 출처가 믿을 수 없는 것뿐이면 증거가 쌓여도 스스로 확정하지 않는다(D7, 확정 길 ①).
 	if t, err := memoryTrustTx(s.db, id); err != nil {
 		return "", err
 	} else if Untrusted(t) {
 		return "untrusted", nil
+	}
+	// 사람이 그 자동 대체를 되돌렸으면 새 기억은 어떤 증거로도(검증 사실 즉시 확정 포함) 스스로 확정하지 않는다.
+	// 옛 기억을 지워도 쌍 줄은 남아 막는다(forget.go keepTables).
+	var reverted int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM supersede_reverts WHERE new_id=?`, id).Scan(&reverted); err != nil {
+		return "", err
+	} else if reverted > 0 {
+		return blockRevertedReplace, nil
 	}
 	var kind string
 	err := s.db.QueryRow(`SELECT kind FROM audit_flags WHERE memory_id=? AND resolved_at=0 LIMIT 1`, id).Scan(&kind)
@@ -219,8 +232,9 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 	}
 	if m.Kind == KindFact && m.Scope != ScopeGlobal { // 저장소·제품·제품 미정 사실(user 사실은 아님)
 		var n int
-		// 검증 출처는 무엇을 돌렸는지(ref)와 그 결과(excerpt)가 있어야 증거다.
-		if err := s.db.QueryRow(`SELECT COUNT(*) FROM sources WHERE memory_id=? AND kind=? AND ref<>'' AND excerpt<>''`, id, SourceVerification).Scan(&n); err != nil {
+		// 검증 출처는 무엇을 돌렸는지(ref)와 그 결과(excerpt)가 있고, 서버가 그 근거를 다시 확인했어야(rechecked) 증거다(E-4).
+		// AI가 적은 근거만으로는 즉시 확정하지 않는다: 그 글만으로 확정되면 출처 등급이 무너진다(C-1과 같은 기준).
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM sources WHERE memory_id=? AND kind=? AND ref<>'' AND excerpt<>'' AND rechecked=1`, id, SourceVerification).Scan(&n); err != nil {
 			return "", err
 		}
 		if n > 0 {
@@ -412,7 +426,7 @@ func evidenceText(code string) string {
 	case EvidenceFollowedVerified:
 		return "증거 ②: 회상돼 따랐고 그 일이 검증을 통과했으며 교정이 없었던 세션이 기준 횟수 이상"
 	case EvidenceVerifiedFact:
-		return "증거 ③: 작업 검증이 직접 확인한 프로젝트 사실"
+		return "증거 ③: 서버가 근거 파일을 다시 읽어 확인한 검증 출처의 프로젝트 사실"
 	}
 	return code
 }

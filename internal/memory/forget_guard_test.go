@@ -10,7 +10,7 @@ import (
 func TestForgetGuard_기억_id_열을_가진_표는_지움이나_남김_목록에_있다(t *testing.T) {
 	s, _ := newTestStore(t)
 	rows, err := s.DB().Query(`SELECT m.name, p.name FROM sqlite_master m JOIN pragma_table_info(m.name) p
-		WHERE m.type='table' AND (p.name IN ('memory_id','other_id','memory_ids') OR (m.name='memory_links' AND p.name IN ('a','b')))
+		WHERE m.type='table' AND (p.name IN ('memory_id','other_id','memory_ids','old_id','new_id') OR (m.name='memory_links' AND p.name IN ('a','b')))
 		ORDER BY m.name, p.name`)
 	if err != nil {
 		t.Fatal(err)

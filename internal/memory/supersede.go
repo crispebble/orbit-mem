@@ -16,9 +16,12 @@ import (
 
 // supersedeTx replaces, for the memory m just saved, the current value of its scope and
 // topic (when topic is true and m has one and is not volatile) and the memories in
-// in.Supersedes, by the source rules (4.2). It returns what it replaced and the user's
-// words it left alone.
-func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (SaveReport, error) {
+// in.Supersedes and in.Replaces, by the replacement table (replace.go) and the trust levels
+// (mayOverride): of the two the more careful answer wins. It returns what it replaced and what it
+// left as a conflict. An automatic replacement (OutcomeAutoSupersede) also writes, in tx, an auto
+// proposal and its ledger line (recordAutoReplaceTx), so the audit list undoes it. A conflict with
+// in.Replaces refuses the whole save (ErrUntrusted for the trust levels, else ErrProtected).
+func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (SaveReport, error) {
 	var rep SaveReport
 	targets := slices.Clone(in.Supersedes)
 	if in.Replaces != "" {
@@ -42,8 +45,16 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 			return rep, err
 		}
 	}
-	userWords := in.Source.Kind == SourceQuote
-	// 출처가 믿을 수 없는 것뿐인 새 판은 owner·agent 기억을 대체하지 않고 어긋남으로 둔다(D7).
+	// 새 근거는 이번 저장의 출처로만 정한다: m이 예전에 받은 사용자 말 출처로 정하면 AI의 재저장이 사용자 말로 읽힌다.
+	ground := newGroundOf(in.Source)
+	// 고른 옛 버전(Replaces)은 SupersedeAs처럼 막는다: 사람이 아닌 쓰는 쪽이 사용자 말 기억을 고르면 save가 guardTx로 사용자 말
+	// (userQuote)을 이미 요구했다. 그래서 사람이 고른 것과 사용자 말을 함께 준 것은 그 말이 근거다(지금 동작).
+	explicitGround := ground
+	if in.Who.human() || in.Who.quote() != "" {
+		explicitGround = GroundQuote
+	}
+	auto := s.autoMode(in)
+	// 믿음 등급 축은 mayOverride가 따로 본다: 출처가 믿을 수 없는 것뿐인 새 버전은 owner·agent 기억을 대체하지 못한다(D7).
 	newTrust, err := memoryTrustTx(tx, m.ID)
 	if err != nil {
 		return rep, err
@@ -59,34 +70,83 @@ func supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now int64) (Sav
 		if old.State != StateCandidate && old.State != StateConfirmed {
 			continue // 이미 낡았거나 거절된 판
 		}
-		reason := "같은 주제의 새 판: " + m.Title
-		if userWords {
-			reason = "사용자 말로 대체: " + m.Title // D1: 새 말 자체가 근거다
-		} else if id == in.Replaces {
-			// 고른 옛 판(Replaces)은 SupersedeAs처럼 막는다: 사용자 말 보호는 save가 guardTx로 이미 거쳤고,
-			// 믿을 수 없는 출처뿐인 새 판은 owner·agent 판을 낡게 하지 못한다(D7) — 어긋남으로 두지 않고 거절한다.
-			if !mayOverride(newTrust, old.Trust, in.Who.quote()) {
+		oldGround, err := oldGroundOf(tx, old)
+		if err != nil {
+			return rep, err
+		}
+		reverted, err := revertedOldTx(tx, id)
+		if err != nil {
+			return rep, err
+		}
+		nw, words := ground, ""
+		if id == in.Replaces {
+			nw, words = explicitGround, in.Who.quote()
+		}
+		out := decideReplace(replaceKind(m.Kind, old.Kind), nw, oldGround, sameSlot(m, old), auto, reverted)
+		trustBlocked := false
+		// 사용자 말 출처의 새 버전은 owner라 늘 지난다. 사람이 고른 Replaces도 여기서는 사용자 말이 아니다(지금처럼 막는다).
+		if out != OutcomeConflict && !mayOverride(newTrust, old.Trust, words) {
+			out, trustBlocked = OutcomeConflict, true // 표와 믿음 등급이 어긋나면 더 보수적인 쪽(어긋남)이다
+		}
+		untrusted := trustBlocked || (nw == GroundUntrusted && oldGround != OldQuote && oldGround != OldQuoteUserScope)
+		if id == in.Replaces && out == OutcomeConflict {
+			out = OutcomeRefuse
+		}
+		switch out {
+		case OutcomeRefuse:
+			if untrusted {
 				return rep, fmt.Errorf("%w: %s", ErrUntrusted, m.ID)
 			}
-		} else if p, err := protectedTx(tx, id); err != nil {
-			return rep, err
-		} else if p {
-			rep.Conflicts = append(rep.Conflicts, id) // AI·자동화는 사용자 말을 대체하지 않는다
-			continue
-		} else if !mayOverride(newTrust, old.Trust, "") {
-			rep.Conflicts = append(rep.Conflicts, id)
-			rep.untrusted = append(rep.untrusted, id)
+			return rep, fmt.Errorf("%w: %s", ErrProtected, id)
+		case OutcomeConflict:
+			rep.Conflicts = append(rep.Conflicts, id) // 대체하지 않고 어긋남으로 둔다(사용자 말·믿을 수 없는 출처·되돌린 옛 기억)
+			if untrusted {
+				rep.untrusted = append(rep.untrusted, id)
+			}
 			continue
 		}
+		reason := "같은 주제의 새 판: " + m.Title
+		switch {
+		case nw == GroundQuote && in.Source.Kind == SourceQuote:
+			reason = "사용자 말로 대체: " + m.Title // D1: 새 말 자체가 근거다
+		case out == OutcomeAutoSupersede:
+			reason = "검증된 사실로 자동 대체: " + m.Title
+		}
+		before := old
 		old.State, old.SupersededBy, old.StaleReason = StateStale, m.ID, reason
 		old.Version++
 		old.UpdatedAt = now
 		if err := writeTx(tx, old, "supersede", reason, now); err != nil {
 			return rep, err
 		}
+		if out == OutcomeAutoSupersede {
+			if err := s.recordAutoReplaceTx(tx, before, m, in, nw); err != nil {
+				return rep, err
+			}
+		}
 		rep.Superseded = append(rep.Superseded, id)
 	}
 	return rep, nil
+}
+
+// recordAutoReplaceTx keeps the automatic replacement of before (as it was) by nw as an auto proposal and its
+// ledger line, in tx with the change itself (C-3). The line's before and version check hold the old memory only;
+// the new one is named in the proposal (MemoryIDs[1] and Payload.NewID): it changes again at once (confirmed by
+// its evidence, saved again), and in the version check that would stop the undo (ErrMemoryChanged). Undoing the
+// line (ledger.go revert) puts the old memory back and the new one to candidate, whatever its version.
+func (s *Store) recordAutoReplaceTx(tx *sql.Tx, before, nw Memory, in SaveInput, ground NewGround) error {
+	why := "서버가 근거 파일을 다시 읽어 발췌를 확인한 검증 사실"
+	if ground == GroundStated {
+		why = "근거가 적힌 검증 사실(자동 모드, 서버가 다시 확인하지 못함)"
+	}
+	body := why + "\n근거: " + ClipRunes(in.Source.Ref, 200)
+	p, err := s.insertProposalTx(tx, ProposalInput{Kind: ProposalSupersede, Title: "자동 대체: " + before.Title + " → " + nw.Title, Body: body,
+		MemoryIDs: []string{before.ID, nw.ID}, Payload: Payload{Actor: in.Who.actor(), NewID: nw.ID}}, StatusAuto)
+	if err != nil {
+		return err
+	}
+	_, err = s.recordLedgerTx(tx, p, LedgerBefore{Memories: []Memory{before}}, DecideResult{})
+	return err
 }
 
 // maxTools is how many tool triggers a memory keeps.

@@ -395,6 +395,8 @@ func (s *Store) recordLedgerTx(q dbtx, p Proposal, before LedgerBefore, res Deci
 
 // revert undoes a ledger line: memories go back to the version before the
 // change, memories the change made go stale, and a file gets its old content.
+// A save's automatic replacement also puts its new memory back to candidate
+// and keeps the pair (undoAutoReplaceTx).
 // Nothing is undone when a memory or the file changed again since: the undo
 // would wipe that later change. A file already back to its old content (an
 // earlier attempt stopped half way) counts as undone.
@@ -483,6 +485,15 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		}
 		res.Changed = append(res.Changed, id)
 	}
+	if err := undoAutoReplaceTx(tx, e, p.ID, now, res); err != nil {
+		return err
+	}
+	// 자동 대체의 되돌림을 다시 되돌리면 옛 기억은 위에서 다시 대체된 채가 되고, 그 되돌림이 남긴 쌍은 뺀다.
+	if e.RevertOf != "" {
+		if _, err := tx.Exec(`DELETE FROM supersede_reverts WHERE ledger_id=?`, e.RevertOf); err != nil {
+			return err
+		}
+	}
 	// 파일은 기억을 모두 확인한 뒤, 기억을 확정하기 전에 쓴다. 쓰고 나서 기억 쪽이
 	// 실패하면 다음 승인이 「이미 옛 내용」으로 보고 기억만 마저 되돌린다.
 	if f := e.Before.File; f != nil {
@@ -537,6 +548,45 @@ func (s *Store) revert(p Proposal, res *DecideResult) error {
 		}
 	}
 	return nil
+}
+
+// undoAutoReplaceTx finishes, in tx, the undo of ledger line e when it is a save's automatic replacement
+// (recordAutoReplaceTx): the old memory came back above; the new one (Payload.NewID) goes back to candidate if
+// it was confirmed, whatever its version, and the pair goes into supersede_reverts, so the pair is not replaced
+// again by itself and the new memory is not confirmed again by its evidence (C-3). A new memory that was
+// forgotten left nothing to do (Forget emptied the proposal's payload).
+func undoAutoReplaceTx(tx *sql.Tx, e LedgerEntry, revertID string, now int64, res *DecideResult) error {
+	var kind, ids, payload string
+	err := tx.QueryRow(`SELECT kind, memory_ids, payload FROM proposals WHERE id=?`, e.ProposalID).Scan(&kind, &ids, &payload)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && kind != ProposalSupersede {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var pl Payload
+	var mids []string
+	_ = json.Unmarshal([]byte(payload), &pl)
+	_ = json.Unmarshal([]byte(ids), &mids)
+	if pl.NewID == "" || len(mids) == 0 {
+		return nil
+	}
+	m, err := getTx(tx, pl.NewID)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if m.State == StateConfirmed {
+		m.State = StateCandidate
+		m.Version++
+		m.UpdatedAt = now
+		if err := writeTx(tx, m, "revert", "자동 대체 되돌림 "+revertID, now); err != nil {
+			return err
+		}
+		res.Changed = append(res.Changed, m.ID)
+	}
+	_, err = tx.Exec(`INSERT OR IGNORE INTO supersede_reverts(old_id, new_id, ledger_id, at) VALUES(?,?,?,?)`, mids[0], m.ID, e.ID, now)
+	return err
 }
 
 func subset(a, b []string) bool {

@@ -58,6 +58,10 @@ type Options struct {
 	// set, reads it on every save instead.
 	SaveNearMin     float64
 	LoadSaveNearMin func() float64
+	// LoadPolicy, when set, reads the confirmation and replacement policy on every save, so the auto mode
+	// (config autoMode, 명세 C-9) applies from the next save of a long-lived server. Unset, the store's
+	// Policy (read when the store was opened) decides.
+	LoadPolicy func() memory.Policy
 	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
 	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
 	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1). With the run id,
@@ -90,6 +94,22 @@ func (o Options) products() (place.Map, error) {
 func (o Options) here() place.Place {
 	m, _ := o.products()
 	return place.At(o.Project, o.Dir, m)
+}
+
+// recheckRoots are the folders whose files memory_save may read to recheck a verification source
+// (memory.RecheckExcerpt): the session folder and, when the project key is a folder (a repository without a
+// remote, or a folder outside git), that folder. They come from the folder the assembly point resolved
+// (project.Resolve), not from a tool argument. None when the connection has no folder. The product map's
+// folder lines are not roots: they are globs that may cover far more than the work at hand.
+func (o Options) recheckRoots() []string {
+	var roots []string
+	if d := o.here().Dir; d != "" {
+		roots = append(roots, d)
+	}
+	if key := strings.TrimPrefix(o.Project, "project:"); key != o.Project && filepath.IsAbs(filepath.FromSlash(key)) {
+		roots = append(roots, key)
+	}
+	return roots
 }
 
 // ResolveActor picks the writer of a server or command: the flag, else
@@ -704,6 +724,17 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	var quoteWarns []string
 	si.QuoteMatched, si.QuoteAt, quoteWarns = h.checkQuote(&si.Source)
 	warns = append(warns, quoteWarns...)
+	// 검증 출처의 근거가 이 연결의 작업 폴더 안 파일이면 서버가 지금 직접 읽어 발췌가 있는지 본다(C-1·E-4). 있으면 서버가 다시
+	// 확인한 근거다. Screen이 발췌를 고치기 전에 본다: AI가 준 발췌 그대로가 파일에 있어야 한다. 명령 출력 같은 근거는 읽을 수
+	// 없어 근거 적힘으로 남는다. 재확인이 안 된 까닭은 응답에 내지 않는다(경로마다 다른 답이 파일 유무를 알려 주지 않게).
+	if si.Source.Kind == memory.SourceVerification {
+		si.Source.Rechecked = memory.RecheckExcerpt(h.o.recheckRoots(), si.Source.Ref, si.Source.Excerpt)
+	}
+	// 자동 모드(C-9)는 저장마다 다시 읽는다: 여러 요청이 함께 오므로 저장소의 Policy를 바꾸지 않고 이 저장에만 싣는다.
+	if h.o.LoadPolicy != nil {
+		auto := h.o.LoadPolicy().AutoMode
+		si.AutoMode = &auto
+	}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {
