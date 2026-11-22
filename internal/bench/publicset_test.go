@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -27,6 +28,26 @@ const (
 	baselineLegacy = "testdata/baseline-legacy.json"
 	baselineNow    = "testdata/baseline-current.json"
 )
+
+// sharedMemories is how many memories the public set shares with each judging-only set: the judging-only
+// sets copy the first 222 memories verbatim, and the public set adds its own after them.
+const sharedMemories = 222
+
+// checkSharedMemories fails unless the memories of a judging-only set are exactly the first sharedMemories
+// of the public set. A shorter or longer copy, or one that differs in any field, fails.
+func checkSharedMemories(t *testing.T, set, pub *bench.Set) {
+	t.Helper()
+	if len(pub.Memories) < sharedMemories {
+		t.Fatalf("public set memories = %d, want at least %d", len(pub.Memories), sharedMemories)
+	}
+	if len(set.Memories) != sharedMemories {
+		t.Errorf("memories = %d, want %d", len(set.Memories), sharedMemories)
+		return
+	}
+	if !reflect.DeepEqual(set.Memories, pub.Memories[:sharedMemories]) {
+		t.Errorf("memories differ from the first %d of the public set, want a verbatim copy", sharedMemories)
+	}
+}
 
 // factory is the recall path of a name, put together as the command does.
 func factory(t *testing.T, name string) bench.Factory {
@@ -68,6 +89,33 @@ func TestPublicSetData(t *testing.T) {
 	}
 }
 
+// TestPublicSetData_changes에_닿은_기억을_뒤_사례가_기대하지_않는다 keeps the order dependence of Case.Changes
+// out of the answers: the DB copy of a run keeps what a change did for the rest of the set, so a memory
+// moved to stale or hidden by one case is gone for every case after it. A later case that expects it can
+// never be answered by any recall.
+func TestPublicSetData_changes에_닿은_기억을_뒤_사례가_기대하지_않는다(t *testing.T) {
+	set, err := bench.Read(publicSet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := map[string]string{} // memory key -> id of the case that moved it
+	for _, c := range set.Cases {
+		for _, k := range c.Expect {
+			if by, ok := moved[k]; ok {
+				t.Errorf("case %s expects %s, which case %s moved to stale or hidden before it", c.ID, k, by)
+			}
+		}
+		for _, ch := range c.Changes {
+			if _, ok := moved[ch.Memory]; !ok {
+				moved[ch.Memory] = c.ID
+			}
+		}
+	}
+	if len(moved) == 0 {
+		t.Fatal("no case carries changes: the check would read nothing")
+	}
+}
+
 // TestHoldoutSetData checks that the holdout set loads and keeps its size floors per kind. It asserts
 // no measured value: the file is for one judgement, not for tuning.
 func TestHoldoutSetData(t *testing.T) {
@@ -79,9 +127,7 @@ func TestHoldoutSetData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(set.Memories) > len(pub.Memories) { // 공개 묶음은 뒤에 기억을 더할 수 있다
-		t.Errorf("memories = %d, want at most the %d of the public set", len(set.Memories), len(pub.Memories))
-	}
+	checkSharedMemories(t, set, pub)
 	ids := map[string]bool{}
 	for _, c := range pub.Cases {
 		ids[c.ID] = true

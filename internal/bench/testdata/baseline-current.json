@@ -27,17 +27,17 @@
         "requests": {
           "cases": 108,
           "hit": {
-            "num": 67,
+            "num": 68,
             "den": 73,
-            "value": 0.9178
+            "value": 0.9315
           },
-          "injected": 85,
-          "correct": 74,
+          "injected": 86,
+          "correct": 75,
           "neutral": 3,
           "wrong": {
             "num": 8,
-            "den": 85,
-            "value": 0.0941
+            "den": 86,
+            "value": 0.093
           },
           "forbid": 5,
           "forbidCases": 4,
@@ -48,7 +48,7 @@
           },
           "chars": {
             "n": 90,
-            "mean": 56.5556,
+            "mean": 57.3889,
             "median": 79.5,
             "max": 141
           },
@@ -69,13 +69,13 @@
           },
           "recover": {
             "num": 7,
-            "den": 8,
-            "value": 0.875
+            "den": 7,
+            "value": 1
           },
           "recoverMissed": {
             "num": 5,
-            "den": 6,
-            "value": 0.8333
+            "den": 5,
+            "value": 1
           },
           "b2Chars": {
             "n": 18,
@@ -85,7 +85,7 @@
           },
           "sessionChars": {
             "n": 72,
-            "mean": 707.9722,
+            "mean": 709.0139,
             "median": 696.5,
             "max": 1074
           },
@@ -173,16 +173,16 @@
           },
           "request": {
             "calls": 90,
-            "injections": 54,
+            "injections": 55,
             "chars": {
               "n": 90,
-              "mean": 56.5556,
+              "mean": 57.3889,
               "median": 79.5,
               "max": 141
             },
             "injectionChars": {
-              "n": 54,
-              "mean": 94.2593,
+              "n": 55,
+              "mean": 93.9091,
               "median": 86,
               "max": 141
             },
@@ -435,17 +435,17 @@
         "requests": {
           "cases": 154,
           "hit": {
-            "num": 92,
+            "num": 93,
             "den": 104,
-            "value": 0.8846
+            "value": 0.8942
           },
-          "injected": 135,
-          "correct": 99,
+          "injected": 136,
+          "correct": 100,
           "neutral": 22,
           "wrong": {
             "num": 14,
-            "den": 135,
-            "value": 0.1037
+            "den": 136,
+            "value": 0.1029
           },
           "forbid": 9,
           "forbidCases": 7,
@@ -456,7 +456,7 @@
           },
           "chars": {
             "n": 129,
-            "mean": 53.6279,
+            "mean": 54.2093,
             "median": 78,
             "max": 141
           },
@@ -477,13 +477,13 @@
           },
           "recover": {
             "num": 14,
-            "den": 15,
-            "value": 0.9333
+            "den": 14,
+            "value": 1
           },
           "recoverMissed": {
             "num": 9,
-            "den": 10,
-            "value": 0.9
+            "den": 9,
+            "value": 1
           },
           "b2Chars": {
             "n": 25,
@@ -493,7 +493,7 @@
           },
           "sessionChars": {
             "n": 102,
-            "mean": 720.3431,
+            "mean": 721.0784,
             "median": 699,
             "max": 1089
           },
@@ -581,17 +581,17 @@
           },
           "request": {
             "calls": 129,
-            "injections": 72,
+            "injections": 73,
             "chars": {
               "n": 129,
-              "mean": 53.6279,
+              "mean": 54.2093,
               "median": 78,
               "max": 141
             },
             "injectionChars": {
-              "n": 72,
-              "mean": 96.0833,
-              "median": 87.5,
+              "n": 73,
+              "mean": 95.7945,
+              "median": 87,
               "max": 141
             },
             "dead": 0,
@@ -5574,18 +5574,14 @@
           "kind": "request",
           "part": "train",
           "request": {
-            "ids": [],
-            "chars": 0
+            "ids": [
+              "m-000000000122"
+            ],
+            "chars": 75
           },
           "found": [
-            "m-000000000230",
-            "m-000000000202",
-            "m-000000000092",
-            "m-000000000123",
-            "m-000000000010",
-            "m-000000000179",
-            "m-000000000180",
-            "m-000000000004"
+            "m-000000000122",
+            "m-000000000130"
           ]
         },
         {

@@ -109,11 +109,13 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 			}
 		}
 		// 사례의 변경(두 시작 사이에 낡거나 거절된 기억)은 시작을 부르기 전에 사본에 적용한다.
-		if env.Change != nil {
-			for _, ch := range c.Changes {
-				if err := env.Change(ch.Memory, ch.State); err != nil {
-					return fail(err)
-				}
+		// 옮기는 길이 없는 경로가 건너뛰면 낡은 기억이 그대로 나와 그 사례가 「틀림」으로 굳으므로 건너뛰지 않고 거절한다.
+		if len(c.Changes) > 0 && env.Change == nil {
+			return fail(errors.New("the case carries changes and the recall path cannot apply them"))
+		}
+		for _, ch := range c.Changes {
+			if err := env.Change(ch.Memory, ch.State); err != nil {
+				return fail(err)
 			}
 		}
 		// 세션 시작: 세션의 첫 사례 앞에 한 번, 그리고 시작 사례(재개·압축 뒤 등)마다 다시. 다시 부른 시작이 그 뒤 사례의
