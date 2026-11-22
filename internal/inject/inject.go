@@ -503,7 +503,9 @@ func clipTitle(title string, n int) string {
 // Lines that do not fit wait for a later request: only what was told is marked.
 func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleIDs []string, byID map[string]memory.Memory) string {
 	at := s.SessionBundleAt(host, session)
-	vw, _ := s.Viewer()
+	// Viewer는 주제 머리를 읽으니, 낡은 기억의 후계를 찾을 때만 만든다(요청 훅마다 질의를 늘리지 않는다).
+	var vw memory.Viewer
+	haveViewer := false
 	told := map[string]bool{}
 	for _, id := range bundleIDs {
 		told[id] = true
@@ -539,6 +541,10 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		old, err := s.Get(id)
 		if err != nil || old.State != memory.StateStale || old.SupersededBy == "" || old.UpdatedAt <= at {
 			continue
+		}
+		if !haveViewer {
+			vw, _ = s.Viewer()
+			haveViewer = true
 		}
 		cur, live := vw.Successor(old)
 		if !live {

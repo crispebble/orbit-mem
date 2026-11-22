@@ -126,3 +126,61 @@ func TestViewer_재검토일이_지나면_표시하되_현재_값이다(t *testi
 		t.Fatalf("review due=%v current=%v", vis.ReviewDue, vis.Current())
 	}
 }
+
+// chainTo는 ids[0]이 ids[1]에게, ids[1]이 ids[2]에게 대체된 사슬을 DB에 직접 놓는다(저장 경로는 한 걸음씩만 만든다).
+func chainTo(t *testing.T, s *Store, ids ...string) {
+	t.Helper()
+	for i := 0; i+1 < len(ids); i++ {
+		if _, err := s.db.Exec(`UPDATE memories SET state='stale', superseded_by=? WHERE id=?`, ids[i+1], ids[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func chainMemories(t *testing.T, s *Store, n int) []string {
+	t.Helper()
+	ids := make([]string, n)
+	for i := range ids {
+		name := "사슬 " + string(rune('가'+i))
+		m, _ := mustSave(t, s, userSays(KindFact, name, name))
+		ids[i] = m.ID
+	}
+	return ids
+}
+
+func TestViewer_후계_사슬은_여덟_걸음까지_따라간다(t *testing.T) {
+	s := supStore(t)
+	// ids[0]에서 여덟 번 따라가면 ids[8]에 닿는다. 아홉째(ids[9])는 닿지 못한다.
+	ids := chainMemories(t, s, 10)
+	chainTo(t, s, ids[:9]...)
+	v := viewer(t, s)
+	if got, ok := v.Successor(stateOf(t, s, ids[0])); !ok || got.ID != ids[8] {
+		t.Fatalf("여덟 걸음: %q %v, want %s", got.ID, ok, ids[8])
+	}
+	chainTo(t, s, ids...)
+	if _, ok := v.Successor(stateOf(t, s, ids[0])); ok {
+		t.Fatal("아홉 걸음 끝의 후계는 찾지 않는다")
+	}
+}
+
+func TestViewer_후계_사슬이_돌면_끝내고_없다고_한다(t *testing.T) {
+	s := supStore(t)
+	ids := chainMemories(t, s, 2)
+	chainTo(t, s, ids[0], ids[1], ids[0])
+	if _, ok := viewer(t, s).Successor(stateOf(t, s, ids[0])); ok {
+		t.Fatal("순환 사슬에서 후계를 찾았다")
+	}
+}
+
+func TestViewer_후보_상태의_후계도_살아있는_것으로_인정한다(t *testing.T) {
+	s := supStore(t)
+	old, _ := mustSave(t, s, userSays(KindFact, "옛 값", "값"))
+	cand, _ := mustSave(t, s, aiLearns(KindFact, "후보 값", "다른 값"))
+	chainTo(t, s, old.ID, cand.ID)
+	if got := stateOf(t, s, cand.ID); got.State != StateCandidate {
+		t.Fatalf("후보여야 한다: %q", got.State)
+	}
+	if got, ok := viewer(t, s).Successor(stateOf(t, s, old.ID)); !ok || got.ID != cand.ID {
+		t.Fatalf("후보 후계: %q %v", got.ID, ok)
+	}
+}
