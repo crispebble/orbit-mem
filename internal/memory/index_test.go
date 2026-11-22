@@ -136,8 +136,8 @@ func oldBinaryWrites(t *testing.T, path, changeID string, add int) []string {
 	return ids
 }
 
-func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열이_꼴에_있다(t *testing.T) {
-	if SchemaVersion != 5 {
+func TestIndexSchema_새_DB는_지금_버전이고_색인_표와_그림자_표와_새_열이_꼴에_있다(t *testing.T) {
+	if SchemaVersion != 6 {
 		t.Fatalf("SchemaVersion %d", SchemaVersion)
 	}
 	want, err := expectedShape()
@@ -163,14 +163,14 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if info, err := s.Schema(); err != nil || info != (SchemaInfo{Binary: 5, DB: 5, State: SchemaOK}) {
+	if info, err := s.Schema(); err != nil || info != (SchemaInfo{Binary: 6, DB: 6, State: SchemaOK}) {
 		t.Fatalf("schema %+v %v", info, err)
 	}
 	var uv int
-	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&uv); err != nil || uv != 5 {
+	if err := s.DB().QueryRow(`PRAGMA user_version`).Scan(&uv); err != nil || uv != 6 {
 		t.Fatalf("user_version %d %v", uv, err)
 	}
-	if v := s.Meta(metaSchemaVersion); v != "5" {
+	if v := s.Meta(metaSchemaVersion); v != "6" {
 		t.Fatalf("meta %q", v)
 	}
 	// 옛 줄은 빈 등급(''), 새 열을 모르는 옛 실행 파일의 INSERT도 그대로 된다.
@@ -192,7 +192,7 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 		t.Fatal(err)
 	}
 	defer r.Close()
-	if info != (SchemaInfo{Binary: 5, DB: 4, State: SchemaOlder}) {
+	if info != (SchemaInfo{Binary: 6, DB: 4, State: SchemaOlder}) {
 		t.Fatalf("v4 info %+v", info)
 	}
 	if ok := hasIndexTables(t, r); ok {
@@ -200,7 +200,7 @@ func TestIndexSchema_새_DB는_판5이고_색인_표와_그림자_표와_새_열
 	}
 }
 
-func TestIndexMigrate_판4_DB를_열면_사본을_남기고_판5로_올려_기억을_모두_색인한다(t *testing.T) {
+func TestIndexMigrate_판4_DB를_열면_사본을_남기고_지금_버전으로_올려_기억을_모두_색인한다(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "memory.db")
 	v4DB(t, path, "첫 기억 deploy", "둘째 기억 설계서를", "셋째 기억")
@@ -216,7 +216,7 @@ func TestIndexMigrate_판4_DB를_열면_사본을_남기고_판5로_올려_기�
 	if ci, err := ReadCopyInfo(copies[0]); err != nil || ci.SchemaVersion != 4 || ci.Memories != 3 {
 		t.Fatalf("copy %+v %v", ci, err)
 	}
-	if info, err := s.Schema(); err != nil || info != (SchemaInfo{Binary: 5, DB: 5, State: SchemaOK}) {
+	if info, err := s.Schema(); err != nil || info != (SchemaInfo{Binary: 6, DB: 6, State: SchemaOK}) {
 		t.Fatalf("schema %+v %v", info, err)
 	}
 	n, _ := s.Count()
@@ -307,7 +307,7 @@ func TestIndex_쓰기_다섯_곳_뒤_색인이_그_기억의_지금_글과_updat
 	}
 }
 
-func TestIndex_옛_실행_파일이_쓴_기억은_늦은_기억으로_잡히고_판은_meta_5_그대로다(t *testing.T) {
+func TestIndex_옛_실행_파일이_쓴_기억은_늦은_기억으로_잡히고_버전은_meta_그대로다(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memory.db")
 	s, err := Open(path)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestIndex_옛_실행_파일이_쓴_기억은_늦은_기억으로_잡히고_
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if info, _ := s.Schema(); info.DB != 5 || info.State != SchemaOK {
+	if info, _ := s.Schema(); info.DB != SchemaVersion || info.State != SchemaOK {
 		t.Fatalf("schema %+v", info)
 	}
 	ids, err := staleIDs(s.DB(), 0)
@@ -627,7 +627,7 @@ func TestReadCopyInfo_판은_meta_schema_version을_읽는다(t *testing.T) {
 	saveFact(t, s, "a")
 	s.Close()
 	rawExec(t, path, `PRAGMA user_version=4`) // 옛 실행 파일이 user_version을 되돌린 DB
-	if ci, err := ReadCopyInfo(path); err != nil || ci.SchemaVersion != 5 || ci.Memories != 1 {
+	if ci, err := ReadCopyInfo(path); err != nil || ci.SchemaVersion != SchemaVersion || ci.Memories != 1 {
 		t.Fatalf("copy info %+v %v", ci, err)
 	}
 	legacy := filepath.Join(t.TempDir(), "legacy.db")

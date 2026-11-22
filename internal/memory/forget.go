@@ -62,6 +62,7 @@ var forgetTables = []forgetTable{
 	{idColumn{"memory_versions", "memory_id"}, forgetDelete},
 	{idColumn{"sources", "memory_id"}, forgetDelete},
 	{idColumn{"sightings", "memory_id"}, forgetDelete},
+	{idColumn{"sighting_sessions", "memory_id"}, forgetDelete},
 	{idColumn{"memory_links", "a"}, forgetDelete}, // 뗀 줄(removed_at≠0)도 지운다
 	{idColumn{"memory_links", "b"}, forgetDelete},
 	{idColumn{"judgments", "memory_id"}, forgetDelete},

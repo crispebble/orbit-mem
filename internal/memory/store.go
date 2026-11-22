@@ -124,6 +124,9 @@ func addColumns(db *sql.Tx) error {
 		{"activity", "summary", "TEXT NOT NULL DEFAULT ''"},
 		// 출처 등급(판 5, 설계 9절). 옛 판은 이 열을 모르고 넣으므로 그 줄은 빈 등급이고, 읽을 때 kind로 정한다.
 		{"sources", "trust", "TEXT NOT NULL DEFAULT ''"},
+		// 별칭(스키마 6, Q-1)과 서버가 출처를 다시 확인했는지(스키마 6, C-1). 옛 버전이 넣은 줄은 별칭 없음·확인 안 함이다.
+		{"memories", "aliases", "TEXT NOT NULL DEFAULT '[]'"},
+		{"sources", "rechecked", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -162,7 +165,10 @@ CREATE TABLE IF NOT EXISTS lab_runs (
 // or old DB together; a statement that reads first and then writes would get
 // SQLITE_BUSY at once instead of waiting. Under that lock it reads the schema version
 // again: a DB a newer orbit-mem migrated meanwhile is left alone (ErrSchemaNewer), so
-// the meta schema.version it writes never goes down.
+// the meta schema.version it writes never goes down, and the one-time fills of an
+// upgrade (backfill6Tx) run only in the process that found the old version under the lock.
+// Any failure rolls the whole upgrade back: the DB keeps its old version and the next
+// write open tries again.
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -183,13 +189,17 @@ func migrate(db *sql.DB) error {
 	if err := tx.QueryRow(lateObjectsSQL).Scan(&marks); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema + forgottenSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema + forgottenSchema + schema6); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
 	}
 	switch {
+	case v < 6: // 스키마 6 채우기는 v를 잠금 안에서 읽었으므로 한 번만 돈다. 기억 전부를 다시 색인하므로 아래 두 갈래를 포함한다
+		if err := backfill6Tx(tx); err != nil {
+			return i18n.Errorf("memory.err.db_upgrade", err)
+		}
 	case indexed == 0: // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
 		if _, err := fillStaleTx(tx, 0); err != nil {
 			return i18n.Errorf("memory.err.db_upgrade", err)
