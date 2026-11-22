@@ -211,3 +211,18 @@ func (s *Store) Links() ([]Link, error) {
 	}
 	return out, rows.Err()
 }
+
+// DeadLinkCount counts the live (not removed) links where a live memory (candidate or confirmed)
+// points at a memory that is not a current value (stale or hidden). A link counts once per live end:
+// a link between a live memory and a dead one is one, a link between two live or two dead memories is none.
+// It measures how late the dead memories were cut from the graph (명세 · 기억 정확성 F-6).
+func (s *Store) DeadLinkCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM memory_links l
+JOIN memories x ON x.id=l.a JOIN memories y ON y.id=l.b
+WHERE l.removed_at=0
+AND ((x.state IN (?,?) AND y.state IN (?,?)) OR (y.state IN (?,?) AND x.state IN (?,?)))`,
+		StateCandidate, StateConfirmed, StateStale, StateHidden,
+		StateCandidate, StateConfirmed, StateStale, StateHidden).Scan(&n)
+	return n, err
+}

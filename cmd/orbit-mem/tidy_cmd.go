@@ -39,6 +39,9 @@ func cmdTidy(a *app, args []string) error {
 		return a.json(r)
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.tidy.done", r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved))
+	if r.DeadLinks > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.tidy.deadlinks", r.DeadLinks))
+	}
 	for _, e := range r.Errors {
 		fmt.Fprintln(a.stdout, i18n.T("cli.tidy.error", e))
 	}
