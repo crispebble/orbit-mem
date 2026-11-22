@@ -1,5 +1,5 @@
 {
-  "usage.bench": "orbit-mem bench recall --cases <파일> [--db <기억 DB>] [--recall current,legacy] [--split all|train|test] [--json] [--report <파일>] [--set key=value ...] | bench extract [--projects <폴더>] [--db <기억 DB>] [--out <폴더>] [--min-sessions N] [--min-requests N] [--max-sessions N] [--max-requests N] [--max-requests-per-session N] [--all] | bench audit-injections --db <기억 DB> [--json]   # 회상 평가 묶음 · Claude Code 대화 기록에서 재생 자료 추출(저장소 밖) · 기록된 주입 가운데 그 시각에 낡은 기억 세기",
+  "usage.bench": "orbit-mem bench recall --cases <파일> [--db <기억 DB>] [--recall current,legacy] [--split all|train|test] [--json] [--report <파일>] [--set key=value ...] | bench extract [--projects <폴더> ...] [--db <기억 DB>] [--out <폴더>] [--min-sessions N] [--min-requests N] [--max-sessions N] [--max-requests N] [--max-requests-per-session N] [--all] | bench audit-injections --db <기억 DB> [--json]   # 회상 평가 묶음 · Claude Code 대화 기록에서 재생 자료 추출(저장소 밖) · 기록된 주입 가운데 그 시각에 낡은 기억 세기",
   "flag.bench.cases": "사례 파일(JSON)",
   "flag.bench.db": "잴 기억 DB(쓰지 않고 사본으로 잰다). 사례 파일에 memories가 없으면 필요",
   "flag.bench.steps": "bench extract가 사례와 함께 쓴 sessions.json. 시각(at)이 없는 옛 재생 사례에 그 단계의 시각을 붙인다(사례 번호와 단계의 종류·글이 같을 때만, 아니면 그 사례를 뺀다)",
@@ -8,7 +8,7 @@
   "flag.bench.recall": "회상 경로(쉼표로 구분): current, legacy",
   "flag.bench.split": "글에 보일 부분: all, train, test (JSON은 늘 전체)",
   "flag.bench.report": "사례별 결과(보인 id·글자·find 상위 8)를 담은 보고를 이 파일에 쓴다",
-  "flag.bench.projects": "읽을 Claude Code projects 폴더",
+  "flag.bench.projects": "읽을 Claude Code projects 폴더(여러 번 줄 수 있다. 기본은 Claude 설정 폴더의 projects)",
   "flag.bench.db_extract": "사본을 뜰 기억 DB(읽기 전용)",
   "flag.bench.out": "memory-copy.db·sessions.json·cases.json을 쓸 폴더(git 작업 트리 안은 안 됨)",
   "flag.bench.min_sessions": "고를 세션 최소 수(기본 10)",

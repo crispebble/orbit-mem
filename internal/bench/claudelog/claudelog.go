@@ -90,6 +90,7 @@ func DefaultRoot() string {
 
 type record struct {
 	Type              string          `json:"type"`
+	UUID              string          `json:"uuid"`
 	SessionID         string          `json:"sessionId"`
 	Cwd               string          `json:"cwd"`
 	Timestamp         string          `json:"timestamp"`
@@ -135,32 +136,134 @@ const sessionStartHook = "SessionStart"
 // word and resumes again takes longer than this, so that second start is kept.
 const startFoldGap = 10 * time.Second
 
-// ReadSession reads one log file as one session. Broken lines are skipped and counted.
-func ReadSession(path string) (Session, error) {
+// eachRecord calls fn for every line of a log file that parses as a record and returns how many lines did not.
+// A file is read one line at a time, so a large log is never held whole.
+func eachRecord(path string, fn func(record)) (broken int, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return Session{}, err
+		return 0, err
 	}
 	defer f.Close()
-	s := Session{Project: filepath.Base(filepath.Dir(path)), ID: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
-	haveID := false
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, rerr := r.ReadBytes('\n')
 		if len(strings.TrimSpace(string(line))) > 0 {
 			var rec record
 			if err := json.Unmarshal(line, &rec); err != nil {
-				s.BrokenLines++
+				broken++
 			} else {
-				s.add(rec, &haveID)
+				fn(rec)
 			}
 		}
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
+				return broken, nil
+			}
+			return broken, rerr
+		}
+	}
+}
+
+// ReadSession reads one log file as one session. Broken lines are skipped and counted.
+func ReadSession(path string) (Session, error) {
+	s := Session{Project: filepath.Base(filepath.Dir(path)), ID: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+	haveID := false
+	broken, err := eachRecord(path, func(rec record) { s.add(rec, &haveID) })
+	s.BrokenLines = broken
+	return s, err
+}
+
+// fileSessionID is the session id a log file belongs to: the first session id its records carry, the file name
+// without its extension when they carry none. It stops reading at that record.
+func fileSessionID(path string) string {
+	id := ""
+	f, err := os.Open(path)
+	if err == nil {
+		defer f.Close()
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 1<<20), 1<<30)
+		for sc.Scan() {
+			var rec struct {
+				SessionID string `json:"sessionId"`
+			}
+			if json.Unmarshal(sc.Bytes(), &rec) == nil && rec.SessionID != "" {
+				id = rec.SessionID
 				break
 			}
-			return s, rerr
 		}
+	}
+	if id == "" {
+		id = strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	}
+	return id
+}
+
+// stamped is a record with the time its place in a merged session is decided by.
+type stamped struct {
+	rec  record
+	at   time.Time
+	file int
+	pos  int
+}
+
+// ReadMerged reads log files that hold one session (the same session id: a copy of a log, a branch that took
+// over from another, the same log under a work copy's folder) as one session. A record that carries a uuid
+// counts once, from the first file (in path order) that has it, so a copy that is a prefix of a longer log adds
+// nothing and two branches add each other's tails; the records are then put in time order. A record without a
+// time stays after the record before it in its file. Records without a uuid are kept as they are; they carry
+// no step. The result does not depend on the order of paths. With one path it is ReadSession. The project is
+// that of the first path in sorted order.
+func ReadMerged(paths []string) (Session, error) {
+	paths = slices.Clone(paths)
+	sort.Strings(paths)
+	if len(paths) == 1 {
+		return ReadSession(paths[0])
+	}
+	s := Session{Project: filepath.Base(filepath.Dir(paths[0])), ID: strings.TrimSuffix(filepath.Base(paths[0]), ".jsonl")}
+	seen := map[string]bool{}
+	var all []stamped
+	for i, p := range paths {
+		// uuid는 다른 파일에서 이미 본 것만 건너뛴다. 같은 파일 안의 되풀이는 지금까지처럼 그대로 둔다.
+		fresh := map[string]bool{}
+		var prev time.Time
+		pos := 0
+		broken, err := eachRecord(p, func(rec record) {
+			at, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
+			if at.IsZero() {
+				at = prev
+			} else {
+				prev = at
+			}
+			if u := rec.UUID; u != "" {
+				if seen[u] {
+					return
+				}
+				fresh[u] = true
+			}
+			all = append(all, stamped{rec: rec, at: at, file: i, pos: pos})
+			pos++
+		})
+		if err != nil {
+			return s, err
+		}
+		s.BrokenLines += broken
+		for u := range fresh {
+			seen[u] = true
+		}
+	}
+	sort.SliceStable(all, func(a, b int) bool {
+		x, y := all[a], all[b]
+		if !x.at.Equal(y.at) {
+			return x.at.Before(y.at)
+		}
+		if x.file != y.file {
+			return x.file < y.file
+		}
+		return x.pos < y.pos
+	})
+	haveID := false
+	for _, r := range all {
+		s.add(r.rec, &haveID)
 	}
 	return s, nil
 }
@@ -413,26 +516,40 @@ func hasStart(s Session) bool {
 func Select(roots []string, opts Options) ([]Session, error) {
 	opts = opts.withDefaults()
 	byProject := map[string][]Session{}
+	// 같은 세션 id의 기록 파일은 한 세션으로 합친다(ReadMerged). 세션 id가 같은 파일을 묶는 것은 파일 이름이 아니라
+	// 기록 안의 id로 한다: 이어받은 사본은 파일 이름이 달라도 id가 같다.
+	var files []string
 	for _, root := range roots {
-		files, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
+		found, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
 		if err != nil {
 			return nil, err
 		}
-		sort.Strings(files)
-		for _, p := range files {
-			s, err := ReadSession(p)
-			if err != nil {
-				continue
-			}
-			if inTempDir(s.Cwd) {
-				continue
-			}
-			s = capRequests(s, opts.MaxRequestsPerSession)
-			if CountRequests(s) == 0 && !(opts.All && hasStart(s)) {
-				continue
-			}
-			byProject[s.Project] = append(byProject[s.Project], s)
+		files = append(files, found...)
+	}
+	sort.Strings(files)
+	files = slices.Compact(files)
+	groups := map[string][]string{}
+	var order []string
+	for _, p := range files {
+		id := fileSessionID(p)
+		if _, ok := groups[id]; !ok {
+			order = append(order, id)
 		}
+		groups[id] = append(groups[id], p)
+	}
+	for _, id := range order {
+		s, err := ReadMerged(groups[id])
+		if err != nil {
+			continue
+		}
+		if inTempDir(s.Cwd) {
+			continue
+		}
+		s = capRequests(s, opts.MaxRequestsPerSession)
+		if CountRequests(s) == 0 && !(opts.All && hasStart(s)) {
+			continue
+		}
+		byProject[s.Project] = append(byProject[s.Project], s)
 	}
 	names := make([]string, 0, len(byProject))
 	for name, list := range byProject {

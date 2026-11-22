@@ -251,7 +251,7 @@ orbit-mem bench recall --db <memory-copy.db> --cases <answers-draft.json> --step
 orbit-mem bench recall --cases <사례 파일> --set saveSimilarMin=0.7 --set recallChars=800
 
 # 이 PC의 대화 기록에서 재생 자료를 뽑는다. 쓰기는 --out에만 하고, git 작업 트리 안은 거절한다.
-orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일> --out <폴더>
+orbit-mem bench extract --projects <대화 기록 폴더> [--projects <다른 폴더> ...] --db <기억 DB 파일> --out <폴더>
 
 # 기억 DB에 기록된 주입 가운데 그 시각에 현재 값이 아니던 기억을 센다. --db는 꼭 준다(기본 DB가 없다). 원본은 열지 않고 사본으로 읽는다.
 orbit-mem bench audit-injections --db <memory-copy.db> [--json]
@@ -260,6 +260,7 @@ orbit-mem bench audit-injections --db <memory-copy.db> [--json]
 - `bench recall`은 `--cases`에 `memories`가 없을 때 `--db`가 필요하고, 사례는 키 대신 DB의 실제 기억 id로 정답을 가리킨다.
 - `bench extract`의 기본값은 `--projects`가 Claude 설정 폴더의 `projects`, `--out`이 `$ORBIT_HOME/bench/replay`다. 결과는 DB 사본 `memory-copy.db`, `sessions.json`, 정답 칸이 빈 `cases.json`이다(사례마다 단계 시각 `at`). 정답표는 사람이나 AI가 `cases.json`을 고쳐 `answers-draft.json`으로 만든다.
 - `bench extract`의 표본 상한: 세션 `--max-sessions`(기본 20), 요청 합 `--max-requests`(기본 120), 세션마다 사람 요청 `--max-requests-per-session`(기본 12). 0이면 그 상한이 없다. 최소 수(`--min-sessions` 기본 10, `--min-requests` 기본 50)에 둘 다 닿으면 고르기를 멈춘다. `--all`은 최소 수에서 멈추지 않고 상한도 없이 모든 세션을 뽑고, 사람 요청 없이 세션 시작만 있는 세션도 남긴다. 감사(`audit-injections`)와 견줄 재생은 `--all`로 뽑는다. 세션마다 요청 상한이 걸려도 그 뒤의 세션 시작 단계는 남는다. 뽑은 세션 수는 `extract` 출력과 `bench recall` 보고 머리의 묶음 단위 수로 나온다.
+- `bench extract`는 `--projects`를 여러 번 받는다(`<폴더>/*/*.jsonl`을 읽는다). 한 세션은 사례에 한 번만 나온다. 세션은 기록 안의 세션 id로 가르므로 파일 이름이나 폴더가 달라도 id가 같은 기록 파일(이어받기·분기 사본, 작업 사본 폴더에 있는 같은 기록)은 한 세션이다. 합치는 규칙: uuid가 있는 기록은 경로순으로 처음 가진 파일의 것 하나만 남기고, 남은 기록을 시각순(시각이 같으면 경로순, 시각이 없는 기록은 같은 파일의 앞 기록 시각)으로 세운다. 어느 한쪽이 다른 쪽의 앞부분 사본이면 결과는 긴 쪽이고, 두 기록이 한 지점에서 갈라졌으면 공통 부분 하나에 두 가지의 단계가 시각순으로 이어진다. 결과는 파일 순회 순서와 `--projects`를 준 순서에 기대지 않는다. 그래서 `cases.json`의 사례 id(`<세션 id>-<번호>`)는 겹치지 않고 `bench recall`이 읽는다.
 - `bench extract`는 세션 시작 훅이 돈 기록(`attachment`의 `hookName` `SessionStart:<출처>`, 같은 시작의 훅 여럿은 하나로)을 시작 사례(`kind` `start`, `source`)로, 도구 호출의 입력을 `input`으로 남긴다. 세션 시작 훅을 기록하지 않은 대화는 시작 사례 없이 첫 사례 앞의 시작만 돈다.
 - 재생 자료에는 이 PC의 기억과 대화가 들어 있다. 저장소에 넣거나 공개하지 않는다.
 

@@ -1,5 +1,5 @@
 {
-  "usage.bench": "orbit-mem bench recall --cases <file> [--db <memory DB>] [--recall current,legacy] [--split all|train|test] [--json] [--report <file>] [--set key=value ...] | bench extract [--projects <dir>] [--db <memory DB>] [--out <dir>] [--min-sessions N] [--min-requests N] [--max-sessions N] [--max-requests N] [--max-requests-per-session N] [--all] | bench audit-injections --db <memory DB> [--json]   # recall evaluation set · replay material from Claude Code logs (outside the repository) · count recorded injections of memories that were stale at the time",
+  "usage.bench": "orbit-mem bench recall --cases <file> [--db <memory DB>] [--recall current,legacy] [--split all|train|test] [--json] [--report <file>] [--set key=value ...] | bench extract [--projects <dir> ...] [--db <memory DB>] [--out <dir>] [--min-sessions N] [--min-requests N] [--max-sessions N] [--max-requests N] [--max-requests-per-session N] [--all] | bench audit-injections --db <memory DB> [--json]   # recall evaluation set · replay material from Claude Code logs (outside the repository) · count recorded injections of memories that were stale at the time",
   "flag.bench.cases": "case file (JSON)",
   "flag.bench.db": "memory DB to measure on (not written; a copy is used). Needed when the case file has no memories",
   "flag.bench.steps": "the sessions.json bench extract wrote with the cases: gives old replay cases with no time (at) the time of their step (only when the case number and the step's kind and text agree; otherwise the case is left out)",
@@ -8,7 +8,7 @@
   "flag.bench.recall": "recall paths, comma separated: current, legacy",
   "flag.bench.split": "part shown in the text: all, train or test (JSON always has all)",
   "flag.bench.report": "write the report with the result of every case (ids shown, characters, top 8 of find) to this file",
-  "flag.bench.projects": "Claude Code projects folder to read",
+  "flag.bench.projects": "Claude Code projects folder to read (repeatable; default is projects in the Claude config folder)",
   "flag.bench.db_extract": "memory DB to copy (read only)",
   "flag.bench.out": "folder to write memory-copy.db, sessions.json and cases.json (not inside a git working tree)",
   "flag.bench.min_sessions": "least sessions to pick (default 10)",

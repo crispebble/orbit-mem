@@ -232,9 +232,20 @@ type benchCaseFile struct {
 	Cases []benchCase `json:"cases"`
 }
 
+// repeatedFlag is a string flag that may be given more than once; the values come in the order given.
+type repeatedFlag []string
+
+func (r *repeatedFlag) String() string { return strings.Join(*r, ",") }
+
+func (r *repeatedFlag) Set(v string) error {
+	*r = append(*r, v)
+	return nil
+}
+
 func benchExtract(a *app, args []string) error {
 	fs := a.flags("bench extract")
-	projects := fs.String("projects", claudelog.DefaultRoot(), i18n.T("flag.bench.projects"))
+	var projects repeatedFlag
+	fs.Var(&projects, "projects", i18n.T("flag.bench.projects"))
 	db := fs.String("db", paths().DB(), i18n.T("flag.bench.db_extract"))
 	out := fs.String("out", filepath.Join(paths().Home, "bench", "replay"), i18n.T("flag.bench.out"))
 	minSessions := fs.Int("min-sessions", 0, i18n.T("flag.bench.min_sessions"))
@@ -269,7 +280,11 @@ func benchExtract(a *app, args []string) error {
 	if _, err := os.Stat(*db); err != nil {
 		return err
 	}
-	sessions, err := claudelog.Select([]string{*projects}, pick)
+	roots := []string(projects)
+	if len(roots) == 0 {
+		roots = []string{claudelog.DefaultRoot()}
+	}
+	sessions, err := claudelog.Select(roots, pick)
 	if err != nil {
 		return err
 	}
