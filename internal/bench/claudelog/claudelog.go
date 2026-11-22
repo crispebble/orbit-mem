@@ -98,6 +98,11 @@ type Session struct {
 	Parent string `json:"parent,omitempty"`
 	// UnreadFiles counts the log files of the session that could not be read and were left out.
 	UnreadFiles int `json:"unreadFiles,omitempty"`
+	// UnkeyedSteps counts the records that make a step (or a hook context) but lack a session id or a uuid. A
+	// record without a session id is read as the id before it in its file (a leading one as the first id of the
+	// file); a record without a uuid cannot be told from a copy of itself in another file. The format is assumed
+	// to give every step-making record both, and a count above zero says that did not hold.
+	UnkeyedSteps int `json:"unkeyedSteps,omitempty"`
 }
 
 // DefaultRoot is <CLAUDE_CONFIG_DIR or ~/.claude>/projects.
@@ -158,39 +163,63 @@ const sessionStartHook = "SessionStart"
 // word and resumes again takes longer than this, so that second start is kept.
 const startFoldGap = 10 * time.Second
 
-// eachRecord calls fn for every line of a log file that parses as a record and returns how many lines did not.
-// A file is read one line at a time, so a large log is never held whole.
-func eachRecord(path string, fn func(record)) (broken int, err error) {
+// eachLine calls fn for every non-blank line of a file. A file is read one line at a time, so a large log is
+// never held whole.
+func eachLine(path string, fn func(line []byte)) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer f.Close()
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, rerr := r.ReadBytes('\n')
 		if len(strings.TrimSpace(string(line))) > 0 {
-			var rec record
-			if err := json.Unmarshal(line, &rec); err != nil {
-				broken++
-			} else {
-				fn(rec)
-			}
+			fn(line)
 		}
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
-				return broken, nil
+				return nil
 			}
-			return broken, rerr
+			return rerr
 		}
 	}
 }
+
+// eachRecord calls fn for every line of a log file that parses as a record and returns how many lines did not.
+func eachRecord(path string, fn func(record)) (broken int, err error) {
+	err = eachLine(path, func(line []byte) {
+		var rec record
+		if json.Unmarshal(line, &rec) != nil {
+			broken++
+			return
+		}
+		fn(rec)
+	})
+	return broken, err
+}
+
+// makesStep says whether a record would add a step (or a hook context) to a session.
+func makesStep(rec record) bool {
+	var probe Session
+	haveID := false
+	probe.add(rec, &haveID)
+	return len(probe.Steps) > 0 || probe.HookContexts > 0
+}
+
+// unkeyed says whether a record lacks the session id or the uuid the reading relies on.
+func unkeyed(rec record) bool { return rec.SessionID == "" || rec.UUID == "" }
 
 // ReadSession reads one log file as one session. Broken lines are skipped and counted.
 func ReadSession(path string) (Session, error) {
 	s := Session{Project: filepath.Base(filepath.Dir(path)), ID: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
 	haveID := false
-	broken, err := eachRecord(path, func(rec record) { s.add(rec, &haveID) })
+	broken, err := eachRecord(path, func(rec record) {
+		if unkeyed(rec) && makesStep(rec) {
+			s.UnkeyedSteps++
+		}
+		s.add(rec, &haveID)
+	})
 	s.BrokenLines = broken
 	return s, err
 }
@@ -199,16 +228,22 @@ func ReadSession(path string) (Session, error) {
 // none is listed under its name without the extension (the name Claude Code gives a log is its session id).
 func scanSessionIDs(path string) []string {
 	var ids []string
-	_, err := eachRecord(path, func(rec record) {
-		if rec.SessionID != "" && !slices.Contains(ids, rec.SessionID) {
+	err := eachLine(path, func(line []byte) {
+		var rec struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(line, &rec) == nil && rec.SessionID != "" && !slices.Contains(ids, rec.SessionID) {
 			ids = append(ids, rec.SessionID)
 		}
 	})
 	if err != nil || len(ids) == 0 {
-		return []string{strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+		return []string{fileID(path)}
 	}
 	return ids
 }
+
+// fileID is the id a log file stands for when its records carry none: its name without the extension.
+func fileID(path string) string { return strings.TrimSuffix(filepath.Base(path), ".jsonl") }
 
 // stamped is a record with the time its place in a merged session is decided by.
 type stamped struct {
@@ -222,7 +257,9 @@ type stamped struct {
 // more than one session id: a session taken over into a new id starts with a copy of the earlier records, which
 // keep the earlier id, and goes on with records of the new id. The hook ran under each id on its own, so a
 // session is the records of one id, never the whole file. A record without a session id belongs to the id before
-// it in its file (the first of the file when it comes first).
+// it in its file, and one before any id in the file to the first id of the file (a file with no id at all stands
+// for its name, fileID). So a session's records are the same whether its file is read alone or merged. The
+// parent of a session is the first id of the file it starts in, when that is another id (not the id just before).
 //
 // A record that carries a uuid counts once, from the first file (in path order) that has it; a copy that is
 // contained in a longer log adds nothing. With more than one file the records are put in time order (equal
@@ -251,16 +288,8 @@ func ReadMerged(paths []string, id string) (Session, error) {
 		cur, first := "", ""
 		pos := 0
 		var mine []stamped
-		broken, err := eachRecord(p, func(rec record) {
-			if rec.SessionID != "" {
-				cur = rec.SessionID
-			}
-			if first == "" {
-				first = cur
-			}
-			if cur != id {
-				return
-			}
+		var pending []record // id 없는 기록이 첫 id보다 앞에 있을 때: 그 id를 알 때까지 쥐고 있는다
+		take := func(rec record) {
 			at, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
 			if at.IsZero() {
 				at = prev
@@ -276,7 +305,35 @@ func ReadMerged(paths []string, id string) (Session, error) {
 			}
 			mine = append(mine, stamped{rec: rec, at: at, file: i, pos: pos})
 			pos++
+		}
+		flush := func() {
+			if first == id {
+				for _, rec := range pending {
+					take(rec)
+				}
+			}
+			pending = nil
+		}
+		broken, err := eachRecord(p, func(rec record) {
+			if rec.SessionID != "" {
+				cur = rec.SessionID
+			}
+			if first == "" {
+				if cur == "" {
+					pending = append(pending, rec)
+					return
+				}
+				first = cur
+				flush()
+			}
+			if cur == id {
+				take(rec)
+			}
 		})
+		if err == nil && first == "" {
+			first = fileID(p)
+			flush()
+		}
 		if err != nil {
 			s.UnreadFiles++
 			sets[i] = nil
@@ -310,6 +367,9 @@ func ReadMerged(paths []string, id string) (Session, error) {
 	}
 	haveID := false
 	for _, r := range all {
+		if unkeyed(r.rec) && makesStep(r.rec) {
+			s.UnkeyedSteps++
+		}
 		s.add(r.rec, &haveID)
 	}
 	return s, nil
@@ -576,21 +636,35 @@ func hasStart(s Session) bool {
 	return slices.ContainsFunc(s.Steps, func(st Step) bool { return st.Kind == KindStart })
 }
 
+// Report is what Select could not read.
+type Report struct {
+	// LostFiles is the number of log files that belong to a session that could not be made at all (every one of
+	// its files was unreadable). Files left out of a session that was made are in that session's UnreadFiles.
+	LostFiles int
+}
+
 // Select picks sessions from the roots (each a "projects" directory). A session is what one session id
 // recorded, whichever log files hold it: the files of a session id are read together (ReadMerged), and a log
 // file that a later session took over into a new id (it starts with a copy of the earlier session's records)
 // gives the new id its own session. So no id comes out twice, and the case ids built from it do not repeat.
 // It takes the newest session of each project in turn, so one project does not dominate, and stops once both
-// minimums are met or a maximum is reached. Same input, same result. A session whose files cannot be read at
-// all is left out.
+// minimums are met or a maximum is reached. Same input, same result, whatever the order or repeats of roots.
+// A session whose files cannot be read at all is left out; SelectReport counts those files.
 func Select(roots []string, opts Options) ([]Session, error) {
+	out, _, err := SelectReport(roots, opts)
+	return out, err
+}
+
+// SelectReport is Select with a report of the log files it could not turn into a session.
+func SelectReport(roots []string, opts Options) ([]Session, Report, error) {
+	var rep Report
 	opts = opts.withDefaults()
 	byProject := map[string][]Session{}
 	var files []string
 	for _, root := range roots {
 		found, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
 		if err != nil {
-			return nil, err
+			return nil, rep, err
 		}
 		files = append(files, found...)
 	}
@@ -611,6 +685,7 @@ func Select(roots []string, opts Options) ([]Session, error) {
 		}
 	}
 	seenID := map[string]bool{}
+	lost := map[string]bool{}
 	for _, id := range order {
 		var s Session
 		var err error
@@ -620,10 +695,13 @@ func Select(roots []string, opts Options) ([]Session, error) {
 			s, err = ReadMerged(paths, id)
 		}
 		if err != nil {
+			for _, p := range groups[id] {
+				lost[p] = true
+			}
 			continue
 		}
 		if seenID[s.ID] {
-			return nil, fmt.Errorf("claudelog: session id %q read twice", s.ID)
+			return nil, rep, fmt.Errorf("claudelog: session id %q read twice", s.ID)
 		}
 		seenID[s.ID] = true
 		if inTempDir(s.Cwd) {
@@ -635,6 +713,7 @@ func Select(roots []string, opts Options) ([]Session, error) {
 		}
 		byProject[s.Project] = append(byProject[s.Project], s)
 	}
+	rep.LostFiles = len(lost)
 	names := make([]string, 0, len(byProject))
 	for name, list := range byProject {
 		sort.SliceStable(list, func(i, j int) bool {
@@ -664,13 +743,13 @@ func Select(roots []string, opts Options) ([]Session, error) {
 			any = true
 			if (len(out) >= opts.MinSessions && reqs >= opts.MinRequests) ||
 				len(out) >= opts.MaxSessions || reqs >= opts.MaxRequests {
-				return out, nil
+				return out, rep, nil
 			}
 			out = append(out, list[round])
 			reqs += CountRequests(list[round])
 		}
 		if !any {
-			return out, nil
+			return out, rep, nil
 		}
 	}
 }

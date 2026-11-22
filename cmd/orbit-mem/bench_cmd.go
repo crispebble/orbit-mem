@@ -274,7 +274,7 @@ func benchExtract(a *app, args []string) error {
 	if len(roots) == 0 {
 		roots = []string{claudelog.DefaultRoot()}
 	}
-	sessions, err := claudelog.Select(roots, pick)
+	sessions, rep, err := claudelog.SelectReport(roots, pick)
 	if err != nil {
 		return err
 	}
@@ -288,7 +288,7 @@ func benchExtract(a *app, args []string) error {
 		CWD:   sessions[0].Cwd,
 		Seed:  "replay-" + now.Format("20060102"),
 	}
-	var starts, reqs, subs, tools, merged, forked, unread int
+	var starts, reqs, subs, tools, merged, forked, unread, unkeyed int
 	for _, s := range sessions {
 		if s.Files > 1 {
 			merged++
@@ -297,6 +297,7 @@ func benchExtract(a *app, args []string) error {
 			forked++
 		}
 		unread += s.UnreadFiles
+		unkeyed += s.UnkeyedSteps
 		n := 0
 		for _, st := range s.Steps {
 			n++
@@ -349,8 +350,8 @@ func benchExtract(a *app, args []string) error {
 		}
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), starts, reqs, subs, tools))
-	if merged+forked+unread > 0 {
-		fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_merged", merged, forked, unread))
+	if merged+forked+unread+unkeyed+rep.LostFiles > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_merged", merged, forked, unread, rep.LostFiles, unkeyed))
 	}
 	return nil
 }
