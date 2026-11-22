@@ -160,9 +160,10 @@ func (s *Store) Triggered() ([]Memory, error) {
 // Session marks: what a session was told once, so the hooks do not say it again.
 const (
 	MarkShown      = "shown"      // 요청 회상으로 넣음
-	MarkCorrection = "correction" // 정정 줄로 알림(옛 판 id)
+	MarkCorrection = "correction" // 정정 줄이나 무효 줄로 알림(옛 버전 id)
 	MarkNew        = "new"        // 새 기억 줄로 알림
 	MarkTool       = "tool"       // 도구 호출 직전에 넣음
+	MarkBundle     = "bundle"     // 세션 묶음에 넣었다가 다시 만들 때 뺌(ReplaceSessionBundle)
 )
 
 // MarkSession records that the session was given ids as kind.

@@ -102,9 +102,9 @@ func TestStart와_Subagent와_Tool은_오류없이_Shown을_낸다(t *testing.T)
 	}
 }
 
-// 0.19.0은 같은 세션의 세션 시작을 얼린 묶음 그대로 다시 준다(inject.SessionBundleWith). 묶음을 만든 뒤 낡은 기억이 그
-// 묶음에 있으면, 재생은 그 기억을 그 호출의 Dead로 낸다. 새 세션의 묶음은 낡은 기억을 넣지 않으므로 Dead가 없다.
-func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸다(t *testing.T) {
+// 같은 세션의 재개 시작은 묶음 안 기억이 그 사이 낡았으면 묶음을 다시 만든다(명세 F-1, inject.SessionBundleWith). 0.19.0은
+// 얼린 묶음을 그대로 다시 줘서 그 기억이 그 호출의 Dead로 나왔다. 이제 재개·새 세션·압축 뒤 시작 모두 Dead가 없다.
+func TestHostpath_재개_시작은_낡은_기억을_뺀_묶음을_내고_Dead가_없다(t *testing.T) {
 	f := open(t)
 	// 세션 묶음(recall auto)에는 상시 핵심만 든다: 사용자 범위의 확정 기억 하나를 올려 둔다.
 	core := f.p.IDOf("deploy")
@@ -135,11 +135,8 @@ func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(again.IDs, core) || !slices.Equal(again.Dead, []string{core}) {
-		t.Fatalf("resumed start: ids %v dead %v, want the frozen bundle with core dead", again.IDs, again.Dead)
-	}
-	if again.DeadWhy[core] != bench.DeadStale || len(again.DeadWhy) != 1 {
-		t.Fatalf("resumed start: why %v, want core %s", again.DeadWhy, bench.DeadStale)
+	if slices.Contains(again.IDs, core) || strings.Contains(again.Text, core) || len(again.Dead) != 0 || len(again.DeadWhy) != 0 {
+		t.Fatalf("resumed start: ids %v dead %v why %v, want the bundle rebuilt without core", again.IDs, again.Dead, again.DeadWhy)
 	}
 	fresh, err := f.env.Recaller.Start("s2", "/bench/app")
 	if err != nil {
@@ -165,8 +162,9 @@ func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸
 	}
 }
 
-// 얼린 묶음에 든 기억을 지우면, 재개 시작은 사본에 없는 그 id를 까닭 gone으로 낸다(감사도 지운 시각 뒤의 주입은 gone으로 센다).
-func TestHostpath_지운_기억이_든_얼린_묶음은_까닭_gone으로_낸다(t *testing.T) {
+// 묶음에 든 기억을 지우면, 재개 시작은 그 기억을 뺀 묶음을 다시 만든다. 0.19.0은 사본에 없는 그 id를 까닭 gone의 Dead로
+// 냈다. 사본에 없는 id를 gone으로 세는 것은 TestDead_사본에_없는_id는_까닭_gone이다가 지킨다.
+func TestHostpath_지운_기억이_든_묶음은_재개_시작에서_빠지고_Dead가_없다(t *testing.T) {
 	f := open(t)
 	core := f.p.IDOf("deploy")
 	st, err := memory.Open(f.db)
@@ -192,8 +190,8 @@ func TestHostpath_지운_기억이_든_얼린_묶음은_까닭_gone으로_낸다
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(again.Dead, []string{core}) || again.DeadWhy[core] != bench.DeadGone {
-		t.Fatalf("resumed start: dead %v why %v, want core gone", again.Dead, again.DeadWhy)
+	if slices.Contains(again.IDs, core) || strings.Contains(again.Text, core) || len(again.Dead) != 0 {
+		t.Fatalf("resumed start: ids %v dead %v why %v, want the bundle rebuilt without core", again.IDs, again.Dead, again.DeadWhy)
 	}
 }
 

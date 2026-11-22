@@ -151,9 +151,9 @@ func TestNews_두_경로_모두_세션_소식_몫을_따로_넘긴다(t *testing
 	}
 }
 
-// 재생(명세 · 기억 정확성 7절): 이력이 있는 DB 사본과 시각이 있는 사례로 돌리면, 상시 핵심이 낡은 뒤의 재개 시작만 얼린
-// 묶음의 낡은 기억을 Dead로 내고, 압축 뒤 시작은 묶음을 새로 만들어 Dead가 없다. 같은 사본과 사례로 다시 돌리면 같은
-// 보고가 나온다.
+// 재생(명세 · 기억 정확성 7절): 이력이 있는 DB 사본과 시각이 있는 사례로 돌리면, 상시 핵심이 낡은 뒤의 재개 시작은 그
+// 기억을 뺀 묶음을 다시 만들고(명세 F-1. 0.19.0은 얼린 묶음을 그대로 줘 이 호출만 Dead였다), 압축 뒤 시작도 새 묶음이라
+// 세 시작 모두 Dead가 없다. 같은 사본과 사례로 다시 돌리면 같은 보고가 나온다.
 func TestHostpath_재생은_같은_사본과_사례로_같은_경로_지표를_낸다(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	src := filepath.Join(t.TempDir(), "memory.db")
@@ -197,12 +197,15 @@ func TestHostpath_재생은_같은_사본과_사례로_같은_경로_지표를_�
 			t.Fatal(err)
 		}
 		st := rep.Runs[0].All.Paths.Start
-		if st.Calls != 3 || st.Dead != 1 || st.DeadCalls != 1 {
-			t.Fatalf("start path %+v, want 3 starts with the resume alone dead", st)
+		if st.Calls != 3 || st.Dead != 0 || st.DeadCalls != 0 {
+			t.Fatalf("start path %+v, want 3 starts with nothing dead", st)
 		}
 		for _, c := range rep.Runs[0].Cases {
-			if c.ID == "s1-003" && (c.Start == nil || !slices.Equal(c.Start.Dead, []string{core.ID})) {
-				t.Fatalf("resume %+v, want %s dead", c.Start, core.ID)
+			if c.ID == "s1-001" && (c.Start == nil || !slices.Contains(c.Start.IDs, core.ID)) {
+				t.Fatalf("first start %+v, want the core in it while it was current", c.Start)
+			}
+			if c.ID == "s1-003" && (c.Start == nil || slices.Contains(c.Start.IDs, core.ID) || len(c.Start.Dead) != 0) {
+				t.Fatalf("resume %+v, want the stale core left out", c.Start)
 			}
 			if c.ID == "s1-005" && (c.Start == nil || slices.Contains(c.Start.IDs, core.ID)) {
 				t.Fatalf("start after compact %+v, want the stale core left out", c.Start)

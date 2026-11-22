@@ -6,6 +6,7 @@ package inject
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -123,20 +124,32 @@ func (in Injection) done(b *strings.Builder) Injection {
 // SessionBundle is the fixed session-start bundle (설계 「작업 기준 회상」의
 // 고정 묶음): built once per session and handed back unchanged when the same
 // session resumes, so the host's prompt cache holds. A compaction or /clear calls
-// ResetSession first. Without a session id it is built afresh.
+// ResetSession first. Without a session id it is built afresh. When a memory in the
+// saved bundle no longer shows as a current value (stale, rejected, expired, an older
+// value of its topic, or forgotten), a resume builds the bundle anew in its place and
+// the cache is lost once (명세 F-1).
 func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session string) Injection {
 	return SessionBundleWith(s, cfg, scope, host, session, nil)
 }
 
 // SessionBundleWith is SessionBundle with the note lines of the session (the version, update and
-// overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew; its
-// lines go at the end of the bundle and are saved with it, so a resumed session gets the same bytes.
-// The bundle keeps to MaxSessionStartRunes with them. notes may be nil. With recall off no memory is
-// put in, but the note lines still are (as with the old inject=off). A notes that panics leaves only
-// the note lines out; the bundle is made and saved as usual (원칙 6).
+// overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew (a new
+// session, or a resume whose bundle holds a memory no longer current); its lines go at the end of the
+// bundle and are saved with it, so a resumed session gets the same bytes. The bundle keeps to
+// MaxSessionStartRunes with them. notes may be nil. With recall off no memory is put in, but the note
+// lines still are (as with the old inject=off). A notes that panics leaves only the note lines out; the
+// bundle is made and saved as usual (원칙 6).
+//
+// A resume reads the saved bundle's memories once (memory.Viewer.NotCurrent). When they cannot be read the
+// saved bundle is handed back as it is. A rebuilt bundle keeps the session's start time and marks, and the
+// memories it took out are marked memory.MarkBundle, so the next request tells the session once that they
+// no longer hold (sessionNews).
 func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
 	if session != "" {
 		if text, ids, ok := s.SessionBundle(host, session); ok && runes(text) <= MaxSessionStartRunes {
+			if inj, rebuilt := rebuildBundle(s, cfg, scope, host, session, ids, notes); rebuilt {
+				return inj
+			}
 			var b strings.Builder
 			b.WriteString(text)
 			return Injection{MemoryIDs: ids}.done(&b)
@@ -144,6 +157,44 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			_ = s.ResetSession(host, session)
 		}
 	}
+	inj := buildBundle(s, cfg, scope, notes)
+	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
+		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
+	}
+	return inj
+}
+
+// rebuildBundle builds the session's bundle anew and puts it in place of the saved one when a memory of ids, the
+// saved bundle's, no longer shows as a current value. false hands the saved bundle back: every memory of it is
+// current, they cannot be read, or the new bundle takes none of them out (one came back meanwhile).
+func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session string, ids []string, notes func() []string) (Injection, bool) {
+	if len(ids) == 0 { // 기억 없는 묶음(안내 줄뿐)은 판정할 것이 없다: 주제 머리도 읽지 않는다
+		return Injection{}, false
+	}
+	vw, err := s.Viewer()
+	if err != nil { // 주제 머리를 못 읽으면 옛 버전을 가를 수 없다: 판정하지 않고 저장된 묶음을 준다
+		return Injection{}, false
+	}
+	if changed, err := vw.NotCurrent(ids); err != nil || len(changed) == 0 {
+		return Injection{}, false
+	}
+	inj := buildBundle(s, cfg, scope, notes)
+	var dropped []string
+	for _, id := range ids {
+		if !slices.Contains(inj.MemoryIDs, id) {
+			dropped = append(dropped, id)
+		}
+	}
+	if len(dropped) == 0 {
+		return Injection{}, false
+	}
+	// 다른 훅이 먼저 바꿨으면 저장은 건너뛴다. 같은 때 같은 DB에서 만든 글이라 돌려주는 글은 저장된 것과 같다.
+	_ = s.ReplaceSessionBundle(host, session, inj.Text, inj.MemoryIDs, dropped)
+	return inj, true
+}
+
+// buildBundle is a new session-start bundle with the note lines of notes at its end, within MaxSessionStartRunes.
+func buildBundle(s *memory.Store, cfg config.Config, scope string, notes func() []string) Injection {
 	note := noteText(noteLines(notes))
 	limit := MaxSessionStartRunes
 	if note != "" {
@@ -163,9 +214,6 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			b.WriteString(l)
 		}
 		inj = inj.done(&b)
-	}
-	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
-		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
 	}
 	return inj
 }
@@ -438,7 +486,8 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 
 // PromptInjectionFor is the request hook of a host session (설계 · 지연 회상·호스트 계약·어댑터 5.1, 4절 표).
 // It tells the session, once, what changed since its bundle was made (B3, sessionNews): a memory of the
-// session superseded meanwhile (a correction line) and memories confirmed elsewhere after the session
+// session superseded meanwhile (a correction line), one that no longer holds with nothing live in its place
+// (a void line: stale or rejected, expired, forgotten) and memories confirmed elsewhere after the session
 // started (new memory lines), 3 lines and maxNewsRunes at most. Then the work recall (B1, recallEntries):
 // the memories that pass both thresholds, leaving out what the session already has (its bundle and what
 // the work recall or the news told it; not what a tool call brought). The whole stays within
@@ -499,10 +548,37 @@ func clipTitle(title string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// sessionNews is the correction and new memory lines of a session (B3), heading included, or "".
+// voidPrefix starts a session news line that says a memory the session was given no longer holds and has no
+// live value in its place (명세 F-2). The line names no memory of the injection: NewsShare skips it.
+const voidPrefix = "- 무효("
+
+// Why a void line's memory no longer holds, in the state names a person reads.
+const (
+	voidStale   = "낡음"
+	voidHidden  = "숨김"
+	voidExpired = "만료"
+	voidGone    = "지움"
+)
+
+// voidLine says the memory id (title, cut to oldTitleRunes) no longer holds, for why. A forgotten memory has no
+// title: the line names only its id, so the words that were forgotten do not come back.
+func voidLine(id, title, why string) string {
+	if title == "" {
+		return fmt.Sprintf("%s%s): %s\n", voidPrefix, why, id)
+	}
+	return fmt.Sprintf("%s%s): 「%s」(%s)\n", voidPrefix, why, clipTitle(title, oldTitleRunes), id)
+}
+
+// sessionNews is the correction, void and new memory lines of a session (B3), heading included, or "".
 // Lines that do not fit wait for a later request: only what was told is marked.
+//
+// What the session was given (its bundle, what the work recall, the news and a tool call put in, and what a
+// rebuilt bundle took out) and has changed since is told once a memory (MarkCorrection): a correction line when
+// a live value replaces it, else a void line when it went stale or rejected after the session started, expired
+// after then, or was forgotten.
 func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleIDs []string, byID map[string]memory.Memory) string {
 	at := s.SessionBundleAt(host, session)
+	now := s.Now()
 	// Viewer는 주제 머리를 읽으니, 낡은 기억의 후계를 찾을 때만 만든다(요청 훅마다 질의를 늘리지 않는다).
 	var vw memory.Viewer
 	haveViewer := false
@@ -510,7 +586,8 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 	for _, id := range bundleIDs {
 		told[id] = true
 	}
-	for _, kind := range []string{memory.MarkShown, memory.MarkNew, memory.MarkTool} {
+	// 다시 만든 묶음에서 뺀 기억(MarkBundle)은 묶음 id에 없지만 세션은 옛 묶음으로 이미 받았다.
+	for _, kind := range []string{memory.MarkShown, memory.MarkNew, memory.MarkTool, memory.MarkBundle} {
 		for id := range s.SessionMarks(host, session, kind) {
 			told[id] = true
 		}
@@ -534,29 +611,50 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 	}
 	sort.Strings(ids)
 	named := map[string]bool{}
+told:
 	for _, id := range ids {
 		if corrected[id] {
 			continue
 		}
 		old, err := s.Get(id)
-		if err != nil || old.State != memory.StateStale || old.SupersededBy == "" || old.UpdatedAt <= at {
+		var line string
+		switch {
+		case errors.Is(err, memory.ErrNotFound):
+			line = voidLine(id, "", voidGone)
+		case err != nil: // 읽지 못한 것은 지운 것이 아니다: 다음 요청에 다시 본다
 			continue
-		}
-		if !haveViewer {
-			vw, _ = s.Viewer()
-			haveViewer = true
-		}
-		cur, live := vw.Successor(old)
-		if !live {
+		case old.ExpiresAt > at && old.Freshness(now) == memory.FreshExpired:
+			// 사용자 말의 휘발 기억은 만료돼도 상태·고친 시각이 그대로라 만료 시각으로 가른다
+			line = voidLine(old.ID, old.Title, voidExpired)
+		case old.UpdatedAt <= at || (old.State != memory.StateStale && old.State != memory.StateHidden):
 			continue
+		default:
+			if old.SupersededBy != "" {
+				if !haveViewer {
+					vw, _ = s.Viewer()
+					haveViewer = true
+				}
+				if cur, live := vw.Successor(old); live {
+					if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
+						break told
+					}
+					inj.mark(memory.MarkCorrection, old.ID)
+					inj.mark(memory.MarkShown, cur.ID) // 바뀐 판은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
+					inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
+					named[cur.ID] = true
+					continue
+				}
+			}
+			why := voidStale
+			if old.State == memory.StateHidden {
+				why = voidHidden
+			}
+			line = voidLine(old.ID, old.Title, why)
 		}
-		if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
+		if !add(line) {
 			break
 		}
-		inj.mark(memory.MarkCorrection, old.ID)
-		inj.mark(memory.MarkShown, cur.ID) // 바뀐 판은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
-		inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
-		named[cur.ID] = true
+		inj.mark(memory.MarkCorrection, id)
 	}
 	since, _ := s.ConfirmedSince(at)
 	var fresh []memory.Memory
@@ -589,8 +687,9 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 
 // NewsShare is the session news (B3) share of a request hook's text and ids (PromptInjectionFor): the ids its
 // lines name and the characters of the block. The block leads the text and names one memory a line, in the order
-// of the ids; the work recall (B1) follows it. A text with no news gives none. A measure that tells the news
-// apart from the recall uses it (internal/bench, 1-6 b6r 3차).
+// of the ids, but for the void lines, which name a memory the injection does not put in; the work recall (B1)
+// follows it. A text with no news gives none. A measure that tells the news apart from the recall uses it
+// (internal/bench, 1-6 b6r 3차).
 func NewsShare(text string, ids []string) ([]string, int) {
 	if !strings.HasPrefix(text, newsHead) {
 		return nil, 0
@@ -601,7 +700,7 @@ func NewsShare(text string, ids []string) ([]string, int) {
 	}
 	n := 0
 	for _, line := range strings.Split(block, "\n")[1:] {
-		if strings.HasPrefix(line, "- ") {
+		if strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, voidPrefix) {
 			n++
 		}
 	}

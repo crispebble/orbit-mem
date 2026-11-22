@@ -137,9 +137,9 @@ func TestAC4_세션_도중_대체된_기억은_정정으로_알리고_compact는
 	if again := PromptInjectionFor(s, config.Default(), here, "오늘 점심 뭐 먹지", "claude", "s1", Options{}); strings.Contains(again.Text, "정정") {
 		t.Fatalf("correction repeated:\n%s", again.Text)
 	}
-	// resume은 같은 묶음, compact·clear는 새 묶음.
-	if again := SessionBundle(s, config.Default(), here, "claude", "s1"); again.Text != first.Text {
-		t.Fatal("resume must keep the bundle")
+	// resume은 대체된 기억이 든 묶음을 다시 만든다(명세 F-1: 바뀐 기억이 없을 때만 같은 묶음). compact·clear는 새 묶음.
+	if again := SessionBundle(s, config.Default(), here, "claude", "s1"); slices.Contains(again.MemoryIDs, old.ID) || !slices.Contains(again.MemoryIDs, cur.ID) {
+		t.Fatalf("resume kept the superseded rule:\n%s", again.Text)
 	}
 	ResetSession(s, "claude", "s1")
 	next := SessionBundle(s, config.Default(), here, "claude", "s1")
