@@ -620,27 +620,29 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string
 // user's checked words (memory.SaveInput.QuoteMatched), with what the caller should know. A source that is
 // not a quote is left alone. A save by a person's own channel (TrustLimit owner) is not checked: the person
 // wrote it. An excerpt not found in the user's recorded utterances is not taken as the user's words: src
-// becomes a session source, so the memory is saved as an AI's candidate. Without utterances to compare with
-// (a host that does not record them), or when the check fails, the quote stays as it was, unchecked.
-func (h handlers) checkQuote(src *memory.Source) (bool, []string) {
+// becomes a session source, so the memory is saved as an AI's candidate; a check that fails does the same,
+// with its own notice (closed: a failure never lets a quote through). Only without utterances to compare
+// with (a host that does not record them) does the quote stay as it was, unchecked. The time is when the
+// user said it (memory.SaveInput.QuoteAt): the matched utterance's record time, or now for a person.
+func (h handlers) checkQuote(src *memory.Source) (bool, int64, []string) {
 	if src.Kind != memory.SourceQuote {
-		return false, nil
+		return false, 0, nil
 	}
 	if h.o.TrustLimit == memory.TrustOwner {
-		return true, nil
+		return true, h.s.Now().UnixMilli(), nil
 	}
-	m, err := h.s.MatchQuote(src.Excerpt)
-	if err != nil {
-		m = memory.QuoteUnchecked
-	}
-	switch m {
-	case memory.QuoteMatched:
-		return true, nil
-	case memory.QuoteNotFound:
+	m, at, err := h.s.MatchQuote(src.Excerpt)
+	switch {
+	case err != nil:
 		src.Kind = memory.SourceSession
-		return false, []string{i18n.T("memory.save.quote_not_found", memory.UtteranceDays)}
+		return false, 0, []string{i18n.T("memory.save.quote_error")}
+	case m == memory.QuoteMatched:
+		return true, at, nil
+	case m == memory.QuoteNotFound:
+		src.Kind = memory.SourceSession
+		return false, 0, []string{i18n.T("memory.save.quote_not_found", memory.UtteranceDays)}
 	}
-	return false, []string{i18n.T("memory.save.quote_unchecked", memory.UtteranceDays)}
+	return false, 0, []string{i18n.T("memory.save.quote_unchecked", memory.UtteranceDays)}
 }
 
 // checkRuleApplies refuses a rule saved without saying whom it applies to (S3-R3): a person's way of
@@ -700,7 +702,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	// 사용자 말 대조(S-4)는 Screen보다 먼저 한다: Screen은 사용자 말 출처를 달리 다룬다(진행 상황 거부를 면하고 발췌를
 	// 치환하지 않는다). 기록에 없어 session으로 낮춘 출처는 AI 출처로 걸러야 한다.
 	var quoteWarns []string
-	si.QuoteMatched, quoteWarns = h.checkQuote(&si.Source)
+	si.QuoteMatched, si.QuoteAt, quoteWarns = h.checkQuote(&si.Source)
 	warns = append(warns, quoteWarns...)
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
@@ -875,7 +877,12 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	}
 	if rep.Rejected != "" { // 거절된 기억의 제목: 아무것도 쓰지 않았다(S-2). 링크도 걸지 않는다
 		reason := i18n.T("memory.save.rejected", rep.Rejected)
-		if si.Source.Kind == memory.SourceQuote { // 기록에 없는 사용자 말은 이미 session으로 낮췄다: 남은 것은 대조 못 한 말이다
+		switch {
+		case rep.NotRevived == memory.ReviveShortQuote:
+			reason = i18n.T("memory.save.rejected_short_quote", rep.Rejected)
+		case rep.NotRevived == memory.ReviveBeforeRejection:
+			reason = i18n.T("memory.save.rejected_before", rep.Rejected)
+		case si.Source.Kind == memory.SourceQuote: // 기록에 없거나 대조 중 오류인 말은 이미 session으로 낮췄다: 남은 것은 대조 못 한 말이다
 			reason = i18n.T("memory.save.rejected_unchecked", rep.Rejected)
 		}
 		return SaveOut{MemoryOut: MemoryOut{Memory: m, Warnings: []string{reason}}}, nil
@@ -892,7 +899,12 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	if si.Replaces != "" && rep.Replayed == nil && !slices.Contains(rep.Superseded, si.Replaces) {
 		out.Warnings = append(out.Warnings, i18n.T("memory.save.not_replaced", si.Replaces))
 	}
-	if rep.BodyKept {
+	switch {
+	case rep.Revived && rep.BodyKept: // 되살린 기억은 거절했던 때의 본문 그대로다
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.revived_body_kept", m.ID))
+	case rep.Revived:
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.revived", m.ID))
+	case rep.BodyKept:
 		out.Warnings = append(out.Warnings, i18n.T("memory.save.body_kept", m.ID))
 	}
 	if len(rep.FieldsKept) > 0 {

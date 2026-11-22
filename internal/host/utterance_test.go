@@ -16,6 +16,21 @@ func utteranceCount(t *testing.T, s *memory.Store) int {
 	return n
 }
 
+// 회상 계산이 시간 한도를 넘겨도 사람 발언은 기록된다: 그 말을 인용한 저장이 대조에서 떨어지지 않게 한다.
+func TestRecall_시간_한도를_넘겨도_사람_발언은_기록한다(t *testing.T) {
+	e := newEnv(t)
+	s := e.store()
+	a := e.adapter("s-1")
+	e.cfg.HostTimeouts = map[string]string{host.OpRecall: "1ns"}
+	if _, err := a.do(host.OpRecall, map[string]any{"prompt": "로그 파일은 7일 지나면 지워도 돼"}); err == nil || err.Code != host.CodeTimeout {
+		t.Fatalf("한도 = %v", err)
+	}
+	e.svc.Wait()
+	if got, _, _ := s.MatchQuote("로그 파일은 7일 지나면 지워도 돼"); got != memory.QuoteMatched {
+		t.Fatalf("시간 초과 뒤 발언 = %s", got)
+	}
+}
+
 // 요청 회상 훅은 사람 발언(inject.PersonWords가 가른 사람 글)만 사용자 말 대조용으로 기록한다(명세 S-4).
 // 출처가 사람이 아니거나 호스트가 만든 틀뿐인 요청은 기록하지 않는다. 붙여 넣은 틀은 사람 글이 아니라 빼고 남긴다.
 func TestRecall_사람_발언이_아니면_기록하지_않는다(t *testing.T) {
@@ -35,7 +50,7 @@ func TestRecall_사람_발언이_아니면_기록하지_않는다(t *testing.T) 
 	if n := utteranceCount(t, s); n != 0 {
 		t.Fatalf("사람 발언이 아닌데 %d건 기록했다", n)
 	}
-	if got, _ := s.MatchQuote("로그 파일은 7일 지나면 지워도 돼"); got != memory.QuoteUnchecked {
+	if got, _, _ := s.MatchQuote("로그 파일은 7일 지나면 지워도 돼"); got != memory.QuoteUnchecked {
 		t.Fatalf("기록이 없어야 한다: %s", got)
 	}
 
@@ -45,10 +60,10 @@ func TestRecall_사람_발언이_아니면_기록하지_않는다(t *testing.T) 
 	if n := utteranceCount(t, s); n != 1 {
 		t.Fatalf("사람 발언 기록 = %d", n)
 	}
-	if got, _ := s.MatchQuote("로그 파일은 7일 지나면 지워도 돼"); got != memory.QuoteMatched {
+	if got, _, _ := s.MatchQuote("로그 파일은 7일 지나면 지워도 돼"); got != memory.QuoteMatched {
 		t.Fatalf("사람 글 = %s", got)
 	}
-	if got, _ := s.MatchQuote("배포는 금요일 오후에 하지 마"); got != memory.QuoteNotFound {
+	if got, _, _ := s.MatchQuote("배포는 금요일 오후에 하지 마"); got != memory.QuoteNotFound {
 		t.Fatalf("붙여 넣은 틀 = %s", got)
 	}
 }

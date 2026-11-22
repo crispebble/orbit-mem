@@ -354,6 +354,10 @@ type SaveInput struct {
 	// such a quote brings back a rejected (hidden) memory of the same title, confirmed (S-2). A quote without
 	// it is still the user's words for everything else (an unchecked host keeps the old behavior, S-4).
 	QuoteMatched bool
+	// QuoteAt is when the user said the checked quote: the record time (Unix ms) of the latest utterance it
+	// matched (MatchQuote), or now for a person's own channel. A rejected memory comes back only by words said
+	// after it was rejected, at least quoteMinWords words long.
+	QuoteAt int64
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -421,7 +425,8 @@ func (in *SaveInput) validate() error {
 // fact the work's verification checked) is then confirmed automatically and
 // the confirmation kept in the ledger (A2). A save of the title of a hidden (rejected) memory writes
 // nothing and reports it (SaveReport.Rejected), unless its source is the user's quote checked against what
-// the user said (SaveInput.QuoteMatched): that brings the memory back, confirmed (S-2).
+// the user said after the rejection (SaveInput.QuoteMatched, QuoteAt), of at least three words: that brings
+// the memory back, confirmed (S-2).
 func (s *Store) Save(in SaveInput) (Memory, error) {
 	m, _, err := s.SaveWith(in)
 	return m, err
@@ -441,10 +446,14 @@ type SaveReport struct {
 	// value and were therefore not applied: tags, topic, tools, retention, ttlDays, reviewAfterDays. A field the save
 	// did not give, or gave with the stored value, is not listed. Change them with Update.
 	FieldsKept []string `json:"fieldsKept,omitempty"`
-	// Rejected is the id of the rejected (hidden) memory whose title the save took when the save was not
-	// a checked quote of the user (SaveInput.QuoteMatched): nothing was written, and the memory returned is
-	// that hidden one as it was (S-2).
-	Rejected string `json:"rejected,omitempty"`
+	// Rejected is the id of the rejected (hidden) memory whose title the save took when the save could not
+	// bring it back, and NotRevived says why: nothing was written, and the memory returned is that hidden
+	// one as it was (S-2).
+	Rejected   string        `json:"rejected,omitempty"`
+	NotRevived ReviveRefusal `json:"notRevived,omitempty"`
+	// Revived is true when the save brought a rejected memory of its title back, confirmed. Its body stays
+	// the one it had (BodyKept says the save brought another).
+	Revived bool `json:"revived,omitempty"`
 
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
@@ -555,13 +564,22 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			in.Kind, in.Scope, key).Scan(&existingID)
 	}
 	if existingID != "" {
-		revive := in.Source.Kind == SourceQuote && in.QuoteMatched
-		if prev, err := getTx(tx, existingID); err != nil {
+		prev, err := getTx(tx, existingID)
+		if err != nil {
 			return Memory{}, rep, err
-		} else if prev.State == StateHidden && !revive {
-			// 거절된 기억에 출처만 더하고 성공으로 답하던 길을 닫는다(S-2): 아무것도 쓰지 않고(멱등 키도) 알린다.
-			rep.Rejected = existingID
-			return prev, rep, nil
+		}
+		revive := false
+		if prev.State == StateHidden {
+			why, err := reviveRefusal(tx, existingID, in)
+			if err != nil {
+				return Memory{}, rep, err
+			}
+			if why != "" {
+				// 거절된 기억에 출처만 더하고 성공으로 답하던 길을 닫는다(S-2): 아무것도 쓰지 않고(멱등 키도) 알린다.
+				rep.Rejected, rep.NotRevived = existingID, why
+				return prev, rep, nil
+			}
+			revive = true
 		}
 		if err := sightTx(tx, existingID, in.Source, in.Session, day, now, revive); err != nil {
 			return Memory{}, rep, err
@@ -581,6 +599,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			rep.BodyKept = true
 		}
 		rep.FieldsKept = keptFields(cur, in, given)
+		rep.Revived = revive
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -793,11 +812,7 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if at == 0 {
 		at = now
 	}
-	excerpt := MaskSecrets(src.Excerpt)
-	if len(excerpt) > 8<<10 {
-		excerpt = truncateBytes(excerpt, 8<<10)
-	}
-	src.Excerpt = excerpt
+	src.Excerpt, _ = storedExcerpt(src.Excerpt) // MatchQuote가 대조하는 것과 같은 발췌
 	return insertSourceTx(tx, NewID("s-"), id, src, at)
 }
 

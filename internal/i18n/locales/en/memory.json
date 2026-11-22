@@ -117,5 +117,10 @@
   "memory.save.quote_not_found": "Not taken as the user's words: the excerpt is not in the user's utterances of the last %d days, so the source became session (what an AI learned in the conversation) and the memory was saved as a candidate. If the user said it, give their exact words as the excerpt",
   "memory.save.quote_unchecked": "User's words not checked: no user utterances of the last %d days are recorded (the prompt recall hook records them), so the excerpt was saved as the user's words without a check",
   "memory.save.rejected": "Not saved: the memory with the same title (%s) was rejected. It comes back only when saved again with the user's words (quote) found in the user's utterances",
-  "memory.save.rejected_unchecked": "Not saved: the memory with the same title (%s) was rejected, and no user utterances are recorded to check these words against, so it was not brought back"
+  "memory.save.rejected_unchecked": "Not saved: the memory with the same title (%s) was rejected, and no user utterances are recorded to check these words against, so it was not brought back",
+  "memory.save.quote_error": "Not taken as the user's words: checking the excerpt against the user's utterances failed with an error, so the source became session (what an AI learned in the conversation) and the memory was saved as a candidate. Try saving again",
+  "memory.save.rejected_short_quote": "Not saved: the memory with the same title (%s) was rejected; to bring it back, the user's words must be at least three words",
+  "memory.save.rejected_before": "Not saved: the memory with the same title (%s) was rejected, and these words are not in the user's utterances recorded after the rejection, so it was not brought back. The user must have said them again after rejecting it",
+  "memory.save.revived": "The rejected memory %s was brought back by the user's words and confirmed",
+  "memory.save.revived_body_kept": "The rejected memory %s was brought back by the user's words and confirmed. Its body is still the one it had when rejected; the new body was not applied. To change it, call memory_update"
 }
