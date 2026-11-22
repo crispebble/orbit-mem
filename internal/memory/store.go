@@ -426,7 +426,7 @@ type SaveReport struct {
 	// change. A save without a body never sets it.
 	BodyKept bool `json:"bodyKept,omitempty"`
 	// FieldsKept names the other fields of that same-title save that were given, differ from the stored
-	// value and were therefore not applied: tags, topic, tools, retention, reviewAfterDays. A field the save
+	// value and were therefore not applied: tags, topic, tools, retention, ttlDays, reviewAfterDays. A field the save
 	// did not give, or gave with the stored value, is not listed. Change them with Update.
 	FieldsKept []string `json:"fieldsKept,omitempty"`
 
@@ -480,6 +480,7 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 
 func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	var rep SaveReport
+	given := givenLifecycle{Retention: strings.TrimSpace(in.Retention), TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays} // validate가 기본값을 채우기 전의 값
 	if err := in.validate(); err != nil {
 		return Memory{}, rep, err
 	}
@@ -555,7 +556,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		if nb := strings.TrimSpace(in.Body); nb != "" && nb != strings.TrimSpace(cur.Body) {
 			rep.BodyKept = true
 		}
-		rep.FieldsKept = keptFields(cur, in)
+		rep.FieldsKept = keptFields(cur, in, given)
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -635,12 +636,17 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	return m, rep, err
 }
 
-// savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot
-// get the core (not confirmed, not a user or product memory, past the limit) is refused whole (S3 명세 2.6).
-// The save is the user's words or an explicit ask, so the memory's own protection is not checked again.
+// givenLifecycle is the retention, ttlDays and reviewAfterDays the caller gave, before validate fills the
+// defaults in (volatile 7 days, durable review 90 days), so a default is not taken for a value the caller gave.
+type givenLifecycle struct {
+	Retention                string
+	TTLDays, ReviewAfterDays int
+}
+
 // keptFields lists the fields of in that a save of an existing title gave with a value other than the stored
-// one: that path only adds the source, so they were not applied. A field in does not give is not compared.
-func keptFields(cur Memory, in SaveInput) []string {
+// one: that path only adds the source, so they were not applied. A field the caller did not give is not
+// compared; the lifecycle fields are compared by the value given.
+func keptFields(cur Memory, in SaveInput, given givenLifecycle) []string {
 	sorted := func(a []string) []string { return slices.Sorted(slices.Values(a)) }
 	var out []string
 	if len(in.Tags) > 0 && !slices.Equal(sorted(in.Tags), sorted(cur.Tags)) {
@@ -652,15 +658,21 @@ func keptFields(cur Memory, in SaveInput) []string {
 	if len(in.Tools) > 0 && !slices.Equal(sorted(in.Tools), sorted(cur.Tools)) {
 		out = append(out, "tools")
 	}
-	if r, _ := NormalizeRetention(in.Retention); r != RetentionNormal && r != cur.Retention {
+	if given.Retention != "" && in.Retention != cur.Retention { // in.Retention is the checked class of the given name
 		out = append(out, "retention")
 	}
-	if in.ReviewAfterDays > 0 && in.ReviewAfterDays != cur.ReviewDays {
+	if given.TTLDays > 0 && (cur.Retention != RetentionVolatile || int64(given.TTLDays)*dayMs != cur.ExpiresAt-cur.CreatedAt) {
+		out = append(out, "ttlDays")
+	}
+	if given.ReviewAfterDays > 0 && given.ReviewAfterDays != cur.ReviewDays {
 		out = append(out, "reviewAfterDays")
 	}
 	return out
 }
 
+// savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot
+// get the core (not confirmed, not a user or product memory, past the limit) is refused whole (S3 명세 2.6).
+// The save is the user's words or an explicit ask, so the memory's own protection is not checked again.
 func savePinTx(tx *sql.Tx, in SaveInput, id string, now int64) error {
 	if !in.Pin {
 		return nil

@@ -180,8 +180,10 @@ func addMonths(t time.Time, n int) time.Time {
 }
 
 // 상대 시간이 지금(저장하는 때)을 기준으로 쓴 말인지 가르는 규칙. 「3주 뒤」「2일 전」은 지금 기준일 때만 날짜로 바꾼다.
-// 판정은 낱말 사전 없이 글자 모양만 보는 휴리스틱이라 양쪽에 오류가 남는다: 「약 3일 전」(조사 없는 부사 뒤)은
-// 지금 기준인데 사건 기준으로 보아 안 바뀌고, 「휴가 3일 전까지」(조사 글자로 끝나는 명사 뒤)는 사건 기준인데 바뀐다.
+// 원칙: 틀린 날짜를 기억에 쓰는 것이 가장 나쁘다. 앞 낱말이 사건 이름일 수 있으면 바꾸지 않고 「바꾸지 않음」으로 알린다.
+// 그래서 notEvent에는 사건 낱말 뒤에 붙을 수 없는 낱말(접속어·지시어·수량 부사)만 둔다. 명사 사전은 두지 않는 휴리스틱이라
+// 한계가 남는다. 안 바뀌는 쪽: 「발급됐고 5일 전에」(용언 연결 어미 뒤), 목록에 없는 부사 뒤. 바뀌는 쪽: 「휴가 3일 전까지」
+// (조사 글자로 끝나는 명사 뒤는 지금 기준으로 본다).
 var (
 	// compoundRest maps the last character of a matched span to what, right after it, makes the span part of a
 	// longer word ("3개월 전체", "2주 후반"). Anything else that follows (어미·조사: "3주 뒤다", "3일 전부터") ends
@@ -191,12 +193,16 @@ var (
 		'후': {"반", "보", "기", "속", "회", "원", "배", "유"},
 		'뒤': {"쪽", "늦", "처", "집", "끝", "따"},
 	}
-	// notEvent are words that never name an event: a connective or demonstrative before a span says nothing
-	// about what the span is counted from ("그건 3일 전 일이다").
+	// notEvent are words that can never be followed by an event-relative span: a connective, demonstrative or
+	// quantity adverb before a span says nothing about what it is counted from ("그건 3일 전 일이다", "약 3일 전").
+	// 「이후」「이전」「그후」「그때」처럼 사건 낱말 뒤에 붙는 말은 넣지 않는다(「장애 이후 3일 뒤」는 사건 기준이다).
 	notEvent = map[string]bool{"그": true, "이": true, "저": true, "그건": true, "이건": true, "저건": true, "그것": true, "이것": true,
 		"그리고": true, "그러나": true, "그런데": true, "그래서": true, "하지만": true, "또": true, "또는": true, "또한": true,
-		"이후": true, "이전": true, "그후": true, "그뒤": true, "다만": true, "단": true, "즉": true, "그때": true, "이때": true,
-		"벌써": true, "이미": true, "방금": true, "아직": true, "바로": true}
+		"다만": true, "단": true, "즉": true, "벌써": true, "이미": true, "방금": true, "아직": true, "바로": true,
+		"약": true, "대략": true, "최소": true, "최대": true, "아마": true, "정확히": true, "그냥": true, "다시": true}
+	// spanLinks are the particles that join two spans ("3일 전과 5일 전", "3일 뒤든 4일 뒤든"): the second is not
+	// counted from the word the first one ends in.
+	spanLinks = map[string]bool{"와": true, "과": true, "나": true, "든": true, "보다": true, "부터": true, "까지": true}
 	// beforeWord is the word right before an expression: a bare noun ("배포 3일 전") makes the expression
 	// relative to that event; a word that ends in a particle ("만료는 3주 뒤") says when the thing happens, now-relative.
 	beforeWord = regexp.MustCompile(`([\p{L}\p{N}_]+) ?$`)
@@ -205,6 +211,9 @@ var (
 // spanIsWordPart says whether the span m, followed by rest, is the start of a longer word and no time expression.
 func spanIsWordPart(m, rest string) bool {
 	last, _ := utf8.DecodeLastRuneInString(m)
+	if last == '후' && strings.HasPrefix(rest, "보다") { // 「3일 후보다」의 「보다」는 조사다. 낱말 「후보」와 다르다.
+		return false
+	}
 	for _, c := range compoundRest[last] {
 		if strings.HasPrefix(rest, c) {
 			return true
@@ -336,8 +345,8 @@ func replaceKoSpans(s string, to func(p []string) string, kept func(event, span 
 		if spanIsWordPart(m, s[loc[1]:]) {
 			continue
 		}
-		// 바로 앞이 다른 표현이면 그 표현의 단위어(「3일 전 3일 전」의 「전」)는 사건 낱말이 아니다.
-		follows := prevEnd >= 0 && strings.TrimSpace(s[prevEnd:loc[0]]) == ""
+		// 앞 표현에 바로(또는 와·과·든·보다 같은 조사만 사이에 두고) 이어지면 그 표현의 끝(「3일 전 3일 전」의 「전」)은 사건 낱말이 아니다.
+		follows := prevEnd >= 0 && (strings.TrimSpace(s[prevEnd:loc[0]]) == "" || spanLinks[strings.TrimSpace(s[prevEnd:loc[0]])])
 		prevEnd = loc[1]
 		if ev := eventWord(s[:loc[0]]); ev != "" && !follows {
 			kept(ev, m)

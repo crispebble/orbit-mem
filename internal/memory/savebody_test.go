@@ -14,7 +14,7 @@ func TestSave_같은_제목_다른_칸은_FieldsKept로_알린다(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// 같은 값(태그 순서·주제 대소문자·공백 차이 포함)이거나 주지 않은 칸은 알리지 않는다.
+	// 같은 값(태그 공백·주제 공백 차이 포함)이거나 주지 않은 칸은 알리지 않는다.
 	same := base
 	same.Tags, same.Topic, same.Source.Ref = []string{" 배포 "}, " 배포  창", "s-2"
 	_, rep, err := s.SaveWith(same)
@@ -84,5 +84,39 @@ func TestSave_같은_제목_다른_본문이면_BodyKept를_알린다(t *testing
 	}
 	if rep.BodyKept {
 		t.Errorf("새 본문이 없는데 BodyKept가 true입니다")
+	}
+}
+
+// 같은 제목에 준 값만 비교한다: 기본값이 채워진 값이나 주지 않은 칸은 알리지 않고, ttlDays와 normal 명시는 알린다.
+func TestSave_같은_제목_보존_칸은_준_값으로만_비교한다(t *testing.T) {
+	s, _ := newTestStore(t)
+	save := func(title string, mod func(*SaveInput)) SaveReport {
+		in := SaveInput{Kind: KindFact, Title: title, Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "s"}}
+		mod(&in)
+		_, rep, err := s.SaveWith(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+	save("휘발 값", func(in *SaveInput) { in.Retention, in.TTLDays = RetentionVolatile, 1 })
+	if rep := save("휘발 값", func(in *SaveInput) { in.Retention, in.TTLDays = RetentionVolatile, 6 }); !slices.Equal(rep.FieldsKept, []string{"ttlDays"}) {
+		t.Errorf("ttl만 다른데 FieldsKept = %v", rep.FieldsKept)
+	}
+	if rep := save("휘발 값", func(in *SaveInput) { in.Retention, in.TTLDays = RetentionVolatile, 1 }); len(rep.FieldsKept) != 0 {
+		t.Errorf("같은 ttl인데 알렸습니다: %v", rep.FieldsKept)
+	}
+
+	save("영구 값", func(in *SaveInput) { in.Retention, in.ReviewAfterDays = RetentionDurable, 30 })
+	if rep := save("영구 값", func(in *SaveInput) { in.Retention = RetentionDurable }); len(rep.FieldsKept) != 0 {
+		t.Errorf("주지 않은 재검토 주기(기본 90 채움)를 알렸습니다: %v", rep.FieldsKept)
+	}
+	if rep := save("영구 값", func(in *SaveInput) { in.Retention = "normal" }); !slices.Equal(rep.FieldsKept, []string{"retention"}) {
+		t.Errorf("normal 명시를 알리지 않았습니다: %v", rep.FieldsKept)
+	}
+
+	save("태그 값", func(in *SaveInput) { in.Tags = []string{"가", "나"} })
+	if rep := save("태그 값", func(in *SaveInput) { in.Tags = []string{"나", "가"} }); len(rep.FieldsKept) != 0 {
+		t.Errorf("태그 순서만 다른데 알렸습니다: %v", rep.FieldsKept)
 	}
 }
