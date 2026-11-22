@@ -809,6 +809,9 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	if si.Replaces != "" && rep.Replayed == nil && !slices.Contains(rep.Superseded, si.Replaces) {
 		out.Warnings = append(out.Warnings, i18n.T("memory.save.not_replaced", si.Replaces))
 	}
+	if rep.BodyKept {
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.body_kept", m.ID))
+	}
 	return out, nil
 }
 
