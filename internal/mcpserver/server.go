@@ -234,7 +234,7 @@ type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal"`
 	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더에서 보이는 것)·global(user만)·all"`
-	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)"`
+	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)·hidden. 만료·옛 버전은 stale을 주면 보임"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"하나라도 가진 기억만"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"기본 8, 최대 30"`
 	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그)"`
@@ -278,7 +278,11 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		r, _ := toolError(err)
 		return r, FindOut{}, nil
 	}
-	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit)}
+	// 기본 조회는 현재 값만 보인다. states에 stale이나 hidden을 주면 사람이 지난 값을 보려는 것이라 거르지 않고 줄마다 표시한다.
+	// stale을 주면 상태가 후보·확정이어도 만료됐거나 옛 버전인 기억까지 나온다(명세 F-3). 현재 값은 요청한 상태일 때만 나온다.
+	withStale := slices.Contains(in.States, memory.StateStale)
+	marked := withStale || slices.Contains(in.States, memory.StateHidden)
+	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
 	switch in.Scope {
 	case "", "here":
 		here := h.o.here()
@@ -297,8 +301,17 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		return r, FindOut{}, nil
 	}
 	out := FindOut{Items: []FindItem{}}
+	// 표시는 줄마다 판정만 하고 후계는 읽지 않는다(후계 id는 memory_get과 연결에서 보인다). 판정기는 호출마다 만든다.
+	var v memory.Viewer
+	if marked {
+		v, _ = h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠지고 폐기·만료 표시는 그대로다
+	}
 	for _, m := range ms {
-		out.Items = append(out.Items, findItem(m, detail))
+		note := ""
+		if marked {
+			note = whyNote(v.Why(m))
+		}
+		out.Items = append(out.Items, findItem(m, detail, note))
 	}
 	return nil, out, nil
 }
@@ -322,13 +335,21 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		r, _ := toolError(fmt.Errorf("ids는 1~20개입니다"))
 		return r, out, nil
 	}
+	// 판정기는 호출마다 만든다: 만든 시각과 주제 머리가 고정되므로 오래 사는 서버가 쥐지 않는다.
+	v, _ := h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠진다
+	peers := h.peers(v)
 	for _, id := range in.IDs {
 		m, err := h.s.Get(id)
 		if err != nil {
 			r, _ := toolError(err)
 			return r, out, nil
 		}
-		out.Items = append(out.Items, memoryView(m, h.linkTitle, in.Full))
+		vis := v.Of(m)
+		successor := vis.Successor
+		if vis.Why == memory.WhyOlder {
+			successor = v.Superseding(m)
+		}
+		out.Items = append(out.Items, memoryView(m, noticeOf(m, vis.Why, successor), peers, in.Full))
 		if in.History {
 			if out.History == nil {
 				out.History = map[string][]memory.Version{}
@@ -339,13 +360,28 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 	return nil, out, nil
 }
 
-// linkTitle is the title of the memory at the other end of a link, "" when it cannot be read.
-func (h handlers) linkTitle(id string) string {
-	m, err := h.s.Get(id)
-	if err != nil {
-		return ""
+// peers gives the title and the note of the memory at the other end of a link (view.go linkPeers). An id
+// that cannot be read has neither: its line is the bare id, as before. Each peer is read once per call.
+func (h handlers) peers(v memory.Viewer) linkPeers {
+	type peer struct{ title, note string }
+	seen := map[string]peer{}
+	return func(id string) (string, string) {
+		if p, ok := seen[id]; ok {
+			return p.title, p.note
+		}
+		var p peer
+		if m, err := h.s.Get(id); err == nil {
+			p.title = m.Title
+			vis := v.Of(m)
+			succ := vis.Successor
+			if vis.Why == memory.WhyOlder {
+				succ = v.Superseding(m)
+			}
+			p.note = peerNote(vis.Why, succ)
+		}
+		seen[id] = p
+		return p.title, p.note
 	}
-	return m.Title
 }
 
 // SourceIn is where a memory came from.

@@ -184,3 +184,36 @@ func TestViewer_후보_상태의_후계도_살아있는_것으로_인정한다(t
 		t.Fatalf("후보 후계: %q %v", got.ID, ok)
 	}
 }
+
+// 조회 경로는 현재 값이 아닌 것을 한도 앞에서 뺀다: 한도 1에 옛 버전이 먼저 와도 현재 값이 나온다.
+func TestFind_Current는_현재_값이_아닌_것을_한도_앞에서_뺀다(t *testing.T) {
+	s := supStore(t)
+	// 옛 버전은 질의어 둘에 맞아 점수가 가장 높다. 현재 값들은 하나씩만 맞는다.
+	older, _ := mustSave(t, s, userSays(KindRule, "빌드 배포 절차", "배포 절차"))
+	// 임시 값이 머리인 동안 옛 값은 낡음으로 바뀌지 않은 채 옛 버전으로 보인다.
+	hin := userSays(KindRule, "배포 절차 새 값", "배포 절차")
+	hin.Retention, hin.TTLDays = RetentionVolatile, 1
+	head, _ := mustSave(t, s, hin)
+	other, _ := mustSave(t, s, userSays(KindFact, "빌드 도구", "도구"))
+	if w := viewer(t, s).Why(stateOf(t, s, older.ID)); w == WhyCurrent {
+		t.Fatalf("시험 전제: 옛 버전이 현재 값으로 판정됨")
+	}
+	in := FindInput{Query: "빌드 배포", AllProjects: true, Limit: 2}
+	plain, err := s.Find(in)
+	if err != nil || len(plain) != 2 || plain[0].ID != older.ID {
+		t.Fatalf("Current 없이는 옛 버전이 앞선다: %v %v", plain, err)
+	}
+	in.Current = true
+	got, err := s.Find(in)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("거른 뒤 한도까지 채워야 한다: %v %v", got, err)
+	}
+	for _, m := range got {
+		if m.ID == older.ID {
+			t.Fatalf("옛 버전이 남았다: %v", got)
+		}
+	}
+	if !(got[0].ID == head.ID || got[1].ID == head.ID) || !(got[0].ID == other.ID || got[1].ID == other.ID) {
+		t.Fatalf("현재 값 둘이어야 한다: %v", got)
+	}
+}

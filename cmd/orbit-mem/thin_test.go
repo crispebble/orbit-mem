@@ -132,6 +132,58 @@ func TestThin_search_show_list(t *testing.T) {
 	}
 }
 
+// 숨긴 기억은 list --state hidden으로 보인다(도움말에 적힌 값). 현재 값만 남기는 거르기가 숨김까지 비우면 안 된다.
+func TestThin_list_state_hidden은_숨긴_기억을_낸다(t *testing.T) {
+	home(t)
+	s, a, b := thinSeed(t)
+	if _, err := s.SetState(b.ID, memory.StateHidden, "아님"); err != nil {
+		t.Fatal(err)
+	}
+	var found struct{ Items []struct{ ID, Note string } }
+	if err := json.Unmarshal([]byte(runOK(t, "", "list", "--state", "hidden")), &found); err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Items) != 1 || found.Items[0].ID != b.ID {
+		t.Fatalf("list --state hidden: %+v (현재 값 %s는 나오면 안 됩니다)", found.Items, a.ID)
+	}
+}
+
+// --stale로 보이는 줄은 현재 값이 아닌 기억에 표시가 붙는다: 상태가 확정인 옛 버전이 현재 값처럼 읽히면 안 된다.
+func TestThin_stale로_보이는_줄에는_옛_버전_표시가_붙는다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	topic := func(title string, ttl int) memory.Memory {
+		in := memory.SaveInput{Kind: "rule", Title: title, Topic: "기본값", Source: memory.Source{Kind: "quote", Excerpt: title}, Who: memory.Who{Actor: memory.ActorAI}}
+		if ttl > 0 {
+			in.Retention, in.TTLDays = memory.RetentionVolatile, ttl
+		}
+		m, _, err := s.SaveWith(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	base := topic("기본은 A", 0)
+	tmp := topic("이번 주만 B", 3)
+	onTerminal(t)
+	out := runOK(t, "", "search", "--stale", "--all")
+	var baseLine, tmpLine string
+	for _, l := range strings.Split(out, "\n") {
+		switch {
+		case strings.Contains(l, base.ID):
+			baseLine = l
+		case strings.Contains(l, tmp.ID):
+			tmpLine = l
+		}
+	}
+	if !strings.Contains(baseLine, "옛 버전") {
+		t.Errorf("옛 버전 줄에 표시가 없습니다: %q\n%s", baseLine, out)
+	}
+	if tmpLine == "" || strings.Contains(tmpLine, "옛 버전") || strings.Contains(tmpLine, "폐기됨") {
+		t.Errorf("현재 값의 줄: %q", tmpLine)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }
 
 // 끝 기준: edit·stale은 memory_update와 같은 규칙(판 올림, 이력, 지우지 않음)을 따른다.

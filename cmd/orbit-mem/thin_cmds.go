@@ -31,7 +31,11 @@ func tools() (mcpserver.Tools, *memory.Store, error) {
 
 func (a *app) printSummaries(items []mcpserver.FindItem) {
 	for _, m := range items {
-		fmt.Fprintf(a.stdout, "%s  %s·%s  %s\n", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
+		line := fmt.Sprintf("%s  %s·%s  %s", m.ID, kindName(m.Kind), stateName(m.State), m.Title)
+		if m.Note != "" { // 현재 값이 아닌 줄(만료·옛 버전은 상태가 확정이어도)이 현재 값처럼 읽히지 않게
+			line += "  [" + m.Note + "]"
+		}
+		fmt.Fprintln(a.stdout, line)
 	}
 	if len(items) == 0 {
 		fmt.Fprintln(a.stdout, i18n.T("cli.memory.none_found"))
