@@ -13,7 +13,8 @@ import (
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
-// gated is the default settings with the tool input gate on.
+// gated is the default settings with the tool input gate spelled out as on (it is on by default, so a test of the
+// gate reads as one).
 func gated() config.Config {
 	cfg := config.Default()
 	cfg.ToolInputGate = true

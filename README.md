@@ -181,6 +181,8 @@ ORBIT_MEM_VERSION=0.18.0 sh install.sh --marketplace /path/to/catalog
 
 아래 키는 기억을 얼마나 정확히 고르는지와 어떤 순서로 내는지를 정한다. `autoMode`만 `orbit-mem config set`으로 바꾼다. 나머지는 `orbit-mem config`가 보이는 경로의 `config.json`을 고치고, 범위를 벗어난 값은 설정을 읽을 때 오류다.
 
+설정 파일에 키가 적혀 있으면 그 값이 쓰이고, 기본값은 키가 없을 때만 적용된다. `orbit-mem install`과 `orbit-mem config set`은 설정을 저장할 때 모든 키를 파일에 적으므로, 한 번 저장한 파일은 그때의 값을 이어 쓴다. 기본값이 바뀐 키를 새 기본값으로 쓰려면 `config.json`에서 그 키의 줄을 지우거나 값을 고친다(`config set`은 이 표의 키 가운데 `autoMode`만 받는다).
+
 | 키 | 기본 | 범위 | 뜻 |
 | --- | --- | --- | --- |
 | `autoMode` | 꺼짐 | true·false | 켜면 근거가 적힌 검증 사실(서버가 근거를 다시 확인한 것 포함)이 같은 범위·주제의 사용자 말 사실을 스스로 대체한다. 끄면 어긋남으로 남기고 사용자에게 확인한다. 아래 「확정 규칙과 감사 목록」 |

@@ -126,6 +126,23 @@ func TestRank_rankByScore를_끄면_지금_순위와_같다(t *testing.T) {
 	}
 }
 
+// 기본 설정(입력 문 켬)에서 두 기억이 모두 문턱을 넘으면 도구 직전 순위도 같은 규칙이다: 입력과 훨씬 잘 맞는 후보 교훈이
+// 약하게 맞는 확정 교훈보다 앞선다. 입력 문이 약한 쪽을 거르지 않았다는 것도 함께 본다.
+func TestRank_입력_문을_지난_두_기억도_같은_순위_규칙을_쓴다(t *testing.T) {
+	s := store(t)
+	weak := saveOn(t, s, memory.KindLesson, "빗금 하나로 결과가 갈리는 일이 있다", "경로 끝 대상을 살핀다", []string{"Bash"}, true)
+	strong := saveOn(t, s, memory.KindLesson, "rsync 원본 경로 끝에 빗금을 붙인다", "빗금이 없으면 폴더째 복사된다", []string{"Bash"}, false)
+	cfg := config.Default()
+	if !cfg.ToolInputGate {
+		t.Fatal("toolInputGate is off by default")
+	}
+	input := "rsync -av 원본 경로 빗금 대상"
+	got := ToolInjection(s, cfg, here, "claude", "S", "Bash", input).MemoryIDs
+	if want := []string{strong.ID, weak.ID}; !slices.Equal(got, want) {
+		t.Fatalf("gate on: order %v, want %v", got, want)
+	}
+}
+
 // 도구 직전 회상도 같은 순위 규칙이다: 확정 규칙이 아닌 기억끼리는 입력과 훨씬 잘 맞는 후보 교훈이 약하게 맞는 확정 교훈보다
 // 앞서고(점수 차가 문턱보다 큼), rankByScore를 끄거나 입력이 없으면 확정이 앞선 지금 순서다.
 func TestRank_도구_직전_회상도_같은_순위_규칙을_쓴다(t *testing.T) {
