@@ -685,6 +685,8 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		if err := recordSightingTx(tx, m.ID, in.Session, day, now); err != nil {
 			return Memory{}, rep, err
 		}
+	} else if err := recordCreationSessionTx(tx, m.ID, in.Session, now); err != nil {
+		return Memory{}, rep, err
 	}
 	if err := versionTx(tx, m, "create", "", now); err != nil {
 		return Memory{}, rep, err
@@ -782,6 +784,19 @@ func recordSightingTx(tx *sql.Tx, id, session, day string, now int64) error {
 	return err
 }
 
+// recordCreationSessionTx records the session a memory that was not made a candidate (confirmed by the user's words
+// at once) was made in, in sighting_sessions only: it is no sighting day, but a later save of the same memory in that
+// session is the same session, not a confirmation (confirmCheckTx). A session not known records nothing.
+func recordCreationSessionTx(tx *sql.Tx, id, session string, now int64) error {
+	key := SessionKey(session)
+	if key == "" {
+		return nil
+	}
+	// 날 칸은 비운다: 확정 증거 ①(seenApartTx)이 빈 날을 건너뛰어, 만든 세션이 다시 나온 날로 세지 않는다.
+	_, err := tx.Exec(`INSERT OR IGNORE INTO sighting_sessions(memory_id, session, day, at) VALUES(?,?,'',?)`, id, key, now)
+	return err
+}
+
 // sightTx records that memory id came up again in session on day with src. A quote of
 // the user confirms a candidate, and a rejected (hidden) memory too when revive says the quote was
 // checked (S-2); the evidence of the other sessions and days is checked after the
@@ -794,6 +809,14 @@ func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64, 
 	if err := addSourceTx(tx, m.ID, src, now); err != nil {
 		return err
 	}
+	m.holdReview()
+	// 확인인가(L-1): 사용자 말로 다시 저장했거나, 이 기억이 아직 나온 적 없는 다른 세션에서 다시 나왔을 때다. 같은 세션의 재등장은 아니다.
+	confirmed := src.Kind == SourceQuote
+	if !confirmed {
+		if confirmed, err = confirmCheckTx(tx, m.ID, session); err != nil {
+			return err
+		}
+	}
 	if err := recordSightingTx(tx, m.ID, session, day, now); err != nil {
 		return err
 	}
@@ -803,6 +826,9 @@ func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64, 
 		next = StateConfirmed
 	case src.Kind == SourceQuote && m.State == StateHidden && revive:
 		next, reason = StateConfirmed, "사용자 말로 다시 저장해 되살림: "+day
+	}
+	if confirmed && (next == StateCandidate || next == StateConfirmed) {
+		m.confirm(now)
 	}
 	action := "seen"
 	if next != m.State {
@@ -1052,6 +1078,7 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
 	}
 	prevState := m.State
+	m.holdReview() // 고치기 전의 상태와 고친 시각으로 굳힌다: 확인이 아닌 수정이 90일 시계를 되감지 못하게
 	// 고침의 새 출처: 출처가 믿을 수 없는 것뿐인 고침은 사용자 말 없이 owner·agent 기억을 고쳐 쓰지 못한다(D7,
 	// 대체와 같은 규칙). 출처는 고침과 같은 트랜잭션에 붙어, 붙이지 못하면 고침도 남지 않는다.
 	srcs, srcTrust, err := resolveTrusts(in.TrustLimit, in.Sources)
@@ -1127,6 +1154,9 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	}
 	m.Version++
 	m.UpdatedAt = s.nowMs()
+	if confirmsReview(in, srcs) && (m.State == StateCandidate || m.State == StateConfirmed) {
+		m.confirm(m.UpdatedAt)
+	}
 	action := in.Action
 	if action == "" {
 		action = "update"
@@ -1151,6 +1181,19 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
 	}
 	return s.Get(m.ID)
+}
+
+// confirmsReview says whether an update is a confirmation of the memory (L-1): the user's words are behind it
+// (given with it or a quote source) or the person made it (Actor user, named: a Who left empty is no one in
+// particular, as the automatic changes and proposals pass it), and it changes what the memory says, adds a
+// source or confirms it. A change of state alone and an AI's edit without the user's words are not.
+func confirmsReview(in UpdateInput, srcs []Source) bool {
+	if in.Who.Actor != ActorUser && userWordsOf(in.Who, srcs) == "" {
+		return false
+	}
+	edits := in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Aliases != nil ||
+		in.Scope != nil || in.Project != nil || in.Topic != nil || len(srcs) > 0
+	return edits || (in.State != nil && *in.State == StateConfirmed)
 }
 
 // userWordsOf is the user's words a change carries: the words given with it, else a quote source's excerpt; ""

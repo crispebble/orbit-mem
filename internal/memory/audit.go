@@ -123,7 +123,23 @@ func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return i18n.Errorf("memory.err.no_flag", ErrInvalid, id)
 	}
+	// 사람이(또는 사용자 말을 들고) 어긋남을 dismissed로 닫는 것은 옛 기억을 유지하기로 한 것이다: 어긋나는 새 것이 아닌 옛 기억
+	// 쪽을 확인한 것으로 센다(L-1). revertedOldTx도 이 쌍의 옛 기억을 사람이 고른 값으로 본다.
+	if resolution == "dismissed" && (w.Actor == ActorUser || w.quote() != "") {
+		var oldID string
+		if s.db.QueryRow(`SELECT other_id FROM audit_flags WHERE id=? AND kind=?`, id, FlagConflict).Scan(&oldID) == nil && oldID != "" {
+			s.confirmKept(oldID, w)
+		}
+	}
 	return nil
+}
+
+// confirmKept moves the review date of a live memory the user decided to keep (L-1). It is a best effort after
+// the decision is written: a memory that is gone or not live is left, and a failure does not undo the decision.
+func (s *Store) confirmKept(id string, w Who) {
+	if m, err := getTx(s.db, id); err == nil && (m.State == StateCandidate || m.State == StateConfirmed) {
+		_, _ = s.Reviewed(id, w)
+	}
 }
 
 // OpenFlags lists the marks not settled yet, newest first.
@@ -501,6 +517,22 @@ type AuditConflict struct {
 	OtherTitle string `json:"otherTitle,omitempty"`
 }
 
+// maxAuditReview is how many memories due for review the audit list names; ReviewDueCount counts them all.
+const maxAuditReview = 30
+
+// auditReviewTitleRunes is how much of a title the audit list's review list shows (a title may be 200 runes).
+const auditReviewTitleRunes = 80
+
+// AuditReview is a memory due for review (L-1) in the audit list, the list the session start's count line points to.
+type AuditReview struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	State     string `json:"state"`
+	AppliesTo string `json:"appliesTo"`
+	Title     string `json:"title"`
+	ReviewAt  int64  `json:"reviewAt"` // 재검토일(Unix ms): 마지막 확인 + 90일
+}
+
 // Audit is the audit list.
 type Audit struct {
 	Changes     []AuditChange        `json:"changes"`
@@ -512,6 +544,10 @@ type Audit struct {
 	PolicyPending []string `json:"policyPending,omitempty"`
 	// TwoTopics are rules and decisions whose 「A — B」 title glues two topics (S4-12): split them.
 	TwoTopics []TwoTopicTitle `json:"twoTopics"`
+	// ReviewDue are the memories due for review, the oldest review date first (at most maxAuditReview), of every
+	// scope: the session start counts only what its place sees, this list is the whole of it (명세 L-3).
+	ReviewDue      []AuditReview `json:"reviewDue"`
+	ReviewDueCount int           `json:"reviewDueCount"`
 }
 
 // PolicyPendingKeys are the configuration keys still waiting for the user (E2).
@@ -587,6 +623,14 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 	a.Pending = s.PendingCount()
 	if a.TwoTopics, err = s.TwoTopicTitles(f.Products); err != nil {
 		return a, err
+	}
+	due, err := s.ReviewDueMemories(nil)
+	if err != nil {
+		return a, err
+	}
+	a.ReviewDue, a.ReviewDueCount = []AuditReview{}, len(due)
+	for _, m := range due[:min(len(due), maxAuditReview)] {
+		a.ReviewDue = append(a.ReviewDue, AuditReview{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: ClipRunes(m.Title, auditReviewTitleRunes), ReviewAt: ReviewDate(m)})
 	}
 	return a, nil
 }

@@ -125,6 +125,16 @@ func (a *app) printAudit(au memory.Audit, days int) {
 			fmt.Fprintf(a.stdout, "  %s %-8s %s · %s\n", t.ID, t.Kind, oneLine(t.Title, 80), t.Why)
 		}
 	}
+	if au.ReviewDueCount > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.audit.review_due", au.ReviewDueCount))
+		for _, r := range au.ReviewDue {
+			fmt.Fprintf(a.stdout, "  %s %-8s %s · %s\n", r.ID, r.Kind, oneLine(r.Title, 80), memory.Day(time.UnixMilli(r.ReviewAt)))
+		}
+		if n := au.ReviewDueCount - len(au.ReviewDue); n > 0 {
+			fmt.Fprintln(a.stdout, "  "+i18n.T("cli.audit.review_due_more", n))
+		}
+		fmt.Fprintln(a.stdout, "  "+i18n.T("cli.audit.review_due_hint"))
+	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.pending", au.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.policy", au.Policy.SeenDays, au.Policy.FollowedVerified, au.Policy.CorrectionSessions))
 }

@@ -176,7 +176,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 			break
 		}
 		note, info := conflicts.note(h.m.ID)
-		line := toolLine(h.m, note)
+		line := toolLine(h.m, note, h.due)
 		n := runes(line)
 		// 세션 합계에서 멈춘다(설계 5.2절): 순서를 건너뛰어 더 짧은 기억을 넣지 않는다.
 		if callUsed+n > MaxToolCallRunes || used+n > room {
@@ -267,9 +267,10 @@ func toolPointerLine(rest []memory.Memory, limit int) (string, []string) {
 // fits in MaxToolMemoryRunes, then conflict, the note line of a memory with an open conflict ("" for one
 // without). The note is outside the 160 runes: it says whether the memory can be relied on, and the call's own
 // limits (MaxToolCallRunes, the session sum) still bound it. The session sum redraws the memories it was given
-// with it and without the note, which is not known then.
-func toolLine(m memory.Memory, conflict string) string {
-	tail := fmt.Sprintf(" (%s · %s %s)\n", m.ID, kindName(m.Kind), toolState(m))
+// with it and without the note, which is not known then. due puts the review mark (L-2) in the state word; inside
+// the 160 runes it takes room from the body, so the line is no longer.
+func toolLine(m memory.Memory, conflict string, due bool) string {
+	tail := fmt.Sprintf(" (%s · %s %s)\n", m.ID, kindName(m.Kind), toolState(m, due))
 	title := m.Title
 	if room := MaxToolMemoryRunes - runes(tail) - 2; runes(title) > room {
 		title = memory.ClipRunes(title, room-1) // ClipRunes adds "…"
@@ -288,10 +289,13 @@ func toolLine(m memory.Memory, conflict string) string {
 
 // toolState is the state word of a tool memory line, with the untrusted note (D7) when the memory's
 // sources are all untrusted.
-func toolState(m memory.Memory) string {
+func toolState(m memory.Memory, due bool) string {
 	s := "확정"
 	if m.State == memory.StateCandidate {
 		s = "후보"
+	}
+	if due {
+		s += " · " + reviewMark
 	}
 	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
 		s += " · " + note
@@ -331,7 +335,7 @@ func toolSessionUsed(s *memory.Store, host, session string, active []memory.Memo
 			}
 			m = got
 		}
-		lines += runes(toolLine(m, ""))
+		lines += runes(toolLine(m, "", false))
 	}
 	return max(calls, lines)
 }

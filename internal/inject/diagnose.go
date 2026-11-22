@@ -126,7 +126,7 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		add(StageEligible, No, why[m.ID])
 	}
 	if vw.Of(m).ReviewDue {
-		d.Notes = append(d.Notes, Note{Code: "review_due", Args: []string{day(m.ReviewAt)}})
+		d.Notes = append(d.Notes, Note{Code: "review_due", Args: []string{day(memory.ReviewDate(m))}})
 	}
 	for _, src := range m.Sources {
 		if src.Kind == memory.SourceFile && src.Hash != "" && memory.FileHash(src.Ref) != src.Hash {

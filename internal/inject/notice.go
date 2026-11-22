@@ -19,6 +19,9 @@ const (
 	autoNoticeTitleRunes = 30
 )
 
+// reviewNoticeFormat is the session start's count line of the memories due for review (명세 L-3).
+const reviewNoticeFormat = reviewMark + " %d건 — 감사 목록(proposals status=audit)에서 확인"
+
 // noticeTold is the automatic replacements a session start put in its notice: the time of the newest one per
 // scope, and the line that names them.
 type noticeTold struct {
@@ -34,6 +37,9 @@ type noticeTold struct {
 //     알린 시각은 범위마다 따로 센다: 한 프로젝트의 세션이 받았다고 다른 프로젝트의 세션이 못 받는 일이 없다.
 //   - 넘어간 어긋남: 자동 모드가 켜져 있고 열린 어긋남 쌍이 있으면 개수 한 줄. 끄면 어긋남은 작업에 걸릴 때 묻는다. 개수는
 //     자동 모드를 켜기 전에 생긴 쌍도 센다(쌍이 언제 생겼는지는 남지 않는다).
+//   - 재검토 후보: 마지막 확인 뒤 90일이 지난 기억이 이 자리에서 보이는 범위에 있으면 개수 한 줄(L-3). 0건이면 줄이 없다. 무엇을
+//     기억해야 하는 줄이 아니라서 묶음에 실렸는지 표시하지 않고, 개수는 줄이 만들어질 때마다 새로 센다. 한도가 모자라 줄을 자르면
+//     뒤 줄부터 빠지므로 이 줄은 앞의 두 줄 뒤, 호출한 쪽의 안내 줄(버전·갱신·겹침) 앞이다.
 //
 // With the recall off no memory is put in, and no notice is told.
 func autoNoticeLines(s *memory.Store, cfg config.Config, pl place.Place) ([]string, noticeTold) {
@@ -62,6 +68,9 @@ func autoNoticeLines(s *memory.Store, cfg config.Config, pl place.Place) ([]stri
 		if n, err := s.OpenConflictCount(); err == nil && n > 0 {
 			lines = append(lines, fmt.Sprintf("묻지 않고 넘어간 어긋남 %d건 — 감사 목록(proposals status=audit)에서 확인", n))
 		}
+	}
+	if due, err := s.ReviewDueMemories(pl.Sees); err == nil && len(due) > 0 {
+		lines = append(lines, fmt.Sprintf(reviewNoticeFormat, len(due)))
 	}
 	return lines, told
 }
