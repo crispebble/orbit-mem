@@ -146,7 +146,9 @@ type Config struct {
 	// rankScoreMargin보다 크면 점수가 큰 쪽을 먼저 두고, 그 안이면 확정된 기억을 먼저 둔다. 끄면 확정이 먼저이고 그다음 점수다.
 	// 점수와 확정이 같을 때 재검토 지남(Memory.ReviewAt이 지난 기억)을 뒤로 보내는 것(R-3)은 스위치와 관계없이 늘 적용된다.
 	// 도구 직전 회상에서는 확정된 규칙이 점수 단계에서 밀리지 않는다(명세 T-2). rankScoreMargin은 0 < x ≤ 1이고, 이 키가 없는
-	// 옛 파일은 기본값이다. 켤지와 문턱은 평가 묶음으로 정한다(R-2).
+	// 옛 파일은 기본값이다. 기본은 꺼짐이다(R-2): 켜도 공개 평가 묶음의 기존 사례와 실제 기록 재생의 경로별 글자 수는 그대로이고
+	// 점수 차가 갈리는 사례의 적중만 오르지만(0.1~0.3은 같은 결과, 0.05는 요청 회상의 몇 호출이 바뀐다), 켜면 점수가 높은
+	// 후보가 약하게 걸린 확정 기억보다 앞서 기존 순위 시험의 기대가 바뀌므로 사용자가 정할 때까지 끈다.
 	RankByScore     bool    `json:"rankByScore"`
 	RankScoreMargin float64 `json:"rankScoreMargin"`
 	// 자동 모드(명세 C-9): 기본은 꺼짐이다. 켜면 서버가 다시 확인하지 못한 근거(명령 출력 같은)가 적힌 검증 출처의 사실도 같은
@@ -186,11 +188,12 @@ const (
 	DefaultTaskRecallMinWords       = 3
 	DefaultTaskRecallMinRelative    = 0.3
 	DefaultTaskRecallMinTitleShare  = 0.05
-	// DefaultToolInputMinScore는 요청 회상의 점수 문턱과 같은 값으로 둔 출발점이다. 스위치(toolInputGate)가 기본으로 꺼져
-	// 있어 지금은 쓰이지 않는다. 켤지와 값은 평가 묶음과 실제 기록 재생으로 정한다(명세 T-3).
+	// DefaultToolInputMinScore는 요청 회상의 점수 문턱과 같은 값으로 둔 출발점이다. 스위치(toolInputGate)는 기본으로 꺼져
+	// 있어 켠 사람의 출발점이다. 어느 값도 명세 T-3의 끝 기준(무관 반복 사례가 재생에서 사라진다)을 채우지 못해 끈 채로 둔다:
+	// 값을 올릴수록 무관 반복은 줄지만 0이 되지 않고, 입력과 관련 있어 보이는 기억도 함께 막힌다.
 	DefaultToolInputMinScore = DefaultRecallMinScore
-	// DefaultRankScoreMargin는 스위치(rankByScore)가 기본으로 꺼져 있어 지금은 쓰이지 않는 출발점이다. 켤지와 값은 평가
-	// 묶음으로 정한다(명세 R-2).
+	// DefaultRankScoreMargin은 순위 스위치(rankByScore)의 점수 차 문턱이다. 스위치는 기본으로 꺼져 있고, 평가 묶음과 실제
+	// 기록 재생에서 0.1~0.3이 같은 결과여서 켠다면 그 가운데 가장 작은 값을 쓴다(명세 R-2).
 	DefaultRankScoreMargin = 0.1
 )
 

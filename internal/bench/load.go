@@ -229,6 +229,17 @@ func (p *Prepared) resolve(set *Set) (*Set, error) {
 				*list = nil
 			}
 		}
+		if len(c.Changes) > 0 {
+			changes := make([]Change, 0, len(c.Changes))
+			for _, ch := range c.Changes {
+				id, err := ref(c, ch.Memory)
+				if err != nil {
+					return nil, err
+				}
+				changes = append(changes, Change{Memory: id, State: ch.State})
+			}
+			c.Changes = changes
+		}
 		out.Cases[i] = c
 	}
 	return &out, nil

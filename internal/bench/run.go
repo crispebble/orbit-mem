@@ -108,6 +108,14 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 				}
 			}
 		}
+		// 사례의 변경(두 시작 사이에 낡거나 거절된 기억)은 시작을 부르기 전에 사본에 적용한다.
+		if env.Change != nil {
+			for _, ch := range c.Changes {
+				if err := env.Change(ch.Memory, ch.State); err != nil {
+					return fail(err)
+				}
+			}
+		}
 		// 세션 시작: 세션의 첫 사례 앞에 한 번, 그리고 시작 사례(재개·압축 뒤 등)마다 다시. 다시 부른 시작이 그 뒤 사례의
 		// A층이다. 압축·지우기 뒤 시작은 훅처럼 세션 표시를 먼저 비운다.
 		if k := c.CaseKind(); k != KindDuplicate {

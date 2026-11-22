@@ -98,12 +98,28 @@ func FactoryWith(o Options) bench.Factory {
 			Finder:   finder{svc: svc, at: c},
 			Similar:  similar{db: db, at: c, mins: memory.CheckMins{Similar: cfg.SaveSimilarMin, Near: cfg.SaveNearMin}},
 			SetNow:   func(t time.Time) { c.t = t },
+			Change:   func(id, state string) error { return change(db, c, id, state) },
 			Close: func() error {
 				svc.Wait()
 				return r.close()
 			},
 		}, nil
 	}
+}
+
+// change moves the memory of the DB copy to a state at the path's time through the store, as the upkeep does;
+// the reason names the bench so the history shows where the move came from.
+func change(db string, c *clock, id, state string) error {
+	s, err := memory.Open(db)
+	if err != nil {
+		return fmt.Errorf("hostpath: change %s: %w", id, err)
+	}
+	defer s.Close()
+	s.Now = c.now
+	if _, err := s.SetState(id, state, "bench change"); err != nil {
+		return fmt.Errorf("hostpath: change %s to %s: %w", id, state, err)
+	}
+	return nil
 }
 
 // NewFinder is the Finder of this path alone, so that another recall path can be paired with the

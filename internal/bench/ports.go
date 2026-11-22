@@ -100,6 +100,10 @@ type Env struct {
 	// SetNow moves the clock of the path (recall, search, similar) to t. A set whose cases carry their times
 	// (Set.Timed) needs it: the run calls it before a case whose time differs from the last one.
 	SetNow func(t time.Time)
+	// Change moves a memory of the path's DB copy to a state (memory.StateStale or memory.StateHidden), as a person
+	// or the upkeep would between two session starts. A case's Changes need it; a path without it (the frozen
+	// recall) runs the case as if it had none.
+	Change func(id, state string) error
 	Close  func() error
 }
 
