@@ -96,6 +96,10 @@ func TestForget_사용자_말과_함께_지우면_기억과_딸린_행이_모두
 	if err := s.RecordUsage(UsageInput{MemoryID: other.ID, Verdict: UsageFollowed}); err != nil {
 		t.Fatal(err)
 	}
+	// 세션을 가른 다시 나온 기록(스키마 6). 이 표에 쓰는 저장 경로가 생기기 전이라 줄을 직접 넣는다.
+	if _, err := s.DB().Exec(`INSERT INTO sighting_sessions(memory_id, session, day, at) VALUES(?, 'S1', '2026-10-27', 1)`, m.ID); err != nil {
+		t.Fatal(err)
+	}
 	var rowid int64
 	if err := s.DB().QueryRow(`SELECT rowid FROM memory_index WHERE memory_id=?`, m.ID).Scan(&rowid); err != nil {
 		t.Fatal(err)

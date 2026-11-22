@@ -22,11 +22,11 @@ import (
 //   - 기억: created_at ≤ at인 기억만 있다. 내용·상태는 at 이전 마지막 판의 스냅숏이다(종류·범위·상태·제목·본문·태그·판·
 //     고친 시각·대체한 판·낡은 까닭·상시 핵심). 판이 at 뒤에만 있으면(옛 판에서 옮긴 기억) 첫 판이다. 스냅숏에 없는 칸
 //     (주제·도구·보존·검토·기한·적용 대상)은 지금 값을 쓴다. 판 이력(memory_versions)은 at 이전 판까지다.
-//   - 출처(sources)는 at 이전 것(하나도 없으면 첫 출처), 다시 나옴(sightings)은 at의 날 이전 것.
+//   - 출처(sources)는 at 이전 것(하나도 없으면 첫 출처), 다시 나옴(sightings·sighting_sessions)은 at의 날 이전 것.
 //   - 연결(memory_links)은 at 이전에 만든 것만, at 뒤에 지운 것은 살아 있다. 두 끝이 모두 있을 때만.
 //   - 사건(events)은 틀에 있던 것 중 at 이전 것만. 실행이 쓴 사건·세션 표시·활동 기록은 건드리지 않는다.
 //
-// 틀에 없는 줄(실행이 쓴 줄)은 기억 표(memories·memory_versions·sources·sightings·memory_links)에 생기지 않는다:
+// 틀에 없는 줄(실행이 쓴 줄)은 기억 표(memories·memory_versions·sources·sightings·sighting_sessions·memory_links)에 생기지 않는다:
 // 회상 경로는 이 표들을 읽기만 한다.
 
 // History is what a memory DB copy held over time, read once.
@@ -44,6 +44,7 @@ type memHistory struct {
 	versions  []versionHistory // by version
 	sources   []timedRow       // by at
 	sightings []sightingRow    // by day
+	sessions  []sightingRow    // sighting_sessions, by day
 }
 
 type versionHistory struct {
@@ -90,12 +91,13 @@ type eventHistory struct {
 
 // historyTables are the tables History reads, with the column that orders their rows.
 var historyTables = map[string]string{
-	"memories":        "id",
-	"memory_versions": "memory_id, version",
-	"sources":         "memory_id, at, rowid",
-	"sightings":       "memory_id, day",
-	"memory_links":    "created_at, id",
-	"events":          "id",
+	"memories":          "id",
+	"memory_versions":   "memory_id, version",
+	"sources":           "memory_id, at, rowid",
+	"sightings":         "memory_id, day",
+	"sighting_sessions": "memory_id, day, session",
+	"memory_links":      "created_at, id",
+	"events":            "id",
 }
 
 // ReadHistory reads the history of the memory DB at path (read only). The DB must have this binary's schema.
@@ -142,6 +144,11 @@ func ReadHistory(path string) (*History, error) {
 	for _, r := range rows["sightings"] {
 		if m := h.mems[asString(r[col("sightings", "memory_id")])]; m != nil {
 			m.sightings = append(m.sightings, sightingRow{day: asString(r[col("sightings", "day")]), row: r})
+		}
+	}
+	for _, r := range rows["sighting_sessions"] {
+		if m := h.mems[asString(r[col("sighting_sessions", "memory_id")])]; m != nil {
+			m.sessions = append(m.sessions, sightingRow{day: asString(r[col("sighting_sessions", "day")]), row: r})
 		}
 	}
 	for _, m := range h.mems {
@@ -275,7 +282,7 @@ func (r rowValues) Scan(dest ...any) error {
 
 // memPhase is which rows of a memory a time shows: the version index (-1: no memory), how many sources and
 // sightings.
-type memPhase struct{ version, sources, sightings int }
+type memPhase struct{ version, sources, sightings, sessions int }
 
 func (m *memHistory) phase(at int64, day string) memPhase {
 	if m.created > at {
@@ -287,11 +294,12 @@ func (m *memHistory) phase(at int64, day string) memPhase {
 		src = 1
 	}
 	sight := sort.Search(len(m.sightings), func(i int) bool { return m.sightings[i].day > day })
-	return memPhase{version: max(v, 0), sources: src, sightings: sight}
+	sess := sort.Search(len(m.sessions), func(i int) bool { return m.sessions[i].day > day })
+	return memPhase{version: max(v, 0), sources: src, sightings: sight, sessions: sess}
 }
 
 func (m *memHistory) latest() memPhase {
-	return memPhase{version: len(m.versions) - 1, sources: len(m.sources), sightings: len(m.sightings)}
+	return memPhase{version: len(m.versions) - 1, sources: len(m.sources), sightings: len(m.sightings), sessions: len(m.sessions)}
 }
 
 // rowAt is the memories row of version v: the current row with the snapshot's columns.
@@ -478,7 +486,7 @@ func (r *Rewinder) To(at int64) error {
 
 func (r *Rewinder) putMemory(tx *sql.Tx, id string, m *memHistory, p memPhase) error {
 	for _, q := range []string{`DELETE FROM memories WHERE id=?`, `DELETE FROM memory_versions WHERE memory_id=?`,
-		`DELETE FROM sources WHERE memory_id=?`, `DELETE FROM sightings WHERE memory_id=?`} {
+		`DELETE FROM sources WHERE memory_id=?`, `DELETE FROM sightings WHERE memory_id=?`, `DELETE FROM sighting_sessions WHERE memory_id=?`} {
 		if _, err := tx.Exec(q, id); err != nil {
 			return err
 		}
@@ -501,6 +509,11 @@ func (r *Rewinder) putMemory(tx *sql.Tx, id string, m *memHistory, p memPhase) e
 	}
 	for _, s := range m.sightings[:p.sightings] {
 		if err := insertRow(tx, "sightings", r.h.cols["sightings"], s.row); err != nil {
+			return err
+		}
+	}
+	for _, s := range m.sessions[:p.sessions] {
+		if err := insertRow(tx, "sighting_sessions", r.h.cols["sighting_sessions"], s.row); err != nil {
 			return err
 		}
 	}
