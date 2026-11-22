@@ -113,6 +113,8 @@ type FindItem struct {
 	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
 	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"). A current line has none.
 	Note string `json:"note,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict string `json:"conflict,omitempty"`
 }
 
 // findDetail checks the detail argument of memory_find.
@@ -141,7 +143,13 @@ func findLimit(n int) int {
 // held to findItemBudget serialized runes, whatever the characters are, the note included: the title is cut
 // first, then the applies-to.
 func findItem(m memory.Memory, detail, note string) FindItem {
-	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note,
+	return findItemWith(m, detail, note, "")
+}
+
+// findItemWith is findItem with conflict, the note of a memory with an open conflict (conflictNote, "" for none),
+// held to the same budget.
+func findItemWith(m memory.Memory, detail, note, conflict string) FindItem {
+	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note, Conflict: conflict,
 		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
 		it.Summary = clip(oneLine(m.Body), findSummaryRunes)
@@ -175,6 +183,43 @@ func whyNote(w memory.Why) string {
 		return "옛 버전"
 	}
 	return ""
+}
+
+// conflictTitleRunes is how much of the newer value's title a conflict note shows.
+const conflictTitleRunes = 40
+
+// conflictNote is what memory_find and memory_get say beside a current memory that has open conflicts (명세
+// C-5): the newer value that disagrees with it, by title and id, and how many more there are. newTitle gives
+// the title of a newer value, "" when it cannot be read; those are left out. "" when none can be named.
+func conflictNote(newIDs []string, newTitle func(id string) string) string {
+	var first string
+	n := 0
+	for _, id := range newIDs {
+		title := newTitle(id)
+		if title == "" {
+			continue
+		}
+		if n == 0 {
+			first = fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clip(oneLine(title), conflictTitleRunes), id)
+		}
+		n++
+	}
+	switch {
+	case n == 0:
+		return ""
+	case n > 1:
+		return first + fmt.Sprintf(" 외 %d건", n-1)
+	}
+	return first
+}
+
+// titleOf is the title of memory id, "" when it cannot be read.
+func (h handlers) titleOf(id string) string {
+	m, err := h.s.Get(id)
+	if err != nil {
+		return ""
+	}
+	return m.Title
 }
 
 // peerNote is whyNote with the successor, for the other end of a link: "폐기됨, 후계 m-…".
@@ -216,7 +261,9 @@ type SourceView struct {
 type MemoryView struct {
 	// Notice is the warning head of a memory that is not a current value: its state, the reason and the
 	// successor. It is the first field so it comes before the body. A current memory has none.
-	Notice       string       `json:"notice,omitempty"`
+	Notice string `json:"notice,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict     string       `json:"conflict,omitempty"`
 	ID           string       `json:"id"`
 	Kind         string       `json:"kind"`
 	State        string       `json:"state"`
@@ -297,7 +344,13 @@ func linkLines(links []memory.MemoryLink, peer linkPeers, full bool) []string {
 // notice is the warning head (noticeOf, "" for a current value) and title gives the peers' titles and notes
 // on the links. The notice counts toward the budget like any other field, so the body gives way to it.
 func memoryView(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
-	v := MemoryView{Notice: notice, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
+	return memoryViewWith(m, notice, "", title, full)
+}
+
+// memoryViewWith is memoryView with conflict, the note of a memory with an open conflict (conflictNote, "" for
+// none). It counts toward the budget like the notice, so the body gives way to it.
+func memoryViewWith(m memory.Memory, notice, conflict string, title linkPeers, full bool) MemoryView {
+	v := MemoryView{Notice: notice, Conflict: conflict, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {
