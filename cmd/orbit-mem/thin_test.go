@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
@@ -152,7 +153,11 @@ func TestThin_list_state_hidden은_숨긴_기억을_낸다(t *testing.T) {
 func TestThin_stale로_보이는_줄에는_옛_버전_표시가_붙는다(t *testing.T) {
 	home(t)
 	s := seed(t)
+	// 현재 값은 created_at이 가장 큰 기억이다. 같은 밀리초에 저장하면 동률이 무작위 id로 갈리므로 저장마다 시계를 넘긴다.
+	clock := time.Now().Add(-time.Hour)
+	s.Now = func() time.Time { return clock }
 	topic := func(title string, ttl int) memory.Memory {
+		clock = clock.Add(time.Minute)
 		in := memory.SaveInput{Kind: "rule", Title: title, Topic: "기본값", Source: memory.Source{Kind: "quote", Excerpt: title}, Who: memory.Who{Actor: memory.ActorAI}}
 		if ttl > 0 {
 			in.Retention, in.TTLDays = memory.RetentionVolatile, ttl
