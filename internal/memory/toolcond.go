@@ -189,7 +189,7 @@ func runAt(words, want []string, start int) int {
 
 // ToolInputScores are the recall scores (0~1) of ms against a tool input, by memory id, for the tool input gate
 // (명세 T-1): the score function of the recall of a request (tokens scored as FindScored scores them with
-// SkipUnknownTokens, rank.go) over the title, topic, tags and body of ms, with the input's meaningful words
+// SkipUnknownTokens, rank.go) over the title, topic, tags, aliases and body of ms, with the input's meaningful words
 // (MeaningfulWords) as the query. It differs from the request's score in three ways:
 //   - The query leaves out one-character Latin and digit words (RecallQuery keeps them). In a command they are
 //     flags and counts (-m, -n, =1), and as prefix tokens they match any memory with a word that starts so: on a
@@ -208,7 +208,7 @@ func ToolInputScores(ms []Memory, input string) map[string]float64 {
 	r.skipUnknown = true
 	for _, m := range ms {
 		tags := toolsJSON(m.Tags) // 색인과 같은 꼴: 태그 JSON 배열
-		r.add(m.ID, tokensOf(m.Title, m.Topic, tags, m.Body))
+		r.add(m.ID, tokensOf(m.Title, m.Topic, tags, aliasesJSON(m.Aliases), m.Body))
 	}
 	r.total = len(ms)
 	return r.scores()

@@ -47,6 +47,13 @@ func saveNearMinOf() float64 {
 	return cfg.SaveNearMin
 }
 
+// findStripParticlesOf is config findStripParticles, read again on each call; a settings file that cannot be
+// read leaves the default, on.
+func findStripParticlesOf() bool {
+	cfg, err := loadConfig()
+	return err != nil || cfg.FindStripParticles
+}
+
 // cmdPlace shows where a folder stands in the product map: its scope key, its products and whether it is a
 // folder of several products, so a person can check the map and fix a wrong line (S3 명세 2.2).
 func cmdPlace(a *app, args []string) error {
