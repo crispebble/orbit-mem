@@ -41,6 +41,10 @@ type Options struct {
 	// (S3-R1·R4). Empty, the folder of a folder scope is used.
 	Dir       string
 	Git, Temp bool
+	// Top is the top folder of the git work tree Dir is in (project.Project.Top): the one folder whose files
+	// memory_save may read to recheck a verification source. Empty outside git or when it is not known: nothing
+	// is read.
+	Top string
 	// Products is the product map (config products): which product this session's folder belongs to,
 	// the default of appliesTo and what memory_find sees here (설계 · orbit-mem 2판 S3).
 	Products place.Map
@@ -97,19 +101,22 @@ func (o Options) here() place.Place {
 }
 
 // recheckRoots are the folders whose files memory_save may read to recheck a verification source
-// (memory.RecheckExcerpt): the session folder and, when the project key is a folder (a repository without a
-// remote, or a folder outside git), that folder. They come from the folder the assembly point resolved
-// (project.Resolve), not from a tool argument. None when the connection has no folder. The product map's
-// folder lines are not roots: they are globs that may cover far more than the work at hand.
+// (memory.RecheckExcerpt): only the top of the work tree the session folder is in (Options.Top), whether or not the
+// project has a remote and from whatever folder below it the session was opened. A linked worktree is its own
+// top. None when the session folder is not in a work tree (or the work tree is the home folder itself, which
+// project.Resolve leaves out), so a folder a caller picks with --cwd or a host call's cwd (~/.aws, ~/work) reads
+// nothing. The top comes from the folder the assembly point resolved (project.Resolve), not from a tool
+// argument. The product map's folder lines are not roots: they are globs that may cover far more than the work
+// at hand.
 func (o Options) recheckRoots() []string {
-	var roots []string
-	if d := o.here().Dir; d != "" {
-		roots = append(roots, d)
+	if !o.Git || o.Top == "" || o.Dir == "" {
+		return nil
 	}
-	if key := strings.TrimPrefix(o.Project, "project:"); key != o.Project && filepath.IsAbs(filepath.FromSlash(key)) {
-		roots = append(roots, key)
+	top := filepath.FromSlash(o.Top)
+	if rel, err := filepath.Rel(top, filepath.FromSlash(o.Dir)); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil // 세션 폴더가 그 최상위 아래가 아니면 조립이 어긋난 것이다
 	}
-	return roots
+	return []string{top}
 }
 
 // ResolveActor picks the writer of a server or command: the flag, else

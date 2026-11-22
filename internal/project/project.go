@@ -18,13 +18,57 @@ import (
 // directory itself as a real slash path (the session folder, S3 명세 2.2b), Git
 // says it is inside a git checkout, and Temp that it is under a temporary folder.
 //
+// Top is the top folder of the git work tree Dir is in (a real slash path; a linked worktree's own top, not
+// the main repository's), empty outside git, in a work tree that is the home folder, or when git did not tell
+// (a project resolved again from an earlier answer: GitTop asks). The recheck of a verification source reads
+// files only below it.
+//
 // Unsure says git was asked and gave no answer to go by (resolveGit): the key is a guess, and a
 // caller does not keep it for later (a session's next operation asks git again).
 type Project struct {
 	Scope, Label string
 	Dir          string
 	Git, Temp    bool
+	Top          string
 	Unsure       bool
+}
+
+// topTimeout bounds GitTop's git run: it is asked inside a save, which waits no longer than the recheck's one
+// second.
+var topTimeout = time.Second
+
+// GitTop asks git for the top folder of the work tree dir is in, as Project.Top says it: for a project
+// resolved again from an earlier answer, which keeps no top. It runs git only where one could find a
+// repository (mayBeRepo) and gives up after topTimeout; "" when dir is not in a work tree, is the home folder's
+// own or git gave no answer.
+func GitTop(dir string) string {
+	if !filepath.IsAbs(dir) {
+		return ""
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() || (!gitEnvSet() && !mayBeRepo(dir, filepath.FromSlash(realSlash(dir)))) {
+		return ""
+	}
+	out, code := gitRunFor(topTimeout, dir, "rev-parse", "--show-toplevel")
+	if code != 0 {
+		return ""
+	}
+	return topOf(out)
+}
+
+// topOf is a work tree top git reported as Project.Top says it: a real slash path, "" for none or for the
+// home folder (a work tree that is the whole home has no folder of its own to read).
+func topOf(top string) string {
+	if top == "" {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if a, errA := os.Stat(top); errA == nil {
+			if b, errB := os.Stat(home); errB == nil && os.SameFile(a, b) {
+				return ""
+			}
+		}
+	}
+	return realSlash(top)
 }
 
 // realSlash is dir with its symbolic links resolved, as a clean slash path.
@@ -82,7 +126,12 @@ var gitTimeout = 2 * time.Second
 // gitRun runs git in dir. code is how git ended: 0 it answered, another number it ended with that
 // exit code, -1 it gave no answer (it could not be started, ran out of time or was killed).
 func gitRun(dir string, args ...string) (out string, code int) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	return gitRunFor(gitTimeout, dir, args...)
+}
+
+// gitRunFor is gitRun with its own time limit.
+func gitRunFor(limit time.Duration, dir string, args ...string) (out string, code int) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	b, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
 	var exit *exec.ExitError
@@ -193,6 +242,7 @@ func resolveGit(p Project, cwd string) Project {
 	if remoteCode == 0 && remote != "" {
 		key := NormalizeRemote(remote)
 		p.Scope, p.Label, p.Git = "project:"+key, key, true
+		p.Top = topFrom(cwd, repo.out, repo.code)
 		return p
 	}
 	p.Unsure = (remoteCode != 0 && remoteCode != 1 && remoteCode != gitRefused) ||
@@ -206,18 +256,20 @@ func resolveGit(p Project, cwd string) Project {
 		if l := strings.Split(repo.out, "\n"); len(l) == 3 {
 			gitDir, common, top := l[0], l[1], l[2]
 			p.Git, root = true, top
+			p.Top = topOf(top)
 			if gitDir != common && filepath.Base(common) == ".git" {
 				root = filepath.Dir(common)
 			}
 		} else if top, code := gitRun(cwd, "rev-parse", "--show-toplevel"); code == 0 && top != "" { // git 2.31 전
 			p.Git, root = true, top
+			p.Top = topOf(top)
 		} else if code != 0 && code != gitRefused {
 			p.Unsure = true
 		}
 	}
 	// 홈 자체가 저장소(dotfiles)면 홈 아래 폴더는 git 밖 폴더로 본다(S3-R1).
 	if home, err := os.UserHomeDir(); err == nil && root != "" && realSlash(root) == realSlash(home) {
-		p.Git, root = false, ""
+		p.Git, root, p.Top = false, "", ""
 	}
 	if root == "" {
 		root = cwd
@@ -225,6 +277,21 @@ func resolveGit(p Project, cwd string) Project {
 	root = realSlash(root)
 	p.Scope, p.Label = "project:"+root, root
 	return p
+}
+
+// topFrom is the work tree top in the answer of resolveGit's repository question (its three lines), or, from
+// git before 2.31 that answers it otherwise, of one more question. "" when git gave none.
+func topFrom(cwd, out string, code int) string {
+	if code != 0 {
+		return ""
+	}
+	if l := strings.Split(out, "\n"); len(l) == 3 {
+		return topOf(l[2])
+	}
+	if top, c := gitRun(cwd, "rev-parse", "--show-toplevel"); c == 0 {
+		return topOf(top)
+	}
+	return ""
 }
 
 // Earlier is what an earlier Resolve of a folder gave in the same session: the folder as it was
