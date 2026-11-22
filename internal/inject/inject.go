@@ -188,7 +188,8 @@ func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session stri
 	if len(dropped) == 0 {
 		return Injection{}, false
 	}
-	// 다른 훅이 먼저 바꿨으면 저장은 건너뛴다. 같은 때 같은 DB에서 만든 글이라 돌려주는 글은 저장된 것과 같다.
+	// 다른 훅이 먼저 바꿨거나 쓰기가 실패하면(잠금 대기 초과 등) 저장은 건너뛰고 방금 만든 글을 돌려준다. 그때 저장된 글은
+	// 먼저 들어간 다시 만들기이거나 옛 묶음일 수 있다: 옛 묶음이면 다음 재개가 다시 판정해 다시 만든다.
 	_ = s.ReplaceSessionBundle(host, session, inj.Text, inj.MemoryIDs, dropped)
 	return inj, true
 }
@@ -634,12 +635,16 @@ told:
 					vw, _ = s.Viewer()
 					haveViewer = true
 				}
-				if cur, live := vw.Successor(old); live {
+				cur, live, err := vw.LiveSuccessor(old)
+				if err != nil { // 후계를 읽지 못한 것은 후계가 없는 것이 아니다: 표시하지 않고 다음 요청에 다시 본다
+					continue
+				}
+				if live {
 					if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
 						break told
 					}
 					inj.mark(memory.MarkCorrection, old.ID)
-					inj.mark(memory.MarkShown, cur.ID) // 바뀐 판은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
+					inj.mark(memory.MarkShown, cur.ID) // 바뀐 버전은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
 					inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
 					named[cur.ID] = true
 					continue

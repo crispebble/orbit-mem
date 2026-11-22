@@ -15,8 +15,9 @@ type Runner struct {
 	Options host.Options // 활동 시각 등 계약에 없는 선택지
 	// Notes makes the note lines of a session's bundle from the hook's event and plan (its raw cwd
 	// included); the assembly point knows what they say. The Runner hands it to each operation as
-	// host.Options.SessionNotes, so it is called only when a main context builds the bundle anew
-	// (not when the same session resumes) and its lines are saved with the bundle. nil: none.
+	// host.Options.SessionNotes, so it is called only when a main context builds the bundle anew (not
+	// when the same session resumes, unless a memory of its bundle is no longer current and the bundle
+	// is made again) and its lines are saved with the bundle. nil: none.
 	Notes func(ev Event, plan Plan) []string
 	// Failed is told of each operation that ended in an error and of a panic (op ""). nil: nothing.
 	Failed func(op string, err *host.Error)

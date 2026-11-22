@@ -42,8 +42,10 @@ type Options struct {
 	TrustLimit string
 	At         int64 // 활동 시각(Unix ms). 0이면 Start 때
 	// SessionNotes gives the note lines of a main session start (설계 보완 T-20). The context op calls it
-	// only when it builds the session's bundle anew, and saves its lines at the end of the bundle, so
-	// a resumed session gets the same bytes. Not called for a subagent or with recall off. nil: none.
+	// only when it builds the session's bundle anew (a new session, or a resume whose bundle holds a
+	// memory no longer current), and saves its lines at the end of the bundle, so a resumed session
+	// whose memories did not change gets the same bytes. Not called for a subagent or with recall off.
+	// nil: none.
 	SessionNotes func() []string
 }
 

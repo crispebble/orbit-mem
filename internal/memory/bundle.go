@@ -41,10 +41,12 @@ func (s *Store) PruneSessionState(days int) error {
 // It replaces only a bundle that still holds every id of dropped. Two hooks that rebuild the same old bundle at
 // once both pass it, and the second finds those ids already gone and writes nothing, so one rebuild is kept; a
 // bundle a compaction or /clear made anew since is left alone in the same way. A session with no bundle gets
-// none. When it replaces, the same transaction marks dropped MarkBundle, so the session news can still tell the
-// session once why they left. The return is nil whether or not it replaced; only a failed write is an error.
+// none. With no dropped id it writes nothing: such a bundle cannot be told apart from any other, so it could
+// overwrite one it was not made from. When it replaces, the same transaction marks dropped MarkBundle, so the
+// session news can still tell the session once why they left. The return is nil whether or not it replaced;
+// only a failed write is an error.
 func (s *Store) ReplaceSessionBundle(host, session, text string, ids, dropped []string) error {
-	if session == "" {
+	if session == "" || len(dropped) == 0 {
 		return nil
 	}
 	newIDs, _ := json.Marshal(nonNil(ids))

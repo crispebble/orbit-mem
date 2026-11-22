@@ -3,7 +3,10 @@ package memory
 // 보임 판정(명세 6.2 변경 축): 「이 기억이 현재 값으로 보일 수 있는가」를 한 곳에서 가른다. 주입·도구 회상·
 // 하위 에이전트·진단·측정이 모두 Viewer를 쓰므로, 판정 규칙(만료·옛 버전·어긋남)이 늘어도 한 곳만 고친다.
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Why says why a memory does not show as a current value; WhyCurrent ("") when it does.
 type Why string
@@ -82,23 +85,34 @@ func (v Viewer) OfID(id string) (Memory, Visibility) {
 }
 
 // Successor follows superseded_by from m to the live (candidate or confirmed) value that replaces it now,
-// a few steps at most. false when m has no replacement or the chain ends in nothing live.
+// a few steps at most. false when m has no replacement, the chain ends in nothing live, or a step cannot be read.
 func (v Viewer) Successor(m Memory) (Memory, bool) {
+	n, ok, _ := v.LiveSuccessor(m)
+	return n, ok
+}
+
+// LiveSuccessor is Successor that tells a read that failed apart from no successor: a step the DB does not have
+// (forgotten) ends the chain with false and no error, and any other read error is returned with false. A caller
+// that acts on "no successor" for good (a void line told once) waits for a later read on an error.
+func (v Viewer) LiveSuccessor(m Memory) (Memory, bool, error) {
 	next := m.SupersededBy
 	for range maxSuccessorHops {
 		if next == "" {
-			return Memory{}, false
+			return Memory{}, false, nil
 		}
 		n, err := v.s.Get(next)
+		if errors.Is(err, ErrNotFound) {
+			return Memory{}, false, nil
+		}
 		if err != nil {
-			return Memory{}, false
+			return Memory{}, false, err
 		}
 		if n.State == StateCandidate || n.State == StateConfirmed {
-			return n, true
+			return n, true, nil
 		}
 		next = n.SupersededBy
 	}
-	return Memory{}, false
+	return Memory{}, false, nil
 }
 
 // Superseding is the id of the newer value of m's topic that stands in for it, or "" when m is the current

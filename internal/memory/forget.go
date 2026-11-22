@@ -69,7 +69,6 @@ var forgetTables = []forgetTable{
 	{idColumn{"judgments", "memory_id"}, forgetDelete},
 	{idColumn{"audit_flags", "memory_id"}, forgetDelete},
 	{idColumn{"audit_flags", "other_id"}, forgetDelete},
-	{idColumn{"session_marks", "memory_id"}, forgetDelete},
 	{idColumn{"memory_index", "memory_id"}, forgetCustom},      // unindexTx: memory_fts 줄도 함께
 	{idColumn{"memory_index_late", "memory_id"}, forgetCustom}, // unindexTx
 	{idColumn{"activity", "session"}, forgetCustom},            // 일지에서 옮긴 줄: JournalSession(id)
@@ -81,9 +80,14 @@ var keepTables = []idColumn{
 	// 감사 목록과 자동 변경 되돌리기가 ledger JOIN proposals로 읽으므로 줄과 id는 남긴다. 제안의 제목·본문은 원장
 	// 글과 함께 forgetProposalTitle 등으로 비운다(명세 5.3, 계획 Task 2).
 	{"proposals", "memory_ids"},
-	{"session_bundles", "memory_ids"}, // 이미 연 세션의 묶음 캐시를 깨지 않는다
-	{"save_requests", "memory_id"},    // 같은 키의 재시도를 「지웠다」로 거절하는 근거. 30일 정리에 맡긴다
-	{"forgotten", "id"},               // 되살아남을 막는 기록 자체
+	// 묶음은 지운 기억을 든 채 남지만, 그 세션이 재개하면 지운 기억을 뺀 묶음으로 다시 만들어진다(명세 F-1). 묶음을 그 자리에서
+	// 고치지 않는 것은 이미 진행 중인 세션의 프롬프트 캐시를 지우기만으로 깨지 않으려는 것이다.
+	{"session_bundles", "memory_ids"},
+	// 지운 기억을 받은 세션에 「지움」 무효 줄을 한 번 알리고(명세 F-2), 이미 알렸는지 기억하려고 남긴다. 줄은 세션·기억 id·
+	// 종류·시각뿐이라 지운 기억의 글은 남지 않는다(id는 forgotten에도 남는다). 세션을 초기화(압축·clear)할 때 지워진다.
+	{"session_marks", "memory_id"},
+	{"save_requests", "memory_id"}, // 같은 키의 재시도를 「지웠다」로 거절하는 근거. 30일 정리에 맡긴다
+	{"forgotten", "id"},            // 되살아남을 막는 기록 자체
 }
 
 // ForgetInput asks to forget memories.

@@ -46,6 +46,60 @@ func TestReplaceSessionBundle_옛_묶음이_이미_바뀌었으면_고치지_않
 	}
 }
 
+// 뺀 기억이 없는 다시 만들기는 무엇이 빠졌는지 말하지 않으니 어느 묶음을 덮어도 되는지 가를 수 없다: 아무것도 쓰지 않는다.
+func TestReplaceSessionBundle_뺀_기억이_없으면_아무것도_쓰지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	if err := s.SaveSessionBundle("h", "s1", "첫 묶음", []string{"m-1"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, dropped := range [][]string{nil, {}} {
+		if err := s.ReplaceSessionBundle("h", "s1", "덮을 묶음", []string{"m-2"}, dropped); err != nil {
+			t.Fatal(err)
+		}
+		if text, ids, _ := s.SessionBundle("h", "s1"); text != "첫 묶음" || !slices.Equal(ids, []string{"m-1"}) {
+			t.Fatalf("dropped %v: 묶음을 덮었습니다: %q %v", dropped, text, ids)
+		}
+	}
+}
+
+// 지운 기억의 세션 표시는 남는다: 그 기억을 받은 세션에 「지움」 무효 줄을 한 번 알리고, 그 줄을 이미 알렸는지 기억하려고.
+// 표시 줄에는 세션·기억 id·종류·시각뿐이라 지운 기억의 글은 남지 않는다.
+func TestForget_세션_표시는_남기고_기억의_글은_담지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m, err := s.Save(SaveInput{Kind: KindRule, Title: "보고는 영어로 쓴다", Body: "영어 본문", Scope: ScopeGlobal,
+		Source: Source{Kind: SourceQuote, Excerpt: "보고는 영어로 쓴다"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{MarkShown, MarkCorrection} {
+		if err := s.MarkSession("claude", "S1", kind, m.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Forget(ForgetInput{IDs: []string{m.ID}, Who: Who{Actor: ActorAI, UserQuote: "지워"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.SessionMarks("claude", "S1", MarkShown)[m.ID] || !s.SessionMarks("claude", "S1", MarkCorrection)[m.ID] {
+		t.Fatal("지운 기억의 세션 표시가 사라졌습니다")
+	}
+	rows, err := s.DB().Query(`SELECT name FROM pragma_table_info('session_marks') ORDER BY cid`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		cols = append(cols, c)
+	}
+	if want := []string{"host", "session", "memory_id", "kind", "at"}; !slices.Equal(cols, want) {
+		t.Fatalf("session_marks 열 %v, want %v: 글을 담는 열이 생겼으면 지우기가 그 글을 남긴다", cols, want)
+	}
+}
+
 // 여러 연결이 같은 옛 묶음에서 다시 만든 묶음을 한꺼번에 넣는다. 하나만 들어가고 나머지는 아무것도 바꾸지 않는다.
 func TestReplaceSessionBundle_동시에_고쳐도_한쪽만_적용된다(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memory.db")

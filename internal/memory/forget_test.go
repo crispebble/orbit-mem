@@ -151,6 +151,10 @@ func TestForget_사용자_말과_함께_지우면_기억과_딸린_행이_모두
 	if eventsOf(t, s, other.ID) != 1 || countOf(t, s, `SELECT COUNT(*) FROM session_marks WHERE memory_id=?`, other.ID) != 1 {
 		t.Error("the other memory's rows went too")
 	}
+	// 세션 표시는 남김 목록(keepTables)이다: 지운 기억의 표시도 남는다(TestForget_세션_표시는_남기고_기억의_글은_담지_않는다).
+	if n := countOf(t, s, `SELECT COUNT(*) FROM session_marks WHERE memory_id=?`, m.ID); n != 1 {
+		t.Errorf("session marks of the forgotten memory %d, want kept", n)
+	}
 	got, err := s.Get(other.ID)
 	if err != nil || len(got.Links) != 0 {
 		t.Fatalf("other memory %+v %v", got.Links, err)

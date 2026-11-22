@@ -168,7 +168,7 @@ func cmdHook(a *app, args []string) error {
 		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, launcherHuman),
 		Options: host.Options{At: at},
 		// 세션 묶음의 판·새 판·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다). 묶음을 새로 만들 때만
-		// 불리고 묶음과 함께 저장된다(설계 보완 T-20).
+		// 불리고 묶음과 함께 저장된다(설계 보완 T-20). 재개는 묶음 안 기억이 현재 값이 아니게 됐을 때만 다시 만든다.
 		Notes: func(ev hooks.Event, plan hooks.Plan) []string {
 			if ev != hooks.SessionStart {
 				return nil
@@ -196,7 +196,8 @@ const parentEnv = "ORBIT_PARENT"
 
 // renewsBundle says whether a session start makes the session's bundle anew: after a
 // compaction or /clear the earlier context is gone, so the cache it kept is too
-// (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle.
+// (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle, unless a memory in it is no
+// longer current: then the context op makes it again in place (inject.SessionBundleWith).
 func renewsBundle(source string) bool { return source == "compact" || source == "clear" }
 
 // versionNote is the session-start note line when the plugin that called the hook is another
