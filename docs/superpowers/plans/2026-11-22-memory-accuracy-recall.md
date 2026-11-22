@@ -206,7 +206,7 @@ E-1의 판정은 「`sighting_sessions`에 세션과 날이 둘 다 다른 두 �
 
 **Files:** `bench/ports.go`, `bench/cases.go`, `bench/run.go:95-135`, `bench/metrics.go`, `bench/report.go`, 새 `bench/injaudit.go`, `memory/asof.go`, `bench/claudelog/claudelog.go:48-58`, `cmd/orbit-mem/bench_cmd.go`, `bench/hostpath/hostpath.go`, `bench/legacy/recall.go`(시그니처만), 새 `host/toolinput.go`, `bench/README.md`
 
-**Interfaces:** Produces 위 표의 01 줄 전부. 재생 사본은 실행 전에 `session_bundles`·`session_marks`·위임 표를 비운다.
+**Interfaces:** Produces 위 표의 01 줄 전부. 재생 사본은 실행 전에 `session_bundles`·`session_marks`·위임 표를 비워, 사본을 뜬 PC에 남아 있던 세션 상태가 섞이지 않게 한다. 비우는 것은 실행 전 한 번이고, 재생이 스스로 만든 세션 상태는 그 세션의 뒤 사례까지 이어진다(Task 01b).
 
 **실패 시험:**
 - `TestRun_같은_세션의_두번째_시작_사례는_시작_회상을_다시_부른다` — Start가 2회 불린다
@@ -235,6 +235,22 @@ Task 01 커밋에서만 돈다(0.19.0 동작). 소스를 쓰지 않는다.
 **명령:** `<bin> bench extract --projects <대화 기록 폴더> --db <실제 DB> --out $ORBIT_HOME/bench/replay/0.19.0/`, `<bin> bench audit-injections --db …/memory-copy.db`, `<bin> bench recall --db …/memory-copy.db --cases …/cases.json --recall current,legacy --split all`, `go test ./internal/bench -run TestPublicSet -v`. `extract`는 원본 DB를 열지 않고 바이트 사본만 만든다. 설치본을 바꾸지 않는다.
 
 진행자가 결과 표를 이 문서 끝 「기준값」 절과 이슈에 옮긴다.
+
+### Task 01b: 재생이 묶음 재전달을 재현 — worker-deep
+
+기준값 측정에서 더한 작업이다. 0.19.0의 폐기 주입은 얼린 세션 묶음이 같은 세션의 뒤 시작(압축·이어받기)에 다시 전달되어 생긴다(주입 기록으로 낡음 쌍 55 가운데 54 확인). 재생이 이 경로를 재현하지 못해 B/A가 0/55로 나왔다.
+
+**끝:** 한 세션의 시작 사례가 만든 묶음이 그 세션의 뒤 시작 사례에 재전달되고, 그 사이 낡은 기억이 start 경로의 `Dead`로 세어진다. 사본을 뜬 PC의 세션 상태는 섞이지 않는다. 같은 고침을 0.19.0 측정 빌드(`3258f97`)에 얹어 기준값의 폐기 주입 재현 칸을 다시 잰다.
+
+**Files:** `internal/bench/**`만(재생·되감기·사례), `internal/bench/README.md`. 제품 코드를 고치지 않는다.
+
+**실패 시험:**
+- `TestReplay_세션의_묶음은_뒤_시작_사례에_재전달된다`
+- `TestReplay_묶음에_얼린_기억이_낡으면_재전달이_Dead로_세어진다`
+- `TestReplay_실행_전_세션_상태는_섞이지_않는다`
+- `TestReplay_같은_입력이면_결과가_같다`
+
+Task 19는 같은 사본과 사례로 「0.19.0 측정 빌드에서 재현됨 → 작업 브랜치 끝에서 0회」를 판정한다. 다시 재도 재현되지 않으면 고치지 않고 멈춰 보고한다.
 
 ### Task 02b: 블라인드 판정 묶음 holdout6 — worker
 
@@ -558,7 +574,7 @@ Task 01 커밋에서만 돈다(0.19.0 동작). 소스를 쓰지 않는다.
 | 2b | 06 | 02나 02b가 끝나 자리가 나면 시작. 합치는 순서는 05 → 06 |
 | 3 | 07 · 08 · 09 | |
 | 4 | 10 · 11 | |
-| 5 | 12 · 13 | |
+| 5 | 12 · 13 · 01b | 01b는 `internal/bench`만 고쳐 다른 Task와 겹치지 않는다. 끝나면 폐기 주입 재현 칸을 다시 잰다 |
 | 6 | 14 | |
 | 7 | 15 · 16 | |
 | 8 | 17 | |
