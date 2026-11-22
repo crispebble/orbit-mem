@@ -75,23 +75,12 @@ type Options struct {
 	NewsOnly bool
 }
 
-// Not eligible for recall (subject): a volatile
-// memory past its days, or an older value of a topic.
+// Not eligible for recall (subject): a volatile memory past its days, or an older value of a topic. The
+// words are the ones memory.Viewer gives (memory.WhyExpired, memory.WhyOlder), which judges them.
 const (
-	ExcludedExpired    = "expired"
-	ExcludedSuperseded = "superseded_by_topic"
+	ExcludedExpired    = string(memory.WhyExpired)
+	ExcludedSuperseded = string(memory.WhyOlder)
 )
-
-// excluded says why a live memory is kept out of recall, or "".
-func excluded(m memory.Memory, now time.Time, heads memory.TopicHeads) string {
-	if m.Freshness(now) == memory.FreshExpired {
-		return ExcludedExpired
-	}
-	if heads.Superseding(m) != "" {
-		return ExcludedSuperseded
-	}
-	return ""
-}
 
 // Injection is what a hook adds and which memories it named, for the metrics.
 type Injection struct {
@@ -241,8 +230,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		return inj.done(&b)
 	}
 	pl := at(cfg, scope)
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
 	// 상시 핵심(S3 명세 2.7): user 핵심, 그리고 한 제품 폴더면 그 제품의 핵심. 여러 제품 폴더는 제품 핵심을 넣지 않는다.
 	var core strings.Builder
 	layer := func(scope, heading string) {
@@ -253,7 +241,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		var body strings.Builder
 		used, limit := 0, memory.CoreLimit(scope)
 		for _, m := range ms {
-			if excluded(m, now, heads) != "" {
+			if !vw.Of(m).Current() {
 				continue
 			}
 			entry := memory.CoreEntry(m)
@@ -286,7 +274,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		if !inScope(m, pl) || memory.DomainOf(m) != "" || inCore[m.ID] {
 			continue
 		}
-		if excluded(m, now, heads) != "" || (m.Kind != memory.KindRule && m.Kind != memory.KindDecision) {
+		if !vw.Of(m).Current() || (m.Kind != memory.KindRule && m.Kind != memory.KindDecision) {
 			continue
 		}
 		others = true
@@ -418,8 +406,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	if err != nil {
 		return nil, nil, err
 	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
 	inBundle := map[string]bool{}
 	for _, id := range bundle {
 		inBundle[id] = true
@@ -428,13 +415,13 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	out := map[string]string{}
 	for _, m := range active {
 		// 일지는 대화 맥락이 아니다.
-		switch why := excluded(m, now, heads); {
+		switch vis := vw.Of(m); {
 		case !inScope(m, pl):
 			out[m.ID] = "scope"
 		case m.Kind == memory.KindJournal:
 			out[m.ID] = "journal"
-		case why != "":
-			out[m.ID] = why
+		case !vis.Current():
+			out[m.ID] = string(vis.Why)
 		case inBundle[m.ID]: // 세션 묶음(A층)에 든 기억은 이 세션에 이미 들어갔다(설계 5.1 3단계)
 			out[m.ID] = "session_rule"
 		default:
@@ -516,6 +503,7 @@ func clipTitle(title string, n int) string {
 // Lines that do not fit wait for a later request: only what was told is marked.
 func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleIDs []string, byID map[string]memory.Memory) string {
 	at := s.SessionBundleAt(host, session)
+	vw, _ := s.Viewer()
 	told := map[string]bool{}
 	for _, id := range bundleIDs {
 		told[id] = true
@@ -552,7 +540,7 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 		if err != nil || old.State != memory.StateStale || old.SupersededBy == "" || old.UpdatedAt <= at {
 			continue
 		}
-		cur, live := liveSuccessor(s, old)
+		cur, live := vw.Successor(old)
 		if !live {
 			continue
 		}
@@ -612,26 +600,6 @@ func NewsShare(text string, ids []string) ([]string, int) {
 		}
 	}
 	return slices.Clone(ids[:min(n, len(ids))]), runes(block)
-}
-
-// liveSuccessor follows superseded_by from old to the live (candidate or confirmed)
-// value that replaces it now, a few steps at most.
-func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
-	next := old.SupersededBy
-	for range 8 {
-		if next == "" {
-			return memory.Memory{}, false
-		}
-		m, err := s.Get(next)
-		if err != nil {
-			return memory.Memory{}, false
-		}
-		if m.State == memory.StateCandidate || m.State == memory.StateConfirmed {
-			return m, true
-		}
-		next = m.SupersededBy
-	}
-	return memory.Memory{}, false
 }
 
 // thresholds are the gate of a recall (설계 5.1 4단계, 설계 보완 1-6 b6).

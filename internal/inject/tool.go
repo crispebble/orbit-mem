@@ -73,8 +73,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	if err != nil || len(active) == 0 {
 		return inj.done(&b)
 	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
 	given := s.SessionMarks(host, session, memory.MarkTool)
 	told := s.SessionMarks(host, session, markToolMore)
 	pl := at(cfg, scope)
@@ -84,7 +83,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	}
 	var hits []hit
 	for _, m := range active {
-		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
+		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || !vw.Of(m).Current() {
 			continue
 		}
 		if exact, ok := m.TriggeredBy(tool); ok {

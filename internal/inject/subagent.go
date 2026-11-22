@@ -3,7 +3,6 @@ package inject
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/memory"
@@ -45,9 +44,8 @@ func SubagentStart(s *memory.Store, cfg config.Config, scope, task string) Injec
 	if cfg.RecallMode() == config.RecallOff {
 		return inj.done(&b)
 	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
-	role, coreIDs := roleLines(s, now, heads)
+	vw, _ := s.Viewer()
+	role, coreIDs := roleLines(s, vw)
 	if cfg.RecallMode() == config.RecallAuto && strings.TrimSpace(task) != "" {
 		b.WriteString(taskRecall(s, cfg, at(cfg, scope), task, coreIDs, &inj))
 	}
@@ -61,14 +59,14 @@ func SubagentStart(s *memory.Store, cfg config.Config, scope, task string) Injec
 
 // roleLines are the role share: the heading and one title line per user core memory in core order, within
 // maxRoleRunes. Lines that do not fit are counted in one line at the end. "" without a core.
-func roleLines(s *memory.Store, now time.Time, heads memory.TopicHeads) (string, []string) {
+func roleLines(s *memory.Store, vw memory.Viewer) (string, []string) {
 	core, err := s.Core(memory.ScopeGlobal)
 	if err != nil {
 		return "", nil
 	}
 	var lines, ids []string
 	for _, m := range core {
-		if excluded(m, now, heads) != "" {
+		if !vw.Of(m).Current() {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("- %s — %s\n", clipTitle(m.Title, recallTitleRunes), m.ID))
@@ -127,7 +125,7 @@ func taskRecall(s *memory.Store, cfg config.Config, pl place.Place, task string,
 	now := s.Now()
 	head := taskRecallHead + "\n"
 	oldLine := ""
-	if n := oldVersions(s, th, pl, task, found, now); n > 0 {
+	if n := oldVersions(s, th, pl, task, found); n > 0 {
 		oldLine = fmt.Sprintf("- 옛 판 %d개 뺌 — 낡거나 대체된 판이라 따르지 않는다\n", n)
 	}
 	type entry struct {
@@ -182,8 +180,8 @@ func reasonLine(h memory.RecallHit) string {
 // oldVersions counts the old versions in reach that a task matches by the task gate (taskThresholds.pass):
 // stale memories, and live ones recall leaves out as an older value of their topic or past their days. live
 // are the live memories the task matched (thresholds.found), so only the stale ones are looked up here.
-func oldVersions(s *memory.Store, th thresholds, pl place.Place, task string, live []memory.RecallHit, now time.Time) int {
-	heads, _ := s.TopicHeads()
+func oldVersions(s *memory.Store, th thresholds, pl place.Place, task string, live []memory.RecallHit) int {
+	vw, _ := s.Viewer()
 	n := 0
 	count := func(found []memory.RecallHit, stale bool) {
 		for _, h := range found {
@@ -191,7 +189,7 @@ func oldVersions(s *memory.Store, th thresholds, pl place.Place, task string, li
 			if !th.pass(h) || !inScope(m, pl) || m.Kind == memory.KindJournal {
 				continue
 			}
-			if stale || excluded(m, now, heads) != "" {
+			if stale || !vw.Of(m).Current() {
 				n++
 			}
 		}

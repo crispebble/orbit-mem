@@ -167,7 +167,8 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	return shown, nil
 }
 
-// dead are the ids that were not a current value at the path's time, with the reason of each (bench.DeadReason),
+// dead are the ids that were not a current value at the path's time, with the reason of each (memory.Viewer, in
+// the words of bench.DeadReason),
 // read from the DB copy as it is after the call: a frozen session bundle (0.19.0 hands it back as it was) can hold
 // a memory that went stale since. An id the copy does not have is dead too (bench.DeadGone): it was forgotten
 // before the call, which is how the audit counts gone as well.
@@ -180,8 +181,10 @@ func (r *recaller) dead(ids []string) ([]string, map[string]string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		s.Now = r.at.now // 판정 시각은 경로의 시계다(Freshness가 그 시각으로 만료를 가른다)
 		r.read = s
 	}
+	vw, _ := r.read.Viewer()
 	var out []string
 	var why map[string]string
 	for _, id := range ids {
@@ -193,7 +196,7 @@ func (r *recaller) dead(ids []string) ([]string, map[string]string, error) {
 		case err != nil:
 			return nil, nil, err
 		default:
-			w = bench.DeadReason(m, r.at.ms())
+			w = deadWhy(vw.Of(m).Why)
 		}
 		if w == "" {
 			continue
@@ -204,6 +207,23 @@ func (r *recaller) dead(ids []string) ([]string, map[string]string, error) {
 		out, why[id] = append(out, id), w
 	}
 	return out, why, nil
+}
+
+// deadWhy maps the Viewer's verdict to the reason a baseline names (bench.DeadReason): stale, hidden, expired.
+// An older value of a topic (memory.WhyOlder) is not dead here: the baseline never counted it, and counting it
+// would make the numbers of before and after this judge incomparable.
+func deadWhy(w memory.Why) string {
+	switch w {
+	case memory.WhyStale:
+		return bench.DeadStale
+	case memory.WhyRejected:
+		return bench.DeadHidden
+	case memory.WhyExpired:
+		return bench.DeadExpired
+	case memory.WhyGone:
+		return bench.DeadGone
+	}
+	return ""
 }
 
 // Reset forgets what the session was told (its bundle and marks), as the hook does before the start that follows
