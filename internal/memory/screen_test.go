@@ -90,3 +90,72 @@ func TestScreen_상대_시간은_절대_날짜로_바꿔_남긴다(t *testing.T)
 		}
 	}
 }
+
+// 상대 시간 치환은 지금 기준 표현만 바꾼다(S-3). 사건 기준 표현과 다른 낱말의 일부는 그대로 둔다.
+func TestScreen_사건_기준_표현은_바꾸지_않는다(t *testing.T) {
+	for _, c := range []string{"배포 3일 전 점검표를 본다", "3개월 전체 일정을 다시 짠다", "2주 후반에 정리한다"} {
+		got, _, err := screen(t, KindFact, c, "본문 "+c, SourceSession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != c || got.Body != "본문 "+c {
+			t.Errorf("%q → %q / %q: 바뀌지 않아야 합니다", c, got.Title, got.Body)
+		}
+	}
+	// 지금 기준이면 조사가 붙어도 지금처럼 바꾼다.
+	got, _, err := screen(t, KindFact, "계약 만료는 3주 뒤에 온다", "", SourceSession)
+	if err != nil || got.Title != "계약 만료는 2026-11-24에 온다" {
+		t.Errorf("지금 기준 표현은 바뀌어야 합니다: %q %v", got.Title, err)
+	}
+}
+
+// 1월 31일에 한 달 뒤는 3월 초가 아니라 2월 말이다. 윤일의 1년 뒤도 같다.
+func TestScreen_1개월_뒤는_달을_넘치지_않는다(t *testing.T) {
+	jan31 := time.Date(2026, 1, 31, 10, 0, 0, 0, time.Local)
+	for _, c := range []struct {
+		now      time.Time
+		in, want string
+	}{
+		{jan31, "점검은 1개월 뒤", "점검은 2026-02-28"},
+		{jan31, "점검은 다음 달", "점검은 2026-02"},
+		{time.Date(2028, 2, 29, 10, 0, 0, 0, time.Local), "갱신은 1년 뒤", "갱신은 2029-02-28"},
+	} {
+		in := SaveInput{Kind: KindFact, Title: c.in, Source: Source{Kind: SourceSession}}
+		if _, err := Screen(&in, c.now); err != nil {
+			t.Fatal(err)
+		}
+		if in.Title != c.want {
+			t.Errorf("%q → %q, want %q", c.in, in.Title, c.want)
+		}
+	}
+}
+
+// 사용자 말 출처의 발췌는 그 말 그대로 남는다: 본문에 발췌가 들어 있어도 그 부분은 치환하지 않는다.
+func TestScreen_사용자_말_발췌는_치환하지_않는다(t *testing.T) {
+	in := SaveInput{Kind: KindDecision, Title: "배포 일정", Body: "사용자가 \"내일 배포해\"라고 했다. 내일 확인한다.",
+		Source: Source{Kind: SourceQuote, Excerpt: "내일 배포해"}}
+	if _, err := Screen(&in, screenNow); err != nil {
+		t.Fatal(err)
+	}
+	if in.Source.Excerpt != "내일 배포해" {
+		t.Errorf("발췌가 바뀌었습니다: %q", in.Source.Excerpt)
+	}
+	if want := "사용자가 \"내일 배포해\"라고 했다. 2026-11-04 확인한다."; in.Body != want {
+		t.Errorf("본문 = %q, want %q", in.Body, want)
+	}
+}
+
+func TestScreen_바꾸지_않은_표현은_rewrites에_바꾸지_않음으로_알린다(t *testing.T) {
+	_, notes, err := screen(t, KindFact, "배포 3일 전 점검표를 본다", "", SourceSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "배포 3일 전") || !strings.Contains(notes[0], "바꾸지 않음") {
+		t.Errorf("notes = %v", notes)
+	}
+	// 낱말의 일부(3개월 전체)는 시간 표현이 아니라 알릴 것도 없다.
+	_, notes, err = screen(t, KindFact, "3개월 전체 일정", "", SourceSession)
+	if err != nil || len(notes) != 0 {
+		t.Errorf("낱말의 일부는 알리지 않습니다: %v %v", notes, err)
+	}
+}
