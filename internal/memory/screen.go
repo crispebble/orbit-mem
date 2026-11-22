@@ -123,7 +123,7 @@ func Screen(in *SaveInput, now time.Time) ([]string, error) {
 		}
 	}
 	// 규칙은 언제나 맞는 일하는 방식이라 바꾸지 않는다: 「배포 3일 전」은 사건 기준이고, 제목이 날마다 바뀌면 다른 날
-	// 다시 저장한 같은 규칙이 한 제목으로 모이지 않는다(증거 ① 「서로 다른 날 다시 나옴」).
+	// 다시 저장한 같은 규칙이 한 제목으로 모이지 않는다(증거 ① 「세션도 날도 서로 다른 다시 나옴」).
 	var notes []string
 	if in.Kind == KindRule {
 		return notes, nil

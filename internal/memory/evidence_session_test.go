@@ -152,6 +152,33 @@ func TestEvidence_주제가_없는_후보는_거절_기록을_보지_않는다(t
 	}
 }
 
+// E-3: 거절 조건은 후보의 확정만 막는다. 이미 확정된 기억은 같은 주제에 거절이 생긴 뒤 정리 확정을 돌려도 그대로다.
+func TestEvidence_확정된_기억은_같은_주제의_거절_뒤에도_그대로다(t *testing.T) {
+	s, c := newTestStore(t)
+	const topic = "배포 창"
+	in := aiLearns(KindFact, "배포는 화요일 오전이다", topic)
+	mustSave(t, s, inSession(in, "sess-a"))
+	c.t = c.t.Add(24 * time.Hour)
+	done, _ := mustSave(t, s, inSession(in, "sess-b"))
+	if done.State != StateConfirmed {
+		t.Fatalf("확정 전제가 깨졌습니다: %s", done.State)
+	}
+	c.t = c.t.Add(time.Hour)
+	other := aiLearns(KindFact, "이번 주 배포는 수요일이다", topic)
+	other.Retention = RetentionVolatile // 휘발이라 확정된 값을 대체하지 않고 같은 주제에 함께 있다
+	h, _ := mustSave(t, s, inSession(other, "sess-b"))
+	if _, err := s.SetState(h.ID, StateHidden, "사용자가 아니라고 함"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConfirmCandidates(); err != nil {
+		t.Fatal(err)
+	}
+	got := stateOf(t, s, done.ID)
+	if got.State != StateConfirmed || got.Version != done.Version || got.UpdatedAt != done.UpdatedAt {
+		t.Fatalf("확정 기억이 바뀌었습니다: %s v%d→v%d", got.State, done.Version, got.Version)
+	}
+}
+
 // 내보낸 줄은 다시 나온 날만 알아, 들여온 후보의 날은 세션을 모르는 한 세션(legacy)으로 센다: 들여오기만으로 확정 근거가 생기지 않는다.
 func TestEvidence_들여온_후보의_날은_legacy_세션_하나로_센다(t *testing.T) {
 	s, _ := newTestStore(t)

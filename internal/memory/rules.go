@@ -208,6 +208,7 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 	}
 	if seen >= pol.SeenDays {
 		// 증거 ①에만 건다: 다시 나온 사이에 사용자가 반대로 교정했으면 그 날들은 근거가 아니다(E-2). ②③은 그대로 본다.
+		// ②는 지금 새로 쌓이는 경로가 없고(사용 판정을 남기던 세션 끝 회고를 걷어냈다), ③은 검증된 사실의 즉시 확정이라 막지 않는다.
 		corrected, err := s.correctedSince(m)
 		if err != nil {
 			return "", err

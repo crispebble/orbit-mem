@@ -45,7 +45,7 @@
   "memory.err.need_to_tags": "%w: 넣을 태그(toTags)가 필요합니다",
   "memory.err.need_two_memories": "%w: 이을 서로 다른 기억 둘이 필요합니다",
   "memory.err.no_change": "%w: 바뀌는 내용이 없습니다",
-  "memory.err.no_evidence": "자동 확정할 증거(다른 세션·다른 날 다시 나옴,검증을 통과한 일에서 따름, 작업이 검증한 프로젝트 사실)가 없습니다. 후보로 기다립니다",
+  "memory.err.no_evidence": "자동 확정할 증거(다른 세션·다른 날 다시 나옴, 검증을 통과한 일에서 따름, 작업이 검증한 프로젝트 사실)가 없습니다. 후보로 기다립니다",
   "memory.err.no_flag": "%w: 열린 감사 항목이 없습니다: %s",
   "memory.err.no_memory_change": "%w: 바뀌는 기억이 없습니다",
   "memory.err.no_proposal": "제안이 없습니다: %s",

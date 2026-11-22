@@ -60,7 +60,8 @@ type Options struct {
 	LoadSaveNearMin func() float64
 	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
 	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
-	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1).
+	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1). With the run id,
+	// a server started again in the same conversation counts as another session (only the day condition holds).
 	Session string
 }
 
