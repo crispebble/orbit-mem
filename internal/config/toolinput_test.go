@@ -43,3 +43,39 @@ func TestToolInputGate_기본은_꺼짐이고_문턱은_0_3이며_범위를_검�
 		t.Fatalf("file = gate %v min %v err %v", c.ToolInputGate, c.ToolInputMinScore, err)
 	}
 }
+
+// 순위 스위치(명세 R-1): 기본은 꺼져 있고(켤지와 문턱은 평가로 정한다, R-2), rankScoreMargin은 0 < x ≤ 1만 받고, 두 키가 없는
+// 옛 설정 파일은 기본값으로 읽는다.
+func TestRankByScore_기본은_꺼짐이고_문턱은_범위를_검사한다(t *testing.T) {
+	d := Default()
+	if d.RankByScore || d.RankScoreMargin != DefaultRankScoreMargin {
+		t.Fatalf("default rankByScore %v margin %v", d.RankByScore, d.RankScoreMargin)
+	}
+	for _, bad := range []float64{0, -0.1, 1.0001, math.NaN()} {
+		c := Default()
+		c.RankScoreMargin = bad
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "rankScoreMargin") {
+			t.Errorf("rankScoreMargin %v accepted or unclear: %v", bad, err)
+		}
+	}
+	for _, good := range []float64{0.01, 0.1, 1} {
+		c := Default()
+		c.RankScoreMargin = good
+		if err := c.Validate(); err != nil {
+			t.Errorf("rankScoreMargin %v: %v", good, err)
+		}
+	}
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(`{"inject":"full","recallMinScore":0.42}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || c.RankByScore || c.RankScoreMargin != DefaultRankScoreMargin {
+		t.Fatalf("old file = rankByScore %v margin %v err %v", c.RankByScore, c.RankScoreMargin, err)
+	}
+	if err := os.WriteFile(p, []byte(`{"rankByScore":true,"rankScoreMargin":0.2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(p); err != nil || !c.RankByScore || c.RankScoreMargin != 0.2 {
+		t.Fatalf("file = rankByScore %v margin %v err %v", c.RankByScore, c.RankScoreMargin, err)
+	}
+}

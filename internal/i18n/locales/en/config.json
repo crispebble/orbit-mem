@@ -21,5 +21,6 @@
   "config.err.task_recall_min_relative": "taskRecallMinRelative is a number above 0 and at most 1 (the share of the best find score a memory needs to stay in the recall of a delegated task): %v",
   "config.err.task_recall_min_title_share": "taskRecallMinTitleShare is a number above 0 and at most 1 (the rare words' worth, per content word of a delegated task, that a memory's title and topic must hold to be recalled for the task): %v",
   "config.err.tool_input_min_score": "toolInputMinScore is a number above 0 and at most 1 (the recall score against a tool call's input that a memory other than a confirmed rule must reach to be recalled before the call): %v",
+  "config.err.rank_score_margin": "rankScoreMargin is a number above 0 and at most 1 (a recall score gap larger than this ranks the higher score before a confirmed memory): %v",
   "config.err.host_timeout": "hostTimeouts.%s is a positive Go duration such as \"1.5s\": %q"
 }
