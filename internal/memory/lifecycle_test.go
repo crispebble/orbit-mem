@@ -151,7 +151,7 @@ func TestReviewed는_재검토일을_다시_민다(t *testing.T) {
 	s, c := newTestStore(t)
 	d, _ := s.Save(SaveInput{Kind: KindDecision, Title: "기억 DB는 PC마다", Retention: RetentionDurable, ReviewAfterDays: 5, Source: Source{Kind: SourceSession}})
 	c.t = c.t.Add(10 * 24 * time.Hour)
-	m, err := s.Reviewed(d.ID, Who{Actor: ActorAI})
+	m, err := s.Reviewed(d.ID, Who{Actor: ActorAI, UserQuote: "아직 맞다"}) // 재검토함은 사용자 확인이다(L-1)
 	if err != nil {
 		t.Fatal(err)
 	}

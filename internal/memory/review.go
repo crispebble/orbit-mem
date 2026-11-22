@@ -30,7 +30,7 @@ func (s *Store) ReviewDueMemories(sees func(scope, project string) bool) ([]Memo
 		}
 	}
 	slices.SortFunc(out, func(a, b Memory) int {
-		if c := cmp.Compare(reviewDate(a), reviewDate(b)); c != 0 {
+		if c := cmp.Compare(ReviewDate(a), ReviewDate(b)); c != 0 {
 			return c
 		}
 		return strings.Compare(a.ID, b.ID)
@@ -38,8 +38,8 @@ func (s *Store) ReviewDueMemories(sees func(scope, project string) bool) ([]Memo
 	return out, nil
 }
 
-// reviewDate is when m falls (or fell) due for review: its review date, or 90 days after its last change when it has none.
-func reviewDate(m Memory) int64 {
+// ReviewDate is when m falls (or fell) due for review: its review date, or 90 days after its last change when it has none.
+func ReviewDate(m Memory) int64 {
 	if m.ReviewAt > 0 {
 		return m.ReviewAt
 	}

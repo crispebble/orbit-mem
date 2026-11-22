@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -134,6 +136,10 @@ func TestUpdate_사용자_말로_고치면_재검토일이_밀린다(t *testing.
 		if got := reviewAtOf(t, s, m.ID); got != start {
 			t.Fatalf("AI의 수정이 재검토일을 밀었습니다: %d → %d", start, got)
 		}
+		// 만든 때부터 90일이 지나면 고친 시각이 아무리 늦어도 재검토 후보다.
+		if stateOf(t, s, m.ID).Freshness(time.UnixMilli(start).Add(time.Hour)) != FreshReviewDue {
+			t.Fatal("AI의 수정 뒤 90일 시계가 되감겼습니다")
+		}
 	}
 	if got := stateOf(t, s, m.ID); got.Version < 5 || got.UpdatedAt != c.t.UnixMilli() {
 		t.Fatalf("버전과 고친 시각은 올라야 합니다: v%d %d", got.Version, got.UpdatedAt)
@@ -234,6 +240,173 @@ func TestReviewAt_기계적_쓰기는_재검토일을_밀지_않는다(t *testin
 	}
 	if got := reviewAtOf(t, s, m.ID); got != start {
 		t.Fatalf("상태 전이가 재검토일을 밀었습니다: %d → %d", start, got)
+	}
+}
+
+// L-1: 재검토함(Reviewed)은 사용자 확인이다. 사람이 아니고 사용자 말도 없으면 거절하고, 사용자 말 기억이어도 마찬가지다.
+func TestReviewed_사람이_아니고_사용자_말도_없으면_거절한다(t *testing.T) {
+	s, c := newTestStore(t)
+	m, _ := mustSave(t, s, userSays(KindFact, "릴리스는 금요일 오후에 나간다", ""))
+	start := reviewAtOf(t, s, m.ID)
+	c.t = c.t.Add(95 * 24 * time.Hour)
+	if _, err := s.Reviewed(m.ID, Who{Actor: ActorAI}); !errors.Is(err, ErrConfirmNeedsWords) {
+		t.Fatalf("err = %v, want ErrConfirmNeedsWords", err)
+	}
+	if got := stateOf(t, s, m.ID); got.ReviewAt != start || got.Freshness(c.t) != FreshReviewDue {
+		t.Fatalf("거절했는데 재검토일이 밀렸습니다: %d → %d", start, got.ReviewAt)
+	}
+	if _, err := s.Reviewed(m.ID, Who{Actor: ActorAI, UserQuote: "아직 맞아"}); err != nil {
+		t.Fatalf("사용자 말이 있으면 된다: %v", err)
+	}
+	if got, want := reviewAtOf(t, s, m.ID), c.t.UnixMilli()+90*day; got != want {
+		t.Fatalf("재검토일 %d, want %d", got, want)
+	}
+}
+
+// 낡음 제안 거절은 지금 규칙대로 되고, 유지로 치는 것(재검토일을 미는 것)은 사람이거나 사용자 말이 있을 때뿐이다.
+func TestProposal_낡음_제안_거절은_AI가_사용자_말_없이_하면_재검토일을_밀지_않는다(t *testing.T) {
+	s, c := newTestStore(t)
+	m, _ := mustSave(t, s, userSays(KindFact, "릴리스는 금요일 오후에 나간다", ""))
+	start := reviewAtOf(t, s, m.ID)
+	c.t = c.t.Add(60 * 24 * time.Hour)
+	p, err := s.Propose(ProposalInput{Kind: ProposalStale, Title: "낡았나", MemoryIDs: []string{m.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Decide(DecideInput{ID: p.ID, Decision: "reject", Note: "아니다", Who: Who{Actor: ActorAI}})
+	if err != nil || res.Proposal.Status != StatusRejected {
+		t.Fatalf("거절 자체는 그대로여야 합니다: %v %+v", err, res.Proposal)
+	}
+	if got := reviewAtOf(t, s, m.ID); got != start {
+		t.Fatalf("AI의 거절이 재검토일을 밀었습니다: %d → %d", start, got)
+	}
+	m2, _ := mustSave(t, s, userSays(KindFact, "배포는 화요일에도 한다", ""))
+	c.t = c.t.Add(40 * 24 * time.Hour)
+	p2, err := s.Propose(ProposalInput{Kind: ProposalStale, Title: "또 낡았나", MemoryIDs: []string{m2.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Decide(DecideInput{ID: p2.ID, Decision: "reject", Who: Who{Actor: ActorAI, UserQuote: "아직 맞아"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := reviewAtOf(t, s, m2.ID), c.t.UnixMilli()+90*day; got != want {
+		t.Fatalf("사용자 말이 있는 거절: %d, want %d", got, want)
+	}
+}
+
+// 재검토일이 비어 있는 살아 있는 기억(되살린 것, 옛 버전에서 가져온 것)도 AI의 수정으로 시계가 되감기지 않는다: 쓰기 전에
+// 이전 고친 시각 + 90일로 굳힌다.
+func TestUpdate_재검토일이_없는_기억은_AI_수정이_시계를_되감지_못한다(t *testing.T) {
+	s, c := newTestStore(t)
+	m, _ := mustSave(t, s, inSession(aiLearns(KindLesson, "배포 전에 린트를 돌린다", ""), "sess-a"))
+	origin := c.t
+	if _, err := s.db.Exec(`UPDATE memories SET review_at=0 WHERE id=?`, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	c.t = origin.Add(60 * 24 * time.Hour)
+	aliases := []string{"lint"}
+	if _, err := s.Update(UpdateInput{ID: m.ID, Aliases: &aliases, Who: Who{Actor: ActorAI}}); err != nil {
+		t.Fatal(err)
+	}
+	got := stateOf(t, s, m.ID)
+	if got.ReviewAt != origin.UnixMilli()+90*day {
+		t.Fatalf("재검토일 %d, want 만든 때 + 90일", got.ReviewAt)
+	}
+	if got.Freshness(origin.Add(reviewWindow+time.Hour)) != FreshReviewDue {
+		t.Fatal("AI의 수정이 90일 시계를 되감았습니다")
+	}
+	// 같은 세션의 재등장(확인 아님)도 마찬가지다.
+	if _, err := s.db.Exec(`UPDATE memories SET review_at=0 WHERE id=?`, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	prev := stateOf(t, s, m.ID).UpdatedAt
+	c.t = origin.Add(70 * 24 * time.Hour)
+	mustSave(t, s, inSession(aiLearns(KindLesson, "배포 전에 린트를 돌린다", ""), "sess-a"))
+	if got := reviewAtOf(t, s, m.ID); got != prev+90*day {
+		t.Fatalf("재등장: 재검토일 %d, want %d", got, prev+90*day)
+	}
+}
+
+// 사용자 말로 확정 생성된 기억이 후보로 내려온 뒤에도 만든 세션 줄은 확정 증거 ①(서로 다른 세션·날 두 번)로 세지 않는다.
+func TestEvidence_만든_세션_줄은_확정_증거로_세지_않는다(t *testing.T) {
+	s, c := newTestStore(t)
+	// 사용자 말 출처의 후보는 자동 확정되지 않으므로(사람을 기다린다), 만든 세션 줄이 생기는 다른 길인 확정 상태로 만든 AI 기억으로 본다.
+	q := inSession(aiLearns(KindLesson, "배포 전에 린트를 돌린다", ""), "sess-a")
+	q.State = StateConfirmed
+	m, _ := mustSave(t, s, q)
+	// 확정을 낡음으로 했다가 되살리면 후보다(사람이 확정을 후보로 내리면 보류가 남아 증거 시험이 되지 않는다).
+	if _, err := s.SetState(m.ID, StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetState(m.ID, StateCandidate, "되살림"); err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(24 * time.Hour)
+	mustSave(t, s, inSession(aiLearns(KindLesson, "배포 전에 린트를 돌린다", ""), "sess-b"))
+	if got := stateNow(t, s, m.ID); got != StateCandidate {
+		t.Fatalf("만든 세션 줄이 증거로 셌습니다: %s", got)
+	}
+	// 실제로 다른 세션·다른 날 두 번째가 오면 확정된다.
+	c.t = c.t.Add(24 * time.Hour)
+	mustSave(t, s, inSession(aiLearns(KindLesson, "배포 전에 린트를 돌린다", ""), "sess-c"))
+	if got := stateNow(t, s, m.ID); got != StateConfirmed {
+		t.Fatalf("다른 세션·다른 날 두 번인데 확정되지 않았습니다: %s", got)
+	}
+}
+
+// 합치기 승인으로 만든 새 기억: 자동 적용이면 원본의 가장 이른 재검토일을 잇고, 사람이 승인하면 확인이라 새 90일이다.
+func TestProposal_합치기로_만든_기억의_재검토일은_자동이면_원본에서_잇고_사람이_승인하면_새로_센다(t *testing.T) {
+	s, c := newTestStore(t)
+	a, _ := mustSave(t, s, inSession(aiLearns(KindLesson, "첫째 교훈은 린트다", ""), "s1"))
+	c.t = c.t.Add(20 * 24 * time.Hour)
+	b, _ := mustSave(t, s, inSession(aiLearns(KindLesson, "둘째 교훈은 시험이다", ""), "s1"))
+	x, _ := mustSave(t, s, inSession(aiLearns(KindLesson, "셋째 교훈은 포맷이다", ""), "s1"))
+	y, _ := mustSave(t, s, inSession(aiLearns(KindLesson, "넷째 교훈은 벤치다", ""), "s1"))
+	c.t = c.t.Add(40 * 24 * time.Hour)
+	res, err := s.AutoApply(AutoInput{Kind: ProposalMerge, Title: "합치기", MemoryIDs: []string{a.ID, b.ID},
+		Payload: Payload{MergedTitle: "린트와 시험", MergedBody: "합친 본문"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := reviewAtOf(t, s, res.Created), reviewAtOf(t, s, a.ID); got != want || want >= c.t.UnixMilli()+90*day {
+		t.Fatalf("자동 합치기: 재검토일 %d, want 원본의 가장 이른 %d", got, want)
+	}
+	p, _ := s.Propose(ProposalInput{Kind: ProposalMerge, Title: "합치기", MemoryIDs: []string{x.ID, y.ID},
+		Payload: Payload{MergedTitle: "포맷과 벤치", MergedBody: "합친 본문"}})
+	res, err = s.Decide(DecideInput{ID: p.ID, Decision: "approve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := reviewAtOf(t, s, res.Created), c.t.UnixMilli()+90*day; got != want {
+		t.Fatalf("사람의 승인: 재검토일 %d, want %d", got, want)
+	}
+}
+
+// 사용자가 어긋남을 유지로 닫은 쌍의 옛 사용자 사실은, 서버가 다시 확인한 검증 사실이 같은 자리에 다른 제목으로 와도 자동으로
+// 대체되지 않는다(되돌린 옛 기억과 같은 취급). 사용자 말은 그대로 대체한다.
+func TestReplace_사용자가_유지한_쌍의_옛_사실은_다시_자동_대체되지_않는다(t *testing.T) {
+	s, _ := newTestStore(t)
+	old, _ := mustSave(t, s, userFact("빌드는 make로 한다", "빌드 명령"))
+	talk, _ := mustSave(t, s, SaveInput{Kind: KindFact, Title: "빌드는 go build로 한다", Topic: "빌드 명령", Scope: replScope, Who: Who{Actor: ActorAI},
+		Source: Source{Kind: SourceSession, Ref: "s"}})
+	flag, err := s.FlagConflict(talk.ID, old.ID, "시험", Who{Actor: ActorAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ResolveFlag(flag.ID, "dismissed", Who{Actor: ActorUser}); err != nil {
+		t.Fatal(err)
+	}
+	checked, rep := mustSave(t, s, checkedFact("빌드는 go build ./...로 한다", "빌드 명령"))
+	if got := stateOf(t, s, old.ID); got.State != StateConfirmed || slices.Contains(rep.Superseded, old.ID) {
+		t.Fatalf("유지한 옛 사실이 자동 대체됐습니다: %s %+v", got.State, rep)
+	}
+	if !hasConflictFlag(t, s, checked.ID, old.ID) {
+		t.Fatal("어긋남으로 남아야 합니다")
+	}
+	// 사용자 말은 그대로 대체한다.
+	said, rep := mustSave(t, s, userFact("빌드는 task로 한다", "빌드 명령"))
+	if got := stateOf(t, s, old.ID); got.State != StateStale || got.SupersededBy != said.ID {
+		t.Fatalf("사용자 말이 대체하지 못했습니다: %+v %+v", got, rep)
 	}
 }
 

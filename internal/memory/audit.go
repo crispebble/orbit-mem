@@ -119,7 +119,8 @@ func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return i18n.Errorf("memory.err.no_flag", ErrInvalid, id)
 	}
-	// 사람이(또는 사용자 말을 들고) 어긋남을 유지로 닫으면 옛 기억(어긋나는 새 것이 아닌 쪽)을 확인한 것이다(L-1).
+	// 사람이(또는 사용자 말을 들고) 어긋남을 dismissed로 닫는 것은 옛 기억을 유지하기로 한 것이다: 어긋나는 새 것이 아닌 옛 기억
+	// 쪽을 확인한 것으로 센다(L-1). revertedOldTx도 이 쌍의 옛 기억을 사람이 고른 값으로 본다.
 	if resolution == "dismissed" && (w.Actor == ActorUser || w.quote() != "") {
 		var oldID string
 		if s.db.QueryRow(`SELECT other_id FROM audit_flags WHERE id=? AND kind=?`, id, FlagConflict).Scan(&oldID) == nil && oldID != "" {
@@ -515,6 +516,9 @@ type AuditConflict struct {
 // maxAuditReview is how many memories due for review the audit list names; ReviewDueCount counts them all.
 const maxAuditReview = 30
 
+// auditReviewTitleRunes is how much of a title the audit list's review list shows (a title may be 200 runes).
+const auditReviewTitleRunes = 80
+
 // AuditReview is a memory due for review (L-1) in the audit list, the list the session start's count line points to.
 type AuditReview struct {
 	ID        string `json:"id"`
@@ -622,7 +626,7 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 	}
 	a.ReviewDue, a.ReviewDueCount = []AuditReview{}, len(due)
 	for _, m := range due[:min(len(due), maxAuditReview)] {
-		a.ReviewDue = append(a.ReviewDue, AuditReview{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, ReviewAt: reviewDate(m)})
+		a.ReviewDue = append(a.ReviewDue, AuditReview{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: ClipRunes(m.Title, auditReviewTitleRunes), ReviewAt: ReviewDate(m)})
 	}
 	return a, nil
 }

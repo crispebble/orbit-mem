@@ -122,7 +122,8 @@ func TestAudit_재검토_후보를_보인다(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, errOut, code := run(t, "", "audit")
-	if code != 0 || !strings.Contains(out, old.ID) || strings.Contains(out, fresh.ID) {
+	// 구역 끝에 줄어드는 길 한 줄이 있다(사용자 말과 함께 재검토함으로 표시하거나 고치고, 틀리면 낡음으로).
+	if code != 0 || !strings.Contains(out, old.ID) || strings.Contains(out, fresh.ID) || !strings.Contains(out, "action=reviewed") {
 		t.Fatalf("audit: %d %s %s", code, out, errOut)
 	}
 }

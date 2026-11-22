@@ -142,6 +142,9 @@ func (o Options) who(quote, ref string) memory.Who {
 	return memory.Who{Actor: actor, UserQuote: quote, Ref: ref}
 }
 
+// maxAIReviewDays is the longest review cadence a save that is neither the person's nor the user's words may give.
+const maxAIReviewDays = 365
+
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 일이 규칙·결정·교훈에 닿을 법하면 memory_find로 먼저 찾는다(결과는 id·제목 색인). 쓸 기억은 memory_get으로 본문을 읽는다(memory_get의 links는 함께 읽을 관련 기억). 부르는 때: 설계·결정·규칙을 확인할 때, 문서 위치·작업 방식이 애매할 때, 사용자가 "전에"를 말할 때.
 사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정, 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
 규칙·결정은 topic(주제 키)이 있어야 하고, 규칙은 appliesTo(사람의 일하는 방식은 대개 user)가 있어야 하며, 본문은 한 주장에 1,000자 이하다. 아니면 거절된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다. 「이번엔」처럼 임시라는 말은 retention volatile로 남기고, 옛 결정을 바꾸는 말인지 애매하면 저장 전에 사용자에게 묻는다.
@@ -783,6 +786,12 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 	var quoteWarns []string
 	si.QuoteMatched, si.QuoteAt, quoteWarns = h.checkQuote(&si.Source)
 	warns = append(warns, quoteWarns...)
+	// 재검토 주기는 3,650일까지 받지만, 사람이 아니고 사용자 말 출처도 아닌 저장이 길게 주면 재검토 후보 표시를 10년 미룰 수 있다
+	// (L-1): 365일로 자르고 알린다. 사용자 말 저장과 사람 통로는 상한 그대로다.
+	if si.ReviewAfterDays > maxAIReviewDays && si.Source.Kind != memory.SourceQuote && si.Who.Actor != memory.ActorUser {
+		warns = append(warns, fmt.Sprintf("reviewAfterDays %d은 사용자 말이 아닌 저장에는 너무 길어 %d일로 줄였습니다", si.ReviewAfterDays, maxAIReviewDays))
+		si.ReviewAfterDays = maxAIReviewDays
+	}
 	// 검증 출처의 근거가 이 연결의 작업 폴더 안 파일이면 서버가 지금 직접 읽어 발췌가 있는지 본다(C-1·E-4). 있으면 서버가 다시
 	// 확인한 근거다. Screen이 발췌를 고치기 전에 본다: AI가 준 발췌 그대로가 파일에 있어야 한다. 명령 출력 같은 근거는 읽을 수
 	// 없어 근거 적힘으로 남는다. 재확인이 안 된 까닭은 응답에 내지 않는다(경로마다 다른 답이 파일 유무를 알려 주지 않게).
@@ -1442,7 +1451,7 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 			}
 			allowed = append(allowed, id)
 		}
-		b := h.s.DecideMany(allowed, in.Decision, in.Note)
+		b := h.s.DecideManyAs(allowed, in.Decision, in.Note, h.o.who(in.UserQuote, ""))
 		b.Failed = append(refused, b.Failed...)
 		msg := fmt.Sprintf("%d건 결정, %d건 실패", len(b.Decided), len(b.Failed))
 		for _, f := range b.Failed {
@@ -1458,7 +1467,7 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 		r, _ := toolError(err)
 		return r, DecideOut{}, nil
 	}
-	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note})
+	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note, Who: h.o.who(in.UserQuote, "")})
 	if err != nil {
 		r, _ := toolError(err)
 		return r, DecideOut{}, nil

@@ -268,6 +268,9 @@ func seenApartTx(q querier, id string) (int, error) {
 		if err := rows.Scan(&session, &day); err != nil {
 			return 0, err
 		}
+		if day == "" { // 만든 세션 줄(recordCreationSessionTx)은 다시 나온 날이 아니다
+			continue
+		}
 		if _, ok := daysOf[session]; !ok {
 			sessions = append(sessions, session)
 		}

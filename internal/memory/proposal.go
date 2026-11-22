@@ -343,6 +343,9 @@ type DecideInput struct {
 	Title    *string
 	Body     *string
 	Note     string
+	// Who is who decides. The decision itself is the same for anyone; only a person (an empty Who is one) or a
+	// decision carrying the user's words counts as the user keeping a memory (L-1).
+	Who Who
 }
 
 // DecideResult says what changed.
@@ -384,9 +387,11 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		if err := s.finish(&p, StatusRejected, in.Note); err != nil {
 			return res, err
 		}
-		if p.Kind == ProposalStale { // 낡음 제안을 거절한 것은 그 기억을 유지하기로 한 것이다(L-1)
+		// 낡음 제안을 거절한 것은 그 기억을 유지하기로 한 것이다(L-1). 거절은 누가 하든 같고, 유지로 치는 것은 사람이거나 사용자 말이
+		// 붙었을 때뿐이다(빈 Who는 사람이다).
+		if p.Kind == ProposalStale && (in.Who.human() || in.Who.quote() != "") {
 			for _, id := range p.MemoryIDs {
-				s.confirmKept(id, Who{Actor: ActorUser})
+				s.confirmKept(id, in.Who)
 			}
 		}
 	case "approve":
@@ -572,6 +577,24 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			res.Changed = append(res.Changed, m.ID)
 		} else {
 			res.Created = m.ID
+			// 합친 기억은 새로 만들어져 만든 때가 첫 확인이 되는데, 자동 합치기는 사람이 본 것이 아니라 확인이 아니다: 원본의
+			// 가장 이른 재검토일을 잇는다. 사람이 승인한 합치기는 확인이라 새 90일이다.
+			if p.Kind == ProposalMerge && p.Status == StatusAuto {
+				var earliest int64
+				for _, id := range p.MemoryIDs {
+					if src, err := getTx(s.db, id); err == nil {
+						if d := ReviewDate(src); earliest == 0 || d < earliest {
+							earliest = d
+						}
+					}
+				}
+				if earliest > 0 {
+					if _, err := s.db.Exec(`UPDATE memories SET review_at=? WHERE id=?`, earliest, m.ID); err != nil {
+						return err
+					}
+					m.ReviewAt = earliest
+				}
+			}
 		}
 		if m.State != state && state == StateConfirmed {
 			if m, err = s.SetState(m.ID, StateConfirmed, "제안 승인 "+p.ID); err != nil {

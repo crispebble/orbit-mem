@@ -1,7 +1,7 @@
 package memory
 
 // 보존 등급·재검토일·주제(기획 · Orbit Code K15). 휘발 기억은 정한 날이 지나면 회상에서 빠지고,
-// 재검토일이 지난 기억(마지막 확인 뒤 90일, 보통 기억도)은 회상에 「재검토 후보」로 표시되며, 같은 범위·주제의 여러 판은 최신 하나만 회상한다.
+// 재검토일이 지난 기억(마지막 확인 뒤 90일, 보통 기억도)은 회상에 「재검토 후보」로 표시되며, 같은 범위·주제의 여러 버전은 최신 하나만 회상한다.
 // 오래 쓰지 않은 후보는 낡음이 된다(설계 · orbit-mem 2판 18.4).
 
 import (
@@ -111,6 +111,15 @@ func (m *Memory) confirm(now int64) {
 		days = DefaultReviewDays
 	}
 	m.ReviewAt = now + int64(days)*dayMs
+}
+
+// holdReview fixes the review date of a live, not volatile memory that has none at its last change plus 90
+// days, before a write that is no confirmation moves the last change: otherwise the fallback of Freshness would
+// follow the change and an alias fix by the AI would rewind the clock. Call it before UpdatedAt is moved.
+func (m *Memory) holdReview() {
+	if m.ReviewAt == 0 && m.Retention != RetentionVolatile && m.UpdatedAt > 0 && (m.State == StateCandidate || m.State == StateConfirmed) {
+		m.ReviewAt = m.UpdatedAt + DefaultReviewDays*dayMs
+	}
 }
 
 // confirmCheckTx says whether memory id coming up again in session is a confirmation: it is when the session
@@ -319,8 +328,13 @@ func (s *Store) ExpireCandidates(days int) (int, error) {
 
 // Reviewed records that a memory was looked at and still holds: its review
 // date moves on by its cadence (90 days when it has none) from now. It keeps
-// the memory's content, so it is not a change to what the user said.
+// the memory's content, so it is not a change to what the user said. It is the
+// user's confirmation (L-1): a writer other than the person needs the user's
+// words (ErrConfirmNeedsWords), or the AI could clear the review mark of a memory alone.
 func (s *Store) Reviewed(id string, w Who) (Memory, error) {
+	if !w.human() && w.quote() == "" {
+		return Memory{}, fmt.Errorf("%w: %s", ErrConfirmNeedsWords, id)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Memory{}, err

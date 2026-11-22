@@ -66,6 +66,27 @@ func TestRecallLine_재검토_후보는_빼지_않고_표시만_한다(t *testin
 	}
 }
 
+// 진단의 재검토 메모는 재검토일 계산을 따른다: 재검토일이 비어 대비책으로 후보가 된 기억도 1970-01-01을 찍지 않는다.
+func TestDiagnose_재검토일이_없는_기억도_재검토일을_계산해_보인다(t *testing.T) {
+	s := store(t)
+	m := saveReview(t, s, reviewTitle, memory.ScopeGlobal)
+	if _, err := s.DB().Exec(`UPDATE memories SET review_at=0 WHERE id=?`, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	saved := s.Now()
+	later(s, 91*24*time.Hour)
+	d := Diagnose(s, config.Default(), DiagnoseInput{ID: m.ID, Scope: here, Prompt: reviewAsk})
+	var got string
+	for _, n := range d.Notes {
+		if n.Code == "review_due" {
+			got = n.Args[0]
+		}
+	}
+	if want := saved.Add(90 * 24 * time.Hour).Local().Format("2006-01-02"); got != want {
+		t.Fatalf("재검토일 메모 %q, want %q (notes %+v)", got, want, d.Notes)
+	}
+}
+
 // 순위 코드를 고치지 않아도 기본 재검토일(마지막 확인 + 90일)만으로 점수·확정이 같은 재검토 후보가 뒤로 간다.
 func TestRank_기본_재검토일만으로도_재검토_후보가_뒤로_간다(t *testing.T) {
 	s := store(t)
