@@ -1,13 +1,16 @@
 package hostpath_test
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
 	"github.com/crispebble/orbit-mem/internal/bench/hostpath"
 	"github.com/crispebble/orbit-mem/internal/bench/legacy"
+	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
 // 1-6 b6r 2차: 재생 사례는 나중에 뜬 DB 위에서 돈다. 사례에 시각(at)이 있으면 그 시각에 있던 기억만 보이고, 그 뒤에 만든
@@ -144,6 +147,83 @@ func TestNews_두_경로_모두_세션_소식_몫을_따로_넘긴다(t *testing
 		q := run.All.Requests
 		if q.News.Requests != 1 || q.News.IDs != 1 || q.Correct != 1 || q.Injected != recalled {
 			t.Fatalf("%s: news %+v, injected %d (recalled %d) correct %d, want the news apart from what was put in", run.Name, q.News, q.Injected, recalled, q.Correct)
+		}
+	}
+}
+
+// 재생(명세 · 기억 정확성 7절): 이력이 있는 DB 사본과 시각이 있는 사례로 돌리면, 상시 핵심이 낡은 뒤의 재개 시작만 얼린
+// 묶음의 낡은 기억을 Dead로 내고, 압축 뒤 시작은 묶음을 새로 만들어 Dead가 없다. 같은 사본과 사례로 다시 돌리면 같은
+// 보고가 나온다.
+func TestHostpath_재생은_같은_사본과_사례로_같은_경로_지표를_낸다(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	src := filepath.Join(t.TempDir(), "memory.db")
+	s, err := memory.Open(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	s.Now = func() time.Time { return clock }
+	core, err := s.Save(memory.SaveInput{Kind: memory.KindRule, Title: "답은 존댓말로 한다", Scope: memory.ScopeGlobal,
+		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "답은 존댓말로 한다"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pin(core.ID, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	clock = time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
+	if _, err := s.SetState(core.ID, memory.StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	set, err := bench.Parse([]byte(`{"now":"2026-11-01T00:00:00Z","cwd":"/bench/app","seed":"s","cases":[
+	 {"id":"s1-001","session":"s1","kind":"start","source":"startup","at":"2026-10-22T09:00:00Z"},
+	 {"id":"s1-002","session":"s1","prompt":"배포 창 알려 줘","at":"2026-10-22T09:01:00Z"},
+	 {"id":"s1-003","session":"s1","kind":"start","source":"resume","at":"2026-10-26T09:00:00Z"},
+	 {"id":"s1-004","session":"s1","tool":"Bash","input":"git status","at":"2026-10-26T09:01:00Z"},
+	 {"id":"s1-005","session":"s1","kind":"start","source":"compact","at":"2026-10-27T09:00:00Z"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reports [][]byte
+	for range 2 {
+		p, err := bench.Prepare(set, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rep, err := bench.Run(p, hostpath.Factory)
+		p.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := rep.Runs[0].All.Paths.Start
+		if st.Calls != 3 || st.Dead != 1 || st.DeadCalls != 1 {
+			t.Fatalf("start path %+v, want 3 starts with the resume alone dead", st)
+		}
+		for _, c := range rep.Runs[0].Cases {
+			if c.ID == "s1-003" && (c.Start == nil || !slices.Equal(c.Start.Dead, []string{core.ID})) {
+				t.Fatalf("resume %+v, want %s dead", c.Start, core.ID)
+			}
+			if c.ID == "s1-005" && (c.Start == nil || slices.Contains(c.Start.IDs, core.ID)) {
+				t.Fatalf("start after compact %+v, want the stale core left out", c.Start)
+			}
+		}
+		b, err := rep.JSON()
+		if err != nil {
+			t.Fatal(err)
+		}
+		reports = append(reports, b)
+	}
+	if string(reports[0]) != string(reports[1]) {
+		t.Fatal("the same copy and cases gave two reports")
+	}
+	if after, _, err := memory.OpenReadOnly(src); err != nil {
+		t.Fatal(err)
+	} else {
+		list, _ := after.List(memory.StateStale)
+		after.Close()
+		if len(list) != 1 {
+			t.Fatalf("source changed: %v", list)
 		}
 	}
 }

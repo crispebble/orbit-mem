@@ -10,8 +10,10 @@ import (
 )
 
 // Run runs every recall path over the set, each on its own fresh copy of the DB so the
-// shown marks and the activity of one never reach another. Cases run in file order and a
-// session starts (layer A) before its first case. When the cases carry their times, the copy
+// shown marks and the activity of one never reach another; the copy starts with no session
+// state (memory.ClearSessionState). Cases run in file order and a session starts (layer A)
+// before its first case and again at every start case (a resume, the start after a compaction:
+// that start is the layer A of the cases after it). When the cases carry their times, the copy
 // is put at the state of each case's time and the path's clock is moved there before the case
 // (the session start takes the time of its first case); an expected memory made after the case
 // is counted as not there yet (Outcome.NotYet), the answer itself is kept.
@@ -47,6 +49,11 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 			os.Remove(db + suffix)
 		}
 	}()
+	// 사본에 실제 세션이 남긴 묶음·표시·위임 글을 비운다: 같은 세션 id의 재생이 그 얼린 묶음을 받으면 잰 주입이 이
+	// 실행의 회상이 아니다. 사본은 Prepare가 표지를 남긴 것이고, 비우기는 기억 표를 건드리지 않는다.
+	if err := memory.ClearSessionState(db); err != nil {
+		return run, err
+	}
 	var rew *memory.Rewinder
 	if p.history != nil {
 		if rew, err = p.history.Rewind(db); err != nil {
@@ -96,9 +103,20 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 				}
 			}
 		}
+		// 세션 시작: 세션의 첫 사례 앞에 한 번, 그리고 시작 사례(재개·압축 뒤 등)마다 다시. 다시 부른 시작이 그 뒤 사례의
+		// A층이다. 압축·지우기 뒤 시작은 훅처럼 세션 표시를 먼저 비운다.
 		if k := c.CaseKind(); k != KindDuplicate {
 			a, ok := started[key]
-			if !ok {
+			if !ok || k == KindStart {
+				if c.Resets() {
+					r, can := env.Recaller.(Resetter)
+					if !can {
+						return fail(fmt.Errorf("a %s start needs a recall path that can reset a session", c.Source))
+					}
+					if err := r.Reset(key); err != nil {
+						return fail(err)
+					}
+				}
 				s, err := env.Recaller.Start(key, cwd)
 				if err != nil {
 					return fail(err)
@@ -106,7 +124,10 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 				s.IDs = nonNil(s.IDs)
 				a = &s
 				started[key] = a
-				run.Sessions = append(run.Sessions, SessionResult{Session: key, Seen: seen(s)})
+				o.Started = a
+				if !ok {
+					run.Sessions = append(run.Sessions, SessionResult{Session: key, Seen: seen(s)})
+				}
 			}
 			o.Start = *a
 		}
@@ -127,7 +148,7 @@ func runOne(p *Prepared, f Factory, parts []string) (run RunReport, err error) {
 				}
 			}
 			if c.Tool != "" {
-				s, err := env.Recaller.Tool(key, cwd, c.Tool)
+				s, err := env.Recaller.Tool(key, cwd, c.Tool, c.Input)
 				if err != nil {
 					return fail(err)
 				}

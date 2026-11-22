@@ -166,19 +166,19 @@ func TestLegacy_도구_직전은_걸린_기억을_세션에_한_번만_낸다(t 
 	p := prepare(t, smallSet)
 	r, _ := open(t, p)
 	check(t, "start")(r.Start("s1", "/bench/app"))
-	s := check(t, "tool")(r.Tool("s1", "/bench/app", "Bash"))
+	s := check(t, "tool")(r.Tool("s1", "/bench/app", "Bash", ""))
 	if !slices.Equal(s.IDs, ids(p, "tool-git")) {
 		t.Fatalf("tool %v", keysOf(p, s))
 	}
-	s = check(t, "tool again")(r.Tool("s1", "/bench/app", "Bash"))
+	s = check(t, "tool again")(r.Tool("s1", "/bench/app", "Bash", ""))
 	if len(s.IDs) != 0 || s.Text != "" {
 		t.Fatalf("the same session got the tool memory again %v", keysOf(p, s))
 	}
-	s = check(t, "tool other session")(r.Tool("s2", "/bench/app", "Bash"))
+	s = check(t, "tool other session")(r.Tool("s2", "/bench/app", "Bash", ""))
 	if !slices.Equal(s.IDs, ids(p, "tool-git")) {
 		t.Fatalf("another session %v", keysOf(p, s))
 	}
-	s = check(t, "tool none")(r.Tool("s1", "/bench/app", "Read"))
+	s = check(t, "tool none")(r.Tool("s1", "/bench/app", "Read", ""))
 	if len(s.IDs) != 0 {
 		t.Fatalf("Read %v", keysOf(p, s))
 	}
@@ -234,7 +234,7 @@ func TestLegacy_원본_DB는_쓰지_않고_사본에만_세션을_남긴다(t *t
 	before := sums(t, src)
 	r, db := open(t, p)
 	check(t, "start")(r.Start("s1", "/bench/app"))
-	check(t, "tool")(r.Tool("s1", "/bench/app", "Bash"))
+	check(t, "tool")(r.Tool("s1", "/bench/app", "Bash", ""))
 	if after := sums(t, src); !slices.Equal(before, after) {
 		t.Fatalf("the source DB changed: %v → %v", before, after)
 	}

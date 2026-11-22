@@ -68,9 +68,11 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 | `session` | 같은 세션 이름. 같은 세션은 파일 순서대로 돌고, 세션마다 세션 시작 회상을 먼저 한다. 한 세션에서 이미 넣은 기억은 다시 넣지 않는 것이 맞다 |
 | `cwd` | 이 사례의 작업 폴더. 한 세션의 사례는 같은 폴더를 쓴다 |
 | `origin` | 정답 칸. 이 요청을 사람이 썼는가: `user`(기본)·`agent`·`system`. 어댑터는 훅처럼 늘 `user`로 넘기고, 사람 요청인지는 회상 경로가 글로 판정한다. 요청 글(`prompt`)이 있는 사례에만 뜻이 있다(도구만·위임·중복 사례는 보지 않는다) |
-| `kind` | `request`(기본)·`subagent`(위임)·`duplicate`(중복 저장) |
+| `kind` | `request`(기본)·`subagent`(위임)·`duplicate`(중복 저장)·`start`(세션 시작: 재개·압축 뒤 시작 등. 실행이 세션 시작 회상을 다시 부르고, 그 결과가 뒤 사례의 A층이다) |
+| `source` | 세션 시작 사례의 출처: `startup`·`resume`·`fork`·`compact`·`clear`. `compact`·`clear`는 훅처럼 세션 표시를 먼저 비우고(`bench.Resetter`) 시작을 부른다. 다른 사례에는 쓸 수 없다 |
 | `prompt` | 요청 글. 도구 사례에는 없을 수 있다 |
 | `tool` | 도구 직전 사례의 도구 이름 |
+| `input` | 도구 직전 사례의 도구 입력 글(`host.ToolInputText`: Bash는 `command`, Edit·Read·Write는 `file_path`, 그 밖은 문자열 값을 이은 것, 2,000자까지). 회상 경로가 읽지 않으면 무시한다 |
 | `task` | 위임 글(`kind` `subagent`) |
 | `save` | 저장하려는 초안 `{kind, title, body, topic, scope}`(`kind` `duplicate`) |
 | `expect` | 넣어야 할 기억 키, 최대 3개. 비면 「아무것도 넣지 않음」이 정답이다 |
@@ -79,7 +81,7 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 | `note` | 왜 그 정답인지 한 줄 |
 | `at` | 그 일이 있던 시각(RFC3339). 재생 사례처럼 나중에 뜬 DB로 잴 때 쓴다. 파일의 모든 사례에 있거나 모두에 없어야 한다. 있으면 실행이 사례마다 DB 사본을 그 시각 상태로 맞추고 회상 경로의 시계를 그 시각으로 옮긴다(아래 「사례 시각」) |
 
-불러올 때 이런 사례는 오류다. 일부 사례에만 있거나 RFC3339가 아닌 `at`, 없는 기억 키, `expect` 4개 이상, `prompt` 사례에서 `origin`이 `user`가 아닌데 `expect`가 있는 사례, 같은 `id`.
+불러올 때 이런 사례는 오류다. 일부 사례에만 있거나 RFC3339가 아닌 `at`, 없는 기억 키, `expect` 4개 이상, `prompt` 사례에서 `origin`이 `user`가 아닌데 `expect`가 있는 사례, 같은 `id`, 요청 글·도구·위임 글·정답 칸이 있는 시작 사례, 모르는 `source`, 시작 사례가 아닌데 `source`가 있거나 도구 없이 `input`이 있는 사례.
 
 사람 요청 판정은 이렇게 본다. 서브에이전트 보고 머리말, `<task-notification>`, 시스템 알림만 있는 메시지는 사람 요청이 아니다(`origin` `agent`·`system`, `expect` 비움). 사람이 그런 글을 붙여 넣고 질문을 덧붙이면 사람 요청이다. 인사, 「ㅇㅇ」 같은 짧은 답, 인자 없는 슬래시 명령(`/clear`)은 사소한 요청이라 `expect`가 비고, 인자 있는 슬래시 명령(`/review …`)은 인자를 요청으로 본다.
 
@@ -139,6 +141,22 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 1-6 b6dn 전까지는 막음 후보 하나만 「비슷한 기억」으로 세어 적중과 「없어야 할 때 내밂」(`offered`)을 냈다. 그 `offered`가 지금 `wrongBlock`이다. 지금 경로의 막음 후보는 저장 때 실제로 보는 판정이다(`memory.Store.SaveCheck`, `save-check`). 같은 제목·같은 주제로 걸린 `Existing`도 막음 후보로 센다: 저장하면 그 기억에 출처가 더해지거나 대체되어 같은 내용 기억이 둘 생기지 않고(설계 L-16), 틀린 `Existing`은 다른 기억을 말없이 합치거나 갈아 끼우기 때문이다. 가까운 기억은 같은 판정의 `Near`(막지 않은 새 기억 판정에만 있다)다. 문턱은 설정 `saveSimilarMin`, 가까운 하한은 `saveNearMin`이고 `--set`으로 바꿔 잰다. 옛 회상의 후보는 87ab0fb `memory_find` 위의 `find-proxy`를 얼린 그대로다. 그 판에는 저장을 막는 판정이 없어 이 목록은 가까운 기억으로 센다: 잘못 막음은 늘 0이고 가까운 목록 내밂이 옛 `offered`와 같다.
 
 우선순위는 적중, 틀린 회상, 글자 수 순이다. 문턱을 정하는 일은 이 묶음이 아니라 회상을 고치는 작업이 한다.
+
+### 경로별 주입과 폐기 주입(`paths`)
+
+실제 기록 재생으로 두 버전을 견주는 값이다(명세 · 기억 정확성 7절, F-6). 지표 묶음마다 `paths`에 경로 넷을 낸다: 세션 시작(`start`, 세션 첫 사례 앞의 시작과 시작 사례마다 부른 것 모두), 요청 회상(`request`, 세션 소식과 회상을 합친 훅 한 번), 도구 직전(`tool`), 위임(`subagent`, 제목 줄과 위임 회상을 합친 묶음).
+
+- `calls`: 부른 수. `injections`: 그 가운데 id나 글자를 하나라도 넣은 수.
+- `chars`: 부른 수로 나눈 글자 분포. `injectionChars`: 넣은 호출로 나눈 글자 분포. 덜 자주 넣는 버전은 앞의 값을 낮추고 뒤의 값을 높일 수 있어 둘 다 낸다. 같은 재생의 호출은 두 버전에서 같으므로 `chars`가 「주입 한 번의 평균 글자」로 견주기 쉽다.
+- `dead`: 넣은 id 가운데 그 호출 시각에 현재 값이 아니던 것의 수(경로가 `Shown.Dead`로 넘긴 것 중 그 호출의 id에 든 것만). `deadCalls`: 그런 id가 있던 호출 수. 사례별 결과의 `start`·`request`·`tool`·`subagent`·`sessions` 칸에도 `dead` id가 남는다.
+
+현재 값이 아님의 판정(`bench.DeadReason`)은 재생과 감사가 같다: 낡음(`stale`, 대체 포함), 거절(`hidden`), 날이 지난 휘발(`expired`). 지금 경로는 호출 뒤 DB 사본에서 그 시계 시각으로 읽고, 사본에 없는 id는 `gone`으로 센다. 주제의 옛 버전(살아 있는 옛 값)은 이 판정에 넣지 않는다. 옛 회상은 판정을 넘기지 않아 늘 0이다.
+
+재생 사본은 실행 전에 세션 묶음·세션 표시·위임 글을 비운다(`memory.ClearSessionState`). 실제 세션이 남긴 얼린 묶음을 같은 세션 id의 재생이 받으면, 잰 주입이 그 실행의 회상이 아니기 때문이다.
+
+### 기록된 주입 감사(`bench audit-injections`)
+
+기억 DB의 주입 사건(`inject.*`, 호스트가 실었다고 알려 온 `inject.delivered`는 뺌)마다 실린 id가 그 사건 시각에 현재 값이었는지를 센다(`bench.AuditInjections`). 그 시각의 상태는 `memory.History.StateAt`(그 시각 이전 마지막 버전)으로 읽고 판정은 위와 같다. 지금 DB에 없는(지운) 기억은 그 시각 상태를 알 수 없어 폐기로 세지 않고 `unknown`으로 따로 센다. 결과는 사건 수, 실린 id 수, 폐기 id 수와 그 사건 수, (세션, 기억) 쌍 수, 기억 수, 사건 종류별·까닭별 수, 폐기 id마다의 사건·시각·세션·늦은 정도(`late`, 밀리초: 낡음·거절은 그때 버전의 마지막 고친 시각부터, 만료는 만료 시각부터)다. 원본 DB는 열지 않고 사본(`bench.CopyDB`)에서 읽으며, 옛 스키마는 사본만 올린다.
 
 ### 사례 시각(재생 묶음의 시각 누수)
 
@@ -215,7 +233,7 @@ go test ./internal/bench -run TestPublicSet -write-legacy-baseline
 
 ## 명령
 
-두 명령은 `orbit-mem bench` 아래에 있다.
+세 명령은 `orbit-mem bench` 아래에 있다.
 
 ```sh
 # 사례 파일을 DB 사본에 돌려 지표를 낸다. --db 파일은 열지 않고, bench.CopyDB(internal/bench/copy.go)가 원본 .db·-wal·-journal을 임시 폴더로 바이트 복사한 사본에서 돈다(-shm은 복사하지 않음). 복사 중 원본이 바뀌면 다시 뜨고 5번 실패하면 오류.
@@ -229,10 +247,14 @@ orbit-mem bench recall --cases <사례 파일> --set saveSimilarMin=0.7 --set re
 
 # 이 PC의 대화 기록에서 재생 자료를 뽑는다. 쓰기는 --out에만 하고, git 작업 트리 안은 거절한다.
 orbit-mem bench extract --projects <대화 기록 폴더> --db <기억 DB 파일> --out <폴더>
+
+# 기억 DB에 기록된 주입 가운데 그 시각에 현재 값이 아니던 기억을 센다. --db는 꼭 준다(기본 DB가 없다). 원본은 열지 않고 사본으로 읽는다.
+orbit-mem bench audit-injections --db <memory-copy.db> [--json]
 ```
 
 - `bench recall`은 `--cases`에 `memories`가 없을 때 `--db`가 필요하고, 사례는 키 대신 DB의 실제 기억 id로 정답을 가리킨다.
 - `bench extract`의 기본값은 `--projects`가 Claude 설정 폴더의 `projects`, `--out`이 `$ORBIT_HOME/bench/replay`다. 결과는 DB 사본 `memory-copy.db`, `sessions.json`, 정답 칸이 빈 `cases.json`이다(사례마다 단계 시각 `at`). 정답표는 사람이나 AI가 `cases.json`을 고쳐 `answers-draft.json`으로 만든다.
+- `bench extract`는 세션 시작 훅이 돈 기록(`attachment`의 `hookName` `SessionStart:<출처>`, 같은 시작의 훅 여럿은 하나로)을 시작 사례(`kind` `start`, `source`)로, 도구 호출의 입력을 `input`으로 남긴다. 세션 시작 훅을 기록하지 않은 대화는 시작 사례 없이 첫 사례 앞의 시작만 돈다.
 - 재생 자료에는 이 PC의 기억과 대화가 들어 있다. 저장소에 넣거나 공개하지 않는다.
 
 ## 1-3·1-4를 합친 뒤

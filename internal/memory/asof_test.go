@@ -204,3 +204,74 @@ func TestRewind_앞뒤로_오가도_지금으로_맞추면_원래_사본과_같�
 		t.Fatalf("run's own event: %d %v", n, err)
 	}
 }
+
+// StateAt은 기록된 주입이 그 시각에 낡은 기억이었는지 가리는 감사(bench.AuditInjections)가 쓴다: 그 시각의 버전과 상태를
+// 돌려주고, 그 시각에 없던 기억은 false다.
+func TestHistory_StateAt은_그_시각의_버전과_상태를_돌려준다(t *testing.T) {
+	path, a, b, at := historyFixture(t)
+	h, err := ReadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, ok := h.StateAt(a.ID, at[0]); !ok || m.Title != "배포 창 규칙 첫 판" || m.State == StateStale || m.Version != 1 {
+		t.Fatalf("a at t1: %+v %v", m, ok)
+	}
+	if m, ok := h.StateAt(a.ID, at[2]); !ok || m.Title != "배포 창 규칙 고친 판" || m.State == StateStale || m.Topic != "배포 창" {
+		t.Fatalf("a at t3: %+v %v", m, ok)
+	}
+	if m, ok := h.StateAt(a.ID, at[3]); !ok || m.State != StateStale || m.StaleReason != "낡음" || m.ID != a.ID {
+		t.Fatalf("a at t4: %+v %v", m, ok)
+	}
+	if _, ok := h.StateAt(b.ID, at[1]); ok {
+		t.Fatal("b is not there before t3")
+	}
+	if m, ok := h.StateAt(b.ID, at[3]); !ok || m.Title != "롤백 순서 기록" || m.Tags == nil {
+		t.Fatalf("b at t4: %+v %v", m, ok)
+	}
+	if _, ok := h.StateAt("m-none", at[3]); ok {
+		t.Fatal("a memory the DB never had")
+	}
+}
+
+// 재생 사본의 세션 상태(세션 묶음·세션 표시·위임 글)는 실제 세션이 남긴 것이라 재생 세션과 섞이면 안 된다. 비우기는
+// 임시 사본 표지가 있는 DB만 하고, 기억 줄은 건드리지 않는다.
+func TestHistory_ClearSessionState는_임시_사본만_세션_표를_비운다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := saveDoc(t, s, "배포 창 규칙", "금요일 배포 금지", "")
+	if err := s.SaveSessionBundle("h", "s1", "묶음", []string{m.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkSession("h", "s1", MarkShown, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveDelegation("h", "s1", "worker", "일"); err != nil {
+		t.Fatal(err)
+	}
+	path := s.Path()
+	count := func() (bundles, marks, mems int) {
+		db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Existing: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		db.QueryRow(`SELECT COUNT(*) FROM session_bundles`).Scan(&bundles)
+		db.QueryRow(`SELECT COUNT(*) FROM session_marks`).Scan(&marks)
+		db.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&mems)
+		return
+	}
+	if err := ClearSessionState(path); !errors.Is(err, ErrNotThrowawayCopy) {
+		t.Fatalf("a DB without the mark: %v", err)
+	}
+	if b, k, _ := count(); b != 2 || k != 1 {
+		t.Fatalf("refused clear changed rows: bundles %d marks %d", b, k)
+	}
+	if err := MarkThrowawayCopy(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := ClearSessionState(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, k, n := count(); b != 0 || k != 0 || n != 1 {
+		t.Fatalf("after clear: bundles %d marks %d memories %d", b, k, n)
+	}
+}

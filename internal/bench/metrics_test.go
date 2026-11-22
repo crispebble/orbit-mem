@@ -1,6 +1,10 @@
 package bench_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/crispebble/orbit-mem/internal/bench"
+)
 
 func TestHit는_A층과_B1_앞_3개와_B2의_합집합으로_잰다(t *testing.T) {
 	rep, _ := runFake(t, `
@@ -295,5 +299,55 @@ func TestB3_세션_소식은_적중의_보인_것에만_들고_틀린_회상과_
 	c := rep.Runs[0].Cases[0].Request
 	if c == nil || len(c.News) != 3 || c.NewsChars != 90 {
 		t.Errorf("case n1 request %+v, want its 3 news ids and 90 news chars", c)
+	}
+}
+
+// 명세 7절: 경로마다(세션 시작·요청 회상·도구 직전·위임) 부른 수, 주입 한 번의 평균 글자, 폐기 주입을 같은 재생에서 잰다.
+// 글자는 부른 수로 나눈 것(Chars)과 무엇이든 넣은 호출로 나눈 것(InjectionChars)을 둘 다 낸다. 폐기 주입은 호출이 넣은
+// id 가운데 그 호출의 Dead에 든 것만 센다.
+func TestMetrics_경로별_평균_글자와_폐기_주입을_낸다(t *testing.T) {
+	rep, _ := runFakeDead(t, `
+	 {"id":"a1","session":"s1","kind":"start"},
+	 {"id":"a2","session":"s1","prompt":"p1","tool":"Bash","input":"ls"},
+	 {"id":"a3","session":"s2","prompt":"p2"},
+	 {"id":"a4","session":"s1","kind":"start","source":"resume"},
+	 {"id":"a5","session":"s2","kind":"subagent","task":"T"}`, script{
+		"start:s1":      {[]string{"a", "b"}, 100},
+		"start:s2":      {[]string{"c"}, 40},
+		"req:p1":        {[]string{"d"}, 30},
+		"tool:Bash(ls)": {[]string{"e"}, 20},
+		"sub:T":         {[]string{"f"}, 60},
+	}, nil, deads{
+		"start:s1":      {"b"},
+		"tool:Bash(ls)": {"e", "j"}, // j는 넣지 않은 id: 세지 않는다
+	}, keyed{})
+	p := rep.Runs[0].All.Paths
+	want := func(name string, got bench.PathStat, calls, injections, dead, deadCalls int) {
+		t.Helper()
+		if got.Calls != calls || got.Injections != injections || got.Dead != dead || got.DeadCalls != deadCalls {
+			t.Errorf("%s = %+v, want calls %d injections %d dead %d in %d calls", name, got, calls, injections, dead, deadCalls)
+		}
+	}
+	want("start", p.Start, 3, 3, 2, 2)
+	wantDist(t, "start chars", p.Start.Chars, 3, 80, 100, 100)
+	wantDist(t, "start injection chars", p.Start.InjectionChars, 3, 80, 100, 100)
+	want("request", p.Request, 2, 1, 0, 0)
+	wantDist(t, "request chars", p.Request.Chars, 2, 15, 15, 30)
+	wantDist(t, "request injection chars", p.Request.InjectionChars, 1, 30, 30, 30)
+	want("tool", p.Tool, 1, 1, 1, 1)
+	wantDist(t, "tool chars", p.Tool.Chars, 1, 20, 20, 20)
+	want("subagent", p.Subagent, 1, 1, 0, 0)
+	wantDist(t, "subagent chars", p.Subagent.Chars, 1, 60, 60, 60)
+	// 사례별 결과에도 그 호출의 Dead가 남는다(감사와 견줄 재료).
+	for _, c := range rep.Runs[0].Cases {
+		if c.ID == "a4" && (c.Start == nil || len(c.Start.Dead) != 1) {
+			t.Errorf("case a4 start %+v, want b dead", c.Start)
+		}
+		if c.ID == "a2" && (c.Tool == nil || len(c.Tool.Dead) != 1) {
+			t.Errorf("case a2 tool %+v, want e dead", c.Tool)
+		}
+	}
+	if s := rep.Runs[0].Sessions[0]; len(s.Dead) != 1 {
+		t.Errorf("session s1 start %+v, want b dead", s)
 	}
 }

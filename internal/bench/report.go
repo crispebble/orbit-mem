@@ -55,16 +55,18 @@ type RunReport struct {
 	Cases    []CaseResult    `json:"cases"`
 }
 
-// Seen is what a step showed: the ids in order and the characters, and of them the session news of a request.
+// Seen is what a step showed: the ids in order and the characters, of them the session news of a request, and the
+// ids it put in that were not a current value then (Dead).
 type Seen struct {
 	IDs       []string `json:"ids"`
 	Chars     int      `json:"chars"`
 	News      []string `json:"news,omitempty"`
 	NewsChars int      `json:"newsChars,omitempty"`
+	Dead      []string `json:"dead,omitempty"`
 }
 
 func seen(s Shown) Seen {
-	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s)}
+	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s), Dead: deadOf(&s)}
 }
 
 func seenPtr(s *Shown) *Seen {
@@ -87,6 +89,7 @@ type CaseResult struct {
 	Session string   `json:"session"`
 	Kind    string   `json:"kind"`
 	Part    string   `json:"part"`
+	Start   *Seen    `json:"start,omitempty"` // the session start of a start case (the first start of a session is in Sessions too)
 	Request *Seen    `json:"request,omitempty"`
 	Tool    *Seen    `json:"tool,omitempty"`
 	Sub     *Seen    `json:"subagent,omitempty"`
@@ -97,8 +100,12 @@ type CaseResult struct {
 }
 
 func caseResult(o Outcome) CaseResult {
-	return CaseResult{ID: o.Case.ID, Session: o.Key, Kind: o.Case.CaseKind(), Part: o.Part,
+	r := CaseResult{ID: o.Case.ID, Session: o.Key, Kind: o.Case.CaseKind(), Part: o.Part,
 		Request: seenPtr(o.B1), Tool: seenPtr(o.B2), Sub: seenPtr(o.Sub), Similar: o.Similar, Near: o.Near, Found: o.Found, NotYet: o.NotYet}
+	if r.Kind == KindStart {
+		r.Start = seenPtr(o.Started)
+	}
+	return r
 }
 
 // JSON is the report as indented JSON with a final newline.
@@ -138,12 +145,23 @@ type Wording interface {
 	// Duplicate is the duplicate bundle: the hit of the block and near ids together, the cases with no answer
 	// where a save was stopped (wrongBlock) or a near line was offered (nearOffered), and the forbidden ids of each.
 	Duplicate(cases int, hit, wrongBlock, nearOffered string, forbid, nearForbid int) string
+	// Path is one injection path (PathStart, PathRequest, PathTool or PathSubagent): its calls, the calls that put
+	// something in, the characters per call and per such call, and the dead ids put in with the calls that had one.
+	Path(path string, calls, injections int, chars, injectionChars string, dead, deadCalls int) string
 	ZeroDen() string
 	Dist(mean, median float64, max, n int) string
 }
 
 // partOrder is the order of the metric blocks.
 var partOrder = []string{PartTrain, PartTest, PartAll}
+
+// The injection paths, as Wording.Path names them.
+const (
+	PathStart    = "start"
+	PathRequest  = "request"
+	PathTool     = "tool"
+	PathSubagent = "subagent"
+)
 
 func pct(w Wording, r Rate) string {
 	if r.Value == nil {
@@ -200,6 +218,12 @@ func metricsText(b *strings.Builder, w Wording, part string, m Metrics) {
 		w.Duplicate(d.Cases, pct(w, d.Hit), pct(w, d.WrongBlock), pct(w, d.NearOffered), d.Forbid, d.NearForbid),
 	} {
 		b.WriteString("  " + line + "\n")
+	}
+	for _, p := range []struct {
+		name string
+		s    PathStat
+	}{{PathStart, m.Paths.Start}, {PathRequest, m.Paths.Request}, {PathTool, m.Paths.Tool}, {PathSubagent, m.Paths.Subagent}} {
+		b.WriteString("  " + w.Path(p.name, p.s.Calls, p.s.Injections, distText(w, p.s.Chars), distText(w, p.s.InjectionChars), p.s.Dead, p.s.DeadCalls) + "\n")
 	}
 	if q.NotYet+g.NotYet > 0 {
 		b.WriteString("  " + w.NotYet(q.NotYet, g.NotYet) + "\n")

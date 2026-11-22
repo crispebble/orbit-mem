@@ -10,6 +10,7 @@ package hostpath
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -91,12 +92,16 @@ func FactoryWith(o Options) bench.Factory {
 		if err != nil {
 			return bench.Env{}, err
 		}
+		r := &recaller{svc: svc, at: c, db: db}
 		return bench.Env{
-			Recaller: &recaller{svc: svc, at: c},
+			Recaller: r,
 			Finder:   finder{svc: svc, at: c},
 			Similar:  similar{db: db, at: c, mins: memory.CheckMins{Similar: cfg.SaveSimilarMin, Near: cfg.SaveNearMin}},
 			SetNow:   func(t time.Time) { c.t = t },
-			Close:    func() error { svc.Wait(); return nil },
+			Close: func() error {
+				svc.Wait()
+				return r.close()
+			},
 		}, nil
 	}
 }
@@ -120,9 +125,18 @@ type recaller struct {
 	svc    *host.Service
 	at     *clock
 	agents int // subagents started so far: each gets its own id
+	db     string
+	read   *memory.Store // read only, opened at the first call that put an id in
 }
 
 func (*recaller) Name() string { return Name }
+
+func (r *recaller) close() error {
+	if r.read == nil {
+		return nil
+	}
+	return r.read.Close()
+}
 
 func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	req.Host = hostName
@@ -141,7 +155,50 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	if op == host.OpRecall { // 요청 훅: 앞의 「이 세션 중 바뀐 것」(B3) 몫을 회상(B1)과 나눈다
 		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, rec.MemoryIDs)
 	}
+	var err error
+	if shown.Dead, err = r.dead(rec.MemoryIDs); err != nil {
+		return bench.Shown{}, fmt.Errorf("hostpath: %s: %w", op, err)
+	}
 	return shown, nil
+}
+
+// dead are the ids that were not a current value at the path's time (bench.DeadReason), read from the DB copy as
+// it is after the call: a frozen session bundle (0.19.0 hands it back as it was) can hold a memory that went stale
+// since. An id the copy does not have is dead too (bench.DeadGone).
+func (r *recaller) dead(ids []string) ([]string, error) {
+	if r.read == nil {
+		s, _, err := memory.OpenReadOnly(r.db)
+		if err != nil {
+			return nil, err
+		}
+		r.read = s
+	}
+	var out []string
+	for _, id := range ids {
+		m, err := r.read.Get(id)
+		switch {
+		case errors.Is(err, memory.ErrNotFound):
+			out = append(out, id)
+		case err != nil:
+			return nil, err
+		case bench.DeadReason(m, r.at.ms()) != "":
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// Reset forgets what the session was told (its bundle and marks), as the hook does before the start that follows
+// a compaction or a clear (hook/claudecode: reset, then context).
+func (r *recaller) Reset(session string) error {
+	out, herr := r.svc.Do(host.OpReset, host.Request{Host: hostName, Session: session}, host.Options{At: r.at.ms()})
+	if herr != nil {
+		return fmt.Errorf("hostpath: %s: %w", host.OpReset, herr)
+	}
+	if _, ok := out.(host.OK); !ok {
+		return fmt.Errorf("hostpath: %s: result is %T", host.OpReset, out)
+	}
+	return nil
 }
 
 func (r *recaller) Start(session, cwd string) (bench.Shown, error) {
@@ -154,7 +211,9 @@ func (r *recaller) Request(session, cwd, prompt string) (bench.Shown, error) {
 	return r.do(host.OpRecall, host.Request{Session: session, Cwd: cwd, Prompt: prompt, Origin: host.OriginUser})
 }
 
-func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
+// Tool is the recall before a tool call. The contract of 0.19.0 carries no tool input, so input is not handed on
+// and the recall goes by the tool's name, as the hook's does.
+func (r *recaller) Tool(session, cwd, tool, input string) (bench.Shown, error) {
 	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool})
 }
 

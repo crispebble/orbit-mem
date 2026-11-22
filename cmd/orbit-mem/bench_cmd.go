@@ -31,8 +31,54 @@ func cmdBench(a *app, args []string) error {
 		return benchRecall(a, args[1:])
 	case "extract":
 		return benchExtract(a, args[1:])
+	case "audit-injections":
+		return benchAuditInjections(a, args[1:])
 	}
 	return errUsage
+}
+
+// benchAuditInjections counts the recorded injections of memories that were not a current value at the time
+// (bench.AuditInjections). It reads a copy of the DB given and never opens or writes the DB itself; there is no
+// default DB, so it never reads the home's memory DB unless that path is given.
+func benchAuditInjections(a *app, args []string) error {
+	fs := a.flags("bench audit-injections")
+	db := fs.String("db", "", i18n.T("flag.bench.db_audit"))
+	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
+	pos, err := parse(fs, args)
+	if err != nil {
+		return benchFlagErr(err)
+	}
+	if len(pos) != 0 || *db == "" {
+		return errUsage
+	}
+	res, err := bench.AuditInjections(*db)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		enc := json.NewEncoder(a.stdout)
+		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
+		return enc.Encode(res)
+	}
+	fmt.Fprintln(a.stdout, i18n.T("cli.bench.audit", res.Events, res.Injections, res.Dead, res.DeadEvents, res.Pairs, res.Memories, res.Unknown))
+	for _, k := range sortedCounts(res.ByKind) {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.audit_kind", k, res.ByKind[k]))
+	}
+	for _, k := range sortedCounts(res.ByWhy) {
+		fmt.Fprintln(a.stdout, i18n.T("cli.bench.audit_why", k, res.ByWhy[k]))
+	}
+	return nil
+}
+
+// sortedCounts are the keys of m in order.
+func sortedCounts(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func benchRecall(a *app, args []string) error {
@@ -171,6 +217,8 @@ type benchCase struct {
 	Prompt  string   `json:"prompt,omitempty"`
 	Task    string   `json:"task,omitempty"`
 	Tool    string   `json:"tool,omitempty"`
+	Input   string   `json:"input,omitempty"`  // a tool call's input text (bench.Case.Input)
+	Source  string   `json:"source,omitempty"` // a session start's source (bench.Case.Source)
 	Expect  []string `json:"expect"`
 	Note    string   `json:"note,omitempty"`
 	At      string   `json:"at"` // when the step happened: the run puts the DB at that time (bench.Case.At)
@@ -222,7 +270,7 @@ func benchExtract(a *app, args []string) error {
 		CWD:   sessions[0].Cwd,
 		Seed:  "replay-" + now.Format("20060102"),
 	}
-	var reqs, subs, tools int
+	var starts, reqs, subs, tools int
 	for _, s := range sessions {
 		n := 0
 		for _, st := range s.Steps {
@@ -239,8 +287,15 @@ func benchExtract(a *app, args []string) error {
 				c.Prompt, c.Origin, c.Note = st.Text, string(st.Origin), originNote(st.Evidence)
 				reqs++
 			case claudelog.KindTool:
-				c.Tool, c.Note = st.Tool, "tool call"
+				c.Tool, c.Input, c.Note = st.Tool, st.Input, "tool call"
 				tools++
+			case claudelog.KindStart:
+				// 기록이 모르는 출처는 빈 출처로 둔다: 재생은 그 시작을 다시 부르되 표시를 비우지 않는다.
+				c.Kind, c.Note = bench.KindStart, "session start "+st.Source
+				if slices.Contains(bench.StartSources, st.Source) {
+					c.Source = st.Source
+				}
+				starts++
 			case claudelog.KindDelegate:
 				c.Kind, c.Task, c.Note = bench.KindSubagent, st.Task, "delegation "+st.SubagentType
 				subs++
@@ -268,7 +323,7 @@ func benchExtract(a *app, args []string) error {
 			return err
 		}
 	}
-	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), reqs, subs, tools))
+	fmt.Fprintln(a.stdout, i18n.T("cli.bench.extract_done", outAbs, len(sessions), starts, reqs, subs, tools))
 	return nil
 }
 
@@ -321,6 +376,8 @@ func stepOf(byID map[string]claudelog.Session, c bench.Case) (claudelog.Step, bo
 	}
 	st := s.Steps[n-1]
 	switch {
+	case c.CaseKind() == bench.KindStart:
+		ok = st.Kind == claudelog.KindStart && st.Source == c.Source
 	case c.CaseKind() == bench.KindSubagent:
 		ok = st.Kind == claudelog.KindDelegate && st.Task == c.Task
 	case c.Prompt != "":

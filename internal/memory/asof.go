@@ -216,6 +216,63 @@ func (h *History) Existed(id string, at int64) bool {
 	return m != nil && m.created <= at
 }
 
+// StateAt is memory id as it was at at (ms): the content and state of its last version by then, the columns the
+// version snapshot does not keep (topic, tools, retention, review and expiry) as they are now. It is false when
+// the memory was not made by then or the DB the history was read from does not have it (it never had it, or it
+// was forgotten). Sources, sighting days and links are not filled in.
+func (h *History) StateAt(id string, at int64) (Memory, bool) {
+	m := h.mems[id]
+	if m == nil || m.created > at {
+		return Memory{}, false
+	}
+	p := m.phase(at, Day(time.UnixMilli(at)))
+	row := h.rowAt(m, p.version)
+	cols := h.cols["memories"]
+	pos := make(map[string]int, len(cols))
+	for i, c := range cols {
+		pos[c] = i
+	}
+	// scanMemory reads memoryCols in order; the history keeps the row by the table's columns. A column the copy's
+	// table lacks reads as its zero value.
+	names := strings.Split(strings.Replace(memoryCols, "COALESCE(legacy_id,'')", "legacy_id", 1), ",")
+	vals := make([]any, len(names))
+	for i, n := range names {
+		if j, ok := pos[strings.TrimSpace(n)]; ok {
+			vals[i] = row[j]
+		}
+	}
+	out, err := scanMemory(rowValues(vals))
+	if err != nil {
+		return Memory{}, false
+	}
+	return out, true
+}
+
+// rowValues scans a row the history holds as scanMemory scans a query row: a NULL (a legacy id) reads as "" or 0.
+type rowValues []any
+
+func (r rowValues) Scan(dest ...any) error {
+	if len(dest) != len(r) {
+		return fmt.Errorf("history row: %d values for %d columns", len(r), len(dest))
+	}
+	for i, d := range dest {
+		v := r[i]
+		switch p := d.(type) {
+		case *string:
+			*p = asString(v)
+		case *int:
+			*p = int(asInt(v))
+		case *int64:
+			*p = asInt(v)
+		case *bool:
+			*p = asInt(v) != 0
+		default:
+			return fmt.Errorf("history row: column %d: cannot read into %T", i, d)
+		}
+	}
+	return nil
+}
+
 // memPhase is which rows of a memory a time shows: the version index (-1: no memory), how many sources and
 // sightings.
 type memPhase struct{ version, sources, sightings int }
@@ -284,6 +341,37 @@ func MarkThrowawayCopy(path string) error {
 	defer db.Close()
 	_, err = db.Exec(`INSERT INTO meta(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`, metaThrowawayCopy)
 	return err
+}
+
+// ClearSessionState empties the session state of the DB copy at path: the session bundles with the delegations
+// kept in their table (delegation.go) and the session marks. A replay copy holds what the real sessions left;
+// a replayed session with the same id would get their frozen bundle and marks, and the run would measure what
+// the real session was handed, not what the recall gives. Like Rewind it writes only a DB that carries the
+// throwaway copy mark (ErrNotThrowawayCopy before anything is written); the memory tables are not touched.
+func ClearSessionState(path string) error {
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Busy: writeBusy, Pragmas: storePragmas, Existing: true})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var mark string
+	if err := tx.QueryRow(`SELECT value FROM meta WHERE key=?`, metaThrowawayCopy).Scan(&mark); err != nil || mark != "1" {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %v", ErrNotThrowawayCopy, err)
+		}
+		return ErrNotThrowawayCopy
+	}
+	for _, q := range []string{`DELETE FROM session_bundles`, `DELETE FROM session_marks`} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // Rewinder puts one DB copy at the state of a time.

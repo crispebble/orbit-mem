@@ -152,6 +152,80 @@
           },
           "forbid": 0,
           "nearForbid": 10
+        },
+        "paths": {
+          "start": {
+            "calls": 72,
+            "injections": 72,
+            "chars": {
+              "n": 72,
+              "mean": 628.2083,
+              "median": 648,
+              "max": 648
+            },
+            "injectionChars": {
+              "n": 72,
+              "mean": 628.2083,
+              "median": 648,
+              "max": 648
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 82,
+            "injections": 54,
+            "chars": {
+              "n": 82,
+              "mean": 131.6951,
+              "median": 94,
+              "max": 800
+            },
+            "injectionChars": {
+              "n": 54,
+              "mean": 199.9815,
+              "median": 101,
+              "max": 800
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 14,
+            "injections": 10,
+            "chars": {
+              "n": 14,
+              "mean": 120.1429,
+              "median": 157,
+              "max": 190
+            },
+            "injectionChars": {
+              "n": 10,
+              "mean": 168.2,
+              "median": 183.5,
+              "max": 190
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 16,
+            "injections": 16,
+            "chars": {
+              "n": 16,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 16,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "test": {
@@ -283,6 +357,80 @@
           },
           "forbid": 0,
           "nearForbid": 6
+        },
+        "paths": {
+          "start": {
+            "calls": 31,
+            "injections": 31,
+            "chars": {
+              "n": 31,
+              "mean": 633.1935,
+              "median": 648,
+              "max": 648
+            },
+            "injectionChars": {
+              "n": 31,
+              "mean": 633.1935,
+              "median": 648,
+              "max": 648
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 39,
+            "injections": 22,
+            "chars": {
+              "n": 39,
+              "mean": 125.2821,
+              "median": 94,
+              "max": 978
+            },
+            "injectionChars": {
+              "n": 22,
+              "mean": 222.0909,
+              "median": 141,
+              "max": 978
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 2,
+            "injections": 2,
+            "chars": {
+              "n": 2,
+              "mean": 185,
+              "median": 185,
+              "max": 187
+            },
+            "injectionChars": {
+              "n": 2,
+              "mean": 185,
+              "median": 185,
+              "max": 187
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 11,
+            "injections": 11,
+            "chars": {
+              "n": 11,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 11,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "all": {
@@ -414,6 +562,80 @@
           },
           "forbid": 0,
           "nearForbid": 16
+        },
+        "paths": {
+          "start": {
+            "calls": 103,
+            "injections": 103,
+            "chars": {
+              "n": 103,
+              "mean": 629.7087,
+              "median": 648,
+              "max": 648
+            },
+            "injectionChars": {
+              "n": 103,
+              "mean": 629.7087,
+              "median": 648,
+              "max": 648
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 121,
+            "injections": 76,
+            "chars": {
+              "n": 121,
+              "mean": 129.6281,
+              "median": 94,
+              "max": 978
+            },
+            "injectionChars": {
+              "n": 76,
+              "mean": 206.3816,
+              "median": 118,
+              "max": 978
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 16,
+            "injections": 12,
+            "chars": {
+              "n": 16,
+              "mean": 128.25,
+              "median": 183,
+              "max": 190
+            },
+            "injectionChars": {
+              "n": 12,
+              "mean": 171,
+              "median": 183.5,
+              "max": 190
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 27,
+            "injections": 27,
+            "chars": {
+              "n": 27,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 27,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "sessions": [

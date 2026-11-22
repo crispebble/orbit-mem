@@ -140,6 +140,9 @@ func (tagWording) Subagent(c int, h string, bl int, w string, f int, e, ch, lc s
 func (tagWording) Duplicate(c int, h, wb, no string, f, nf int) string {
 	return tag("duplicate", c, h, wb, no, f, nf)
 }
+func (tagWording) Path(p string, c, i int, ch, ic string, d, dc int) string {
+	return tag("path", p, c, i, ch, ic, d, dc)
+}
 func (tagWording) ZeroDen() string                      { return "<zeroDen>" }
 func (tagWording) Dist(m, md float64, mx, n int) string { return tag("dist", m, md, mx, n) }
 

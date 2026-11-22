@@ -97,8 +97,68 @@ func TestStart와_Subagent와_Tool은_오류없이_Shown을_낸다(t *testing.T)
 	if _, err := f.env.Recaller.Subagent("s2", "/bench/app", "pnpm 설치 확인"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.env.Recaller.Tool("s2", "/bench/app", "Bash"); err != nil {
+	if _, err := f.env.Recaller.Tool("s2", "/bench/app", "Bash", "pnpm install"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 0.19.0은 같은 세션의 세션 시작을 얼린 묶음 그대로 다시 준다(inject.SessionBundleWith). 묶음을 만든 뒤 낡은 기억이 그
+// 묶음에 있으면, 재생은 그 기억을 그 호출의 Dead로 낸다. 새 세션의 묶음은 낡은 기억을 넣지 않으므로 Dead가 없다.
+func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸다(t *testing.T) {
+	f := open(t)
+	// 세션 묶음(recall auto)에는 상시 핵심만 든다: 사용자 범위의 확정 기억 하나를 올려 둔다.
+	core := f.p.IDOf("deploy")
+	st, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pin(core, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	first, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(first.IDs, core) || len(first.Dead) != 0 {
+		t.Fatalf("first start: ids %v dead %v, want core in and nothing dead", first.IDs, first.Dead)
+	}
+	s, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetState(core, memory.StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	again, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(again.IDs, core) || !slices.Equal(again.Dead, []string{core}) {
+		t.Fatalf("resumed start: ids %v dead %v, want the frozen bundle with core dead", again.IDs, again.Dead)
+	}
+	fresh, err := f.env.Recaller.Start("s2", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(fresh.IDs, core) || len(fresh.Dead) != 0 {
+		t.Fatalf("new session: ids %v dead %v", fresh.IDs, fresh.Dead)
+	}
+	// 압축 뒤 시작(Reset 다음 Start)은 묶음을 새로 만든다: 낡은 기억이 빠진다.
+	r, ok := f.env.Recaller.(bench.Resetter)
+	if !ok {
+		t.Fatal("the host path resets a session as the compact and clear starts do")
+	}
+	if err := r.Reset("s1"); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(rebuilt.IDs, core) || len(rebuilt.Dead) != 0 {
+		t.Fatalf("start after reset: ids %v dead %v", rebuilt.IDs, rebuilt.Dead)
 	}
 }
 

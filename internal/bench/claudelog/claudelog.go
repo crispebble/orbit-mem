@@ -1,6 +1,7 @@
 // Package claudelog reads Claude Code conversation logs
 // (<config dir>/projects/*/*.jsonl) and extracts the session flow used as replay
-// material for evaluation: session start, requests, tool calls and delegation
+// material for evaluation: session starts (each SessionStart hook run, resumes and
+// compactions included), requests, tool calls with their input text and delegation
 // texts. It is a host adapter: it only reads, never writes, and calls no model.
 // Turning the result into case files is the job of the assembly point.
 package claudelog
@@ -15,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/crispebble/orbit-mem/internal/host"
 )
 
 // Kind is the kind of a session step.
@@ -24,6 +27,9 @@ const (
 	KindRequest  Kind = "request"
 	KindTool     Kind = "tool"
 	KindDelegate Kind = "delegate"
+	// KindStart is a session start the host ran its SessionStart hooks for (a new session, a resume, a fork, the
+	// start after a compaction or a clear). Source says which.
+	KindStart Kind = "start"
 )
 
 // Origin is the draft judgement of who wrote a request.
@@ -52,6 +58,8 @@ type Step struct {
 	Origin       Origin    `json:"origin,omitempty"` // requests only
 	Evidence     Evidence  `json:"evidence,omitempty"`
 	Tool         string    `json:"tool,omitempty"`
+	Input        string    `json:"input,omitempty"`  // tool calls: the input's text (host.ToolInputText)
+	Source       string    `json:"source,omitempty"` // session starts: startup·resume·fork·compact·clear
 	SubagentType string    `json:"subagentType,omitempty"`
 	Description  string    `json:"description,omitempty"`
 	Task         string    `json:"task,omitempty"` // delegation text
@@ -95,18 +103,30 @@ type record struct {
 	Message struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
+	// Attachment is what the host attached to the conversation, a hook's run among them: its event and its
+	// name, "<event>:<matcher>" (SessionStart:resume).
+	Attachment *struct {
+		HookEvent string `json:"hookEvent"`
+		HookName  string `json:"hookName"`
+	} `json:"attachment"`
 }
 
 type block struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	Name  string `json:"name"`
-	Input struct {
-		Prompt       string `json:"prompt"`
-		SubagentType string `json:"subagent_type"`
-		Description  string `json:"description"`
-	} `json:"input"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
 }
+
+// delegation is the input of a delegation tool call.
+type delegation struct {
+	Prompt       string `json:"prompt"`
+	SubagentType string `json:"subagent_type"`
+	Description  string `json:"description"`
+}
+
+// sessionStartHook is the hook event a host runs at a session start; the matcher of the hook name is the source.
+const sessionStartHook = "SessionStart"
 
 // ReadSession reads one log file as one session. Broken lines are skipped and counted.
 func ReadSession(path string) (Session, error) {
@@ -153,6 +173,21 @@ func (s *Session) add(rec record, haveID *bool) {
 		return
 	}
 	switch rec.Type {
+	case "attachment":
+		// 세션 시작 훅이 돈 기록(성공·실패 모두): 훅마다 한 줄이라, 같은 시작의 줄이 잇따르면 하나로 센다. 출처가 없는
+		// 이름(SessionStart)은 훅이 넣은 글을 붙인 기록이라 세지 않는다.
+		a := rec.Attachment
+		if a == nil || a.HookEvent != sessionStartHook {
+			return
+		}
+		source, ok := strings.CutPrefix(a.HookName, sessionStartHook+":")
+		if !ok || source == "" {
+			return
+		}
+		if n := len(s.Steps); n > 0 && s.Steps[n-1].Kind == KindStart && s.Steps[n-1].Source == source {
+			return
+		}
+		s.Steps = append(s.Steps, Step{Kind: KindStart, At: at, Source: source})
 	case "system":
 		if h := strings.TrimSpace(string(rec.HookAdditionalCtx)); h != "" && h != "null" && h != `""` {
 			s.HookContexts++
@@ -173,10 +208,11 @@ func (s *Session) add(rec record, haveID *bool) {
 			if b.Type != "tool_use" {
 				continue
 			}
-			st := Step{Kind: KindTool, At: at, Tool: b.Name}
+			st := Step{Kind: KindTool, At: at, Tool: b.Name, Input: host.ToolInputText(b.Name, b.Input)}
 			if b.Name == "Agent" || b.Name == "Task" {
-				st.Kind = KindDelegate
-				st.Task, st.SubagentType, st.Description = b.Input.Prompt, b.Input.SubagentType, b.Input.Description
+				var d delegation
+				_ = json.Unmarshal(b.Input, &d) // 꼴이 다른 입력은 빈 위임 글로 둔다
+				st = Step{Kind: KindDelegate, At: at, Tool: b.Name, Task: d.Prompt, SubagentType: d.SubagentType, Description: d.Description}
 			}
 			s.Steps = append(s.Steps, st)
 		}

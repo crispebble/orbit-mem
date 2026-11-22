@@ -216,6 +216,48 @@ func TestSelect_전체_상한(t *testing.T) {
 	}
 }
 
+// 세션 시작 훅이 돈 기록(attachment, hookName SessionStart:<출처>)마다 시작 단계를 남긴다. 같은 시작에 훅이 여럿이면
+// 줄이 잇따르므로 하나로 접고, 훅이 넣은 글을 붙인 기록(출처 없는 이름)과 사이드체인은 세지 않는다. 도구 호출은 입력의
+// 글(host.ToolInputText)을 함께 남긴다.
+func TestReadSession_세션_시작_훅과_도구_입력을_단계로_남긴다(t *testing.T) {
+	lines := []string{
+		`{"type":"attachment","sessionId":"s9","cwd":"/w/a","timestamp":"2026-11-01T10:00:00Z","attachment":{"type":"hook_success","hookName":"SessionStart:startup","hookEvent":"SessionStart"}}`,
+		`{"type":"attachment","sessionId":"s9","timestamp":"2026-11-01T10:00:00.1Z","attachment":{"type":"hook_success","hookName":"SessionStart:startup","hookEvent":"SessionStart"}}`,
+		`{"type":"attachment","sessionId":"s9","timestamp":"2026-11-01T10:00:00.2Z","attachment":{"type":"hook_additional_context","hookName":"SessionStart","hookEvent":"SessionStart"}}`,
+		`{"type":"user","sessionId":"s9","timestamp":"2026-11-01T10:00:01Z","origin":{"kind":"human"},"message":{"role":"user","content":"커밋해 줘"}}`,
+		`{"type":"assistant","sessionId":"s9","timestamp":"2026-11-01T10:00:02Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"git commit -m x","description":"커밋"}},{"type":"tool_use","id":"t2","name":"Agent","input":{"prompt":"검토하라","subagent_type":"reviewer"}}]}}`,
+		`{"type":"attachment","sessionId":"s9","timestamp":"2026-11-01T10:00:03Z","attachment":{"type":"hook_success","hookName":"PreToolUse:Bash","hookEvent":"PreToolUse"}}`,
+		`{"type":"attachment","sessionId":"s9","isSidechain":true,"timestamp":"2026-11-01T10:00:04Z","attachment":{"type":"hook_success","hookName":"SessionStart:startup","hookEvent":"SessionStart"}}`,
+		`{"type":"attachment","sessionId":"s9","timestamp":"2026-11-01T11:00:00Z","attachment":{"type":"hook_non_blocking_error","hookName":"SessionStart:compact","hookEvent":"SessionStart"}}`,
+		`{"type":"attachment","sessionId":"s9","timestamp":"2026-11-02T09:00:00Z","attachment":{"type":"hook_success","hookName":"SessionStart:resume","hookEvent":"SessionStart"}}`,
+	}
+	path := filepath.Join(t.TempDir(), "s9.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := ReadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, st := range s.Steps {
+		got = append(got, fmt.Sprintf("%s:%s%s|%s", st.Kind, st.Source, st.Tool, st.Input))
+	}
+	want := []string{"start:startup|", "request:|", "tool:Bash|git commit -m x", "delegate:Agent|", "start:compact|", "start:resume|"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("steps:\n got %v\nwant %v", got, want)
+	}
+	if d := s.Steps[3]; d.Task != "검토하라" || d.SubagentType != "reviewer" {
+		t.Fatalf("delegate: %+v", d)
+	}
+	if !s.Steps[5].At.Equal(time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("resume at %v", s.Steps[5].At)
+	}
+	if CountRequests(s) != 1 {
+		t.Fatalf("start steps are not requests: %d", CountRequests(s))
+	}
+}
+
 func contains(l []string, s string) bool {
 	for _, v := range l {
 		if v == s {

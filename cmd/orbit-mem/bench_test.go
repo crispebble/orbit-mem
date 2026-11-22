@@ -449,3 +449,46 @@ func TestBench_steps는_옛_재생_사례에_단계_시각을_붙이고_맞지_�
 		t.Fatalf("timed run %d: %s", code, errb)
 	}
 }
+
+// bench audit-injections는 --db가 꼭 있어야 하고(기본 DB를 읽지 않는다), 원본을 열지 않고 사본으로 센다.
+func TestBench_audit_injections는_원본을_바꾸지_않고_낡은_주입을_센다(t *testing.T) {
+	home(t)
+	if _, _, code := run(t, "", "bench", "audit-injections"); code != 2 {
+		t.Fatalf("no --db: exit %d, want the usage error", code)
+	}
+	db, s := openedDB(t)
+	list, err := s.List(memory.StateConfirmed)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("fixture: %v %v", list, err)
+	}
+	id := list[0].ID
+	s.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	if _, err := s.SetState(id, memory.StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Session: "s1"}, map[string]any{"memoryIds": []string{id}}); err != nil {
+		t.Fatal(err)
+	}
+	before := sums(t, db)
+	stdout, errb, code := run(t, "", "bench", "audit-injections", "--db", db, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	var got struct {
+		Events, Dead, Pairs int
+		ByKind              map[string]int
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got.Events != 1 || got.Dead != 1 || got.Pairs != 1 || got.ByKind[memory.EventInjectSessionStart] != 1 {
+		t.Fatalf("audit %+v %v: %s", got, err, stdout)
+	}
+	if text, _, code := run(t, "", "bench", "audit-injections", "--db", db); code != 0 || !strings.Contains(text, memory.EventInjectSessionStart) {
+		t.Fatalf("text %d: %s", code, text)
+	}
+	after := sums(t, db)
+	for k, v := range before {
+		if after[k] != v {
+			t.Errorf("the source %q changed", k)
+		}
+	}
+}
