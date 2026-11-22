@@ -31,7 +31,8 @@ const (
 	SourceHostMemory = "host_memory" // 호스트 기억
 	SourceLegacy     = "legacy"      // 옛 Knowledge
 	// SourceVerification is a fact the work's own verification checked (a test
-	// or build run): a project fact with it is confirmed at once (A2 증거 ③).
+	// or build run, or a file): a project fact with it is confirmed at once (A2
+	// 증거 ③) only when the server read the file it names again (Source.Rechecked, E-4).
 	SourceVerification = "verification"
 	// SourceWork is a finished orbit-code work the work retrospective read (ref
 	// is the work id): what came out of which works.
@@ -64,6 +65,12 @@ type Source struct {
 	// Trust is how far the source is believed (owner·agent·untrusted·system, trust.go). Empty on the rows of
 	// older versions and when it is what the kind gives (quote → owner, else agent): SourceTrust reads it.
 	Trust string `json:"trust,omitempty"`
+	// Rechecked says the server itself read the file a verification source names (Ref, an absolute path) and
+	// found Excerpt in it when the source was saved (RecheckExcerpt). Only the assembly point sets it, never a
+	// tool argument; it is stored in sources.rechecked and is what lets a verified fact be confirmed at once
+	// (EvidenceVerifiedFact, E-4) and replace the user's words on its own (replace.go, C-1). It is not read
+	// back into Source nor written out with it: a copied or imported source is not rechecked.
+	Rechecked bool `json:"-"`
 }
 
 // Memory is one remembered thing.

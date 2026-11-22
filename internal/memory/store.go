@@ -358,6 +358,10 @@ type SaveInput struct {
 	// matched (MatchQuote), or now for a person's own channel. A rejected memory comes back only by words said
 	// after it was rejected, at least quoteMinWords words long.
 	QuoteAt int64
+	// AutoMode, when set, is the auto mode (C-9) this save is decided under instead of the store's Policy.AutoMode:
+	// a long-lived server reads the setting again on every save, so a change applies from the next one. nil is
+	// the store's.
+	AutoMode *bool
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -422,7 +426,7 @@ func (in *SaveInput) validate() error {
 // confirmed at once; anything else starts as a candidate. Saving the same
 // title (same kind and scope) again adds the source, the session and the day. A candidate
 // with evidence (seen in different sessions on different days, followed in verified work, a project
-// fact the work's verification checked) is then confirmed automatically and
+// fact whose verification ground the server read again) is then confirmed automatically and
 // the confirmation kept in the ledger (A2). A save of the title of a hidden (rejected) memory writes
 // nothing and reports it (SaveReport.Rejected), unless its source is the user's quote checked against what
 // the user said after the rejection (SaveInput.QuoteMatched, QuoteAt), of at least three words: that brings
@@ -434,8 +438,11 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 
 // SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
 type SaveReport struct {
-	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
-	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말(또는 믿을 수 없는 새 판이 둔 owner·agent 기억)
+	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판(자동 대체 포함: 그것은 원장에도 남는다)
+	// Conflicts are the old memories the save left as they were and marked as going against it: the user's words it
+	// may not replace, an owner·agent memory an untrusted new one met, or a pair whose automatic replacement the
+	// person undid (replace.go).
+	Conflicts []string `json:"conflicts,omitempty"`
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
 	// BodyKept is true when the save took the title of a memory that already exists and brought a body that
@@ -462,11 +469,15 @@ type SaveReport struct {
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of
-// the same scope and topic and the memories in in.Supersedes, by the source rules of
-// 설계 · orbit-mem 2판 4.2: the user's words replace anything (D1, no userQuote needed:
-// the new words are the ground); what an AI learned or an automation wrote does not
-// replace the user's words and is marked as going against them instead. A volatile
-// memory (the user said it is for now) does not replace its topic's value.
+// the same scope and topic and the memories in in.Supersedes, by the replacement table
+// (replace.go): the user's words replace anything (D1, no userQuote needed: the new words
+// are the ground); what an AI learned or an automation wrote does not replace the user's
+// words and is marked as going against them instead — except a fact of the same kind whose
+// verification ground the server read again (or, with the auto mode on, only wrote down),
+// which replaces a user's fact outside the user scope as an automatic change kept in the
+// ledger, to be undone from the audit list (C-1·C-3·C-8). Rules and decisions are never
+// replaced that way. A volatile memory (the user said it is for now) does not replace its
+// topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
 	if err != nil || rep.Replayed != nil || rep.Rejected != "" { // 다시 온 키·거절된 제목: 이번에는 아무것도 쓰지 않았다
@@ -589,7 +600,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			return Memory{}, rep, err
 		}
 		if cur.State == StateCandidate || cur.State == StateConfirmed { // 거절된(hidden) 판은 아무것도 대체하지 않는다
-			if rep, err = supersedeTx(tx, cur, in, false, now); err != nil {
+			if rep, err = s.supersedeTx(tx, cur, in, false, now); err != nil {
 				return Memory{}, rep, err
 			}
 		}
@@ -663,7 +674,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 새 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
 		return Memory{}, rep, err
 	}
-	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
+	if rep, err = s.supersedeTx(tx, m, in, true, now); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := savePinTx(tx, in, m.ID, now); err != nil {

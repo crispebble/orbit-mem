@@ -78,6 +78,11 @@ type Payload struct {
 	Evidence    string   `json:"evidence,omitempty"`    // 자동 확정의 증거(seen_days·followed_verified·verified_fact)
 	Actor       string   `json:"actor,omitempty"`       // 자동 변경·되돌리기를 한 쪽(user·ai·automation)
 	Activity    string   `json:"activity,omitempty"`    // stale: 일지를 옮긴 활동 기록 줄(host\x00session, S4-8)
+	// NewID is, on a supersede kept by a save's automatic replacement (replace.go), the new memory that replaced
+	// the old one (MemoryIDs[0]). Undoing it puts that memory back to candidate and keeps the pair in
+	// supersede_reverts. It is not in the ledger line's before, whose version check would otherwise stop the
+	// undo once the new memory is confirmed or saved again.
+	NewID string `json:"newId,omitempty"`
 }
 
 // Proposal is a suggestion waiting for the user.

@@ -100,6 +100,10 @@ func TestForget_사용자_말과_함께_지우면_기억과_딸린_행이_모두
 	if _, err := s.DB().Exec(`INSERT INTO sighting_sessions(memory_id, session, day, at) VALUES(?, 'S1', '2026-10-27', 1)`, m.ID); err != nil {
 		t.Fatal(err)
 	}
+	// 되돌린 자동 대체 쌍의 새 쪽(스키마 6). 쌍을 만드는 길(자동 대체 → 되돌림)은 replace_test.go가 본다.
+	if _, err := s.DB().Exec(`INSERT INTO supersede_reverts(old_id, new_id, ledger_id, at) VALUES(?, ?, 'l-x', 1)`, other.ID, m.ID); err != nil {
+		t.Fatal(err)
+	}
 	var rowid int64
 	if err := s.DB().QueryRow(`SELECT rowid FROM memory_index WHERE memory_id=?`, m.ID).Scan(&rowid); err != nil {
 		t.Fatal(err)

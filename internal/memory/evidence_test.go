@@ -211,11 +211,17 @@ func TestAC2_따르고_검증_통과한_세션이_기준_이상이면_확정(t *
 	}
 }
 
-// AC-2 ③: 작업 검증이 직접 확인한 프로젝트 사실은 바로 확정된다(원장에 남는다).
+// AC-2 ③: 작업 검증이 직접 확인한 프로젝트 사실은 바로 확정된다(원장에 남는다). 서버가 근거를 다시 확인한 것만이다(E-4):
+// 근거만 적힌 검증 출처는 후보로 남는다(TestEvidence_서버가_다시_확인_못한_검증_사실은_즉시_확정하지_않는다).
 func TestAC2_작업_검증이_확인한_프로젝트_사실은_확정(t *testing.T) {
 	s, _ := newTestStore(t)
+	stated, err := s.Save(SaveInput{Kind: KindFact, Title: "이 저장소 빌드는 go build ./...", Scope: "project:github.com/o/r",
+		Source: Source{Kind: SourceVerification, Ref: "work:w-1", Excerpt: "go build ./... ok"}})
+	if err != nil || stated.State != StateCandidate {
+		t.Fatalf("근거만 적힌 검증 사실 %s %v", stated.State, err)
+	}
 	m, err := s.Save(SaveInput{Kind: KindFact, Title: "이 저장소 시험은 go test ./...", Scope: "project:github.com/o/r",
-		Source: Source{Kind: SourceVerification, Ref: "work:w-1", Excerpt: "go test ./... ok"}})
+		Source: Source{Kind: SourceVerification, Ref: "/repo/Makefile", Excerpt: "test: go test ./...", Rechecked: true}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -149,6 +149,11 @@ type Config struct {
 	// 옛 파일은 기본값이다. 켤지와 문턱은 평가 묶음으로 정한다(R-2).
 	RankByScore     bool    `json:"rankByScore"`
 	RankScoreMargin float64 `json:"rankScoreMargin"`
+	// 자동 모드(명세 C-9): 기본은 꺼짐이다. 켜면 서버가 다시 확인하지 못한 근거(명령 출력 같은)가 적힌 검증 출처의 사실도 같은
+	// 범위·주제의 사용자 말 사실을 스스로 대체한다(원장에 남아 감사 목록에서 되돌린다). 서버가 파일을 다시 읽어 확인한 사실은
+	// 켬·끔과 관계없이 대체하고, 규칙·결정은 어느 쪽이든 대체하지 않는다(memory/replace.go). 끄면 앞으로의 저장만 다시 묻는
+	// 쪽으로 돌아가고, 이미 대체된 것은 그대로다. 이 키가 없는 옛 파일은 꺼짐이다.
+	AutoMode bool `json:"autoMode"`
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두

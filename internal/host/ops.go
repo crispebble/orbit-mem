@@ -86,7 +86,8 @@ func (c *call) fail(op, code string) {
 }
 
 func (c *call) adopt(s *memory.Store) {
-	s.Policy = memory.Policy{SeenDays: c.cfg.ConfirmSeenDays, FollowedVerified: c.cfg.ConfirmFollowedVerified, CorrectionSessions: c.cfg.CorrectionRepeatSessions}
+	s.Policy = memory.Policy{SeenDays: c.cfg.ConfirmSeenDays, FollowedVerified: c.cfg.ConfirmFollowedVerified, CorrectionSessions: c.cfg.CorrectionRepeatSessions,
+		AutoMode: c.cfg.AutoMode}
 	if c.svc.setup.Now != nil {
 		s.Now = c.svc.setup.Now
 	}
