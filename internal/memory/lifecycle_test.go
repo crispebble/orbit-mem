@@ -177,3 +177,38 @@ func TestTopicHeads_후보는_확정된_주제를_가리지_못한다(t *testing
 		t.Fatalf("heads = %+v", heads)
 	}
 }
+
+func TestExpireCandidates_기록이_28일을_넘으면_안_쓰인_AI_후보를_낡게_하고_사용자_말_후보는_둔다(t *testing.T) {
+	s, c := newTestStore(t)
+	start := c.t
+	injectAt(t, s, "s0", start, "m-none") // 기록이 28일보다 오래됐다
+	ai, err := s.Save(SaveInput{Kind: KindLesson, Title: "안 쓴 AI 후보", Source: Source{Kind: SourceSession}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.Save(SaveInput{Kind: KindLesson, Title: "사용자 말 후보", Source: Source{Kind: SourceSession}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddSource(user.ID, Source{Kind: SourceQuote, Excerpt: "이건 사용자 말"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(user.ID); got.State != StateCandidate {
+		t.Fatalf("사용자 말 후보가 후보가 아님: %s", got.State)
+	}
+	for d := 10; d < 17; d++ { // 이 PC를 여러 날 썼다
+		injectAt(t, s, "busy", start.Add(time.Duration(d)*24*time.Hour), "m-none")
+	}
+	c.t = start.Add(29 * 24 * time.Hour)
+
+	n, err := s.ExpireCandidates(28)
+	if err != nil || n != 1 {
+		t.Fatalf("n = %d %v", n, err)
+	}
+	if got, _ := s.Get(ai.ID); got.State != StateStale {
+		t.Fatalf("AI 후보 = %s", got.State)
+	}
+	if got, _ := s.Get(user.ID); got.State != StateCandidate {
+		t.Fatalf("사용자 말 후보 = %s", got.State)
+	}
+}
