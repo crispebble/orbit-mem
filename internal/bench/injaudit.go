@@ -14,7 +14,7 @@ const (
 	DeadStale   = "stale"   // 낡음: 대체된 것도 이 상태다(memory/supersede.go)
 	DeadHidden  = "hidden"  // 거절된 후보
 	DeadExpired = "expired" // 날이 지난 휘발 기억(사용자 말이라 상태를 바꾸지 않은 것도)
-	DeadGone    = "gone"    // 재생 사본에 없는 기억(지워짐). 감사에서는 판정하지 못함(Unknown)으로 센다
+	DeadGone    = "gone"    // 그 시각에 이미 지운 기억(재생: 사본에 없음, 감사: 지운 시각이 주입보다 앞섬)
 )
 
 // DeadReason says why memory m, as it was at at (ms), was not a current value then: stale (superseded included),
@@ -40,11 +40,12 @@ type InjectionAudit struct {
 	DeadEvents int `json:"deadEvents"` // events with a dead id
 	Pairs      int `json:"pairs"`      // distinct (session, memory) pairs of the dead ids
 	Memories   int `json:"memories"`   // distinct memories of the dead ids
-	// Unknown counts the ids put in that the DB no longer has (forgotten): their state at the event is not known,
-	// so they are neither dead nor current here.
+	// Unknown counts the ids put in that the DB no longer has and were forgotten after the event (or never kept):
+	// their state at the event is not known, so they are neither dead nor current here. One forgotten before the
+	// event is dead (DeadGone).
 	Unknown int             `json:"unknown"`
 	ByKind  map[string]int  `json:"byKind"` // dead ids per event kind
-	ByWhy   map[string]int  `json:"byWhy"`  // dead ids per DeadReason
+	ByWhy   map[string]int  `json:"byWhy"`  // dead ids per reason (DeadReason or DeadGone)
 	Items   []DeadInjection `json:"items"`  // every dead id, in event order
 }
 
@@ -57,12 +58,13 @@ type DeadInjection struct {
 	MemoryID string `json:"memoryId"`
 	Why      string `json:"why"`
 	// Late is how long (ms) it had been dead at the event: since the last change of the version it had then (stale,
-	// hidden), or since its expiry (expired).
+	// hidden), since its expiry (expired), or since it was forgotten (gone).
 	Late int64 `json:"late"`
 }
 
 // AuditInjections reads the injection events recorded in the memory DB at path and counts, for every id they put
-// in, whether the memory was a current value at the event's time (DeadReason on memory.History.StateAt). It works
+// in, whether the memory was a current value at the event's time (DeadReason on memory.History.StateAt, or gone
+// when it was forgotten before the event). It works
 // on a private copy (CopyDB never opens path; an older schema is migrated on the copy only) and removes the copy
 // after; path is not written. The result is the same for the same DB.
 func AuditInjections(path string) (InjectionAudit, error) {
@@ -102,18 +104,27 @@ func AuditInjections(path string) (InjectionAudit, error) {
 		dead := false
 		for _, id := range data.MemoryIDs {
 			out.Injections++
-			m, ok := h.StateAt(id, e.At)
-			if !ok {
-				out.Unknown++
-				continue
+			var why string
+			var late int64
+			if m, ok := h.StateAt(id, e.At); ok {
+				why, late = DeadReason(m, e.At), e.At-m.UpdatedAt
+				if why == DeadExpired {
+					late = e.At - m.ExpiresAt
+				}
+			} else {
+				// 지운 기억은 이력이 없다. 지운 뒤의 주입은 없는 기억을 실은 것(gone)이고, 지우기 전 주입은 그때 상태를 모른다.
+				at, gone, err := s.ForgottenAt(id)
+				if err != nil {
+					return out, err
+				}
+				if !gone || at > e.At {
+					out.Unknown++
+					continue
+				}
+				why, late = DeadGone, e.At-at
 			}
-			why := DeadReason(m, e.At)
 			if why == "" {
 				continue
-			}
-			late := e.At - m.UpdatedAt
-			if why == DeadExpired {
-				late = e.At - m.ExpiresAt
 			}
 			out.Items = append(out.Items, DeadInjection{Event: e.ID, At: e.At, Kind: e.Kind, Session: e.Session, MemoryID: id, Why: why, Late: late})
 			out.Dead++

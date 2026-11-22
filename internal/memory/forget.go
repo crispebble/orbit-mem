@@ -11,6 +11,7 @@ package memory
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -349,6 +350,20 @@ func forgetEventsTx(tx *sql.Tx, ids []string) error {
 // without the forgotten table (a copy an older binary made) has forgotten nothing.
 func (s *Store) IsForgotten(id, legacyID string) (bool, error) {
 	return forgottenTx(s.db, id, legacyID)
+}
+
+// ForgottenAt is when the memory with id was forgotten (Unix ms), false when it was not. A DB without the
+// forgotten table has forgotten nothing.
+func (s *Store) ForgottenAt(id string) (int64, bool, error) {
+	var at int64
+	err := s.db.QueryRow(`SELECT at FROM forgotten WHERE id=?`, id).Scan(&at)
+	switch {
+	case errors.Is(err, sql.ErrNoRows), noForgottenTable(err):
+		return 0, false, nil
+	case err != nil:
+		return 0, false, err
+	}
+	return at, true, nil
 }
 
 func forgottenTx(q querier, id, legacyID string) (bool, error) {

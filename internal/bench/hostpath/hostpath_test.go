@@ -138,6 +138,9 @@ func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸
 	if !slices.Contains(again.IDs, core) || !slices.Equal(again.Dead, []string{core}) {
 		t.Fatalf("resumed start: ids %v dead %v, want the frozen bundle with core dead", again.IDs, again.Dead)
 	}
+	if again.DeadWhy[core] != bench.DeadStale || len(again.DeadWhy) != 1 {
+		t.Fatalf("resumed start: why %v, want core %s", again.DeadWhy, bench.DeadStale)
+	}
 	fresh, err := f.env.Recaller.Start("s2", "/bench/app")
 	if err != nil {
 		t.Fatal(err)
@@ -159,6 +162,59 @@ func TestHostpath_재개_시작이_얼린_묶음의_낡은_기억을_Dead로_낸
 	}
 	if slices.Contains(rebuilt.IDs, core) || len(rebuilt.Dead) != 0 {
 		t.Fatalf("start after reset: ids %v dead %v", rebuilt.IDs, rebuilt.Dead)
+	}
+}
+
+// 얼린 묶음에 든 기억을 지우면, 재개 시작은 사본에 없는 그 id를 까닭 gone으로 낸다(감사도 지운 시각 뒤의 주입은 gone으로 센다).
+func TestHostpath_지운_기억이_든_얼린_묶음은_까닭_gone으로_낸다(t *testing.T) {
+	f := open(t)
+	core := f.p.IDOf("deploy")
+	st, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pin(core, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if _, err := f.env.Recaller.Start("s1", "/bench/app"); err != nil {
+		t.Fatal(err)
+	}
+	st, err = memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Forget(memory.ForgetInput{IDs: []string{core}, Reason: "시험"}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	again, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(again.Dead, []string{core}) || again.DeadWhy[core] != bench.DeadGone {
+		t.Fatalf("resumed start: dead %v why %v, want core gone", again.Dead, again.DeadWhy)
+	}
+}
+
+// id를 하나도 싣지 않은 주입 글(찾는 곳 줄·알림 줄)도 모델 앞에 놓인 글자다: 건너뛴 호출이 아니면 글자로 센다. 세지 않으면
+// id 없는 줄을 더 내는 버전의 글자가 적게 잡힌다.
+func TestHostpath_id_없는_주입_글도_글자로_센다(t *testing.T) {
+	f := open(t)
+	got, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.IDs) != 0 || got.Text == "" || got.Chars != utf8.RuneCountInString(got.Text) {
+		t.Fatalf("start without a core: ids %v chars %d text %q, want the text counted", got.IDs, got.Chars, got.Text)
+	}
+	// 사람이 아닌 글처럼 건너뛴 호출은 여전히 0자다.
+	skipped, err := f.env.Recaller.Request("s1", "/bench/app", "<task-notification>끝남</task-notification>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped.Chars != 0 || skipped.Text != "" || len(skipped.IDs) != 0 {
+		t.Fatalf("skipped request: %+v", skipped)
 	}
 }
 

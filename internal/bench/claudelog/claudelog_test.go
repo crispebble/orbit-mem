@@ -216,6 +216,91 @@ func TestSelect_전체_상한(t *testing.T) {
 	}
 }
 
+// 같은 출처의 시작 줄을 접는 것은 같은 시작에 훅 여럿이 남긴 줄(몇 초 안)뿐이다. 재개 뒤 아무 입력 없이 끝내고 다시
+// 재개하면 시작이 두 번이다. 시각이 없는 줄은 앞 시작과 같은 것으로 접는다.
+func TestReadSession_같은_출처의_시작이_떨어져_두_번_오면_둘로_남긴다(t *testing.T) {
+	start := func(at string) string {
+		ts := ""
+		if at != "" {
+			ts = `"timestamp":"` + at + `",`
+		}
+		return `{"type":"attachment","sessionId":"s8","cwd":"/w/a",` + ts + `"attachment":{"type":"hook_success","hookName":"SessionStart:resume","hookEvent":"SessionStart"}}`
+	}
+	lines := []string{
+		start("2026-11-01T10:00:00Z"),
+		start("2026-11-01T10:00:01.5Z"), // 같은 시작의 다른 훅
+		start(""),                       // 시각 없음: 접는다
+		start("2026-11-01T12:00:00Z"),   // 입력 없이 끝낸 뒤 다시 재개
+	}
+	path := filepath.Join(t.TempDir(), "s8.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := ReadSession(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Steps) != 2 || !s.Steps[1].At.Equal(time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("steps %+v, want two resumes", s.Steps)
+	}
+}
+
+// 감사는 DB 전체의 주입을 세므로, 재생이 견주려면 표본을 자르지 않고 뽑을 수 있어야 한다. All은 최소 수에서 멈추지 않고
+// 상한도 두지 않으며, 사람 요청이 없어도 세션 시작이 있는 세션을 남긴다. NoLimit은 그 상한 하나만 푼다.
+func TestSelect_상한을_풀면_모든_세션과_요청을_고른다(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 25; i++ {
+		makeSession(t, root, fmt.Sprintf("p%d", i%3), fmt.Sprintf("s%02d", i), "/w/a", 1+i%28, 15)
+	}
+	writeFile(t, filepath.Join(root, "p0", "only-start.jsonl"),
+		`{"type":"attachment","sessionId":"only-start","cwd":"/w/a","timestamp":"2026-11-03T10:00:00Z","attachment":{"type":"hook_success","hookName":"SessionStart:resume","hookEvent":"SessionStart"}}`+"\n")
+	got, err := Select([]string{root}, Options{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqs := 0
+	for _, s := range got {
+		reqs += CountRequests(s)
+	}
+	if len(got) != 26 || reqs != 25*15 {
+		t.Fatalf("all: %d sessions, %d requests, want 26 and %d", len(got), reqs, 25*15)
+	}
+	// 상한 하나만 풀면 그 상한만 풀린다: 최소 수(기본 10세션·50요청)에 닿으면 여전히 멈춘다.
+	got, _ = Select([]string{root}, Options{MinSessions: 100, MinRequests: 10000, MaxSessions: NoLimit, MaxRequests: NoLimit, MaxRequestsPerSession: NoLimit})
+	if len(got) != 25 || CountRequests(got[0]) != 15 {
+		t.Fatalf("no limits: %d sessions, first %d requests", len(got), CountRequests(got[0]))
+	}
+	// 기본은 그대로다: 세션당 12요청, 전체 120요청(12 × 10세션에서 멈춘다).
+	got, _ = Select([]string{root}, Options{MinSessions: 100, MinRequests: 10000})
+	if len(got) != 10 || CountRequests(got[0]) != 12 {
+		t.Fatalf("defaults: %d sessions, first %d requests", len(got), CountRequests(got[0]))
+	}
+}
+
+// 세션당 요청 상한이 걸려도 그 뒤의 세션 시작 단계(재개·압축 뒤 시작)는 남는다. 재생이 그 시작의 얼린 묶음을 재야 한다.
+func TestSelect_세션당_요청_상한은_뒤쪽_시작_단계를_남긴다(t *testing.T) {
+	root := t.TempDir()
+	var b strings.Builder
+	for i := 0; i < 4; i++ {
+		fmt.Fprintf(&b, `{"type":"user","sessionId":"s1","cwd":"/w/a","timestamp":"2026-11-05T10:%02d:00Z","message":{"role":"user","content":"요청 %d"}}`+"\n", i, i)
+		fmt.Fprintf(&b, `{"type":"assistant","sessionId":"s1","timestamp":"2026-11-05T10:%02d:30Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t%d","name":"Read","input":{"file_path":"/w/a/%d.go"}}]}}`+"\n", i, i, i)
+		fmt.Fprintf(&b, `{"type":"attachment","sessionId":"s1","timestamp":"2026-11-05T11:%02d:00Z","attachment":{"type":"hook_success","hookName":"SessionStart:resume","hookEvent":"SessionStart"}}`+"\n", i)
+	}
+	writeFile(t, filepath.Join(root, "p", "s1.jsonl"), b.String())
+	got, _ := Select([]string{root}, Options{MinSessions: 1, MinRequests: 1, MaxRequestsPerSession: 2})
+	if len(got) != 1 {
+		t.Fatalf("got %d sessions", len(got))
+	}
+	var kinds []string
+	for _, st := range got[0].Steps {
+		kinds = append(kinds, string(st.Kind))
+	}
+	want := "request,tool,start,request,tool,start,start,start"
+	if strings.Join(kinds, ",") != want {
+		t.Fatalf("steps %v, want %s", kinds, want)
+	}
+}
+
 // 세션 시작 훅이 돈 기록(attachment, hookName SessionStart:<출처>)마다 시작 단계를 남긴다. 같은 시작에 훅이 여럿이면
 // 줄이 잇따르므로 하나로 접고, 훅이 넣은 글을 붙인 기록(출처 없는 이름)과 사이드체인은 세지 않는다. 도구 호출은 입력의
 // 글(host.ToolInputText)을 함께 남긴다.

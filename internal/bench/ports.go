@@ -22,7 +22,8 @@ import "time"
 //
 // Dead names the ids of IDs that were not a current value at the time of the call (DeadReason: stale, rejected,
 // expired, or no longer in the DB): a dead injection (명세 · 기억 정확성 7절, F-6). A path that cannot tell leaves
-// it empty; the measure counts only ids that are in IDs too.
+// it empty; the measure counts only ids that are in IDs too. DeadWhy gives the reason of each dead id (a
+// DeadReason value or DeadGone), so a later change of the judgement can be told apart from a change of the recall.
 type Shown struct {
 	IDs       []string
 	Chars     int
@@ -32,6 +33,7 @@ type Shown struct {
 	News      []string
 	NewsChars int
 	Dead      []string
+	DeadWhy   map[string]string
 }
 
 // Recaller is the recall path under test. The origin of a case is the answer key and is

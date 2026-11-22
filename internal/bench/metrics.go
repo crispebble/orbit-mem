@@ -130,20 +130,23 @@ type Paths struct {
 // PathStat is one injection path. Chars spreads the characters over every call, InjectionChars over the calls that
 // put anything in (an id or a character): a version that puts in less often can lower the first and raise the
 // second, so both are kept. Dead counts the ids put in that were not a current value at the call (Shown.Dead,
-// only those in the call's ids), DeadCalls the calls with one.
+// only those in the call's ids), DeadCalls the calls with one, DeadByWhy those ids by the reason the path gave
+// (Shown.DeadWhy; an id without one is not in it).
 type PathStat struct {
-	Calls          int  `json:"calls"`
-	Injections     int  `json:"injections"`
-	Chars          Dist `json:"chars"`
-	InjectionChars Dist `json:"injectionChars"`
-	Dead           int  `json:"dead"`
-	DeadCalls      int  `json:"deadCalls"`
+	Calls          int            `json:"calls"`
+	Injections     int            `json:"injections"`
+	Chars          Dist           `json:"chars"`
+	InjectionChars Dist           `json:"injectionChars"`
+	Dead           int            `json:"dead"`
+	DeadCalls      int            `json:"deadCalls"`
+	DeadByWhy      map[string]int `json:"deadByWhy,omitempty"`
 }
 
 // pathAcc adds up the calls of one path.
 type pathAcc struct {
 	calls, injections, dead, deadCalls int
 	chars, injectionChars              []int
+	byWhy                              map[string]int
 }
 
 func (p *pathAcc) add(s *Shown) {
@@ -156,15 +159,24 @@ func (p *pathAcc) add(s *Shown) {
 		p.injections++
 		p.injectionChars = append(p.injectionChars, s.Chars)
 	}
-	if n := len(deadOf(s)); n > 0 {
-		p.dead += n
+	dead := deadOf(s)
+	if len(dead) > 0 {
+		p.dead += len(dead)
 		p.deadCalls++
+	}
+	for _, id := range dead {
+		if why, ok := s.DeadWhy[id]; ok {
+			if p.byWhy == nil {
+				p.byWhy = map[string]int{}
+			}
+			p.byWhy[why]++
+		}
 	}
 }
 
 func (p *pathAcc) stat() PathStat {
 	return PathStat{Calls: p.calls, Injections: p.injections, Chars: dist(p.chars), InjectionChars: dist(p.injectionChars),
-		Dead: p.dead, DeadCalls: p.deadCalls}
+		Dead: p.dead, DeadCalls: p.deadCalls, DeadByWhy: p.byWhy}
 }
 
 // deadOf is the dead ids of a step that it put in, each once.

@@ -148,44 +148,62 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	if !ok {
 		return bench.Shown{}, fmt.Errorf("hostpath: %s: result is %T", op, out)
 	}
-	if rec.Skipped != "" || len(rec.MemoryIDs) == 0 {
+	// 건너뛴 호출만 빈 결과다. id 없이 글만 있는 주입(찾는 곳 줄·알림 줄)도 모델 앞에 놓인 글이라 글자로 센다.
+	if rec.Skipped != "" {
 		return bench.Shown{IDs: []string{}}, nil
 	}
-	shown := bench.Shown{IDs: rec.MemoryIDs, Chars: len([]rune(rec.Text)), Text: rec.Text}
+	ids := rec.MemoryIDs
+	if ids == nil {
+		ids = []string{}
+	}
+	shown := bench.Shown{IDs: ids, Chars: len([]rune(rec.Text)), Text: rec.Text}
 	if op == host.OpRecall { // 요청 훅: 앞의 「이 세션 중 바뀐 것」(B3) 몫을 회상(B1)과 나눈다
-		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, rec.MemoryIDs)
+		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, ids)
 	}
 	var err error
-	if shown.Dead, err = r.dead(rec.MemoryIDs); err != nil {
+	if shown.Dead, shown.DeadWhy, err = r.dead(ids); err != nil {
 		return bench.Shown{}, fmt.Errorf("hostpath: %s: %w", op, err)
 	}
 	return shown, nil
 }
 
-// dead are the ids that were not a current value at the path's time (bench.DeadReason), read from the DB copy as
-// it is after the call: a frozen session bundle (0.19.0 hands it back as it was) can hold a memory that went stale
-// since. An id the copy does not have is dead too (bench.DeadGone).
-func (r *recaller) dead(ids []string) ([]string, error) {
+// dead are the ids that were not a current value at the path's time, with the reason of each (bench.DeadReason),
+// read from the DB copy as it is after the call: a frozen session bundle (0.19.0 hands it back as it was) can hold
+// a memory that went stale since. An id the copy does not have is dead too (bench.DeadGone): it was forgotten
+// before the call, which is how the audit counts gone as well.
+func (r *recaller) dead(ids []string) ([]string, map[string]string, error) {
+	if len(ids) == 0 {
+		return nil, nil, nil
+	}
 	if r.read == nil {
 		s, _, err := memory.OpenReadOnly(r.db)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		r.read = s
 	}
 	var out []string
+	var why map[string]string
 	for _, id := range ids {
 		m, err := r.read.Get(id)
+		w := ""
 		switch {
 		case errors.Is(err, memory.ErrNotFound):
-			out = append(out, id)
+			w = bench.DeadGone
 		case err != nil:
-			return nil, err
-		case bench.DeadReason(m, r.at.ms()) != "":
-			out = append(out, id)
+			return nil, nil, err
+		default:
+			w = bench.DeadReason(m, r.at.ms())
 		}
+		if w == "" {
+			continue
+		}
+		if why == nil {
+			why = map[string]string{}
+		}
+		out, why[id] = append(out, id), w
 	}
-	return out, nil
+	return out, why, nil
 }
 
 // Reset forgets what the session was told (its bundle and marks), as the hook does before the start that follows

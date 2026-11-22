@@ -239,13 +239,26 @@ func benchExtract(a *app, args []string) error {
 	out := fs.String("out", filepath.Join(paths().Home, "bench", "replay"), i18n.T("flag.bench.out"))
 	minSessions := fs.Int("min-sessions", 0, i18n.T("flag.bench.min_sessions"))
 	minRequests := fs.Int("min-requests", 0, i18n.T("flag.bench.min_requests"))
+	maxSessions := fs.Int("max-sessions", 20, i18n.T("flag.bench.max_sessions"))
+	maxRequests := fs.Int("max-requests", 120, i18n.T("flag.bench.max_requests"))
+	maxPerSession := fs.Int("max-requests-per-session", 12, i18n.T("flag.bench.max_requests_per_session"))
+	all := fs.Bool("all", false, i18n.T("flag.bench.all"))
 	pos, err := parse(fs, args)
 	if err != nil {
 		return benchFlagErr(err)
 	}
-	if len(pos) != 0 {
+	if len(pos) != 0 || *maxSessions < 0 || *maxRequests < 0 || *maxPerSession < 0 {
 		return errUsage
 	}
+	// 깃발의 0은 상한 없음이다(claudelog.NoLimit). Options의 0은 기본값이라 그대로 넘기지 않는다.
+	limit := func(v int) int {
+		if v == 0 {
+			return claudelog.NoLimit
+		}
+		return v
+	}
+	pick := claudelog.Options{MinSessions: *minSessions, MinRequests: *minRequests, MaxSessions: limit(*maxSessions),
+		MaxRequests: limit(*maxRequests), MaxRequestsPerSession: limit(*maxPerSession), All: *all}
 	outAbs, err := filepath.Abs(*out)
 	if err != nil {
 		return err
@@ -256,7 +269,7 @@ func benchExtract(a *app, args []string) error {
 	if _, err := os.Stat(*db); err != nil {
 		return err
 	}
-	sessions, err := claudelog.Select([]string{*projects}, claudelog.Options{MinSessions: *minSessions, MinRequests: *minRequests})
+	sessions, err := claudelog.Select([]string{*projects}, pick)
 	if err != nil {
 		return err
 	}

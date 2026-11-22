@@ -450,6 +450,66 @@ func TestBench_steps는_옛_재생_사례에_단계_시각을_붙이고_맞지_�
 	}
 }
 
+// 감사는 DB 전체의 주입을 세므로 재생 표본도 넓힐 수 있어야 한다. 상한 깃발은 0이면 상한이 없고, --all은 최소 수에서
+// 멈추지 않고 모든 세션을 뽑는다. 기본값은 예전 그대로(세션당 12요청)다. 음수는 사용법 오류다.
+func TestBench_extract_상한_깃발과_all은_표본을_넓힌다(t *testing.T) {
+	home(t)
+	db, s := openedDB(t)
+	s.Close()
+	projs := t.TempDir()
+	for i := range 3 {
+		var b strings.Builder
+		for j := range 15 {
+			fmt.Fprintf(&b, `{"type":"user","sessionId":"s%d","cwd":"/work/demo","timestamp":"2026-11-0%dT10:%02d:00Z","origin":{"kind":"human"},"message":{"role":"user","content":"요청 %d"}}`+"\n", i, i+1, j, j)
+		}
+		dir := filepath.Join(projs, fmt.Sprintf("p%d", i))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("s%d.jsonl", i)), []byte(b.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	extract := func(extra ...string) (sessions, requests int) {
+		t.Helper()
+		out := filepath.Join(t.TempDir(), "replay")
+		args := append([]string{"bench", "extract", "--projects", projs, "--db", db, "--out", out}, extra...)
+		if _, errb, code := run(t, "", args...); code != 0 {
+			t.Fatalf("%v: exit %d: %s", extra, code, errb)
+		}
+		var cf struct {
+			Cases []struct{ Session, Kind string }
+		}
+		b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
+		if err := json.Unmarshal(b, &cf); err != nil {
+			t.Fatal(err)
+		}
+		seen := map[string]bool{}
+		for _, c := range cf.Cases {
+			seen[c.Session] = true
+			if c.Kind == "request" {
+				requests++
+			}
+		}
+		return len(seen), requests
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000"); n != 3 || r != 36 {
+		t.Errorf("defaults: %d sessions %d requests, want 3 and 36 (12 a session)", n, r)
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000", "--max-requests-per-session", "0"); n != 3 || r != 45 {
+		t.Errorf("no cap a session: %d sessions %d requests, want 3 and 45", n, r)
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000", "--max-sessions", "2", "--max-requests-per-session", "0"); n != 2 || r != 30 {
+		t.Errorf("two sessions: %d sessions %d requests", n, r)
+	}
+	if n, r := extract("--all"); n != 3 || r != 45 {
+		t.Errorf("all: %d sessions %d requests, want 3 and 45", n, r)
+	}
+	if _, _, code := run(t, "", "bench", "extract", "--projects", projs, "--db", db, "--out", filepath.Join(t.TempDir(), "x"), "--max-sessions", "-1"); code != 2 {
+		t.Errorf("a negative cap: exit %d, want the usage error", code)
+	}
+}
+
 // bench audit-injections는 --db가 꼭 있어야 하고(기본 DB를 읽지 않는다), 원본을 열지 않고 사본으로 센다.
 func TestBench_audit_injections는_원본을_바꾸지_않고_낡은_주입을_센다(t *testing.T) {
 	home(t)

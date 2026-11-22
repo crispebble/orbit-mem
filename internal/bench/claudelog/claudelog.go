@@ -11,8 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -128,6 +130,11 @@ type delegation struct {
 // sessionStartHook is the hook event a host runs at a session start; the matcher of the hook name is the source.
 const sessionStartHook = "SessionStart"
 
+// startFoldGap is how far apart two hook records of one session start can be. The hooks of one start run
+// together and their records were seen within a fraction of a second; a person who resumes, leaves without a
+// word and resumes again takes longer than this, so that second start is kept.
+const startFoldGap = 10 * time.Second
+
 // ReadSession reads one log file as one session. Broken lines are skipped and counted.
 func ReadSession(path string) (Session, error) {
 	f, err := os.Open(path)
@@ -174,8 +181,9 @@ func (s *Session) add(rec record, haveID *bool) {
 	}
 	switch rec.Type {
 	case "attachment":
-		// 세션 시작 훅이 돈 기록(성공·실패 모두): 훅마다 한 줄이라, 같은 시작의 줄이 잇따르면 하나로 센다. 출처가 없는
-		// 이름(SessionStart)은 훅이 넣은 글을 붙인 기록이라 세지 않는다.
+		// 세션 시작 훅이 돈 기록(성공·실패 모두): 훅마다 한 줄이라, 같은 시작의 줄(같은 출처, 사이에 다른 단계 없음,
+		// startFoldGap 안, 시각이 없으면 같은 시작으로 봄)은 하나로 센다. 출처가 없는 이름(SessionStart)은 훅이 넣은 글을
+		// 붙인 기록이라 세지 않는다.
 		a := rec.Attachment
 		if a == nil || a.HookEvent != sessionStartHook {
 			return
@@ -185,7 +193,9 @@ func (s *Session) add(rec record, haveID *bool) {
 			return
 		}
 		if n := len(s.Steps); n > 0 && s.Steps[n-1].Kind == KindStart && s.Steps[n-1].Source == source {
-			return
+			if prev := s.Steps[n-1].At; at.IsZero() || prev.IsZero() || at.Sub(prev).Abs() <= startFoldGap {
+				return
+			}
 		}
 		s.Steps = append(s.Steps, Step{Kind: KindStart, At: at, Source: source})
 	case "system":
@@ -324,18 +334,31 @@ func CountRequests(s Session) int {
 	return n
 }
 
-// Options controls Select. Zero values take the defaults.
+// NoLimit as a maximum of Options lifts that maximum.
+const NoLimit = -1
+
+// Options controls Select. Zero values take the defaults; NoLimit lifts a maximum.
 type Options struct {
 	MinSessions           int // default 10
 	MinRequests           int // default 50
 	MaxSessions           int // default 20
 	MaxRequests           int // default 120
 	MaxRequestsPerSession int // default 12
+	// All takes every session the roots have: no minimum stops the pick, no maximum applies, and a session with
+	// a session start but no person's request is kept too. The other fields are ignored.
+	All bool
 }
 
 func (o Options) withDefaults() Options {
+	if o.All {
+		return Options{MinSessions: math.MaxInt, MinRequests: math.MaxInt, MaxSessions: math.MaxInt, MaxRequests: math.MaxInt,
+			MaxRequestsPerSession: math.MaxInt, All: true}
+	}
 	def := func(v *int, d int) {
-		if *v <= 0 {
+		switch {
+		case *v == NoLimit:
+			*v = math.MaxInt
+		case *v <= 0:
 			*v = d
 		}
 	}
@@ -358,17 +381,30 @@ func inTempDir(cwd string) bool {
 	return false
 }
 
+// capRequests cuts a session at its limit-th person's request: the steps after it go, except the session
+// starts. A replay still has to measure what a later resume or the start after a compaction put in.
 func capRequests(s Session, limit int) Session {
 	n := 0
 	for i, st := range s.Steps {
 		if st.Kind == KindRequest && st.Origin == OriginUser {
 			if n++; n > limit {
-				s.Steps = s.Steps[:i:i]
+				kept := s.Steps[:i:i]
+				for _, later := range s.Steps[i:] {
+					if later.Kind == KindStart {
+						kept = append(kept, later)
+					}
+				}
+				s.Steps = kept
 				break
 			}
 		}
 	}
 	return s
+}
+
+// hasStart says whether a session has a session start step.
+func hasStart(s Session) bool {
+	return slices.ContainsFunc(s.Steps, func(st Step) bool { return st.Kind == KindStart })
 }
 
 // Select picks sessions from the roots (each a "projects" directory). It takes the
@@ -392,7 +428,7 @@ func Select(roots []string, opts Options) ([]Session, error) {
 				continue
 			}
 			s = capRequests(s, opts.MaxRequestsPerSession)
-			if CountRequests(s) == 0 {
+			if CountRequests(s) == 0 && !(opts.All && hasStart(s)) {
 				continue
 			}
 			byProject[s.Project] = append(byProject[s.Project], s)

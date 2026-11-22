@@ -56,17 +56,28 @@ type RunReport struct {
 }
 
 // Seen is what a step showed: the ids in order and the characters, of them the session news of a request, and the
-// ids it put in that were not a current value then (Dead).
+// ids it put in that were not a current value then (Dead) with the reason of each the path gave (DeadWhy).
 type Seen struct {
-	IDs       []string `json:"ids"`
-	Chars     int      `json:"chars"`
-	News      []string `json:"news,omitempty"`
-	NewsChars int      `json:"newsChars,omitempty"`
-	Dead      []string `json:"dead,omitempty"`
+	IDs       []string          `json:"ids"`
+	Chars     int               `json:"chars"`
+	News      []string          `json:"news,omitempty"`
+	NewsChars int               `json:"newsChars,omitempty"`
+	Dead      []string          `json:"dead,omitempty"`
+	DeadWhy   map[string]string `json:"deadWhy,omitempty"`
 }
 
 func seen(s Shown) Seen {
-	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s), Dead: deadOf(&s)}
+	dead := deadOf(&s)
+	var why map[string]string
+	for _, id := range dead {
+		if w, ok := s.DeadWhy[id]; ok {
+			if why == nil {
+				why = map[string]string{}
+			}
+			why[id] = w
+		}
+	}
+	return Seen{IDs: nonNil(s.IDs), Chars: s.Chars, News: newsOf(&s), NewsChars: newsCharsOf(&s), Dead: dead, DeadWhy: why}
 }
 
 func seenPtr(s *Shown) *Seen {

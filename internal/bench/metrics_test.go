@@ -338,12 +338,16 @@ func TestMetrics_경로별_평균_글자와_폐기_주입을_낸다(t *testing.T
 	wantDist(t, "tool chars", p.Tool.Chars, 1, 20, 20, 20)
 	want("subagent", p.Subagent, 1, 1, 0, 0)
 	wantDist(t, "subagent chars", p.Subagent.Chars, 1, 60, 60, 60)
+	// 폐기 주입은 까닭별로도 센다(넣지 않은 j의 까닭은 세지 않는다).
+	if p.Start.DeadByWhy[bench.DeadStale] != 2 || len(p.Start.DeadByWhy) != 1 || p.Tool.DeadByWhy[bench.DeadStale] != 1 || len(p.Tool.DeadByWhy) != 1 || p.Request.DeadByWhy != nil {
+		t.Errorf("dead by why: start %v tool %v request %v", p.Start.DeadByWhy, p.Tool.DeadByWhy, p.Request.DeadByWhy)
+	}
 	// 사례별 결과에도 그 호출의 Dead가 남는다(감사와 견줄 재료).
 	for _, c := range rep.Runs[0].Cases {
-		if c.ID == "a4" && (c.Start == nil || len(c.Start.Dead) != 1) {
+		if c.ID == "a4" && (c.Start == nil || len(c.Start.Dead) != 1 || c.Start.DeadWhy[c.Start.Dead[0]] != bench.DeadStale) {
 			t.Errorf("case a4 start %+v, want b dead", c.Start)
 		}
-		if c.ID == "a2" && (c.Tool == nil || len(c.Tool.Dead) != 1) {
+		if c.ID == "a2" && (c.Tool == nil || len(c.Tool.Dead) != 1 || len(c.Tool.DeadWhy) != 1) {
 			t.Errorf("case a2 tool %+v, want e dead", c.Tool)
 		}
 	}

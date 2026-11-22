@@ -52,13 +52,18 @@ func (f fake) show(call string) (bench.Shown, error) {
 		ids = append(ids, f.idOf(k))
 	}
 	var dead []string
+	var why map[string]string
 	for _, k := range f.d[call] {
 		dead = append(dead, f.idOf(k))
+		if why == nil {
+			why = map[string]string{}
+		}
+		why[f.idOf(k)] = bench.DeadStale
 	}
 	if strings.HasPrefix(call, "req:") {
-		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars, Dead: dead}, nil
+		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars, Dead: dead, DeadWhy: why}, nil
 	}
-	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars, Dead: dead}, nil
+	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars, Dead: dead, DeadWhy: why}, nil
 }
 func (f fake) Name() string                                  { return f.name }
 func (f fake) Start(s, cwd string) (bench.Shown, error)      { return f.show("start:" + s) }
