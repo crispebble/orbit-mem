@@ -904,8 +904,12 @@ func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Mem
 	return hits, th.relative*top - 1e-9 // 같은 값의 부동소수점 오차로 빠지지 않게
 }
 
+// reviewMark marks a recall line of a memory due for review (L-2): 90 days past its last confirmation. The memory is
+// not left out; only its rank falls (rankHits).
+const reviewMark = "재검토 후보"
+
 // recallLine is a work recall line: title (80 characters at most), id, kind and state, with the marks of
-// a memory past its review day and of one whose sources are all untrusted (D7). conflict is the note line of
+// a memory due for review and of one whose sources are all untrusted (D7). conflict is the note line of
 // a memory with an open conflict (conflictInfo.line), "" for one without; it goes right under the title line.
 func recallLine(m memory.Memory, now time.Time, conflict string) string {
 	state := "확정"
@@ -913,7 +917,7 @@ func recallLine(m memory.Memory, now time.Time, conflict string) string {
 		state = "후보"
 	}
 	if m.Freshness(now) == memory.FreshReviewDue {
-		state += " · 재검토일 지남"
+		state += " · " + reviewMark
 	}
 	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
 		state += " · " + note

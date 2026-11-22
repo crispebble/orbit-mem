@@ -39,7 +39,7 @@ func TestSave_휘발_기억은_기본_7일_뒤_만료되고_7일을_넘길_수_�
 	}
 }
 
-func TestSave_영구_기억은_기본_90일_뒤_재검토하고_보통은_주어질_때만(t *testing.T) {
+func TestSave_영구_기억은_기본_90일_뒤_재검토하고_보통도_첫_확인_90일_뒤가_기본이다(t *testing.T) {
 	s, c := newTestStore(t)
 	at := c.t.UnixMilli()
 	d, err := s.Save(SaveInput{Kind: KindDecision, Title: "엔진은 자체 포크", Retention: RetentionDurable, Source: Source{Kind: SourceSession}})
@@ -51,7 +51,7 @@ func TestSave_영구_기억은_기본_90일_뒤_재검토하고_보통은_주어
 		t.Fatalf("durable 30: %d", d30.ReviewAt)
 	}
 	n, _ := s.Save(SaveInput{Kind: KindFact, Title: "보통 기억", Retention: "normal", Source: Source{Kind: SourceSession}})
-	if n.Retention != "" || n.ReviewAt != 0 {
+	if n.Retention != "" || n.ReviewAt != at+90*day { // 보통 기억도 만든 때가 첫 확인이라 90일 뒤가 기본이다(L-1)
 		t.Fatalf("normal: %q %d", n.Retention, n.ReviewAt)
 	}
 	n14, _ := s.Save(SaveInput{Kind: KindFact, Title: "보통인데 2주 뒤 확인", ReviewAfterDays: 14, Source: Source{Kind: SourceSession}})

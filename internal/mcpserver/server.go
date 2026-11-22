@@ -359,13 +359,18 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		cv, _ = h.s.Viewer()
 		cv = cv.WithConflictSides(sides)
 	}
+	now := h.s.Now()
 	for _, m := range ms {
 		note, conflict := "", ""
 		if marked {
 			note = whyNote(v.Why(m))
 		}
-		if note == "" && len(sides) > 0 { // 현재 값에만 붙인다
+		current := note == ""
+		if current && len(sides) > 0 { // 현재 값에만 붙인다
 			conflict = conflictNote(cv.ShownSides(m.ID, f.Place))
+		}
+		if current && m.Freshness(now) == memory.FreshReviewDue { // 빼지 않고 표시만 한다(L-2)
+			note = reviewNote
 		}
 		out.Items = append(out.Items, findItemWith(m, detail, note, conflict))
 	}
@@ -409,11 +414,14 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		if vis.Why == memory.WhyOlder {
 			successor = v.Superseding(m)
 		}
-		conflict := ""
+		conflict, review := "", ""
 		if vis.Why == memory.WhyCurrent { // 읽는 id마다 범위는 보지 않는다: id로 직접 읽는 도구라 보임 판정만 본다
 			conflict = conflictNote(cv.ShownSides(m.ID, nil))
+			if vis.ReviewDue {
+				review = reviewNote
+			}
 		}
-		out.Items = append(out.Items, memoryViewWith(m, noticeOf(m, vis.Why, successor), conflict, peers, in.Full))
+		out.Items = append(out.Items, memoryViewReview(m, noticeOf(m, vis.Why, successor), conflict, review, peers, in.Full))
 		if in.Full && len(m.Aliases) > 0 {
 			if out.Aliases == nil {
 				out.Aliases = map[string][]string{}

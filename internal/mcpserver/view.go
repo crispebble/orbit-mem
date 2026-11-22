@@ -111,7 +111,8 @@ type FindItem struct {
 	Tags      []string `json:"tags,omitempty"`
 	Pinned    bool     `json:"pinned,omitempty"`
 	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
-	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"). A current line has none.
+	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"), or a current one due for review
+	// (reviewNote). A current line otherwise has none.
 	Note string `json:"note,omitempty"`
 	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
 	Conflict string `json:"conflict,omitempty"`
@@ -265,7 +266,9 @@ type MemoryView struct {
 	// successor. It is the first field so it comes before the body. A current memory has none.
 	Notice string `json:"notice,omitempty"`
 	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
-	Conflict     string       `json:"conflict,omitempty"`
+	Conflict string `json:"conflict,omitempty"`
+	// Review is reviewNote for a current memory due for review (90 days past its last confirmation), or "".
+	Review       string       `json:"review,omitempty"`
 	ID           string       `json:"id"`
 	Kind         string       `json:"kind"`
 	State        string       `json:"state"`
@@ -352,7 +355,17 @@ func memoryView(m memory.Memory, notice string, title linkPeers, full bool) Memo
 // memoryViewWith is memoryView with conflict, the note of a memory with an open conflict (conflictNote, "" for
 // none). It counts toward the budget like the notice, so the body gives way to it.
 func memoryViewWith(m memory.Memory, notice, conflict string, title linkPeers, full bool) MemoryView {
-	v := MemoryView{Notice: notice, Conflict: conflict, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
+	return memoryViewReview(m, notice, conflict, "", title, full)
+}
+
+// reviewNote is the mark of a current memory that is due for review (L-2): the memory is not left out, and its state
+// stays as it is. memory_find puts it in the line's note, memory_get in the review field.
+const reviewNote = "재검토 후보"
+
+// memoryViewReview is memoryViewWith with review, reviewNote for a memory due for review ("" for another). It counts
+// toward the budget like the notice, so the body gives way to it.
+func memoryViewReview(m memory.Memory, notice, conflict, review string, title linkPeers, full bool) MemoryView {
+	v := MemoryView{Notice: notice, Conflict: conflict, Review: review, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {

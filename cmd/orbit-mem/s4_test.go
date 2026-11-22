@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crispebble/orbit-mem/internal/config"
 	"github.com/crispebble/orbit-mem/internal/memory"
@@ -99,6 +100,29 @@ func TestAudit_두_주제를_붙인_제목을_보인다(t *testing.T) {
 	}
 	out, errOut, code := run(t, "", "audit")
 	if code != 0 || !strings.Contains(out, m.ID) || !strings.Contains(out, "products") {
+		t.Fatalf("audit: %d %s %s", code, out, errOut)
+	}
+}
+
+// L-3: audit은 마지막 확인 뒤 90일이 지난 재검토 후보를 보인다(세션 시작의 개수 줄이 가리키는 목록).
+func TestAudit_재검토_후보를_보인다(t *testing.T) {
+	home(t)
+	s, err := openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindFact, Title: "오래된 사실", At: time.Now().AddDate(0, 0, -100).UnixMilli(),
+		Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "오래된 사실"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, _, err := s.SaveWith(memory.SaveInput{Kind: memory.KindFact, Title: "최근 사실", Source: memory.Source{Kind: memory.SourceQuote, Excerpt: "최근 사실"}})
+	s.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := run(t, "", "audit")
+	if code != 0 || !strings.Contains(out, old.ID) || strings.Contains(out, fresh.ID) {
 		t.Fatalf("audit: %d %s %s", code, out, errOut)
 	}
 }

@@ -384,6 +384,11 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		if err := s.finish(&p, StatusRejected, in.Note); err != nil {
 			return res, err
 		}
+		if p.Kind == ProposalStale { // 낡음 제안을 거절한 것은 그 기억을 유지하기로 한 것이다(L-1)
+			for _, id := range p.MemoryIDs {
+				s.confirmKept(id, Who{Actor: ActorUser})
+			}
+		}
 	case "approve":
 		before, err := s.snapshotFor(p)
 		if err != nil {
