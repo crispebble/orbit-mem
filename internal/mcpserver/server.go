@@ -323,14 +323,17 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		query = memory.StripParticlesQuery(query)
 	}
 	f := memory.FindInput{Query: query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
+	// 어긋남 칸의 보임 판정은 찾기 범위와 별개로 지금 자리를 본다: global로 찾아도 다른 프로젝트 기억의 제목은 싣지 않는다.
+	here := h.o.here()
+	seeFrom := &here
 	switch in.Scope {
 	case "", "here":
-		here := h.o.here()
 		f.Place = &here
 	case "global":
 		f.GlobalOnly = true
 	case "all":
 		f.AllProjects = true
+		seeFrom = nil
 	default:
 		r, _ := toolError(fmt.Errorf("scope는 here·global·all입니다"))
 		return r, FindOut{}, nil
@@ -365,7 +368,7 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 			note = whyNote(v.Why(m))
 		}
 		if note == "" && len(sides) > 0 { // 현재 값에만 붙인다
-			conflict = conflictNote(cv.ShownSides(m.ID, f.Place))
+			conflict = conflictNote(cv.ShownSides(m.ID, seeFrom))
 		}
 		out.Items = append(out.Items, findItemWith(m, detail, note, conflict))
 	}
