@@ -73,7 +73,7 @@ var ErrAutoSkip = i18n.Err("memory.err.auto_skip")
 
 // Evidence codes of an automatic confirmation.
 const (
-	EvidenceSeenDays         = "seen_days"         // ① 서로 다른 날 다시 나옴
+	EvidenceSeenDays         = "seen_days"         // ① 서로 다른 세션·다른 날 다시 나옴(E-1). 코드는 원장에 남아 그대로 둔다
 	EvidenceFollowedVerified = "followed_verified" // ② 회상돼 따랐고 검증 통과·교정 없음
 	EvidenceVerifiedFact     = "verified_fact"     // ③ 작업 검증이 직접 확인한 프로젝트 사실
 )
@@ -83,7 +83,7 @@ const (
 // (2026-11-01) and waiting for the user's decision; the defaults are the
 // recommendation (계획 · AU-6 「E2」).
 type Policy struct {
-	SeenDays           int `json:"confirmSeenDays"`          // ① 서로 다른 날 수(지금 규칙 2)
+	SeenDays           int `json:"confirmSeenDays"`          // ① 세션도 날도 서로 다른 다시 나옴 수(지금 규칙 2, seenApartTx)
 	FollowedVerified   int `json:"confirmFollowedVerified"`  // ② 따르고 검증 통과·교정 없는 세션 수
 	CorrectionSessions int `json:"correctionRepeatSessions"` // 반복 교정 표시: 같은 대상 교정이 나온 세션 수
 }
@@ -202,12 +202,20 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 		return "", nil
 	}
 	pol := s.Policy.orDefault()
-	var days int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sightings WHERE memory_id=?`, id).Scan(&days); err != nil {
+	seen, err := seenApartTx(s.db, id)
+	if err != nil {
 		return "", err
 	}
-	if days >= pol.SeenDays {
-		return EvidenceSeenDays, nil
+	if seen >= pol.SeenDays {
+		// 증거 ①에만 건다: 다시 나온 사이에 사용자가 반대로 교정했으면 그 날들은 근거가 아니다(E-2). ②③은 그대로 본다.
+		// ②는 지금 새로 쌓이는 경로가 없고(사용 판정을 남기던 세션 끝 회고를 걷어냈다), ③은 검증된 사실의 즉시 확정이라 막지 않는다.
+		corrected, err := s.correctedSince(m)
+		if err != nil {
+			return "", err
+		}
+		if !corrected {
+			return EvidenceSeenDays, nil
+		}
 	}
 	if m.Kind == KindFact && m.Scope != ScopeGlobal { // 저장소·제품·제품 미정 사실(user 사실은 아님)
 		var n int
@@ -227,6 +235,78 @@ func (s *Store) EvidenceFor(id string) (string, error) {
 		return EvidenceFollowedVerified, nil
 	}
 	return "", nil
+}
+
+// seenApartTx is how many sightings of memory id can be picked so that no two share a session or a day: the
+// count evidence ① compares with Policy.SeenDays (E-1). Two days of one session, or two sessions of one day,
+// give 1; the sightings of before schema 6 are all one session (legacySession). It is a maximum matching of
+// sessions to days with the sightings as edges, so a session seen on many days is not counted twice.
+func seenApartTx(q querier, id string) (int, error) {
+	rows, err := q.Query(`SELECT session, day FROM sighting_sessions WHERE memory_id=? ORDER BY session, day`, id)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	daysOf := map[string][]string{}
+	var sessions []string
+	for rows.Next() {
+		var session, day string
+		if err := rows.Scan(&session, &day); err != nil {
+			return 0, err
+		}
+		if _, ok := daysOf[session]; !ok {
+			sessions = append(sessions, session)
+		}
+		daysOf[session] = append(daysOf[session], day)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	taken := map[string]string{} // 날 → 그 날을 쓴 세션
+	var pick func(session string, tried map[string]bool) bool
+	pick = func(session string, tried map[string]bool) bool {
+		for _, day := range daysOf[session] {
+			if tried[day] {
+				continue
+			}
+			tried[day] = true
+			if other, ok := taken[day]; !ok || pick(other, tried) {
+				taken[day] = session
+				return true
+			}
+		}
+		return false
+	}
+	n := 0
+	for _, session := range sessions {
+		if pick(session, map[string]bool{}) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// correctedSince says whether the user went against candidate m after it was made (E-2), so its sightings are
+// no evidence: an open conflict pair on m or on a memory of m's scope and topic, or a memory of that scope and
+// topic rejected (hidden) at or after m's creation. A rejection before m was made does not count. Without a
+// topic only the pairs on m count: a rejected memory of no topic says nothing about m.
+func (s *Store) correctedSince(m Memory) (bool, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_flags f WHERE f.kind=? AND f.resolved_at=0 AND (f.memory_id=? OR f.other_id=?
+		OR (?<>'' AND EXISTS (SELECT 1 FROM memories x WHERE x.id IN (f.memory_id, f.other_id) AND x.scope=? AND x.topic=?)))`,
+		FlagConflict, m.ID, m.ID, m.Topic, m.Scope, m.Topic).Scan(&n); err != nil {
+		return false, err
+	}
+	if n > 0 || m.Topic == "" {
+		return n > 0, nil
+	}
+	// 거절된 때는 지금의 숨김이 시작된 버전의 시각이다(그 전에 숨김이 아니던 마지막 버전 뒤의 첫 숨김 버전).
+	// 고친 시각(updated_at)으로 보지 않는 까닭: 숨긴 기억도 같은 제목이 다시 오면 고친 시각이 바뀐다.
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM memories h WHERE h.state=? AND h.scope=? AND h.topic=? AND h.id<>?
+		AND (SELECT MIN(v.at) FROM memory_versions v WHERE v.memory_id=h.id AND json_extract(v.snapshot,'$.state')=?
+			AND v.version > COALESCE((SELECT MAX(p.version) FROM memory_versions p WHERE p.memory_id=h.id AND json_extract(p.snapshot,'$.state')<>?), 0)) >= ?`,
+		StateHidden, m.Scope, m.Topic, m.ID, StateHidden, StateHidden, m.CreatedAt).Scan(&n)
+	return n > 0, err
 }
 
 // cleanVerifiedUses counts the sessions where memory id was recalled and
@@ -328,7 +408,7 @@ func (s *Store) ConfirmCandidates() (int, error) {
 func evidenceText(code string) string {
 	switch code {
 	case EvidenceSeenDays:
-		return "증거 ①: 서로 다른 날 다시 나옴"
+		return "증거 ①: 서로 다른 세션·다른 날 다시 나옴"
 	case EvidenceFollowedVerified:
 		return "증거 ②: 회상돼 따랐고 그 일이 검증을 통과했으며 교정이 없었던 세션이 기준 횟수 이상"
 	case EvidenceVerifiedFact:

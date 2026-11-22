@@ -134,8 +134,13 @@ var HostTools = []string{"memory_find", "memory_get", "memory_save", "memory_upd
 
 // Call runs one host tool on its MCP input and records the call as the
 // "tool.<name>" event of that host and session (설계 「측정」), which the
-// recall diagnosis reads as use.
+// recall diagnosis reads as use. A memory_save counts its sighting under that
+// session (a subagent's "<session>/<agent>" under its session, memory.SessionKey);
+// an empty session keeps the connection's Options.Session.
 func (t Tools) Call(name string, input []byte, host, session string) (any, error) {
+	if session != "" {
+		t.h.o.Session = session
+	}
 	var out any
 	var data map[string]any
 	var err error

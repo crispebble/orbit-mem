@@ -343,6 +343,12 @@ type SaveInput struct {
 	// transaction: the save is refused whole when the writer may not change it (the user's words without a
 	// quote) or when the new sources are all untrusted and the old ones are not.
 	Replaces string
+	// Session is the conversation the save came from (the host's session id, or the MCP server's run when the
+	// host gives none). The sighting it records counts under SessionKey(Session): an AI's candidate is
+	// confirmed only when it came up in sessions and on days that both differ (E-1). Empty is a session not
+	// known, counted with the sightings of before schema 6 as one session, so saves that bring none never make
+	// "another session" among themselves.
+	Session string
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -405,8 +411,8 @@ func (in *SaveInput) validate() error {
 
 // Save stores a memory with its source. A direct quote of the user is
 // confirmed at once; anything else starts as a candidate. Saving the same
-// title (same kind and scope) again adds the source and the day. A candidate
-// with evidence (seen on different days, followed in verified work, a project
+// title (same kind and scope) again adds the source, the session and the day. A candidate
+// with evidence (seen in different sessions on different days, followed in verified work, a project
 // fact the work's verification checked) is then confirmed automatically and
 // the confirmation kept in the ledger (A2). A hidden (rejected) candidate
 // stays hidden unless the new source is the user's own quote.
@@ -539,7 +545,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			in.Kind, in.Scope, key).Scan(&existingID)
 	}
 	if existingID != "" {
-		if err := sightTx(tx, existingID, in.Source, day, now); err != nil {
+		if err := sightTx(tx, existingID, in.Source, in.Session, day, now); err != nil {
 			return Memory{}, rep, err
 		}
 		cur, err := getTx(tx, existingID)
@@ -610,7 +616,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		}
 	}
 	if state == StateCandidate {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+		if err := recordSightingTx(tx, m.ID, in.Session, day, now); err != nil {
 			return Memory{}, rep, err
 		}
 	}
@@ -684,10 +690,33 @@ func savePinTx(tx *sql.Tx, in SaveInput, id string, now int64) error {
 	return pinTx(tx, &m, true, in.Who, now)
 }
 
-// sightTx records that memory id came up again on day with src. A quote of
-// the user confirms it; the evidence of the other days is checked after the
+// SessionKey is the session a sighting counts under: session trimmed, and the key of a subagent
+// ("<session>/<agent>", the host request key) folded into the session before the slash, so what a subagent
+// saves counts as its parent's conversation. "" stays "" (a session not known).
+func SessionKey(session string) string {
+	session, _, _ = strings.Cut(session, "/")
+	return strings.TrimSpace(session)
+}
+
+// recordSightingTx records that memory id came up on day in session: in sightings by (memory, day), as
+// before schema 6, and in sighting_sessions by (memory, session, day), which the confirmation counts (E-1).
+// A session not known goes under legacySession with the old sightings.
+func recordSightingTx(tx *sql.Tx, id, session, day string, now int64) error {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, id, day); err != nil {
+		return err
+	}
+	key := SessionKey(session)
+	if key == "" {
+		key = legacySession
+	}
+	_, err := tx.Exec(`INSERT OR IGNORE INTO sighting_sessions(memory_id, session, day, at) VALUES(?,?,?,?)`, id, key, day, now)
+	return err
+}
+
+// sightTx records that memory id came up again in session on day with src. A quote of
+// the user confirms it; the evidence of the other sessions and days is checked after the
 // transaction (ConfirmByEvidence), so the confirmation is in the ledger.
-func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
+func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64) error {
 	m, err := getTx(tx, id)
 	if err != nil {
 		return err
@@ -695,7 +724,7 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	if err := addSourceTx(tx, m.ID, src, now); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+	if err := recordSightingTx(tx, m.ID, session, day, now); err != nil {
 		return err
 	}
 	next := m.State

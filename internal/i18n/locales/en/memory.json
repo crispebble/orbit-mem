@@ -45,7 +45,7 @@
   "memory.err.need_to_tags": "%w: tags to add (toTags) are required",
   "memory.err.need_two_memories": "%w: two different memories to link are required",
   "memory.err.no_change": "%w: nothing would change",
-  "memory.err.no_evidence": "no evidence to confirm automatically (another day, followed in verified work, or a project fact the work verified); it waits as a candidate",
+  "memory.err.no_evidence": "no evidence to confirm automatically (seen again in another session on another day, followed in verified work, or a project fact the work verified); it waits as a candidate",
   "memory.err.no_flag": "%w: no open audit item %s",
   "memory.err.no_memory_change": "%w: no memory would change",
   "memory.err.no_proposal": "no such proposal: %s",
