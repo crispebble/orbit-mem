@@ -108,5 +108,6 @@
   "memory.save.near": "가까운 기억(같은 주장이면 memory_update stale·supersede로 하나만 남긴다): %s",
   "memory.save.not_replaced": "supersede:%s는 아무것도 대체하지 않았습니다: 그 기억은 이미 낡았거나 거절된 판이거나, 같은 제목이라 새 출처를 그 기억에 더했습니다",
   "memory.save.body_kept": "본문은 바뀌지 않았습니다: 같은 제목의 기억 %s가 이미 있어 출처와 다시 나온 날만 더했습니다. 본문을 고치려면 memory_update를 부르세요",
+  "memory.save.fields_kept": "%s는 바뀌지 않았습니다: 같은 제목의 기억 %s가 이미 있어 새 값을 반영하지 않았습니다. 고치려면 memory_update를 부르세요",
   "memory.save.not_pinned": "update:%s는 적용했으나 상시 핵심에 올리지 못했습니다: %v"
 }

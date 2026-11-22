@@ -130,8 +130,8 @@ func Screen(in *SaveInput, now time.Time) ([]string, error) {
 	}
 	// 사용자 말(quote) 출처의 발췌는 그 말 그대로 남기는 근거다. 제목·본문이 발췌를 그대로 품고 있어도 그 부분은 바꾸지 않는다.
 	keep := ""
-	if in.Source.Kind == SourceQuote && utf8.RuneCountInString(strings.TrimSpace(in.Source.Excerpt)) >= 2 {
-		keep = in.Source.Excerpt
+	if ex := strings.TrimSpace(in.Source.Excerpt); in.Source.Kind == SourceQuote && utf8.RuneCountInString(ex) >= 2 {
+		keep = ex
 	}
 	in.Title = absoluteDatesKeeping(in.Title, keep, now, &notes)
 	in.Body = absoluteDatesKeeping(in.Body, keep, now, &notes)
@@ -180,23 +180,33 @@ func addMonths(t time.Time, n int) time.Time {
 }
 
 // 상대 시간이 지금(저장하는 때)을 기준으로 쓴 말인지 가르는 규칙. 「3주 뒤」「2일 전」은 지금 기준일 때만 날짜로 바꾼다.
+// 판정은 낱말 사전 없이 글자 모양만 보는 휴리스틱이라 양쪽에 오류가 남는다: 「약 3일 전」(조사 없는 부사 뒤)은
+// 지금 기준인데 사건 기준으로 보아 안 바뀌고, 「휴가 3일 전까지」(조사 글자로 끝나는 명사 뒤)는 사건 기준인데 바뀐다.
 var (
-	// spanParticles are what may follow 「3일 전」 in a time expression of its own ("3일 전에", "3일 전부터").
-	// 다른 한글이 이어지면(전체·후반) 낱말의 일부라 시간 표현이 아니다.
-	spanParticles = []string{"에", "은", "는", "이", "가", "를", "을", "도", "만", "의", "부터", "까지", "쯤", "정도", "께"}
+	// compoundRest maps the last character of a matched span to what, right after it, makes the span part of a
+	// longer word ("3개월 전체", "2주 후반"). Anything else that follows (어미·조사: "3주 뒤다", "3일 전부터") ends
+	// the expression.
+	compoundRest = map[rune][]string{
+		'전': {"체", "반", "후", "날", "혀", "용", "환", "략", "원"},
+		'후': {"반", "보", "기", "속", "회", "원", "배", "유"},
+		'뒤': {"쪽", "늦", "처", "집", "끝", "따"},
+	}
+	// notEvent are words that never name an event: a connective or demonstrative before a span says nothing
+	// about what the span is counted from ("그건 3일 전 일이다").
+	notEvent = map[string]bool{"그": true, "이": true, "저": true, "그건": true, "이건": true, "저건": true, "그것": true, "이것": true,
+		"그리고": true, "그러나": true, "그런데": true, "그래서": true, "하지만": true, "또": true, "또는": true, "또한": true,
+		"이후": true, "이전": true, "그후": true, "그뒤": true, "다만": true, "단": true, "즉": true, "그때": true, "이때": true,
+		"벌써": true, "이미": true, "방금": true, "아직": true, "바로": true}
 	// beforeWord is the word right before an expression: a bare noun ("배포 3일 전") makes the expression
 	// relative to that event; a word that ends in a particle ("만료는 3주 뒤") says when the thing happens, now-relative.
 	beforeWord = regexp.MustCompile(`([\p{L}\p{N}_]+) ?$`)
 )
 
-// spanEndsWord says whether rest, the text after a matched span, ends the expression.
-func spanEndsWord(rest string) bool {
-	r, _ := utf8.DecodeRuneInString(rest)
-	if rest == "" || r < 0xAC00 || r > 0xD7A3 {
-		return true
-	}
-	for _, p := range spanParticles {
-		if strings.HasPrefix(rest, p) {
+// spanIsWordPart says whether the span m, followed by rest, is the start of a longer word and no time expression.
+func spanIsWordPart(m, rest string) bool {
+	last, _ := utf8.DecodeLastRuneInString(m)
+	for _, c := range compoundRest[last] {
+		if strings.HasPrefix(rest, c) {
 			return true
 		}
 	}
@@ -204,13 +214,16 @@ func spanEndsWord(rest string) bool {
 }
 
 // eventWord is the noun the span at the end of before is counted from ("배포" in "배포 3일 전"), or "" when the
-// span is counted from now: nothing before it, punctuation, or a word that carries a particle.
+// span is counted from now: nothing before it, punctuation, a connective, or a word that carries a particle.
 func eventWord(before string) string {
 	m := beforeWord.FindStringSubmatch(before)
 	if m == nil {
 		return ""
 	}
 	w := m[1]
+	if notEvent[w] {
+		return ""
+	}
 	if last, _ := utf8.DecodeLastRuneInString(w); strings.ContainsRune("는은이가에도를을만", last) {
 		return ""
 	}
@@ -317,13 +330,16 @@ func absoluteDates(s string, now time.Time, notes *[]string) string {
 // a span that is part of a longer word ("3개월 전체") stays without a word.
 func replaceKoSpans(s string, to func(p []string) string, kept func(event, span string)) string {
 	var b strings.Builder
-	last := 0
+	last, prevEnd := 0, -1
 	for _, loc := range koSpan.FindAllStringSubmatchIndex(s, -1) {
 		m := s[loc[0]:loc[1]]
-		if !spanEndsWord(s[loc[1]:]) {
+		if spanIsWordPart(m, s[loc[1]:]) {
 			continue
 		}
-		if ev := eventWord(s[:loc[0]]); ev != "" {
+		// 바로 앞이 다른 표현이면 그 표현의 단위어(「3일 전 3일 전」의 「전」)는 사건 낱말이 아니다.
+		follows := prevEnd >= 0 && strings.TrimSpace(s[prevEnd:loc[0]]) == ""
+		prevEnd = loc[1]
+		if ev := eventWord(s[:loc[0]]); ev != "" && !follows {
 			kept(ev, m)
 			continue
 		}

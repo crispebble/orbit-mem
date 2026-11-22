@@ -159,3 +159,68 @@ func TestScreen_바꾸지_않은_표현은_rewrites에_바꾸지_않음으로_�
 		t.Errorf("낱말의 일부는 알리지 않습니다: %v %v", notes, err)
 	}
 }
+
+// 「~다」체 같은 어미가 이어져도 지금 기준 표현은 고치기 전처럼 바뀐다. 낱말의 일부로 보는 것은 복합어뿐이다.
+func TestScreen_어미가_이어져도_지금_기준_표현은_바뀐다(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"만료일이 3주 뒤다", "만료일이 2026-11-24다"},
+		{"출시는 3주 뒤였다", "출시는 2026-11-24였다"},
+		{"3일 전엔 몰랐다", "2026-10-31엔 몰랐다"},
+		{"점검은 2주 뒤면 끝난다", "점검은 2026-11-17면 끝난다"},
+		{"배포는 1주 뒤야", "배포는 2026-11-10야"},
+		{"배포는 1주 뒤예요", "배포는 2026-11-10예요"},
+		{"완료는 1주 뒤로 미룬다", "완료는 2026-11-10로 미룬다"},
+		{"3일 전보다 늦다", "2026-10-31보다 늦다"},
+		{"3일 전과 같다", "2026-10-31과 같다"},
+		{"3일 전부터 쓴다", "2026-10-31부터 쓴다"},
+		{"3일 전, 키를 바꿨다", "2026-10-31, 키를 바꿨다"},
+		{"3일 전. 끝", "2026-10-31. 끝"},
+	} {
+		got, notes, err := screen(t, KindFact, c.in, "", SourceSession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != c.want || len(notes) != 1 || !strings.Contains(notes[0], "→") {
+			t.Errorf("%q → %q %v, want %q", c.in, got.Title, notes, c.want)
+		}
+	}
+	// 표현의 끝 글자가 다른 낱말의 첫머리가 되는 복합어는 시간 표현이 아니다.
+	for _, c := range []string{"3일 전체", "3일 전반", "3일 전후", "3일 전날", "3일 전혀", "2주 후반", "2주 후보", "2주 후기", "2주 후속", "2주 뒤쪽", "2주 뒤늦게"} {
+		got, notes, err := screen(t, KindFact, "일정 "+c+" 점검", "", SourceSession)
+		if err != nil || got.Title != "일정 "+c+" 점검" || len(notes) != 0 {
+			t.Errorf("%q → %q %v %v: 그대로여야 합니다", c, got.Title, notes, err)
+		}
+	}
+}
+
+// 접속어·지시어 뒤는 사건 이름이 아니라 지금 기준이다. 바로 이어진 두 표현도 앞 표현의 단위어를 사건으로 보지 않는다.
+func TestScreen_접속어_지시어_뒤와_이어진_표현은_지금_기준이다(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"그건 3일 전 일이다", "그건 2026-10-31 일이다"},
+		{"그리고 3일 전에 배포했다", "그리고 2026-10-31에 배포했다"},
+		{"이후 3일 전부터 쓴다", "이후 2026-10-31부터 쓴다"},
+		{"3일 전 3일 전", "2026-10-31 2026-10-31"},
+	} {
+		got, notes, err := screen(t, KindFact, c.in, "", SourceSession)
+		if err != nil || got.Title != c.want {
+			t.Errorf("%q → %q %v %v, want %q", c.in, got.Title, notes, err, c.want)
+		}
+		for _, n := range notes {
+			if strings.Contains(n, "바꾸지 않음") {
+				t.Errorf("%q: 지금 기준인데 바꾸지 않음으로 알렸습니다: %v", c.in, notes)
+			}
+		}
+	}
+}
+
+// 발췌에 앞뒤 공백·개행이 있어도 본문의 같은 문구는 보호한다.
+func TestScreen_발췌의_앞뒤_공백은_보호_비교에서_뺀다(t *testing.T) {
+	in := SaveInput{Kind: KindDecision, Title: "배포 일정", Body: "사용자가 \"내일 배포해\"라고 했다.",
+		Source: Source{Kind: SourceQuote, Excerpt: " 내일 배포해\n"}}
+	if _, err := Screen(&in, screenNow); err != nil {
+		t.Fatal(err)
+	}
+	if in.Body != "사용자가 \"내일 배포해\"라고 했다." {
+		t.Errorf("본문 = %q", in.Body)
+	}
+}

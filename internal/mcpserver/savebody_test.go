@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+// 같은 제목 경로가 버리는 다른 칸도 응답이 알린다(성공으로 답하고 반영하지 않는 길을 남기지 않는다).
+func TestMemorySave_같은_제목_다른_태그와_주제는_memory_update_안내가_나온다(t *testing.T) {
+	cs, _ := connect(t)
+	save := func(args map[string]any) MemoryOut {
+		var out MemoryOut
+		args["kind"], args["title"], args["source"] = "fact", "배포 창은 화요일", map[string]any{"kind": "session", "ref": "s"}
+		if res := call(t, cs, "memory_save", args, &out); res.IsError {
+			t.Fatalf("save: %s", text(res))
+		}
+		return out
+	}
+	save(map[string]any{"body": "화요일", "tags": []string{"배포"}, "topic": "배포 창"})
+	out := save(map[string]any{"body": "화요일", "tags": []string{"다른"}, "topic": "다른 주제"})
+	found := false
+	for _, w := range out.Warnings {
+		if strings.Contains(w, "tags") && strings.Contains(w, "topic") && strings.Contains(w, "memory_update") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("바뀌지 않은 칸 안내가 없습니다: %v", out.Warnings)
+	}
+}
+
 // S-1: 같은 제목에 다른 본문을 다시 저장하면 본문이 바뀌지 않았다는 안내가 나온다.
 func TestMemorySave_같은_제목_다른_본문은_memory_update_안내가_나온다(t *testing.T) {
 	cs, _ := connect(t)

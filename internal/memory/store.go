@@ -425,6 +425,10 @@ type SaveReport struct {
 	// differs from the stored one: only the source and the day it came again were added, the body did not
 	// change. A save without a body never sets it.
 	BodyKept bool `json:"bodyKept,omitempty"`
+	// FieldsKept names the other fields of that same-title save that were given, differ from the stored
+	// value and were therefore not applied: tags, topic, tools, retention, reviewAfterDays. A field the save
+	// did not give, or gave with the stored value, is not listed. Change them with Update.
+	FieldsKept []string `json:"fieldsKept,omitempty"`
 
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
@@ -546,11 +550,12 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 				return Memory{}, rep, err
 			}
 		}
-		// 같은 제목은 새 기억을 만들지 않고 출처만 더하므로 새 본문은 버려진다. 호출한 쪽이 성공으로 읽지 않게 알린다(S-1).
+		// 같은 제목은 새 기억을 만들지 않고 출처만 더하므로 새 본문과 다른 칸(태그·주제 등)은 버려진다. 호출한 쪽이 성공으로 읽지 않게 알린다(S-1).
 		// supersedeTx가 rep를 다시 채우므로 그 뒤에 정한다.
 		if nb := strings.TrimSpace(in.Body); nb != "" && nb != strings.TrimSpace(cur.Body) {
 			rep.BodyKept = true
 		}
+		rep.FieldsKept = keptFields(cur, in)
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -633,6 +638,29 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 // savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot
 // get the core (not confirmed, not a user or product memory, past the limit) is refused whole (S3 명세 2.6).
 // The save is the user's words or an explicit ask, so the memory's own protection is not checked again.
+// keptFields lists the fields of in that a save of an existing title gave with a value other than the stored
+// one: that path only adds the source, so they were not applied. A field in does not give is not compared.
+func keptFields(cur Memory, in SaveInput) []string {
+	sorted := func(a []string) []string { return slices.Sorted(slices.Values(a)) }
+	var out []string
+	if len(in.Tags) > 0 && !slices.Equal(sorted(in.Tags), sorted(cur.Tags)) {
+		out = append(out, "tags")
+	}
+	if in.Topic != "" && TopicKey(in.Topic) != TopicKey(cur.Topic) {
+		out = append(out, "topic")
+	}
+	if len(in.Tools) > 0 && !slices.Equal(sorted(in.Tools), sorted(cur.Tools)) {
+		out = append(out, "tools")
+	}
+	if r, _ := NormalizeRetention(in.Retention); r != RetentionNormal && r != cur.Retention {
+		out = append(out, "retention")
+	}
+	if in.ReviewAfterDays > 0 && in.ReviewAfterDays != cur.ReviewDays {
+		out = append(out, "reviewAfterDays")
+	}
+	return out
+}
+
 func savePinTx(tx *sql.Tx, in SaveInput, id string, now int64) error {
 	if !in.Pin {
 		return nil

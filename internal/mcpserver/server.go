@@ -138,7 +138,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절. saved:false면 similar의 choices 하나를 resolve로 주어 다시 부른다. 저장됐어도 near가 같은 주장이면 하나만 남긴다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다. 저장됐어도 near가 같은 주장이면 하나만 남긴다.", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out SaveOut) map[string]any {
 			return saveData(in, out)
 		}))
@@ -233,7 +233,7 @@ func (h handlers) forget(_ context.Context, _ *mcp.CallToolRequest, in ForgetIn)
 type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal"`
-	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더)·global(user만)·all"`
+	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더에서 보이는 것)·global(user만)·all"`
 	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"하나라도 가진 기억만"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"기본 8, 최대 30"`
@@ -367,7 +367,7 @@ type SaveIn struct {
 	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
 	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo)"`
 	Project string   `json:"project,omitempty" jsonschema:"옛 이름: 프로젝트 디렉터리"`
-	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로. 사용자가 늘 지키라고 한 확정 기억만(한도 user 3,000자·제품 2,000자)"`
+	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로. 사용자가 늘 지키라고 한 확정 기억만. 한도는 안내에"`
 	Source  SourceIn `json:"source"`
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"함께 읽을 기억"`
 	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
@@ -439,7 +439,8 @@ func (h handlers) applyLinks(id string, link []LinkIn, unlink []UnlinkIn) (memor
 // MemoryOut is a single memory result.
 type MemoryOut struct {
 	Memory memory.Memory `json:"memory,omitzero"` // memory_save가 고르기를 돌려줄 때만 없다
-	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24").
+	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24") and the ones it
+	// left as they were because they count from an event, not from now ("배포 3일 전 → 바꾸지 않음(사건 기준)").
 	Rewrites []string `json:"rewrites,omitempty"`
 	// Superseded and Conflicts are what memory_save replaced and the user's words it left alone.
 	Superseded []string `json:"superseded,omitempty"`
@@ -811,6 +812,9 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	}
 	if rep.BodyKept {
 		out.Warnings = append(out.Warnings, i18n.T("memory.save.body_kept", m.ID))
+	}
+	if len(rep.FieldsKept) > 0 {
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.fields_kept", strings.Join(rep.FieldsKept, "·"), m.ID))
 	}
 	return out, nil
 }
