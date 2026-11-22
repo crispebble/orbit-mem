@@ -3,6 +3,7 @@ package memory
 import (
 	"encoding/json"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -16,7 +17,7 @@ const (
 // NormalizeAliases is the aliases as a memory keeps them: each one with its white space folded to single
 // spaces, empty ones dropped, and the ones that equal an earlier one once case and width are ignored
 // (Normalize) dropped, in the order given. kept stops at MaxAliases and trimmed says whether anything past the
-// limits (a count above MaxAliases, a length above MaxAliasRunes) was left out, so a caller that must not
+// limits (a count above MaxAliases, a length above MaxAliasRunes, a control character) was left out, so a caller that must not
 // lose a word silently can refuse (cleanAliases, or a tool's own check with a message) and one that reads a file
 // written elsewhere can take what fits.
 func NormalizeAliases(aliases []string) (kept []string, trimmed bool) {
@@ -27,7 +28,8 @@ func NormalizeAliases(aliases []string) (kept []string, trimmed bool) {
 		if a == "" {
 			continue
 		}
-		if utf8.RuneCountInString(a) > MaxAliasRunes {
+		if utf8.RuneCountInString(a) > MaxAliasRunes || strings.ContainsFunc(a, unicode.IsControl) {
+			// 제어 문자(공백류는 위에서 접혔다)는 색인과 응답에 그대로 실리므로 길이 초과처럼 버리고 알린다.
 			trimmed = true
 			continue
 		}
@@ -60,6 +62,19 @@ func cleanAliases(aliases []string) ([]string, error) {
 		}
 	}
 	return kept, nil
+}
+
+// mergedAliases are the aliases of the memories ids, one after another, as one list NormalizeAliases keeps
+// (no repeat once case and width are ignored, at most MaxAliases, the first ones first).
+func mergedAliases(s *Store, ids []string) []string {
+	var all []string
+	for _, id := range ids {
+		if m, err := getTx(s.db, id); err == nil {
+			all = append(all, m.Aliases...)
+		}
+	}
+	kept, _ := NormalizeAliases(all)
+	return kept
 }
 
 // aliasesJSON is the aliases column: a JSON array, "[]" for none.

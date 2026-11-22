@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -110,7 +111,9 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 	}
 	m.Tags = cleanTags(m.Tags)
 	tags, _ := json.Marshal(m.Tags)
-	aliases, _ := NormalizeAliases(m.Aliases) // 다른 곳에서 쓴 파일: 한도에 들어가는 것만 들인다
+	// 다른 곳에서 쓴 파일: 한도에 들어가는 것만 들이고, 비밀값으로 보이는 별칭은 저장과 같이 들이지 않는다.
+	aliases, _ := NormalizeAliases(m.Aliases)
+	aliases = slices.DeleteFunc(aliases, func(a string) bool { return MaskSecrets(a) != a })
 	tools, err := cleanTools(m.Tools)
 	if err != nil {
 		tools = nil // 옛 판이 내보낸 줄에는 없고, 틀린 이름은 트리거 없이 들여온다

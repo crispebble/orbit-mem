@@ -62,9 +62,9 @@ type Options struct {
 	// (config autoMode, 명세 C-9) applies from the next save of a long-lived server. Unset, the store's
 	// Policy (read when the store was opened) decides.
 	LoadPolicy func() memory.Policy
-	// LoadFindStripParticles, when set, says on every memory_find whether the query's particles and endings are
-	// taken off (config findStripParticles, 명세 Q-2), so a long-lived server follows config.json. Unset, they
-	// are (the setting's default).
+	// LoadFindStripParticles, when set, says on every memory_find whether the stems of the query's words are
+	// added (config findStripParticles, 명세 Q-2), so a long-lived server follows config.json. Unset, they are
+	// not (the setting's default).
 	LoadFindStripParticles func() bool
 	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
 	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
@@ -312,7 +312,7 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 	withStale := slices.Contains(in.States, memory.StateStale)
 	marked := withStale || slices.Contains(in.States, memory.StateHidden)
 	query := in.Query
-	if h.o.LoadFindStripParticles == nil || h.o.LoadFindStripParticles() {
+	if h.o.LoadFindStripParticles != nil && h.o.LoadFindStripParticles() {
 		query = memory.StripParticlesQuery(query)
 	}
 	f := memory.FindInput{Query: query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
@@ -967,7 +967,7 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	return out, nil
 }
 
-// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic and tools of
+// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic, tools and aliases of
 // the save (what the save leaves empty stays) by the Update path, so the user's words are kept by the same
 // guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
 // the userQuote of the change (D1).
@@ -1064,7 +1064,7 @@ const maxClaimRunes = 1000
 func checkAliases(aliases []string) error {
 	kept, trimmed := memory.NormalizeAliases(aliases)
 	if trimmed {
-		return fmt.Errorf("%w: aliases는 %d개 이하, 각 %d자 이하입니다", memory.ErrInvalid, memory.MaxAliases, memory.MaxAliasRunes)
+		return fmt.Errorf("%w: aliases는 %d개 이하, 각 %d자 이하, 제어 문자 없이 적습니다", memory.ErrInvalid, memory.MaxAliases, memory.MaxAliasRunes)
 	}
 	for _, a := range kept {
 		if memory.MaskSecrets(a) != a {
@@ -1152,7 +1152,7 @@ type UpdateIn struct {
 	Reason          string     `json:"reason,omitempty"`
 	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억 변경·후보 확정 때 그 말"`
 	Tools           *[]string  `json:"tools,omitempty" jsonschema:"도구 트리거(빈 목록이면 없앰)"`
-	Aliases         *[]string  `json:"aliases,omitempty" jsonschema:"별칭을 통째로 바꿈(빈 목록이면 비움)"`
+	Aliases         *[]string  `json:"aliases,omitempty" jsonschema:"별칭을 통째로 바꿈(빈 목록이면 비움). 지금 값은 get full"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"함께 읽을 기억"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다"`
 }

@@ -48,10 +48,10 @@ func saveNearMinOf() float64 {
 }
 
 // findStripParticlesOf is config findStripParticles, read again on each call; a settings file that cannot be
-// read leaves the default, on.
+// read leaves the default, off.
 func findStripParticlesOf() bool {
 	cfg, err := loadConfig()
-	return err != nil || cfg.FindStripParticles
+	return err == nil && cfg.FindStripParticles
 }
 
 // cmdPlace shows where a folder stands in the product map: its scope key, its products and whether it is a

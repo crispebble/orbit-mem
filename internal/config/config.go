@@ -154,9 +154,10 @@ type Config struct {
 	// 켬·끔과 관계없이 대체하고, 규칙·결정은 어느 쪽이든 대체하지 않는다(memory/replace.go). 끄면 앞으로의 저장만 다시 묻는
 	// 쪽으로 돌아가고, 이미 대체된 것은 그대로다. 이 키가 없는 옛 파일은 꺼짐이다.
 	AutoMode bool `json:"autoMode"`
-	// 찾기 질의의 조사 떼기(명세 Q-2): 켜면 memory_find가 질의의 어절마다 닫힌 조사·어미 목록(요청 회상과 같은 규칙,
-	// memory.StripParticlesQuery)을 떼고 찾는다: 「배포를」은 「배포」로 찾는다. 끄면 질의를 쓴 그대로 찾는다. 기본은 켜짐이고,
-	// 이 키가 없는 옛 파일도 켜짐이다.
+	// 찾기 질의의 조사 떼기(명세 Q-2): 켜면 memory_find가 질의의 어절마다 원래 낱말 뒤에 닫힌 조사·어미 목록(요청 회상과
+	// 같은 규칙, memory.StripParticlesQuery)을 뗀 어간을 더해 찾는다: 「배포를」은 「배포를 배포」로 찾는다. 끄면 질의를 쓴
+	// 그대로 찾는다. 기본은 꺼짐이고 이 키가 없는 옛 파일도 꺼짐이다. 공개 평가 묶음에서 켜면 지표는 같고 정답의 평균 순위가
+	// 조금 나빠져(0.19 → 0.20, 원래 낱말을 남긴 꼴) 평가가 낫다고 보일 때까지 끈다.
 	FindStripParticles bool `json:"findStripParticles"`
 }
 
@@ -278,7 +279,7 @@ func Default() Config {
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
 		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputMinScore: DefaultToolInputMinScore, RankScoreMargin: DefaultRankScoreMargin,
-		FindStripParticles: true}
+		FindStripParticles: false}
 }
 
 // Validate checks values a person may have typed by hand.

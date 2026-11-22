@@ -524,6 +524,10 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if p.Kind == ProposalMerge && len(tags) == 0 {
 			tags = mergedTags(s, p.MemoryIDs)
 		}
+		var aliases []string // 합치는 기억들의 별칭을 잃지 않는다
+		if p.Kind == ProposalMerge {
+			aliases = mergedAliases(s, p.MemoryIDs)
+		}
 		// 자동화가 합친 기억은 합친 기억이 모두 확정일 때만 확정이다. 후보가 섞이면 후보로 남아 증거를 기다린다.
 		state := StateConfirmed
 		if p.Status == StatusAuto {
@@ -541,7 +545,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if Untrusted(trust) {
 			state = StateCandidate
 		}
-		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: state,
+		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Aliases: aliases, Scope: scope, State: state,
 			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦", Trust: trust}, noEvidence: true})
 		if err != nil {
 			return err
@@ -555,6 +559,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			}
 			if p.Kind == ProposalMerge {
 				u.Tags = &tags
+				u.Aliases = &aliases
 			}
 			if m, err = s.Update(u); err != nil {
 				return err

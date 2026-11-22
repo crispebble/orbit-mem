@@ -69,19 +69,52 @@ func TestMemoryFind_붙여_쓴_한글_낱말의_일부로_찾아진다(t *testin
 	}
 }
 
-// 한 글자 명사 뒤의 조사(「꼴이」)는 떼지 않으면 어느 기억에도 없는 두 글자 토큰이 된다. 스위치를 끄면 지금 동작(못 찾음)이다.
-func TestMemoryFind_조사_떼기는_스위치로_끈다(t *testing.T) {
-	on, s := connect(t)
-	m := saveFact(t, s, "꼴 이상 점검", "", nil)
-	if ids := foundBy(t, on, "꼴이"); len(ids) != 1 || ids[0] != m.ID {
-		t.Fatalf("on: 꼴이 → %v, want [%s]", ids, m.ID)
+// strip is a connection whose memory_find stems the query's words (on) or leaves the query as written (off) over
+// a store that seed fills.
+func strip(t *testing.T, on bool, seed func(*memory.Store)) *mcp.ClientSession {
+	t.Helper()
+	return connectSeeded(t, filepath.Join(t.TempDir(), "m.db"), Options{LoadFindStripParticles: func() bool { return on }}, seed)
+}
+
+// 기본(옵션이 없으면)은 끔이다: 질의를 쓴 그대로 찾는다.
+func TestMemoryFind_조사_떼기는_기본이_꺼짐이다(t *testing.T) {
+	cs, s := connect(t)
+	saveFact(t, s, "꼴은 이상한 점검", "", nil)
+	if ids := foundBy(t, cs, "꼴이"); len(ids) != 0 {
+		t.Fatalf("default: 꼴이 → %v, want none (the query is left as written)", ids)
 	}
-	dir := t.TempDir()
-	off := connectSeeded(t, filepath.Join(dir, "m.db"), Options{LoadFindStripParticles: func() bool { return false }}, func(s2 *memory.Store) {
-		saveFact(t, s2, "꼴 이상 점검", "", nil)
+}
+
+// 한 글자 명사 뒤의 조사(「꼴이」)는 떼지 않으면 어느 기억에도 없는 두 글자 토큰이 된다. 켜면 「꼴」로도 찾지만 「꼴이」가 정확히 든
+// 기억이 「꼴은」만 든 기억보다 앞이다. 끄면 정확히 든 기억만 나온다.
+func TestMemoryFind_켜면_꼴이로_꼴은_기억도_찾고_정확히_맞은_기억이_앞이다(t *testing.T) {
+	var exact, loose string
+	on := strip(t, true, func(s *memory.Store) {
+		exact = saveFact(t, s, "꼴이 이상한 점검", "", nil).ID
+		loose = saveFact(t, s, "꼴은 이상한 점검", "", nil).ID
 	})
-	if ids := foundBy(t, off, "꼴이"); len(ids) != 0 {
-		t.Fatalf("off: 꼴이 → %v, want none (the query is left as written)", ids)
+	if ids := foundBy(t, on, "꼴이"); len(ids) != 2 || ids[0] != exact || ids[1] != loose {
+		t.Fatalf("on: 꼴이 → %v, want [%s %s]", ids, exact, loose)
+	}
+	off := strip(t, false, func(s *memory.Store) {
+		exact = saveFact(t, s, "꼴이 이상한 점검", "", nil).ID
+		saveFact(t, s, "꼴은 이상한 점검", "", nil)
+	})
+	if ids := foundBy(t, off, "꼴이"); len(ids) != 1 || ids[0] != exact {
+		t.Fatalf("off: 꼴이 → %v, want [%s]", ids, exact)
+	}
+}
+
+// 「지」를 어미로 잘못 떼도 원래 낱말이 남아, 「페이지」 기억이 같은 앞 두 글자의 「페이로드」 기억보다 앞이다.
+func TestMemoryFind_켜도_페이지_기억이_페이로드_기억보다_앞이다(t *testing.T) {
+	var page, payload string
+	on := strip(t, true, func(s *memory.Store) {
+		payload = saveFact(t, s, "페이로드 크기 제한", "", nil).ID
+		page = saveFact(t, s, "페이지 크기 제한", "", nil).ID
+	})
+	ids := foundBy(t, on, "페이지 크기 제한")
+	if len(ids) < 1 || ids[0] != page {
+		t.Fatalf("on: %v, want %s first (payload %s)", ids, page, payload)
 	}
 }
 
