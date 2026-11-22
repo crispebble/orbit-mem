@@ -21,5 +21,6 @@
   "config.err.task_recall_min_relative": "taskRecallMinRelative는 0보다 크고 1 이하인 수입니다(위임 회상에서 1위 찾기 점수의 몇 배 이상인 기억만 남기는 상대 문턱): %v",
   "config.err.task_recall_min_title_share": "taskRecallMinTitleShare는 0보다 크고 1 이하인 수입니다(위임 회상에서 기억의 제목·주제에 나온 위임 글 내용 낱말의 드문 낱말 몫을 내용 낱말 수로 나눈 값이 넘어야 하는 문턱): %v",
   "config.err.tool_input_min_score": "toolInputMinScore는 0보다 크고 1 이하인 수입니다(도구 직전 회상에서 확정 규칙이 아닌 기억이 도구 입력과의 회상 점수로 넘어야 하는 문턱): %v",
+  "config.err.rank_score_margin": "rankScoreMargin은 0보다 크고 1 이하인 수입니다(회상 순위에서 점수 차가 이보다 크면 확정 여부보다 점수가 앞서는 문턱): %v",
   "config.err.host_timeout": "hostTimeouts.%s는 \"1.5s\" 같은 양의 Go 기간입니다: %q"
 }

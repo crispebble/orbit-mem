@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -827,7 +826,7 @@ func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Pl
 			kept = append(kept, h)
 		}
 	}
-	return rankHits(s, cfg, pl, prompt, kept)
+	return rankHits(s, cfg, memory.Viewer{}, pl, prompt, kept) // 순위는 Viewer를 읽지 않는다(rankHits): 요청마다 주제 표를 읽지 않는다
 }
 
 // recallFloor is the hits of byID that pass the gate (thresholds.pass), and the relative floor (설계 보완, 1-6 b6):
@@ -870,45 +869,6 @@ func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Mem
 		top = max(top, h.Score)
 	}
 	return hits, th.relative*top - 1e-9 // 같은 값의 부동소수점 오차로 빠지지 않게
-}
-
-// rankHits orders the hits of a recall, best first (see recallHits).
-func rankHits(s *memory.Store, cfg config.Config, pl place.Place, prompt string, hits []memory.RecallHit) []memory.RecallHit {
-	if len(hits) == 0 {
-		return nil
-	}
-	now := s.Now()
-	usage, _ := s.UsageCounts(memory.Day(now.AddDate(0, 0, -max(cfg.LedgerWindowDays, 1))), memory.Day(now))
-	net := func(id string) int { u := usage[id]; return u.Followed - u.Irrelevant }
-	products := pl.Named(prompt)
-	local := func(m memory.Memory) bool { return pl.Local(m.Scope, m.Project, products) }
-	key := func(x float64) float64 { return math.Round(x * 1e9) } // 같은 값의 부동소수점 오차가 순위를 가르지 않게
-	sort.SliceStable(hits, func(i, j int) bool {
-		a, c := hits[i].Memory, hits[j].Memory
-		if ca, cc := a.State == memory.StateConfirmed, c.State == memory.StateConfirmed; ca != cc {
-			return ca
-		}
-		if sa, sc := key(hits[i].Score), key(hits[j].Score); sa != sc {
-			return sa > sc
-		}
-		if va, vc := key(hits[i].Coverage), key(hits[j].Coverage); va != vc {
-			return va > vc
-		}
-		if la, lc := local(a), local(c); la != lc {
-			return la
-		}
-		if wa, wc := memory.AgeWeight(a, now), memory.AgeWeight(c, now); wa != wc {
-			return wa > wc
-		}
-		if na, nc := net(a.ID), net(c.ID); na != nc {
-			return na > nc
-		}
-		if a.UpdatedAt != c.UpdatedAt {
-			return a.UpdatedAt > c.UpdatedAt
-		}
-		return a.ID < c.ID
-	})
-	return hits
 }
 
 // recallLine is a work recall line: title (80 characters at most), id, kind and state, with the marks of

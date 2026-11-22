@@ -142,6 +142,13 @@ type Config struct {
 	// IDF는 도구 트리거가 달린 기억 집합 기준이라(memory.ToolInputScores) 요청 회상의 점수와 값이 다를 수 있다.
 	ToolInputGate     bool    `json:"toolInputGate"`
 	ToolInputMinScore float64 `json:"toolInputMinScore"`
+	// 순위 스위치(명세 R-1): 스위치는 점수 단계 하나만 켜고 끈다. 켜면 회상 순위(요청·위임·도구 직전)가 점수 차가
+	// rankScoreMargin보다 크면 점수가 큰 쪽을 먼저 두고, 그 안이면 확정된 기억을 먼저 둔다. 끄면 확정이 먼저이고 그다음 점수다.
+	// 점수와 확정이 같을 때 재검토 지남(Memory.ReviewAt이 지난 기억)을 뒤로 보내는 것(R-3)은 스위치와 관계없이 늘 적용된다.
+	// 도구 직전 회상에서는 확정된 규칙이 점수 단계에서 밀리지 않는다(명세 T-2). rankScoreMargin은 0 < x ≤ 1이고, 이 키가 없는
+	// 옛 파일은 기본값이다. 켤지와 문턱은 평가 묶음으로 정한다(R-2).
+	RankByScore     bool    `json:"rankByScore"`
+	RankScoreMargin float64 `json:"rankScoreMargin"`
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
@@ -172,6 +179,9 @@ const (
 	// DefaultToolInputMinScore는 요청 회상의 점수 문턱과 같은 값으로 둔 출발점이다. 스위치(toolInputGate)가 기본으로 꺼져
 	// 있어 지금은 쓰이지 않는다. 켤지와 값은 평가 묶음과 실제 기록 재생으로 정한다(명세 T-3).
 	DefaultToolInputMinScore = DefaultRecallMinScore
+	// DefaultRankScoreMargin는 스위치(rankByScore)가 기본으로 꺼져 있어 지금은 쓰이지 않는 출발점이다. 켤지와 값은 평가
+	// 묶음으로 정한다(명세 R-2).
+	DefaultRankScoreMargin = 0.1
 )
 
 // MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
@@ -258,7 +268,7 @@ func Default() Config {
 		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
-		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputMinScore: DefaultToolInputMinScore}
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputMinScore: DefaultToolInputMinScore, RankScoreMargin: DefaultRankScoreMargin}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -323,6 +333,9 @@ func (c Config) Validate() error {
 	}
 	if !(c.ToolInputMinScore > 0 && c.ToolInputMinScore <= 1) {
 		return i18n.Errorf("config.err.tool_input_min_score", c.ToolInputMinScore)
+	}
+	if !(c.RankScoreMargin > 0 && c.RankScoreMargin <= 1) {
+		return i18n.Errorf("config.err.rank_score_margin", c.RankScoreMargin)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {
