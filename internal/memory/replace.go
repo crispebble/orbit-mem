@@ -6,8 +6,9 @@ package memory
 //
 // 지키는 것:
 //   - 규칙·결정은 사용자 말이 아닌 것으로 대체하지 않는다(C-4). 자동 모드를 켜도 같다.
-//   - 사실은 서버가 근거를 다시 확인했을 때만 사용자 말 사실을 스스로 대체한다(C-1). 근거만 적힌 사실은 자동 모드를 켰을 때만
-//     대체한다(C-8). 대화로 배운 사실은 대체하지 않는다(C-7). 사람의 방식·사정(user 범위) 사실은 대상이 아니다(C-1).
+//   - 사실은 근거가 적힌 검증 출처(서버가 다시 확인한 것 포함)일 때 자동 모드를 켠 경우에만 같은 범위·주제의 사용자 말 사실을
+//     대체한다(C-1·C-8). 꺼져 있으면 어긋남으로 두고 사용자가 옛 말을 유지할지 새 사실로 바꿀지 고른다. 대화로 배운 사실은
+//     대체하지 않는다(C-7). 사람의 방식·사정(user 범위) 사실은 대상이 아니다(C-1).
 //   - 자동 대체는 원장에 자동 변경으로 남아 감사 목록에서 되돌린다(C-3, supersede.go의 recordAutoReplaceTx).
 //   - 자동 대체는 같은 범위·주제의 옛 사실만이다(C-1). supersedes로 다른 자리를 지목해도 어긋남이다.
 //   - 사람이 자동 대체를 되돌린 옛 기억은 어떤 새 기억으로든 사용자 말이 아니면 다시 대체하지 않는다(C-3 「다시 자동으로
@@ -57,7 +58,7 @@ type NewGround int
 
 const (
 	GroundQuote     NewGround = iota // 사용자 말(대조를 통과했거나 대조할 기록이 없는 말, 사람의 통로, 사용자 말을 함께 준 Replaces)
-	GroundRechecked                  // 검증 출처, 서버가 파일을 직접 읽어 발췌를 확인함(Source.Rechecked)
+	GroundRechecked                  // 검증 출처, 서버가 파일을 직접 읽어 발췌를 확인함(Source.Rechecked). 즉시 확정을 가를 뿐 대체는 GroundStated와 같다
 	GroundStated                     // 검증 출처, 근거(ref·발췌)는 적혔으나 서버가 다시 확인하지 못함(명령 출력·외부 문서)
 	GroundTalk                       // 그 밖의 믿을 수 있는 출처(대화·파일·명령·근거 없는 검증)
 	GroundUntrusted                  // 믿을 수 없는 출처(untrusted·system)
@@ -103,8 +104,9 @@ var replaceTable = []replaceRow{
 	{nil, notQuote, []OldGround{OldQuoteUserScope}, false, OutcomeConflict, OutcomeConflict},
 	{[]string{KindRule, KindDecision}, notQuote, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
 	// 자동 대체는 같은 범위·주제의 사실만이다(C-1): supersedes로 다른 자리를 지목하면 아래 줄(어긋남)로 떨어진다.
-	{[]string{KindFact}, []NewGround{GroundRechecked}, []OldGround{OldQuote}, true, OutcomeAutoSupersede, OutcomeAutoSupersede},
-	{[]string{KindFact}, []NewGround{GroundStated}, []OldGround{OldQuote}, true, OutcomeConflict, OutcomeAutoSupersede},
+	// 서버가 다시 확인한 사실도 근거만 적힌 사실과 같다: 자동 모드가 꺼져 있으면 사용자 말 사실을 대체하지 않고 어긋남으로 두어
+	// 사용자가 고르게 하고(C-1), 켜면 자동 대체한다(C-8). 다시 확인했는지는 대체를 가르지 않고 즉시 확정만 가른다(E-4).
+	{[]string{KindFact}, []NewGround{GroundRechecked, GroundStated}, []OldGround{OldQuote}, true, OutcomeConflict, OutcomeAutoSupersede},
 	{[]string{KindFact}, []NewGround{GroundTalk, GroundUntrusted}, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
 	{nil, notQuote, []OldGround{OldQuote}, false, OutcomeConflict, OutcomeConflict},
 	{nil, []NewGround{GroundUntrusted}, []OldGround{OldUntrusted}, false, OutcomeSupersede, OutcomeSupersede},

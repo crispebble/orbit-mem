@@ -121,6 +121,7 @@ func TestConflict_사용자_말로_저장하면_어긋남이_풀린다(t *testin
 
 func TestAutoSupersedesSince는_알림_표시_뒤의_자동_대체만_주고_되돌린_것은_뺀다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true // 자동 대체는 자동 모드를 켰을 때만 일어난다
 	old, _ := mustSave(t, s, userFact("빌드는 make all", "빌드 명령"))
 	cur, _ := mustSave(t, s, checkedFact("빌드는 go build", "빌드 명령"))
 	if got, err := s.AutoSupersedesSince(0); err != nil || len(got) != 1 || got[0].OldID != old.ID || got[0].NewID != cur.ID ||
@@ -161,6 +162,7 @@ func inScope(in SaveInput, scope string) SaveInput { in.Scope = scope; return in
 
 func TestAutoSupersedesUnnoticed_범위마다_표시점이_따로여서_한_범위가_받아도_다른_범위는_받는다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	oldA, _ := mustSave(t, s, userFact("빌드는 make all", "빌드 명령"))
 	mustSave(t, s, checkedFact("빌드는 go build", "빌드 명령"))
 	oldB, _ := mustSave(t, s, inScope(userFact("시험은 make test", "시험 명령"), otherScope))
@@ -189,6 +191,7 @@ func TestAutoSupersedesUnnoticed_범위마다_표시점이_따로여서_한_범�
 
 func TestAutoSupersedesUnnoticed_자동_대체가_하나도_없으면_표시점을_앞으로_옮겨_원장을_다시_훑지_않는다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	mustSave(t, s, userFact("빌드는 make all", "빌드 명령"))
 	if got, err := s.AutoSupersedesUnnoticed(func(string, string) bool { return true }); err != nil || len(got) != 0 {
 		t.Fatalf("%+v %v", got, err)
@@ -380,6 +383,7 @@ func TestConflict_사용자_말이_아닌_출처가_더해져도_어긋남은_�
 // 어긋남을 열어 감사 목록에 보이게 한다.
 func TestRevert_되돌린_옛_기억이_다른_현재_값에_가려지면_둘_사이에_어긋남이_열린다(t *testing.T) {
 	s := supStore(t)
+	s.Policy.AutoMode = true
 	old, _ := mustSave(t, s, userFact("빌드는 make all", "빌드 명령"))
 	cur, _ := mustSave(t, s, checkedFact("빌드는 go build", "빌드 명령"))
 	n2, _ := mustSave(t, s, userFact("빌드는 task build", "빌드 명령")) // 사용자 말이 cur를 대체한다
@@ -395,6 +399,7 @@ func TestRevert_되돌린_옛_기억이_다른_현재_값에_가려지면_둘_�
 	}
 	// 가릴 현재 값이 없는 되돌림(옛 기억이 머리로 돌아옴)에는 열지 않는다.
 	s2 := supStore(t)
+	s2.Policy.AutoMode = true
 	o2, _ := mustSave(t, s2, userFact("시험은 make test", "시험 명령"))
 	mustSave(t, s2, checkedFact("시험은 go test", "시험 명령"))
 	revertAuto(t, s2, o2.ID)

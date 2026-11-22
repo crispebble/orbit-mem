@@ -68,7 +68,7 @@ type Source struct {
 	// Rechecked says the server itself read the file a verification source names (Ref, an absolute path) and
 	// found Excerpt in it when the source was saved (RecheckExcerpt). Only the assembly point sets it, never a
 	// tool argument; it is stored in sources.rechecked and is what lets a verified fact be confirmed at once
-	// (EvidenceVerifiedFact, E-4) and replace the user's words on its own (replace.go, C-1). It is not read
+	// (EvidenceVerifiedFact, E-4). It does not change what the fact replaces (replace.go). It is not read
 	// back into Source nor written out with it: a copied or imported source is not rechecked.
 	Rechecked bool `json:"-"`
 }

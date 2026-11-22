@@ -110,7 +110,7 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 		case nw == GroundQuote && in.Source.Kind == SourceQuote:
 			reason = "사용자 말로 대체: " + m.Title // D1: 새 말 자체가 근거다
 		case out == OutcomeAutoSupersede:
-			reason = "검증된 사실로 자동 대체: " + m.Title
+			reason = "검증된 사실로 자동 대체(자동 모드): " + m.Title
 		}
 		before := old
 		old.State, old.SupersededBy, old.StaleReason = StateStale, m.ID, reason
@@ -135,9 +135,10 @@ func (s *Store) supersedeTx(tx *sql.Tx, m Memory, in SaveInput, topic bool, now 
 // its evidence, saved again), and in the version check that would stop the undo (ErrMemoryChanged). Undoing the
 // line (ledger.go revert) puts the old memory back and the new one to candidate, whatever its version.
 func (s *Store) recordAutoReplaceTx(tx *sql.Tx, before, nw Memory, in SaveInput, ground NewGround) error {
-	why := "서버가 근거 파일을 다시 읽어 발췌를 확인한 검증 사실"
-	if ground == GroundStated {
-		why = "근거가 적힌 검증 사실(자동 모드, 서버가 다시 확인하지 못함)"
+	// 자동 모드를 켠 상태의 대체만 여기에 온다. 서버가 다시 확인했는지는 대체의 까닭이 아니라 알림으로만 적는다.
+	why := "근거가 적힌 검증 사실(자동 모드, 서버가 다시 확인하지 못함)"
+	if ground == GroundRechecked {
+		why = "근거가 적힌 검증 사실(자동 모드, 서버가 근거 파일을 다시 읽어 발췌를 확인함)"
 	}
 	body := why + "\n근거: " + ClipRunes(in.Source.Ref, 200)
 	p, err := s.insertProposalTx(tx, ProposalInput{Kind: ProposalSupersede, Title: "자동 대체: " + before.Title + " → " + nw.Title, Body: body,

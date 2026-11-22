@@ -796,7 +796,7 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		si.ReviewAfterDays = maxAIReviewDays
 	}
 	// 검증 출처의 근거가 이 연결의 작업 폴더 안 파일이면 서버가 지금 직접 읽어 발췌가 있는지 본다(C-1·E-4). 있으면 서버가 다시
-	// 확인한 근거다. Screen이 발췌를 고치기 전에 본다: AI가 준 발췌 그대로가 파일에 있어야 한다. 명령 출력 같은 근거는 읽을 수
+	// 확인한 근거라 어긋남이 없으면 바로 확정된다(대체는 가르지 않는다). Screen이 발췌를 고치기 전에 본다: AI가 준 발췌 그대로가 파일에 있어야 한다. 명령 출력 같은 근거는 읽을 수
 	// 없어 근거 적힘으로 남는다. 재확인이 안 된 까닭은 응답에 내지 않는다(경로마다 다른 답이 파일 유무를 알려 주지 않게).
 	if si.Source.Kind == memory.SourceVerification {
 		si.Source.Rechecked = memory.RecheckExcerpt(h.o.recheckRoots(), si.Source.Ref, si.Source.Excerpt)

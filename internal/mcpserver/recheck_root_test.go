@@ -85,8 +85,9 @@ func optionsFor(dir string) Options {
 type saver func(args map[string]any) SaveOut
 
 // paths opens a store and gives the ways in for a session folder: the MCP server and Tools.Call (what the host
-// call and the tool command run). Each has its own store, with the user's fact the verified one may replace.
-func (e rootEnv) paths(t *testing.T, dir string) map[string]struct {
+// call and the tool command run). Each has its own store, with the user's fact the verified one may replace, under
+// the auto mode auto.
+func (e rootEnv) paths(t *testing.T, dir string, auto bool) map[string]struct {
 	save saver
 	s    *memory.Store
 	old  memory.Memory
@@ -99,6 +100,7 @@ func (e rootEnv) paths(t *testing.T, dir string) map[string]struct {
 	}
 	out := map[string]way{}
 	cs, s := connectWith(t, optionsFor(dir))
+	s.Policy.AutoMode = auto
 	out["mcp"] = way{func(args map[string]any) SaveOut {
 		t.Helper()
 		var r SaveOut
@@ -113,6 +115,7 @@ func (e rootEnv) paths(t *testing.T, dir string) map[string]struct {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s2.Close() })
+	s2.Policy.AutoMode = auto
 	tl := NewTools(s2, optionsFor(dir))
 	out["tools"] = way{func(args map[string]any) SaveOut {
 		t.Helper()
@@ -132,18 +135,19 @@ func (e rootEnv) paths(t *testing.T, dir string) map[string]struct {
 }
 
 // rechecked says whether saving a verified fact whose evidence is file, from session folder dir, made the server's
-// own check hold: the user's words were replaced and the new memory was confirmed at once. Both go together.
+// own check hold: the new memory was confirmed at once. With the auto mode on the user's words are replaced either
+// way (a stated fact does too), so only the confirmation tells; a confirmed fact has always replaced them.
 func (e rootEnv) rechecked(t *testing.T, dir, file string) bool {
 	t.Helper()
 	var results []bool
-	for name, w := range e.paths(t, dir) {
+	for name, w := range e.paths(t, dir, true) { // 재확인 여부는 자동 모드를 켠 상태의 즉시 확정으로 본다
 		out := w.save(verifiedArgs("배포는 release.sh", "배포 명령", file, rootLine))
 		replaced := slices.Contains(out.Superseded, w.old.ID)
 		confirmed := out.Memory.State == memory.StateConfirmed
-		if replaced != confirmed {
+		if confirmed && !replaced {
 			t.Errorf("%s: 대체 %v 확정 %v", name, replaced, confirmed)
 		}
-		results = append(results, replaced && confirmed)
+		results = append(results, confirmed)
 	}
 	if results[0] != results[1] {
 		t.Errorf("길마다 다르다: %v", results)
@@ -258,7 +262,7 @@ func TestSave_재확인이_안_된_까닭은_응답에_드러나지_않는다(t 
 	plain := e.file(t, filepath.Join(e.home, "work", "notes"))
 	view := func(dir, ref, excerpt string) string {
 		t.Helper()
-		w := e.paths(t, dir)["mcp"]
+		w := e.paths(t, dir, false)["mcp"] // 기본 상태(자동 모드 끔)의 응답
 		out := w.save(verifiedArgs("배포는 release.sh", "배포 명령", ref, excerpt))
 		got := map[string]any{"state": out.Memory.State, "trust": out.Memory.Trust, "warnings": out.Warnings, "rewrites": out.Rewrites,
 			"conflicts": len(out.Conflicts), "oldConflict": slices.Contains(out.Conflicts, w.old.ID), "superseded": out.Superseded,
@@ -276,6 +280,7 @@ func TestSave_재확인이_안_된_까닭은_응답에_드러나지_않는다(t 
 		{"점 파일", repo, filepath.Join(repo, ".env"), rootLine},
 		{"없는 파일", repo, filepath.Join(repo, "none"), rootLine},
 		{"상대경로", repo, "Makefile", rootLine},
+		{"서버가 읽어 확인한 근거(자동 모드 끔이라 사용자 말 사실과 어긋남으로 같다)", repo, good, rootLine},
 		{"디렉터리", repo, filepath.Join(repo, "sub"), rootLine},
 		{"git 밖 점 폴더를 작업 폴더로", filepath.Join(e.home, ".aws"), aws, rootLine},
 		{"git 밖 폴더를 작업 폴더로", filepath.Join(e.home, "work"), plain, rootLine},
