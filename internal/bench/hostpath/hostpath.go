@@ -240,7 +240,16 @@ func (r *recaller) Reset(session string) error {
 }
 
 func (r *recaller) Start(session, cwd string) (bench.Shown, error) {
-	return r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: host.SourceStartup, Audience: host.AudienceMain})
+	return r.StartFrom(session, cwd, "")
+}
+
+// StartFrom is the session start with the source a host gives it (bench.SourcedStarter); "" is a new session
+// (startup). The contract checks the source. The reset a compact or clear start needs first is the run's (Reset).
+func (r *recaller) StartFrom(session, cwd, source string) (bench.Shown, error) {
+	if source == "" {
+		source = host.SourceStartup
+	}
+	return r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: source, Audience: host.AudienceMain})
 }
 
 // Request always hands origin user: the origin of a case is the answer key, and the hook hands

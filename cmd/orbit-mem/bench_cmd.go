@@ -90,6 +90,9 @@ func benchRecall(a *app, args []string) error {
 	asJSON := fs.Bool("json", false, i18n.T("flag.json"))
 	report := fs.String("report", "", i18n.T("flag.bench.report"))
 	steps := fs.String("steps", "", i18n.T("flag.bench.steps"))
+	keepSessions := fs.String("sessions", "", i18n.T("flag.bench.sessions"))
+	keepKinds := fs.String("kinds", "", i18n.T("flag.bench.kinds"))
+	products := fs.String("products", "", i18n.T("flag.bench.products"))
 	var sets setFlags
 	fs.Var(&sets, "set", i18n.T("flag.bench.set"))
 	pos, err := parse(fs, args)
@@ -130,6 +133,22 @@ func benchRecall(a *app, args []string) error {
 		}
 		fmt.Fprintln(a.stdout, i18n.T("cli.bench.steps", kept, dropped))
 	}
+	if *keepSessions != "" || *keepKinds != "" {
+		// 거르기는 시각을 붙인 뒤에 한다: --steps는 추출한 그대로의 사례 번호로 단계를 찾는다.
+		n, err := set.Keep(splitList(*keepSessions), splitList(*keepKinds))
+		if err != nil {
+			return i18n.Errorf("cli.bench.keep_bad", err)
+		}
+		fmt.Fprintln(a.stderr, i18n.T("cli.bench.kept", n))
+	}
+	if *products != "" {
+		if len(set.Products) > 0 {
+			return i18n.Err("cli.bench.products_both")
+		}
+		if set.Products, err = bench.ProductsOf(*products); err != nil {
+			return err
+		}
+	}
 	switch {
 	case len(set.Memories) > 0 && *db != "":
 		return i18n.Err("cli.bench.db_both")
@@ -167,6 +186,17 @@ func benchRecall(a *app, args []string) error {
 		fmt.Fprintln(a.stdout, i18n.T("cli.bench.report_written", *report))
 	}
 	return nil
+}
+
+// splitList is a comma separated flag value as its non-empty items.
+func splitList(v string) []string {
+	var out []string
+	for _, s := range strings.Split(v, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // setFlags are the --set key=value flags, in the order given.

@@ -552,3 +552,64 @@ func TestBench_audit_injections는_원본을_바꾸지_않고_낡은_주입을_�
 		}
 	}
 }
+
+// 재생 사례를 일부만 돈다(--sessions·--kinds). 사례 파일에 제품 지도가 없으면 설정 파일의 지도를 쓴다(--products): 제품
+// 폴더의 세션 시작에 그 제품의 핵심이 든다. 지도가 둘이면 거절한다.
+func TestBench_sessions_kinds_products는_사례를_거르고_제품_지도를_쓴다(t *testing.T) {
+	home(t)
+	dir := t.TempDir()
+	const set = `{"now":"2026-11-01T00:00:00Z","cwd":"/work/demo","seed":"s",%s"memories":[
+	 {"key":"core","kind":"rule","scope":"product:demo","quote":true,"pinned":true,"title":"Deploy on Tuesdays","topic":"deploy"}],
+	 "cases":[
+	 {"id":"s1-001","session":"s1","prompt":"how do we deploy"},
+	 {"id":"s1-002","session":"s1","kind":"start","source":"resume"},
+	 {"id":"s2-001","session":"s2","prompt":"hello"}]}`
+	plain, mapped := filepath.Join(dir, "c.json"), filepath.Join(dir, "m.json")
+	os.WriteFile(plain, []byte(fmt.Sprintf(set, "")), 0o600)
+	os.WriteFile(mapped, []byte(fmt.Sprintf(set, `"products":{"demo":{"match":["/work/demo"]}},`)), 0o600)
+	cfg := filepath.Join(dir, "config.json")
+	os.WriteFile(cfg, []byte(`{"products":{"demo":{"match":["/work/demo"]}}}`), 0o600)
+	type seen struct{ IDs []string }
+	type result struct {
+		Sessions []struct {
+			Session string
+			IDs     []string
+		}
+		Cases []struct {
+			ID    string
+			Start *seen
+		}
+	}
+	report := func(args ...string) result {
+		t.Helper()
+		out, errb, code := run(t, "", append([]string{"bench", "recall", "--recall", "current", "--json"}, args...)...)
+		if code != 0 {
+			t.Fatalf("%v: 종료 %d: %s", args, code, errb)
+		}
+		var v struct{ Runs []result }
+		if err := json.Unmarshal([]byte(out), &v); err != nil || len(v.Runs) != 1 {
+			t.Fatalf("%v: %v", args, err)
+		}
+		return v.Runs[0]
+	}
+	if r := report("--cases", plain); len(r.Sessions) != 2 || len(r.Sessions[0].IDs) != 0 {
+		t.Fatalf("without a product map the product core is not in the start: %+v", r.Sessions)
+	}
+	if r := report("--cases", plain, "--products", cfg); len(r.Sessions) != 2 || len(r.Sessions[0].IDs) != 1 {
+		t.Fatalf("with the settings' product map the product core is in the start: %+v", r.Sessions)
+	}
+	r := report("--cases", plain, "--products", cfg, "--sessions", "s1", "--kinds", "start")
+	if c := r.Cases; len(r.Sessions) != 1 || len(c) != 2 || c[0].ID != "s1-001+start" || c[1].ID != "s1-002" || c[1].Start == nil || len(c[1].Start.IDs) != 1 {
+		t.Fatalf("starts of s1 only: %+v", r)
+	}
+	for _, args := range [][]string{
+		{"--cases", mapped, "--products", cfg},
+		{"--cases", plain, "--products", filepath.Join(dir, "none.json")},
+		{"--cases", plain, "--sessions", "s9"},
+		{"--cases", plain, "--kinds", "later"},
+	} {
+		if _, _, code := run(t, "", append([]string{"bench", "recall", "--recall", "current"}, args...)...); code != 1 {
+			t.Errorf("%v: 종료 %d, 1이어야 한다", args, code)
+		}
+	}
+}

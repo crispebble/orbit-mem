@@ -57,6 +57,13 @@ type Resetter interface {
 	Reset(session string) error
 }
 
+// SourcedStarter is a recall path that takes how a session started, as a host hands it to its session start: the
+// Source of a start case (StartSources), or "" for the start the run makes before the first case of a session whose
+// log recorded no start. The run calls it in place of Recaller.Start when the path has it.
+type SourcedStarter interface {
+	StartFrom(session, cwd, source string) (Shown, error)
+}
+
 // Finder is the search a missed recall falls back to: the ids of the top limit hits.
 // Each recall path brings its own: the frozen one keeps the search of its day (internal/bench/legacy).
 type Finder interface {

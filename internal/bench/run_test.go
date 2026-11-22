@@ -219,3 +219,39 @@ func TestRun_재생_사본은_세션_묶음과_표시를_비우고_시작한다(
 		t.Fatal("the source DB changed")
 	}
 }
+
+// sourced is the fake with bench.SourcedStarter: it keeps the source of every start it gets.
+type sourced struct {
+	fake
+	sources *[]string
+}
+
+func (s sourced) StartFrom(session, cwd, source string) (bench.Shown, error) {
+	*s.sources = append(*s.sources, session+":"+source)
+	return s.fake.Start(session, cwd)
+}
+
+// 시작 사례의 출처(startup·resume·compact·clear 등)는 기록대로 시작 회상에 실린다. 기록된 시작이 없는 세션의 첫 시작은
+// 출처가 비어 있다. 출처를 받는 경로가 아니면 지금처럼 Start를 부른다.
+func TestRun_시작_사례의_출처를_시작_회상에_넘긴다(t *testing.T) {
+	p := prepare(t, `
+	 {"id":"c1","session":"s1","kind":"start","source":"resume"},
+	 {"id":"c2","session":"s1","prompt":"p1"},
+	 {"id":"c3","session":"s1","kind":"start","source":"compact"},
+	 {"id":"c4","session":"s2","prompt":"p2"},
+	 {"id":"c5","session":"s2","kind":"start","source":"clear"}`)
+	var calls, sources []string
+	f := func(db string, set *bench.Set) (bench.Env, error) {
+		return bench.Env{Recaller: sourced{fake{"r", script{}, nil, p.IDOf, &calls, nil}, &sources}}, nil
+	}
+	if _, err := bench.Run(p, f); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"s1:resume", "s1:compact", "s2:", "s2:clear"}
+	if !slices.Equal(sources, want) {
+		t.Fatalf("sources %v, want %v", sources, want)
+	}
+	if want := []string{"start:s1", "req:p1", "reset:s1", "start:s1", "start:s2", "req:p2", "reset:s2", "start:s2"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls %v, want %v", calls, want)
+	}
+}

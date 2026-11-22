@@ -70,7 +70,7 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 | `cwd` | 이 사례의 작업 폴더. 한 세션의 사례는 같은 폴더를 쓴다 |
 | `origin` | 정답 칸. 이 요청을 사람이 썼는가: `user`(기본)·`agent`·`system`. 어댑터는 훅처럼 늘 `user`로 넘기고, 사람 요청인지는 회상 경로가 글로 판정한다. 요청 글(`prompt`)이 있는 사례에만 뜻이 있다(도구만·위임·중복 사례는 보지 않는다) |
 | `kind` | `request`(기본)·`subagent`(위임)·`duplicate`(중복 저장)·`start`(세션 시작: 재개·압축 뒤 시작 등. 실행이 세션 시작 회상을 다시 부르고, 그 결과가 뒤 사례의 A층이다) |
-| `source` | 세션 시작 사례의 출처: `startup`·`resume`·`fork`·`compact`·`clear`. `compact`·`clear`는 훅처럼 세션 표시를 먼저 비우고(`bench.Resetter`) 시작을 부른다. 다른 사례에는 쓸 수 없다 |
+| `source` | 세션 시작 사례의 출처: `startup`·`resume`·`fork`·`compact`·`clear`. 출처를 받는 회상 경로(`bench.SourcedStarter`, 지금 경로는 호스트 계약의 `source` 칸)에 그대로 싣는다. 시작 사례 없이 세션 첫 사례 앞에서 부르는 시작은 출처가 비고, 지금 경로는 `startup`으로 보낸다. `compact`·`clear`는 훅처럼 세션 표시를 먼저 비우고(`bench.Resetter`) 시작을 부른다. 다른 사례에는 쓸 수 없다 |
 | `prompt` | 요청 글. 도구 사례에는 없을 수 있다 |
 | `tool` | 도구 직전 사례의 도구 이름 |
 | `input` | 도구 직전 사례의 도구 입력 글(`host.ToolInputText`: Bash는 `command`, Edit·Read·Write는 `file_path`, 그 밖은 문자열 값을 이은 것, 2,000자까지). 회상 경로가 읽지 않으면 무시한다 |
@@ -155,7 +155,16 @@ JSON 하나다. 맨 위 칸은 다음과 같다.
 
 현재 값이 아님의 판정은 재생과 감사가 같다: 낡음(`stale`, 대체 포함), 거절(`hidden`), 날이 지난 휘발(`expired`)(`bench.DeadReason`), 그 시각에 이미 지운 기억(`gone`). 지금 경로는 호출 뒤 DB 사본에서 그 시계 시각으로 읽고, 사본에 없는 id를 `gone`으로 센다. 감사는 지운 시각(`forgotten`)이 주입보다 앞선 id를 `gone`으로 세고, 지우기 전에 실린 id는 그때 상태를 알 수 없어 `unknown`으로 따로 센다. 재생 사본에는 지운 기억의 이력이 없어 이 `unknown`에 맞서는 값이 없다. 주제의 옛 버전(살아 있는 옛 값)은 이 판정에 넣지 않는다. 옛 회상은 판정을 넘기지 않아 늘 0이다. 판정 정의를 바꾸는 버전은 `deadByWhy`로 까닭별 값을 기준값과 견준다.
 
-재생 사본은 실행 전에 세션 묶음·세션 표시·위임 글을 비운다(`memory.ClearSessionState`). 실제 세션이 남긴 얼린 묶음을 같은 세션 id의 재생이 받으면, 잰 주입이 그 실행의 회상이 아니기 때문이다.
+재생 사본은 실행 전에 한 번 세션 묶음·세션 표시·위임 글을 비운다(`memory.ClearSessionState`). 사본을 뜬 DB에 실제 세션이 남긴 얼린 묶음을 같은 세션 id의 재생이 받으면, 잰 주입이 그 실행의 회상이 아니기 때문이다. 비우기는 실행 전 한 번뿐이고 되감기(`memory.Rewinder`)도 세션 표를 건드리지 않는다. 그래서 재생이 한 세션의 시작에서 만든 묶음·표시·위임 글은 그 세션의 뒤 사례까지 이어지고, 묶음의 글과 id는 만든 시각의 것이다. 묶음을 같은 세션의 뒤 시작(재개 등)에 그대로 다시 주는 버전(0.19.0)이면, 그 사이 낡은 기억이 그 시작의 `dead`로 세어진다(묶음 재전달의 폐기 주입, `TestReplay_*`). 묶음 안 기억의 보임이 바뀌면 묶음을 다시 만드는 버전이면 그 시작에 `dead`가 없고, 뒤 요청의 세션 소식이 그 기억을 알린다. 압축·지우기 뒤 시작은 재는 버전의 훅 차례대로 세션 상태를 비우고 부른다(위 `source` 칸).
+
+재생의 묶음이 실제 묶음과 같은 기억을 담으려면 제품 지도가 있어야 한다. 제품 폴더의 세션 시작에는 그 제품의 핵심과 최근 결정이 들고, 어느 폴더가 어느 제품인지는 설정의 `products`가 정한다. `bench extract`가 뽑은 사례 파일에는 지도가 없으니 `bench recall --products <설정 파일>`로 준다. 지도 없이 재면 제품 범위 기억은 어느 경로에도 들지 않고, 그런 기억의 폐기 주입은 재현되지 않는다. 재생은 그 설정 파일의 지금 지도를 쓴다: 세션 때 지도가 달랐으면 그 차이는 재생에 남는다.
+
+기록 감사가 센 폐기 주입 가운데 재생에 나올 수 없는 것이 있다. B/A를 볼 때 이 몫을 빼고 본다.
+
+- 대화 기록에 없는 시작. 호스트가 세션 시작 훅을 돌려 주입 사건이 남았어도, 대화 기록에 그 시작(`SessionStart` 훅 기록)이 없으면 시작 사례가 없고 재생은 그 시작을 부르지 않는다. 그 시작이 다시 준 묶음도 재생에 없다.
+- 재는 버전과 다르게 동작한 버전이 만든 주입. 재생은 재는 버전의 동작을 따른다. 예를 들어 압축 뒤 시작 전에 세션 묶음을 비우는 동작(`ResetSession`)이 들어오기 전 버전은 압축 뒤에도 얼린 묶음을 다시 줬다. 압축 뒤 묶음을 새로 만드는 버전으로 재생하면 그 재전달은 나오지 않는다. 그 버전이 고른 묶음 내용(옛 세션 시작 규칙)도 재생과 다르다.
+- 지운 기억(`gone`). 사본에 없는 기억은 재생의 어느 묶음에도 들 수 없다.
+- 위임 주입은 위임 사례가 있을 때만 잰다. 감사의 위임 주입은 세션 id에 서브에이전트 id가 붙어(`<세션>/<에이전트>`) 재생의 세션과 짝이 바로 맞지 않는다.
 
 ### 기록된 주입 감사(`bench audit-injections`)
 
@@ -247,6 +256,12 @@ go test ./internal/bench -run TestPublicSet -write-legacy-baseline
 orbit-mem bench recall --db <기억 DB 파일> --cases <사례 파일>
 # 시각(at) 없이 뽑은 옛 재생 사례: 같은 추출의 sessions.json으로 사례 시각을 붙여 그 시각의 DB 상태로 잰다.
 orbit-mem bench recall --db <memory-copy.db> --cases <answers-draft.json> --steps <sessions.json>
+
+# 재생 사례: 설정 파일의 제품 지도(products)를 쓰고(사례 파일에 지도가 없을 때만), 몇 세션의 시작만 잰다.
+# --sessions는 사례 파일의 세션 id(쉼표로 구분), --kinds는 request·subagent·duplicate·start(쉼표로 구분).
+# start를 남기면 실행이 부르는 세션 시작이 모두 같은 시각에 남는다: 시작 사례 없이 시작하는 세션은 첫 사례 시각에
+# 출처 없는 시작 사례(<첫 사례 id>+start)가 선다. 거르기는 --steps로 시각을 붙인 뒤에 한다.
+orbit-mem bench recall --db <memory-copy.db> --cases <cases.json> --products <설정 파일> --sessions <id,id> --kinds start
 
 # 지금 회상 경로의 설정을 덮어써 잰다(--set key=value, 여러 번). 키와 값은 설정 파일이 거르는 검사(config.Config.Validate)로 실행 전에 거른다. 얼린 옛 회상은 설정을 읽지 않는다.
 orbit-mem bench recall --cases <사례 파일> --set saveSimilarMin=0.7 --set recallChars=800
