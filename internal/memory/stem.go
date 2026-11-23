@@ -206,6 +206,28 @@ func requestWords(prompt string, withShort bool) []string {
 	return out
 }
 
+// StripParticlesQuery is a find query that adds, after each word, the word with its closed particles and
+// endings taken off (stemWord), as a request's words are for the recall: 「배포를 확인해」 → 「배포를 배포
+// 확인해 확인」. The word as written stays, so no piece of it is lost (페이지 keeps 이지 when 지 is taken for an
+// ending); the stem is added only when it differs. No word is dropped, words are not made unique and the order
+// is kept. A query that holds no word (only marks) is returned as it was: it matches nothing, which an
+// empty query would not.
+func StripParticlesQuery(q string) string {
+	var out []string
+	for _, t := range strings.Fields(Normalize(q)) {
+		for _, w := range splitWordMarks(t) {
+			out = append(out, w)
+			if s := stemWord(w); s != w {
+				out = append(out, s)
+			}
+		}
+	}
+	if len(out) == 0 {
+		return q
+	}
+	return strings.Join(out, " ")
+}
+
 // genitiveBase is X of a two-syllable Hangul word X의 whose X is not a function syllable: a word that may be
 // a one-syllable noun with the particle 의 (법의) or one word (회의). Which one is the store's (resolveGenitives).
 func genitiveBase(w string) (string, bool) {

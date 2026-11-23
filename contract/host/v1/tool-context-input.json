@@ -1,0 +1,45 @@
+{
+  "name": "tool-context-input",
+  "op": "tool-context",
+  "setup": {
+    "db": "memories",
+    "calls": [
+      {
+        "op": "call",
+        "input": {
+          "contract": 1,
+          "host": "test",
+          "name": "memory_save",
+          "args": {
+            "kind": "rule",
+            "appliesTo": "user",
+            "title": "커밋 전에 시험을 돌린다",
+            "topic": "커밋 전 시험",
+            "tools": ["Bash(git commit)"],
+            "source": {
+              "kind": "quote",
+              "excerpt": "커밋 전에 시험 돌려"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "input": {
+    "contract": 1,
+    "host": "test",
+    "session": "s-1",
+    "cwd": "/tmp/orbit-contract",
+    "tool": "Bash",
+    "toolInput": "git commit -m x"
+  },
+  "exit": 0,
+  "output": {
+    "text": "$nonEmptyString",
+    "memoryIds": "$nonEmptyArray",
+    "budget": {
+      "chars": "$number",
+      "limit": "$number"
+    }
+  }
+}

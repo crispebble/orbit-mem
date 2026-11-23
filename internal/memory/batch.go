@@ -22,6 +22,11 @@ type BatchResult struct {
 // other, so one that fails does not stop the rest; it comes back with its
 // reason. Editing before approval stays one at a time.
 func (s *Store) DecideMany(ids []string, decision, note string) BatchResult {
+	return s.DecideManyAs(ids, decision, note, Who{})
+}
+
+// DecideManyAs is DecideMany with who, who decides (DecideInput.Who).
+func (s *Store) DecideManyAs(ids []string, decision, note string, who Who) BatchResult {
 	res := BatchResult{Decided: []DecideResult{}, Failed: []BatchFailure{}}
 	seen := map[string]bool{}
 	for _, id := range ids {
@@ -34,7 +39,7 @@ func (s *Store) DecideMany(ids []string, decision, note string) BatchResult {
 			res.Failed = append(res.Failed, BatchFailure{ID: id, Error: fmt.Sprintf("%v: decision은 approve 또는 reject", ErrInvalid)})
 			continue
 		}
-		r, err := s.Decide(DecideInput{ID: id, Decision: decision, Note: note})
+		r, err := s.Decide(DecideInput{ID: id, Decision: decision, Note: note, Who: who})
 		if err != nil {
 			res.Failed = append(res.Failed, BatchFailure{ID: id, Error: err.Error()})
 			continue

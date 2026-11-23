@@ -124,6 +124,9 @@ func addColumns(db *sql.Tx) error {
 		{"activity", "summary", "TEXT NOT NULL DEFAULT ''"},
 		// 출처 등급(판 5, 설계 9절). 옛 판은 이 열을 모르고 넣으므로 그 줄은 빈 등급이고, 읽을 때 kind로 정한다.
 		{"sources", "trust", "TEXT NOT NULL DEFAULT ''"},
+		// 별칭(스키마 6, Q-1)과 서버가 출처를 다시 확인했는지(스키마 6, C-1). 옛 버전이 넣은 줄은 별칭 없음·확인 안 함이다.
+		{"memories", "aliases", "TEXT NOT NULL DEFAULT '[]'"},
+		{"sources", "rechecked", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
@@ -162,7 +165,10 @@ CREATE TABLE IF NOT EXISTS lab_runs (
 // or old DB together; a statement that reads first and then writes would get
 // SQLITE_BUSY at once instead of waiting. Under that lock it reads the schema version
 // again: a DB a newer orbit-mem migrated meanwhile is left alone (ErrSchemaNewer), so
-// the meta schema.version it writes never goes down.
+// the meta schema.version it writes never goes down, and the one-time fills of an
+// upgrade (backfill6Tx) run only in the process that found the old version under the lock.
+// Any failure rolls the whole upgrade back: the DB keeps its old version and the next
+// write open tries again.
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -183,13 +189,17 @@ func migrate(db *sql.DB) error {
 	if err := tx.QueryRow(lateObjectsSQL).Scan(&marks); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
-	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema + forgottenSchema); err != nil {
+	if _, err := tx.Exec(schema + eventsSchema + linksSchema + labSchema + activitySchema + auditSchema + indexSchema + forgottenSchema + schema6); err != nil {
 		return i18n.Errorf("memory.err.db_open", err)
 	}
 	if err := addColumns(tx); err != nil {
 		return i18n.Errorf("memory.err.db_upgrade", err)
 	}
 	switch {
+	case v < 6: // 스키마 6 채우기는 v를 잠금 안에서 읽었으므로 한 번만 돈다. 기억 전부를 다시 색인하므로 아래 두 갈래를 포함한다
+		if err := backfill6Tx(tx); err != nil {
+			return i18n.Errorf("memory.err.db_upgrade", err)
+		}
 	case indexed == 0: // 판 4 → 5: 같은 트랜잭션에서 기억 전부를 색인한다
 		if _, err := fillStaleTx(tx, 0); err != nil {
 			return i18n.Errorf("memory.err.db_upgrade", err)
@@ -319,6 +329,10 @@ type SaveInput struct {
 	Supersedes []string
 	// Tools are the tool names or prefixes (ending in *) right before whose call the memory is recalled.
 	Tools []string
+	// Aliases are other words that find the memory (Memory.Aliases). More than MaxAliases, one over
+	// MaxAliasRunes, or one that looks like a secret refuses the save (ErrInvalid). A save of an existing title
+	// does not apply them (SaveReport.FieldsKept says so).
+	Aliases []string
 	// Pin puts the memory into the core of its layer (설계 · orbit-mem 2판 4.4). A save that cannot get it
 	// (not confirmed, not a user or product memory, past the limit) is refused before anything is written.
 	Pin bool
@@ -333,6 +347,25 @@ type SaveInput struct {
 	// transaction: the save is refused whole when the writer may not change it (the user's words without a
 	// quote) or when the new sources are all untrusted and the old ones are not.
 	Replaces string
+	// Session is the conversation the save came from (the host's session id, or the MCP server's run when the
+	// host gives none). The sighting it records counts under SessionKey(Session): an AI's candidate is
+	// confirmed only when it came up in sessions and on days that both differ (E-1). Empty is a session not
+	// known, counted with the sightings of before schema 6 as one session, so saves that bring none never make
+	// "another session" among themselves.
+	Session string
+	// QuoteMatched says the quote source was checked as the user's own words: its excerpt was found in the
+	// user's recorded utterances (MatchQuote QuoteMatched), or the save came by a person's own channel. Only
+	// such a quote brings back a rejected (hidden) memory of the same title, confirmed (S-2). A quote without
+	// it is still the user's words for everything else (an unchecked host keeps the old behavior, S-4).
+	QuoteMatched bool
+	// QuoteAt is when the user said the checked quote: the record time (Unix ms) of the latest utterance it
+	// matched (MatchQuote), or now for a person's own channel. A rejected memory comes back only by words said
+	// after it was rejected, at least quoteMinWords words long.
+	QuoteAt int64
+	// AutoMode, when set, is the auto mode (C-9) this save is decided under instead of the store's Policy.AutoMode:
+	// a long-lived server reads the setting again on every save, so a change applies from the next one. nil is
+	// the store's.
+	AutoMode *bool
 
 	noEvidence bool // 저장 뒤 증거 확정을 하지 않는다(승인 적용 중의 저장)
 }
@@ -387,6 +420,9 @@ func (in *SaveInput) validate() error {
 		return err
 	}
 	in.Tools = tools
+	if in.Aliases, err = cleanAliases(in.Aliases); err != nil {
+		return err
+	}
 	if err := in.Idem.validate(); err != nil {
 		return err
 	}
@@ -395,11 +431,13 @@ func (in *SaveInput) validate() error {
 
 // Save stores a memory with its source. A direct quote of the user is
 // confirmed at once; anything else starts as a candidate. Saving the same
-// title (same kind and scope) again adds the source and the day. A candidate
-// with evidence (seen on different days, followed in verified work, a project
-// fact the work's verification checked) is then confirmed automatically and
-// the confirmation kept in the ledger (A2). A hidden (rejected) candidate
-// stays hidden unless the new source is the user's own quote.
+// title (same kind and scope) again adds the source, the session and the day. A candidate
+// with evidence (seen in different sessions on different days, followed in verified work, a project
+// fact whose verification ground the server read again) is then confirmed automatically and
+// the confirmation kept in the ledger (A2). A save of the title of a hidden (rejected) memory writes
+// nothing and reports it (SaveReport.Rejected), unless its source is the user's quote checked against what
+// the user said after the rejection (SaveInput.QuoteMatched, QuoteAt), of at least three words: that brings
+// the memory back, confirmed (S-2).
 func (s *Store) Save(in SaveInput) (Memory, error) {
 	m, _, err := s.SaveWith(in)
 	return m, err
@@ -407,26 +445,50 @@ func (s *Store) Save(in SaveInput) (Memory, error) {
 
 // SaveReport is what a save did besides storing the memory (설계 · orbit-mem 2판 5절).
 type SaveReport struct {
-	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 판
-	Conflicts  []string `json:"conflicts,omitempty"`  // 대체하지 않고 어긋남으로 둔 사용자 말(또는 믿을 수 없는 새 판이 둔 owner·agent 기억)
+	Superseded []string `json:"superseded,omitempty"` // 이 저장이 대체한 옛 버전(자동 대체 포함: 그것은 원장에도 남는다)
+	// Conflicts are the old memories the save left as they were and marked as going against it: the user's words it
+	// may not replace (a fact of another scope or topic included), an owner·agent memory an untrusted new one met,
+	// or an old memory whose automatic replacement the person undid (replace.go).
+	Conflicts []string `json:"conflicts,omitempty"`
 	// Unpinned is a pinned memory this save superseded whose core place the new value could not take (past the limit).
 	Unpinned string `json:"unpinned,omitempty"`
+	// BodyKept is true when the save took the title of a memory that already exists and brought a body that
+	// differs from the stored one: only the source and the day it came again were added, the body did not
+	// change. A save without a body never sets it.
+	BodyKept bool `json:"bodyKept,omitempty"`
+	// FieldsKept names the other fields of that same-title save that were given, differ from the stored
+	// value and were therefore not applied: tags, topic, tools, aliases, retention, ttlDays, reviewAfterDays. A field the save
+	// did not give, or gave with the stored value, is not listed. Change them with Update.
+	FieldsKept []string `json:"fieldsKept,omitempty"`
+	// Rejected is the id of the rejected (hidden) memory whose title the save took when the save could not
+	// bring it back, and NotRevived says why: nothing was written, and the memory returned is that hidden
+	// one as it was (S-2).
+	Rejected   string        `json:"rejected,omitempty"`
+	NotRevived ReviveRefusal `json:"notRevived,omitempty"`
+	// Revived is true when the save brought a rejected memory of its title back, confirmed. Its body stays
+	// the one it had (BodyKept says the save brought another).
+	Revived bool `json:"revived,omitempty"`
 
 	// Replayed is the earlier application of the save's idempotency key: nothing was written now.
 	Replayed *SaveRequest `json:"-"`
 
-	untrusted []string // Conflicts 가운데 새 판의 출처가 믿을 수 없는 것뿐이라 남긴 것
+	untrusted []string // Conflicts 가운데 새 버전의 출처가 믿을 수 없는 것뿐이라 남긴 것
 }
 
 // SaveWith is Save that also supersedes, in the same transaction, the current value of
-// the same scope and topic and the memories in in.Supersedes, by the source rules of
-// 설계 · orbit-mem 2판 4.2: the user's words replace anything (D1, no userQuote needed:
-// the new words are the ground); what an AI learned or an automation wrote does not
-// replace the user's words and is marked as going against them instead. A volatile
-// memory (the user said it is for now) does not replace its topic's value.
+// the same scope and topic and the memories in in.Supersedes, by the replacement table
+// (replace.go): the user's words replace anything (D1, no userQuote needed: the new words
+// are the ground); what an AI learned or an automation wrote does not replace the user's
+// words and is marked as going against them instead — except, with the auto mode on, a fact
+// of the same kind whose verification ground is written down (whether or not the server read
+// it again), which replaces a user's fact outside the user scope as an automatic change kept
+// in the ledger, to be undone from the audit list (C-1·C-3·C-8). With the auto mode off it
+// stays a conflict; reading the ground again only decides the immediate confirmation when
+// the save made no conflict. Rules and decisions are never replaced that way. A
+// volatile memory (the user said it is for now) does not replace its topic's value.
 func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	m, rep, err := s.save(in)
-	if err != nil || rep.Replayed != nil { // 다시 온 키: 이번에는 아무것도 쓰지 않았다
+	if err != nil || rep.Replayed != nil || rep.Rejected != "" { // 다시 온 키·거절된 제목: 이번에는 아무것도 쓰지 않았다
 		return m, rep, err
 	}
 	for _, id := range rep.Superseded {
@@ -435,6 +497,17 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 	// 상시 핵심: 요청한 승격은 저장과 같은 트랜잭션에서 했다. 아니면 대체한 핵심 기억의 자리를 새 판이 이어받는다(S3 명세 2.6).
 	if !in.Pin {
 		m, rep.Unpinned = s.inheritPin(m, rep.Superseded, in.Who)
+	}
+	// 사용자 말 출처가 어긋남 쌍의 어느 쪽에 붙었으면 사람이 고른 것이라 쌍을 푼다(settleConflictsAfterQuote).
+	if in.Source.Kind == SourceQuote {
+		if changed, gone := s.settleConflictsAfterQuote(m.ID, in.Source.Excerpt); changed {
+			if m, err = s.Get(m.ID); err != nil {
+				return m, rep, err
+			}
+			if rep.Unpinned == "" {
+				rep.Unpinned = gone
+			}
+		}
 	}
 	if m.State != StateCandidate {
 		return m, rep, nil
@@ -450,10 +523,11 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 		}
 		_, _ = s.FlagConflict(m.ID, id, note, in.Who)
 	}
-	if in.noEvidence {
+	// 이 저장에서 어긋남이 생겼으면 즉시 확정하지 않는다: 위 표시를 쓰지 못했어도 새 사실이 주제의 현재 값을 빼앗지 않게 한다.
+	if in.noEvidence || len(rep.Conflicts) > 0 {
 		return m, rep, nil
 	}
-	if _, ok, err := s.ConfirmByEvidence(m.ID); err != nil || !ok {
+	if _, ok, err := s.confirmByEvidenceUnder(m.ID, s.autoMode(in)); err != nil || !ok {
 		return m, rep, nil // 확정하지 못해도 저장은 됐다
 	}
 	m, err = s.Get(m.ID)
@@ -462,6 +536,7 @@ func (s *Store) SaveWith(in SaveInput) (Memory, SaveReport, error) {
 
 func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	var rep SaveReport
+	given := givenLifecycle{Retention: strings.TrimSpace(in.Retention), TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays} // validate가 기본값을 채우기 전의 값
 	if err := in.validate(); err != nil {
 		return Memory{}, rep, err
 	}
@@ -520,7 +595,24 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			in.Kind, in.Scope, key).Scan(&existingID)
 	}
 	if existingID != "" {
-		if err := sightTx(tx, existingID, in.Source, day, now); err != nil {
+		prev, err := getTx(tx, existingID)
+		if err != nil {
+			return Memory{}, rep, err
+		}
+		revive := false
+		if prev.State == StateHidden {
+			why, err := reviveRefusal(tx, existingID, in)
+			if err != nil {
+				return Memory{}, rep, err
+			}
+			if why != "" {
+				// 거절된 기억에 출처만 더하고 성공으로 답하던 길을 닫는다(S-2): 아무것도 쓰지 않고(멱등 키도) 알린다.
+				rep.Rejected, rep.NotRevived = existingID, why
+				return prev, rep, nil
+			}
+			revive = true
+		}
+		if err := sightTx(tx, existingID, in.Source, in.Session, day, now, revive); err != nil {
 			return Memory{}, rep, err
 		}
 		cur, err := getTx(tx, existingID)
@@ -528,10 +620,17 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 			return Memory{}, rep, err
 		}
 		if cur.State == StateCandidate || cur.State == StateConfirmed { // 거절된(hidden) 판은 아무것도 대체하지 않는다
-			if rep, err = supersedeTx(tx, cur, in, false, now); err != nil {
+			if rep, err = s.supersedeTx(tx, cur, in, false, now); err != nil {
 				return Memory{}, rep, err
 			}
 		}
+		// 같은 제목은 새 기억을 만들지 않고 출처만 더하므로 새 본문과 다른 칸(태그·주제 등)은 버려진다. 호출한 쪽이 성공으로 읽지 않게 알린다(S-1).
+		// supersedeTx가 rep를 다시 채우므로 그 뒤에 정한다.
+		if nb := strings.TrimSpace(in.Body); nb != "" && nb != strings.TrimSpace(cur.Body) {
+			rep.BodyKept = true
+		}
+		rep.FieldsKept = keptFields(cur, in, given)
+		rep.Revived = revive
 		if err := savePinTx(tx, in, existingID, now); err != nil {
 			return Memory{}, rep, err
 		}
@@ -553,7 +652,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		}
 	}
 	m := Memory{ID: NewID("m-"), Kind: in.Kind, Scope: in.Scope, Project: in.Project, State: state, Title: in.Title,
-		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID, Tools: in.Tools}
+		Body: in.Body, Tags: in.Tags, Version: 1, CreatedAt: at, UpdatedAt: now, LegacyID: in.LegacyID, Tools: in.Tools, Aliases: in.Aliases}
 	in.lifecycle(&m, at)
 	var legacy any
 	if in.LegacyID != "" {
@@ -561,8 +660,8 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,legacy_id,
-		retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools)); err != nil {
+		retention,review_days,review_at,expires_at,topic,tools,aliases) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, key, m.Body, string(tags), 1, m.CreatedAt, m.UpdatedAt, legacy,
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), aliasesJSON(m.Aliases)); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := addSourceTx(tx, m.ID, in.Source, now); err != nil {
@@ -585,9 +684,11 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 		}
 	}
 	if state == StateCandidate {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+		if err := recordSightingTx(tx, m.ID, in.Session, day, now); err != nil {
 			return Memory{}, rep, err
 		}
+	} else if err := recordCreationSessionTx(tx, m.ID, in.Session, now); err != nil {
+		return Memory{}, rep, err
 	}
 	if err := versionTx(tx, m, "create", "", now); err != nil {
 		return Memory{}, rep, err
@@ -595,7 +696,7 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 새 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
 		return Memory{}, rep, err
 	}
-	if rep, err = supersedeTx(tx, m, in, true, now); err != nil {
+	if rep, err = s.supersedeTx(tx, m, in, true, now); err != nil {
 		return Memory{}, rep, err
 	}
 	if err := savePinTx(tx, in, m.ID, now); err != nil {
@@ -609,6 +710,43 @@ func (s *Store) save(in SaveInput) (Memory, SaveReport, error) {
 	}
 	m, err = s.Get(m.ID)
 	return m, rep, err
+}
+
+// givenLifecycle is the retention, ttlDays and reviewAfterDays the caller gave, before validate fills the
+// defaults in (volatile 7 days, durable review 90 days), so a default is not taken for a value the caller gave.
+type givenLifecycle struct {
+	Retention                string
+	TTLDays, ReviewAfterDays int
+}
+
+// keptFields lists the fields of in that a save of an existing title gave with a value other than the stored
+// one: that path only adds the source, so they were not applied. A field the caller did not give is not
+// compared; the lifecycle fields are compared by the value given.
+func keptFields(cur Memory, in SaveInput, given givenLifecycle) []string {
+	sorted := func(a []string) []string { return slices.Sorted(slices.Values(a)) }
+	var out []string
+	if len(in.Tags) > 0 && !slices.Equal(sorted(in.Tags), sorted(cur.Tags)) {
+		out = append(out, "tags")
+	}
+	if in.Topic != "" && TopicKey(in.Topic) != TopicKey(cur.Topic) {
+		out = append(out, "topic")
+	}
+	if len(in.Tools) > 0 && !slices.Equal(sorted(in.Tools), sorted(cur.Tools)) {
+		out = append(out, "tools")
+	}
+	if len(in.Aliases) > 0 && !slices.Equal(sorted(in.Aliases), sorted(cur.Aliases)) {
+		out = append(out, "aliases")
+	}
+	if given.Retention != "" && in.Retention != cur.Retention { // in.Retention is the checked class of the given name
+		out = append(out, "retention")
+	}
+	if given.TTLDays > 0 && (cur.Retention != RetentionVolatile || int64(given.TTLDays)*dayMs != cur.ExpiresAt-cur.CreatedAt) {
+		out = append(out, "ttlDays")
+	}
+	if given.ReviewAfterDays > 0 && given.ReviewAfterDays != cur.ReviewDays {
+		out = append(out, "reviewAfterDays")
+	}
+	return out
 }
 
 // savePinTx pins the saved memory in the save's transaction when the save asks for it: a save that cannot
@@ -625,10 +763,47 @@ func savePinTx(tx *sql.Tx, in SaveInput, id string, now int64) error {
 	return pinTx(tx, &m, true, in.Who, now)
 }
 
-// sightTx records that memory id came up again on day with src. A quote of
-// the user confirms it; the evidence of the other days is checked after the
+// SessionKey is the session a sighting counts under: session trimmed, and the key of a subagent
+// ("<session>/<agent>", the host request key) folded into the session before the slash, so what a subagent
+// saves counts as its parent's conversation. "" stays "" (a session not known).
+func SessionKey(session string) string {
+	session, _, _ = strings.Cut(session, "/")
+	return strings.TrimSpace(session)
+}
+
+// recordSightingTx records that memory id came up on day in session: in sightings by (memory, day), as
+// before schema 6, and in sighting_sessions by (memory, session, day), which the confirmation counts (E-1).
+// A session not known goes under legacySession with the old sightings.
+func recordSightingTx(tx *sql.Tx, id, session, day string, now int64) error {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, id, day); err != nil {
+		return err
+	}
+	key := SessionKey(session)
+	if key == "" {
+		key = legacySession
+	}
+	_, err := tx.Exec(`INSERT OR IGNORE INTO sighting_sessions(memory_id, session, day, at) VALUES(?,?,?,?)`, id, key, day, now)
+	return err
+}
+
+// recordCreationSessionTx records the session a memory that was not made a candidate (confirmed by the user's words
+// at once) was made in, in sighting_sessions only: it is no sighting day, but a later save of the same memory in that
+// session is the same session, not a confirmation (confirmCheckTx). A session not known records nothing.
+func recordCreationSessionTx(tx *sql.Tx, id, session string, now int64) error {
+	key := SessionKey(session)
+	if key == "" {
+		return nil
+	}
+	// 날 칸은 비운다: 확정 증거 ①(seenApartTx)이 빈 날을 건너뛰어, 만든 세션이 다시 나온 날로 세지 않는다.
+	_, err := tx.Exec(`INSERT OR IGNORE INTO sighting_sessions(memory_id, session, day, at) VALUES(?,?,'',?)`, id, key, now)
+	return err
+}
+
+// sightTx records that memory id came up again in session on day with src. A quote of
+// the user confirms a candidate, and a rejected (hidden) memory too when revive says the quote was
+// checked (S-2); the evidence of the other sessions and days is checked after the
 // transaction (ConfirmByEvidence), so the confirmation is in the ledger.
-func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
+func sightTx(tx *sql.Tx, id string, src Source, session, day string, now int64, revive bool) error {
 	m, err := getTx(tx, id)
 	if err != nil {
 		return err
@@ -636,12 +811,26 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	if err := addSourceTx(tx, m.ID, src, now); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+	m.holdReview()
+	// 확인인가(L-1): 사용자 말로 다시 저장했거나, 이 기억이 아직 나온 적 없는 다른 세션에서 다시 나왔을 때다. 같은 세션의 재등장은 아니다.
+	confirmed := src.Kind == SourceQuote
+	if !confirmed {
+		if confirmed, err = confirmCheckTx(tx, m.ID, session); err != nil {
+			return err
+		}
+	}
+	if err := recordSightingTx(tx, m.ID, session, day, now); err != nil {
 		return err
 	}
-	next := m.State
-	if src.Kind == SourceQuote && m.State == StateCandidate {
+	next, reason := m.State, "다시 나옴: "+day
+	switch {
+	case src.Kind == SourceQuote && m.State == StateCandidate:
 		next = StateConfirmed
+	case src.Kind == SourceQuote && m.State == StateHidden && revive:
+		next, reason = StateConfirmed, "사용자 말로 다시 저장해 되살림: "+day
+	}
+	if confirmed && (next == StateCandidate || next == StateConfirmed) {
+		m.confirm(now)
 	}
 	action := "seen"
 	if next != m.State {
@@ -650,7 +839,7 @@ func sightTx(tx *sql.Tx, id string, src Source, day string, now int64) error {
 	}
 	m.Version++
 	m.UpdatedAt = now
-	return writeTx(tx, m, action, "다시 나옴: "+day, now)
+	return writeTx(tx, m, action, reason, now)
 }
 
 // AddSource attaches another source to an existing memory without a new version.
@@ -683,11 +872,7 @@ func addSourceTx(tx *sql.Tx, id string, src Source, now int64) error {
 	if at == 0 {
 		at = now
 	}
-	excerpt := MaskSecrets(src.Excerpt)
-	if len(excerpt) > 8<<10 {
-		excerpt = truncateBytes(excerpt, 8<<10)
-	}
-	src.Excerpt = excerpt
+	src.Excerpt, _ = storedExcerpt(src.Excerpt) // MatchQuote가 대조하는 것과 같은 발췌
 	return insertSourceTx(tx, NewID("s-"), id, src, at)
 }
 
@@ -709,9 +894,9 @@ func writeTx(tx *sql.Tx, m Memory, action, reason string, now int64) error {
 	}
 	tags, _ := json.Marshal(m.Tags)
 	if _, err := tx.Exec(`UPDATE memories SET kind=?,scope=?,project=?,state=?,title=?,title_key=?,body=?,tags=?,version=?,updated_at=?,superseded_by=?,stale_reason=?,
-		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,pinned=? WHERE id=?`,
+		retention=?,review_days=?,review_at=?,expires_at=?,topic=?,tools=?,aliases=?,pinned=? WHERE id=?`,
 		m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.UpdatedAt, m.SupersededBy, m.StaleReason,
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), m.Pinned, m.ID); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, m.Topic, toolsJSON(m.Tools), aliasesJSON(m.Aliases), m.Pinned, m.ID); err != nil {
 		return err
 	}
 	if err := syncIndexTx(tx, m.ID); err != nil { // 색인: 고친 기억의 줄과 늦은 줄(쓰기 트랜잭션 끝)
@@ -733,15 +918,16 @@ type querier interface {
 }
 
 const memoryCols = `id,kind,scope,project,state,title,body,tags,version,created_at,updated_at,superseded_by,stale_reason,COALESCE(legacy_id,''),
-	retention,review_days,review_at,expires_at,topic,tools,pinned`
+	retention,review_days,review_at,expires_at,topic,tools,pinned,aliases`
 
 func scanMemory(row interface{ Scan(...any) error }) (Memory, error) {
 	var m Memory
-	var tags, tools string
+	var tags, tools, aliases string
 	if err := row.Scan(&m.ID, &m.Kind, &m.Scope, &m.Project, &m.State, &m.Title, &m.Body, &tags, &m.Version, &m.CreatedAt, &m.UpdatedAt, &m.SupersededBy, &m.StaleReason, &m.LegacyID,
-		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools, &m.Pinned); err != nil {
+		&m.Retention, &m.ReviewDays, &m.ReviewAt, &m.ExpiresAt, &m.Topic, &tools, &m.Pinned, &aliases); err != nil {
 		return m, err
 	}
+	m.Aliases = parseAliases(aliases)
 	m.AppliesTo = place.AppliesTo(m.Scope)
 	_ = json.Unmarshal([]byte(tools), &m.Tools)
 	if len(m.Tools) == 0 {
@@ -819,6 +1005,7 @@ type UpdateInput struct {
 	Body            *string
 	Tags            *[]string
 	Tools           *[]string // 도구 트리거를 바꾼다(빈 목록이면 없앤다)
+	Aliases         *[]string // 별칭을 통째로 바꾼다(빈 목록이면 비운다). 한도를 넘으면 ErrInvalid(aliases.go)
 	Scope           *string
 	Project         *string
 	Topic           *string // 주제를 바꾼다(이전 계획, S4)
@@ -893,6 +1080,7 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		return m, fmt.Errorf("%w: %s %s", ErrAutoSkip, in.ID, m.State)
 	}
 	prevState := m.State
+	m.holdReview() // 고치기 전의 상태와 고친 시각으로 굳힌다: 확인이 아닌 수정이 90일 시계를 되감지 못하게
 	// 고침의 새 출처: 출처가 믿을 수 없는 것뿐인 고침은 사용자 말 없이 owner·agent 기억을 고쳐 쓰지 못한다(D7,
 	// 대체와 같은 규칙). 출처는 고침과 같은 트랜잭션에 붙어, 붙이지 못하면 고침도 남지 않는다.
 	srcs, srcTrust, err := resolveTrusts(in.TrustLimit, in.Sources)
@@ -936,6 +1124,13 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 		}
 		m.Tools = tools
 	}
+	if in.Aliases != nil {
+		aliases, err := cleanAliases(*in.Aliases)
+		if err != nil {
+			return m, err
+		}
+		m.Aliases = aliases
+	}
 	if in.Scope != nil {
 		if !validScope(*in.Scope) {
 			return m, ErrInvalid
@@ -961,6 +1156,9 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	}
 	m.Version++
 	m.UpdatedAt = s.nowMs()
+	if confirmsReview(in, srcs) && (m.State == StateCandidate || m.State == StateConfirmed) {
+		m.confirm(m.UpdatedAt)
+	}
 	action := in.Action
 	if action == "" {
 		action = "update"
@@ -974,13 +1172,57 @@ func (s *Store) update(tx *sql.Tx, in UpdateInput) (Memory, error) {
 	if err := tx.Commit(); err != nil {
 		return m, err
 	}
+	// 사용자 말(사용자 말 출처나 함께 준 말)이 어긋남 쌍의 어느 쪽에 닿았으면 쌍을 푼다(settleConflictsAfterQuote).
+	// 사용자 말로 확정했으면 표시를 상태로 닫기 전에 푼다: 먼저 닫으면 쌍을 찾지 못해 옛 쪽이 대체되지 않은 채 둘 다 확정으로
+	// 남고 핵심 자리도 넘어가지 않는다. 낡음·숨김은 표시를 그 상태로 먼저 닫아, 버린 새 쪽이 옛 쪽을 대체하지 않게 한다.
+	quote := userWordsOf(in.Who, srcs)
+	settled := false
+	if quote != "" && m.State == StateConfirmed {
+		// 다른 자리 쌍은 예전처럼 상태(확정)로 닫는다: 쌍 풀기에 맡기면 사용자 말로 닫혀, 다른 자리의 옛 쪽이 「사용자가 고른 값」이 된다.
+		s.closeOtherPlaceFlagsOf(m, m.State)
+		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
+		settled = true
+	}
 	if m.State != StateCandidate {
 		s.closeFlagsOf(m.ID, m.State)
 	} else if prevState == StateConfirmed && in.Who.human() {
 		// 사람이 확정을 후보로 내렸다: 자동화가 같은 증거로 다시 확정하지 않게 보류로 남긴다(사람이 확정하면 풀린다).
 		s.holdConfirm(m.ID, in.Who)
 	}
+	if quote != "" && !settled {
+		_, _ = s.settleConflictsAfterQuote(m.ID, quote)
+	}
 	return s.Get(m.ID)
+}
+
+// confirmsReview says whether an update is a confirmation of the memory (L-1): the user's words are behind it
+// (given with it or a quote source) or the person made it (Actor user, named: a Who left empty is no one in
+// particular, as the automatic changes and proposals pass it), and it changes what the memory says, adds a
+// source or confirms it. A change of state alone and an AI's edit without the user's words are not.
+func confirmsReview(in UpdateInput, srcs []Source) bool {
+	if in.Who.Actor != ActorUser && userWordsOf(in.Who, srcs) == "" {
+		return false
+	}
+	edits := in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Aliases != nil ||
+		in.Scope != nil || in.Project != nil || in.Topic != nil || len(srcs) > 0
+	return edits || (in.State != nil && *in.State == StateConfirmed)
+}
+
+// userWordsOf is the user's words a change carries: the words given with it, else a quote source's excerpt; ""
+// when it carries none.
+func userWordsOf(w Who, srcs []Source) string {
+	if q := w.quote(); q != "" {
+		return q
+	}
+	for _, src := range srcs {
+		if src.Kind == SourceQuote {
+			if q := strings.TrimSpace(src.Excerpt); q != "" {
+				return q
+			}
+			return "사용자 말"
+		}
+	}
+	return ""
 }
 
 // SetState moves a memory to state with a reason.
@@ -1068,6 +1310,13 @@ type FindInput struct {
 	Tags        []string // 이 태그 중 하나라도 가진 기억만(표기 차이 무시)
 	Scope       string   // 비우지 않으면 범위(scope 값)가 이것과 같은 기억만(Project·Place·AllProjects와 무관)
 	Limit       int
+	// Current leaves out what the Viewer does not judge a current value (stale, expired, an older value of
+	// its topic) before the limit cuts the list. Only a find shown to a person sets it; recall does not.
+	Current bool
+	// WithNotCurrent adds, to the memories of States, the candidate and confirmed ones the Viewer does not
+	// judge a current value (expired, an older value of its topic). A current one is returned only when its
+	// state is in States. Current and WithNotCurrent are not set together.
+	WithNotCurrent bool
 	// SkipUnknownTokens leaves the query tokens no memory has out of the score (rank.go). The recall of a
 	// request and a task sets it; memory_find does not.
 	SkipUnknownTokens bool
@@ -1119,6 +1368,22 @@ func (s *Store) FindScored(in FindInput) ([]Hit, error) {
 	if s.rankStep != nil {
 		s.rankStep()
 	}
+	if in.Current || in.WithNotCurrent {
+		v, err := s.Viewer()
+		if err != nil {
+			return nil, err
+		}
+		asked := in.States
+		if len(asked) == 0 {
+			asked = []string{StateCandidate, StateConfirmed}
+		}
+		read.all = slices.DeleteFunc(read.all, func(m Memory) bool {
+			if in.Current {
+				return v.Why(m) != WhyCurrent
+			}
+			return !contains(asked, m.State) && v.Why(m) == WhyCurrent
+		})
+	}
 	return rankFind(in, read), nil
 }
 
@@ -1134,6 +1399,14 @@ func (s *Store) readFind(q querier, in FindInput) (findRead, error) {
 	states := in.States
 	if len(states) == 0 {
 		states = []string{StateCandidate, StateConfirmed}
+	}
+	if in.WithNotCurrent {
+		// 후보·확정 중 현재 값이 아닌 것도 읽어야 하므로 두 상태를 더한다. 요청하지 않은 상태의 현재 값은 FindScored가 거른다.
+		for _, st := range []string{StateCandidate, StateConfirmed} {
+			if !contains(states, st) {
+				states = append(slices.Clone(states), st)
+			}
+		}
 	}
 	// 빈 질의(공백뿐)는 색인을 거치지 않고 모두 1점이다. 토큰이 없는 질의(기호뿐)는 아무것도 맞지 않는다.
 	r := findRead{empty: strings.TrimSpace(in.Query) == ""}

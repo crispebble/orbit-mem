@@ -135,12 +135,13 @@ func mustLedger(t *testing.T, s *Store) []LedgerEntry {
 	return all
 }
 
-// AC-2 ①: 서로 다른 날 다시 나오면 확정되고 원장에 남으며, 되돌리면 후보로 돌아온다.
+// AC-2 ①: 서로 다른 세션·다른 날 다시 나오면 확정되고 원장에 남으며, 되돌리면 후보로 돌아온다.
 func TestAC2_다른_날_다시_나온_후보는_확정되고_원장에_남고_되돌리면_후보로(t *testing.T) {
 	s, c := newTestStore(t)
-	in := SaveInput{Kind: KindLesson, Title: "codex exec는 stdin을 닫는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "claude:a"}}
+	in := SaveInput{Kind: KindLesson, Title: "codex exec는 stdin을 닫는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession, Ref: "claude:a"}, Session: "a"}
 	first, _ := s.Save(in)
 	c.t = c.t.Add(24 * time.Hour)
+	in.Session = "b"
 	again, err := s.Save(in)
 	if err != nil || again.State != StateConfirmed {
 		t.Fatalf("다음 날: %+v %v", again, err)
@@ -210,11 +211,17 @@ func TestAC2_따르고_검증_통과한_세션이_기준_이상이면_확정(t *
 	}
 }
 
-// AC-2 ③: 작업 검증이 직접 확인한 프로젝트 사실은 바로 확정된다(원장에 남는다).
+// AC-2 ③: 작업 검증이 직접 확인한 프로젝트 사실은 바로 확정된다(원장에 남는다). 서버가 근거를 다시 확인한 것만이다(E-4):
+// 근거만 적힌 검증 출처는 후보로 남는다(TestEvidence_서버가_다시_확인_못한_검증_사실은_즉시_확정하지_않는다).
 func TestAC2_작업_검증이_확인한_프로젝트_사실은_확정(t *testing.T) {
 	s, _ := newTestStore(t)
+	stated, err := s.Save(SaveInput{Kind: KindFact, Title: "이 저장소 빌드는 go build ./...", Scope: "project:github.com/o/r",
+		Source: Source{Kind: SourceVerification, Ref: "work:w-1", Excerpt: "go build ./... ok"}})
+	if err != nil || stated.State != StateCandidate {
+		t.Fatalf("근거만 적힌 검증 사실 %s %v", stated.State, err)
+	}
 	m, err := s.Save(SaveInput{Kind: KindFact, Title: "이 저장소 시험은 go test ./...", Scope: "project:github.com/o/r",
-		Source: Source{Kind: SourceVerification, Ref: "work:w-1", Excerpt: "go test ./... ok"}})
+		Source: Source{Kind: SourceVerification, Ref: "/repo/Makefile", Excerpt: "test: go test ./...", Rechecked: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,13 +242,14 @@ func TestAC2_작업_검증이_확인한_프로젝트_사실은_확정(t *testing
 func TestAC5_어긋남_표시된_후보는_자동_확정하지_않는다(t *testing.T) {
 	s, c := newTestStore(t)
 	rule := quoted(t, s, "배포는 직전 승인")
-	in := SaveInput{Kind: KindLesson, Title: "배포는 묻지 않고 한다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	in := SaveInput{Kind: KindLesson, Title: "배포는 묻지 않고 한다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Session: "s-1"}
 	m, _ := s.Save(in)
 	f, err := s.FlagConflict(m.ID, rule.ID, "사용자 규칙과 반대", Who{Actor: ActorAutomation})
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.t = c.t.Add(24 * time.Hour)
+	in.Session = "s-2" // 다른 세션·다른 날: 표시가 없으면 확정될 증거다
 	if again, _ := s.Save(in); again.State != StateCandidate {
 		t.Fatalf("어긋난 후보가 확정됐습니다")
 	}
@@ -484,9 +492,10 @@ func TestAC8_스키마_3을_4로_올린다(t *testing.T) {
 // 검토 H-1: 사람이 후보로 내린 기억은 자동화가 다시 확정하지 않는다.
 func TestReview_사람이_후보로_내린_기억은_다시_자동_확정하지_않는다(t *testing.T) {
 	s, c := newTestStore(t)
-	in := SaveInput{Kind: KindLesson, Title: "두 날 본 교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	in := SaveInput{Kind: KindLesson, Title: "두 날 본 교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Session: "s-1"}
 	m, _ := s.Save(in)
 	c.t = c.t.Add(24 * time.Hour)
+	in.Session = "s-2"
 	if got, _ := s.Save(in); got.State != StateConfirmed {
 		t.Fatalf("state %s", got.State)
 	}
@@ -511,11 +520,12 @@ func TestReview_사람이_후보로_내린_기억은_다시_자동_확정하지_
 func TestReview_저장의_어긋남_표시는_확정보다_먼저(t *testing.T) {
 	s, c := newTestStore(t)
 	rule := quoted(t, s, "배포는 직전 승인")
-	in := SaveInput{Kind: KindLesson, Title: "배포는 묻지 않는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	in := SaveInput{Kind: KindLesson, Title: "배포는 묻지 않는다", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Session: "s-1"}
 	if _, err := s.Save(in); err != nil {
 		t.Fatal(err)
 	}
 	c.t = c.t.Add(24 * time.Hour)
+	in.Session = "s-2" // 다른 세션·다른 날: 표시가 없으면 확정될 증거다
 	in.ConflictsWith, in.Who = []string{rule.ID}, Who{Actor: ActorAutomation}
 	got, err := s.Save(in)
 	if err != nil || got.State != StateCandidate {

@@ -24,8 +24,12 @@ type lead struct {
 // is its session news (Shown.News): the lines of what changed in the session, put before the recall.
 type leads map[string]lead
 
-// script answers the fake steps: "start:<session>", "req:<prompt>", "tool:<tool>", "sub:<task>".
+// script answers the fake steps: "start:<session>", "req:<prompt>", "tool:<tool>" ("tool:<tool>(<input>)" with an
+// input), "sub:<task>".
 type script map[string]out
+
+// deads answers the Dead of the steps (keys), by the same names as script.
+type deads map[string][]string
 
 type fake struct {
 	name  string
@@ -33,6 +37,7 @@ type fake struct {
 	l     leads
 	idOf  func(string) string
 	calls *[]string
+	d     deads
 }
 
 func (f fake) show(call string) (bench.Shown, error) {
@@ -46,16 +51,36 @@ func (f fake) show(call string) (bench.Shown, error) {
 	for _, k := range o.keys {
 		ids = append(ids, f.idOf(k))
 	}
-	if strings.HasPrefix(call, "req:") {
-		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars}, nil
+	var dead []string
+	var why map[string]string
+	for _, k := range f.d[call] {
+		dead = append(dead, f.idOf(k))
+		if why == nil {
+			why = map[string]string{}
+		}
+		why[f.idOf(k)] = bench.DeadStale
 	}
-	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars}, nil
+	if strings.HasPrefix(call, "req:") {
+		return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), News: lead, NewsChars: ld.chars, Dead: dead, DeadWhy: why}, nil
+	}
+	return bench.Shown{IDs: ids, Chars: o.chars, Text: strings.Repeat("x", o.chars), Lead: lead, LeadChars: ld.chars, Dead: dead, DeadWhy: why}, nil
 }
-func (f fake) Name() string                                      { return f.name }
-func (f fake) Start(s, cwd string) (bench.Shown, error)          { return f.show("start:" + s) }
-func (f fake) Request(s, cwd, p string) (bench.Shown, error)     { return f.show("req:" + p) }
-func (f fake) Tool(s, cwd, tool string) (bench.Shown, error)     { return f.show("tool:" + tool) }
+func (f fake) Name() string                                  { return f.name }
+func (f fake) Start(s, cwd string) (bench.Shown, error)      { return f.show("start:" + s) }
+func (f fake) Request(s, cwd, p string) (bench.Shown, error) { return f.show("req:" + p) }
+func (f fake) Tool(s, cwd, tool, input string) (bench.Shown, error) {
+	if input != "" {
+		return f.show("tool:" + tool + "(" + input + ")")
+	}
+	return f.show("tool:" + tool)
+}
 func (f fake) Subagent(s, cwd, task string) (bench.Shown, error) { return f.show("sub:" + task) }
+
+// Reset makes the fake a bench.Resetter: it keeps the call as "reset:<session>".
+func (f fake) Reset(s string) error {
+	*f.calls = append(*f.calls, "reset:"+s)
+	return nil
+}
 
 // keyed answers Find and Similar with keys.
 type keyed struct {
@@ -114,11 +139,17 @@ func runFake(t *testing.T, cases string, s script, k keyed) (*bench.Report, *[]s
 // runFakeLead is runFake with the lead of the steps.
 func runFakeLead(t *testing.T, cases string, s script, l leads, k keyed) (*bench.Report, *[]string) {
 	t.Helper()
+	return runFakeDead(t, cases, s, l, nil, k)
+}
+
+// runFakeDead is runFakeLead with the Dead of the steps.
+func runFakeDead(t *testing.T, cases string, s script, l leads, d deads, k keyed) (*bench.Report, *[]string) {
+	t.Helper()
 	p := prepare(t, cases)
 	k.idOf = p.IDOf
 	var calls []string
 	f := func(db string, set *bench.Set) (bench.Env, error) {
-		return bench.Env{Recaller: fake{"fake", s, l, p.IDOf, &calls}, Finder: k, Similar: k, Close: func() error { return nil }}, nil
+		return bench.Env{Recaller: fake{"fake", s, l, p.IDOf, &calls, d}, Finder: k, Similar: k, Close: func() error { return nil }}, nil
 	}
 	rep, err := bench.Run(p, f)
 	if err != nil {

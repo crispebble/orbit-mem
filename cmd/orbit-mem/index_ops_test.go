@@ -125,7 +125,7 @@ func TestMigrate_스키마_이전은_늦은_줄을_채운다(t *testing.T) {
 	}
 }
 
-func TestBackup_판_4_사본으로_복구하면_판_5가_되고_색인이_다_찬다(t *testing.T) {
+func TestBackup_판_4_사본으로_복구하면_지금_버전이_되고_색인이_다_찬다(t *testing.T) {
 	home(t)
 	seed(t).Close()
 	// 판 4 사본: 다른 폴더에서 만든다.
@@ -152,10 +152,10 @@ func TestBackup_판_4_사본으로_복구하면_판_5가_되고_색인이_다_�
 	}
 	s := seed(t)
 	info, err := s.Schema()
-	if err != nil || info.DB != 5 || info.State != memory.SchemaOK {
+	if err != nil || info.DB != memory.SchemaVersion || info.State != memory.SchemaOK {
 		t.Fatalf("schema = %+v %v", info, err)
 	}
-	if v := s.Meta("schema.version"); v != "5" {
+	if v := s.Meta("schema.version"); v != fmt.Sprint(memory.SchemaVersion) {
 		t.Fatalf("meta schema.version = %q", v)
 	}
 	n, _ := s.Count()

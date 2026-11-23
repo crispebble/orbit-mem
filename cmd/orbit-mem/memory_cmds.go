@@ -42,8 +42,10 @@ func openStore() (*memory.Store, error) {
 	return s, nil
 }
 
+// policyOf is the confirmation and replacement policy of the configuration (A2 counts, autoMode C-9).
 func policyOf(cfg config.Config) memory.Policy {
-	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions}
+	return memory.Policy{SeenDays: cfg.ConfirmSeenDays, FollowedVerified: cfg.ConfirmFollowedVerified, CorrectionSessions: cfg.CorrectionRepeatSessions,
+		AutoMode: cfg.AutoMode}
 }
 
 // 통로마다 출처 등급의 상한(결정 D6): 조립 지점이 값으로 넣는다. 도메인은 호스트 이름을 모르고, 상한은
@@ -101,12 +103,34 @@ func cmdMCP(a *app, args []string) error {
 	defer s.Close()
 	ctx, cancel := signalContext()
 	defer cancel()
-	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Version: version.Version,
+	srv := mcpserver.New(s, mcpserver.Options{Project: p.Scope, ProjectLabel: p.Label, Dir: p.Dir, Git: p.Git, Temp: p.Temp, Top: p.Top, Version: version.Version,
 		Actor: actorOf(*actor, memory.ActorAI), TrustLimit: mcpTrustLimit, LoadProducts: func() (place.Map, error) {
 			cfg, err := loadConfig()
 			return cfg.Products, err
-		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf})
+		}, LoadSaveSimilarMin: saveSimilarMinOf, LoadSaveNearMin: saveNearMinOf,
+		// 자동 모드(C-9)는 저장마다 설정을 다시 읽어 바꾸면 다음 저장부터 적용된다. 읽지 못하면 뜰 때 읽은 정책이다.
+		LoadPolicy: func() memory.Policy {
+			if cfg, err := loadConfig(); err == nil {
+				return policyOf(cfg)
+			}
+			return s.Policy
+		},
+		// 찾기 질의의 조사 떼기(Q-2)도 찾을 때마다 설정을 다시 읽는다. 읽지 못하면 기본값(끔)이다.
+		LoadFindStripParticles: findStripParticlesOf,
+		// 저장의 세션(E-1): 호스트가 준 세션 id, 없으면 이 서버 실행 하나를 세션으로 본다(실행마다 새 id).
+		// 한계: 그때 같은 대화에서 서버가 다시 뜨면 다른 세션으로 세어지고, 확정을 막는 것은 날 조건뿐이다.
+		Session: firstNonEmpty(claudecode.MCPSession(os.Getenv), "run-"+memory.NewID(""))})
 	return srv.Run(ctx, &mcp.StdioTransport{})
+}
+
+// firstNonEmpty is the first of values that is not empty, or "".
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // hookAdapter is the adapter of a hook's --host: how that host's hook input becomes contract
@@ -168,7 +192,7 @@ func cmdHook(a *app, args []string) error {
 		Service: hostServiceWith(func() (config.Config, error) { return cfg, nil }, launcherHuman),
 		Options: host.Options{At: at},
 		// 세션 묶음의 판·새 판·호스트 기억 안내 줄(호스트 기억은 훅 입력의 날 cwd로 본다). 묶음을 새로 만들 때만
-		// 불리고 묶음과 함께 저장된다(설계 보완 T-20).
+		// 불리고 묶음과 함께 저장된다(설계 보완 T-20). 재개는 묶음 안 기억이 현재 값이 아니게 됐을 때만 다시 만든다.
 		Notes: func(ev hooks.Event, plan hooks.Plan) []string {
 			if ev != hooks.SessionStart {
 				return nil
@@ -196,7 +220,8 @@ const parentEnv = "ORBIT_PARENT"
 
 // renewsBundle says whether a session start makes the session's bundle anew: after a
 // compaction or /clear the earlier context is gone, so the cache it kept is too
-// (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle.
+// (설계 · orbit-mem 2판 AC-4). A resume keeps the bundle, unless a memory in it is no
+// longer current: then the context op makes it again in place (inject.SessionBundleWith).
 func renewsBundle(source string) bool { return source == "compact" || source == "clear" }
 
 // versionNote is the session-start note line when the plugin that called the hook is another
@@ -515,6 +540,12 @@ func cmdConfig(a *app, args []string) error {
 			return i18n.Errorf("cli.config.err.bool", key, val)
 		}
 		cfg.AutoTidy = b
+	case "autoMode":
+		b, err := strconv.ParseBool(val)
+		if err != nil {
+			return i18n.Errorf("cli.config.err.bool", key, val)
+		}
+		cfg.AutoMode = b
 	case "hostMemory":
 		cfg.HostMemory = val
 	case "recallChars", "ledgerWindowDays", "confirmSeenDays", "confirmFollowedVerified", "correctionRepeatSessions", "candidateExpiryDays", "taskRecallMinWords":
@@ -546,7 +577,7 @@ func cmdConfig(a *app, args []string) error {
 			"recallMinCoverageOneWord": &cfg.RecallMinCoverageOneWord, "taskRecallMinScore": &cfg.TaskRecallMinScore, "taskRecallMinRelative": &cfg.TaskRecallMinRelative,
 			"taskRecallMinTitleShare": &cfg.TaskRecallMinTitleShare}[key] = f // 범위·NaN은 config.Save의 검증이 거절한다
 	default:
-		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
+		return i18n.Errorf("cli.config.err.unknown_key", key, "language·recall·inject·recentDecisions·backupKeep·autoBackup·autoTidy·autoMode·recallChars·ledgerWindowDays·confirmSeenDays·confirmFollowedVerified·correctionRepeatSessions·candidateExpiryDays·saveSimilarMin·saveNearMin·recallMinScore·recallMinCoverage·recallMinCoverageOneWord·recallMinRelative·taskRecallMinScore·taskRecallMinWords·taskRecallMinRelative·taskRecallMinTitleShare·hostMemory·updateCheck")
 	}
 	if err := config.Save(paths().Config(), cfg); err != nil {
 		return err

@@ -103,7 +103,7 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 		}
 	}
 	byID, why, _ := CandidatesAt(s, at(cfg, in.Scope), in.Options, bundle)
-	now := s.Now()
+	vw, _ := s.Viewer()
 	// 세션 묶음에 든 상시 핵심과 확정 규칙(recall=on_demand 판, 분야 규칙 빼고)은 세션 시작으로 들어간다(S3-R6).
 	// 묶음에 없는 규칙은 요청 회상 길로 본다.
 	sessionRule := m.State == memory.StateConfirmed && slices.Contains(bundle, m.ID) &&
@@ -121,13 +121,12 @@ func Diagnose(s *memory.Store, cfg config.Config, in DiagnoseInput) (d Diagnosis
 	case reason == ExcludedExpired:
 		add(StageEligible, No, "expired", day(m.ExpiresAt))
 	case reason == ExcludedSuperseded:
-		heads, _ := s.TopicHeads()
-		add(StageEligible, No, "superseded", heads.Superseding(m), m.Topic)
+		add(StageEligible, No, "superseded", vw.Superseding(m), m.Topic)
 	default:
 		add(StageEligible, No, why[m.ID])
 	}
-	if m.Freshness(now) == memory.FreshReviewDue {
-		d.Notes = append(d.Notes, Note{Code: "review_due", Args: []string{day(m.ReviewAt)}})
+	if vw.Of(m).ReviewDue {
+		d.Notes = append(d.Notes, Note{Code: "review_due", Args: []string{day(memory.ReviewDate(m))}})
 	}
 	for _, src := range m.Sources {
 		if src.Kind == memory.SourceFile && src.Hash != "" && memory.FileHash(src.Ref) != src.Hash {

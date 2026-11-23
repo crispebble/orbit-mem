@@ -1,6 +1,7 @@
 // Package claudelog reads Claude Code conversation logs
 // (<config dir>/projects/*/*.jsonl) and extracts the session flow used as replay
-// material for evaluation: session start, requests, tool calls and delegation
+// material for evaluation: session starts (each SessionStart hook run, resumes and
+// compactions included), requests, tool calls with their input text and delegation
 // texts. It is a host adapter: it only reads, never writes, and calls no model.
 // Turning the result into case files is the job of the assembly point.
 package claudelog
@@ -9,12 +10,17 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/crispebble/orbit-mem/internal/host"
 )
 
 // Kind is the kind of a session step.
@@ -24,6 +30,9 @@ const (
 	KindRequest  Kind = "request"
 	KindTool     Kind = "tool"
 	KindDelegate Kind = "delegate"
+	// KindStart is a session start the host ran its SessionStart hooks for (a new session, a resume, a fork, the
+	// start after a compaction or a clear). Source says which.
+	KindStart Kind = "start"
 )
 
 // Origin is the draft judgement of who wrote a request.
@@ -52,12 +61,26 @@ type Step struct {
 	Origin       Origin    `json:"origin,omitempty"` // requests only
 	Evidence     Evidence  `json:"evidence,omitempty"`
 	Tool         string    `json:"tool,omitempty"`
+	Input        string    `json:"input,omitempty"`  // tool calls: the input's text (host.ToolInputText)
+	Source       string    `json:"source,omitempty"` // session starts: startup·resume·fork·compact·clear
 	SubagentType string    `json:"subagentType,omitempty"`
 	Description  string    `json:"description,omitempty"`
 	Task         string    `json:"task,omitempty"` // delegation text
 }
 
-// Session is the flow of one log file.
+// Merge kinds: how the log files of one session id relate (Session.Merge).
+const (
+	// MergeCopy is a session whose log files are copies of one another: what each file holds of the session is
+	// contained in the longest file (a copy of a log, a log under a work copy's folder, the copied start of a
+	// log that a later session took over).
+	MergeCopy = "copy"
+	// MergeUnion is a session whose log files each hold records the others lack; the records of all of them
+	// are put in time order.
+	MergeUnion = "union"
+)
+
+// Session is the flow of one session id: the records of that id in one log file or, when several files hold
+// records of it, in all of them (ReadMerged).
 type Session struct {
 	ID           string    `json:"id"`
 	Project      string    `json:"project"`
@@ -66,6 +89,20 @@ type Session struct {
 	Steps        []Step    `json:"steps"`
 	BrokenLines  int       `json:"brokenLines,omitempty"`
 	HookContexts int       `json:"hookContexts,omitempty"` // system records carrying hookAdditionalContext
+	// Files is how many log files the session was read from, set only when it is more than one; Merge says how
+	// they relate (MergeCopy or MergeUnion).
+	Files int    `json:"files,omitempty"`
+	Merge string `json:"merge,omitempty"`
+	// Parent is the id of the session whose records start the log file this session is in: the session that
+	// was taken over (resumed or forked) into a new id. The records before this session's own belong to Parent.
+	Parent string `json:"parent,omitempty"`
+	// UnreadFiles counts the log files of the session that could not be read and were left out.
+	UnreadFiles int `json:"unreadFiles,omitempty"`
+	// UnkeyedSteps counts the records that make a step (or a hook context) but lack a session id or a uuid. A
+	// record without a session id is read as the id before it in its file (a leading one as the first id of the
+	// file); a record without a uuid cannot be told from a copy of itself in another file. The format is assumed
+	// to give every step-making record both, and a count above zero says that did not hold.
+	UnkeyedSteps int `json:"unkeyedSteps,omitempty"`
 }
 
 // DefaultRoot is <CLAUDE_CONFIG_DIR or ~/.claude>/projects.
@@ -80,6 +117,7 @@ func DefaultRoot() string {
 
 type record struct {
 	Type              string          `json:"type"`
+	UUID              string          `json:"uuid"`
 	SessionID         string          `json:"sessionId"`
 	Cwd               string          `json:"cwd"`
 	Timestamp         string          `json:"timestamp"`
@@ -95,47 +133,265 @@ type record struct {
 	Message struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
+	// Attachment is what the host attached to the conversation, a hook's run among them: its event and its
+	// name, "<event>:<matcher>" (SessionStart:resume).
+	Attachment *struct {
+		HookEvent string `json:"hookEvent"`
+		HookName  string `json:"hookName"`
+	} `json:"attachment"`
 }
 
 type block struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	Name  string `json:"name"`
-	Input struct {
-		Prompt       string `json:"prompt"`
-		SubagentType string `json:"subagent_type"`
-		Description  string `json:"description"`
-	} `json:"input"`
+	Type  string          `json:"type"`
+	Text  string          `json:"text"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
 }
 
-// ReadSession reads one log file as one session. Broken lines are skipped and counted.
-func ReadSession(path string) (Session, error) {
+// delegation is the input of a delegation tool call.
+type delegation struct {
+	Prompt       string `json:"prompt"`
+	SubagentType string `json:"subagent_type"`
+	Description  string `json:"description"`
+}
+
+// sessionStartHook is the hook event a host runs at a session start; the matcher of the hook name is the source.
+const sessionStartHook = "SessionStart"
+
+// startFoldGap is how far apart two hook records of one session start can be. The hooks of one start run
+// together and their records were seen within a fraction of a second; a person who resumes, leaves without a
+// word and resumes again takes longer than this, so that second start is kept.
+const startFoldGap = 10 * time.Second
+
+// eachLine calls fn for every non-blank line of a file. A file is read one line at a time, so a large log is
+// never held whole.
+func eachLine(path string, fn func(line []byte)) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return Session{}, err
+		return err
 	}
 	defer f.Close()
-	s := Session{Project: filepath.Base(filepath.Dir(path)), ID: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
-	haveID := false
 	r := bufio.NewReaderSize(f, 1<<20)
 	for {
 		line, rerr := r.ReadBytes('\n')
 		if len(strings.TrimSpace(string(line))) > 0 {
-			var rec record
-			if err := json.Unmarshal(line, &rec); err != nil {
-				s.BrokenLines++
-			} else {
-				s.add(rec, &haveID)
-			}
+			fn(line)
 		}
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
-				break
+				return nil
 			}
-			return s, rerr
+			return rerr
 		}
 	}
+}
+
+// eachRecord calls fn for every line of a log file that parses as a record and returns how many lines did not.
+func eachRecord(path string, fn func(record)) (broken int, err error) {
+	err = eachLine(path, func(line []byte) {
+		var rec record
+		if json.Unmarshal(line, &rec) != nil {
+			broken++
+			return
+		}
+		fn(rec)
+	})
+	return broken, err
+}
+
+// makesStep says whether a record would add a step (or a hook context) to a session.
+func makesStep(rec record) bool {
+	var probe Session
+	haveID := false
+	probe.add(rec, &haveID)
+	return len(probe.Steps) > 0 || probe.HookContexts > 0
+}
+
+// unkeyed says whether a record lacks the session id or the uuid the reading relies on.
+func unkeyed(rec record) bool { return rec.SessionID == "" || rec.UUID == "" }
+
+// ReadSession reads one log file as one session. Broken lines are skipped and counted.
+func ReadSession(path string) (Session, error) {
+	s := Session{Project: filepath.Base(filepath.Dir(path)), ID: strings.TrimSuffix(filepath.Base(path), ".jsonl")}
+	haveID := false
+	broken, err := eachRecord(path, func(rec record) {
+		if unkeyed(rec) && makesStep(rec) {
+			s.UnkeyedSteps++
+		}
+		s.add(rec, &haveID)
+	})
+	s.BrokenLines = broken
+	return s, err
+}
+
+// scanSessionIDs lists the session ids a log file carries, in order of first appearance. A file that carries
+// none is listed under its name without the extension (the name Claude Code gives a log is its session id).
+func scanSessionIDs(path string) []string {
+	var ids []string
+	err := eachLine(path, func(line []byte) {
+		var rec struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(line, &rec) == nil && rec.SessionID != "" && !slices.Contains(ids, rec.SessionID) {
+			ids = append(ids, rec.SessionID)
+		}
+	})
+	if err != nil || len(ids) == 0 {
+		return []string{fileID(path)}
+	}
+	return ids
+}
+
+// fileID is the id a log file stands for when its records carry none: its name without the extension.
+func fileID(path string) string { return strings.TrimSuffix(filepath.Base(path), ".jsonl") }
+
+// stamped is a record with the time its place in a merged session is decided by.
+type stamped struct {
+	rec  record
+	at   time.Time
+	file int
+	pos  int
+}
+
+// ReadMerged reads the records of one session id out of the log files that hold them. A log file can hold
+// more than one session id: a session taken over into a new id starts with a copy of the earlier records, which
+// keep the earlier id, and goes on with records of the new id. The hook ran under each id on its own, so a
+// session is the records of one id, never the whole file. A record without a session id belongs to the id before
+// it in its file, and one before any id in the file to the first id of the file (a file with no id at all stands
+// for its name, fileID). So a session's records are the same whether its file is read alone or merged. The
+// parent of a session is the first id of the file it starts in, when that is another id (not the id just before).
+//
+// A record that carries a uuid counts once, from the first file (in path order) that has it; a copy that is
+// contained in a longer log adds nothing. With more than one file the records are put in time order (equal
+// times: file path, then place in the file; a record without a time follows the record before it in its file),
+// which does not depend on the order of paths. With one file the order is the file's. Files that cannot be read
+// are left out and counted in UnreadFiles; when none can be read it is an error, as it is for no paths. Records
+// without a uuid are kept as they are (in the logs read so far every record that makes a step carries a uuid
+// and the ones without are bookkeeping, which is an observation about the format, not a guarantee: such a
+// record would be counted once per file). The project is that of the first path in sorted order.
+func ReadMerged(paths []string, id string) (Session, error) {
+	if len(paths) == 0 {
+		return Session{}, errors.New("claudelog: no log files to read")
+	}
+	paths = slices.Clone(paths)
+	sort.Strings(paths)
+	s := Session{Project: filepath.Base(filepath.Dir(paths[0])), ID: id}
+	seen := map[string]bool{}
+	var all []stamped
+	sets := make([]map[string]bool, len(paths))
+	read := 0
+	for i, p := range paths {
+		// uuid는 다른 파일에서 이미 본 것만 건너뛴다. 같은 파일 안의 되풀이는 지금까지처럼 그대로 둔다.
+		fresh := map[string]bool{}
+		sets[i] = map[string]bool{}
+		var prev time.Time
+		cur, first := "", ""
+		pos := 0
+		var mine []stamped
+		var pending []record // id 없는 기록이 첫 id보다 앞에 있을 때: 그 id를 알 때까지 쥐고 있는다
+		take := func(rec record) {
+			at, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
+			if at.IsZero() {
+				at = prev
+			} else {
+				prev = at
+			}
+			if u := rec.UUID; u != "" {
+				sets[i][u] = true
+				if seen[u] {
+					return
+				}
+				fresh[u] = true
+			}
+			mine = append(mine, stamped{rec: rec, at: at, file: i, pos: pos})
+			pos++
+		}
+		flush := func() {
+			if first == id {
+				for _, rec := range pending {
+					take(rec)
+				}
+			}
+			pending = nil
+		}
+		broken, err := eachRecord(p, func(rec record) {
+			if rec.SessionID != "" {
+				cur = rec.SessionID
+			}
+			if first == "" {
+				if cur == "" {
+					pending = append(pending, rec)
+					return
+				}
+				first = cur
+				flush()
+			}
+			if cur == id {
+				take(rec)
+			}
+		})
+		if err == nil && first == "" {
+			first = fileID(p)
+			flush()
+		}
+		if err != nil {
+			s.UnreadFiles++
+			sets[i] = nil
+			continue
+		}
+		read++
+		s.BrokenLines += broken
+		if s.Parent == "" && first != "" && first != id {
+			s.Parent = first
+		}
+		for u := range fresh {
+			seen[u] = true
+		}
+		all = append(all, mine...)
+	}
+	if read == 0 {
+		return s, errors.New("claudelog: none of the log files could be read")
+	}
+	if read > 1 {
+		s.Files, s.Merge = read, mergeKind(sets)
+		sort.SliceStable(all, func(a, b int) bool {
+			x, y := all[a], all[b]
+			if !x.at.Equal(y.at) {
+				return x.at.Before(y.at)
+			}
+			if x.file != y.file {
+				return x.file < y.file
+			}
+			return x.pos < y.pos
+		})
+	}
+	haveID := false
+	for _, r := range all {
+		if unkeyed(r.rec) && makesStep(r.rec) {
+			s.UnkeyedSteps++
+		}
+		s.add(r.rec, &haveID)
+	}
 	return s, nil
+}
+
+// mergeKind says whether the uuid sets of the files of a session are copies of one another (each contained in
+// the largest) or hold records of their own. Files that could not be read (nil sets) are ignored.
+func mergeKind(sets []map[string]bool) string {
+	largest := -1
+	for i, st := range sets {
+		if st != nil && (largest < 0 || len(st) > len(sets[largest])) {
+			largest = i
+		}
+	}
+	for _, st := range sets {
+		for u := range st {
+			if !sets[largest][u] {
+				return MergeUnion
+			}
+		}
+	}
+	return MergeCopy
 }
 
 func (s *Session) add(rec record, haveID *bool) {
@@ -153,6 +409,24 @@ func (s *Session) add(rec record, haveID *bool) {
 		return
 	}
 	switch rec.Type {
+	case "attachment":
+		// 세션 시작 훅이 돈 기록(성공·실패 모두): 훅마다 한 줄이라, 같은 시작의 줄(같은 출처, 사이에 다른 단계 없음,
+		// startFoldGap 안, 시각이 없으면 같은 시작으로 봄)은 하나로 센다. 출처가 없는 이름(SessionStart)은 훅이 넣은 글을
+		// 붙인 기록이라 세지 않는다.
+		a := rec.Attachment
+		if a == nil || a.HookEvent != sessionStartHook {
+			return
+		}
+		source, ok := strings.CutPrefix(a.HookName, sessionStartHook+":")
+		if !ok || source == "" {
+			return
+		}
+		if n := len(s.Steps); n > 0 && s.Steps[n-1].Kind == KindStart && s.Steps[n-1].Source == source {
+			if prev := s.Steps[n-1].At; at.IsZero() || prev.IsZero() || at.Sub(prev).Abs() <= startFoldGap {
+				return
+			}
+		}
+		s.Steps = append(s.Steps, Step{Kind: KindStart, At: at, Source: source})
 	case "system":
 		if h := strings.TrimSpace(string(rec.HookAdditionalCtx)); h != "" && h != "null" && h != `""` {
 			s.HookContexts++
@@ -173,10 +447,11 @@ func (s *Session) add(rec record, haveID *bool) {
 			if b.Type != "tool_use" {
 				continue
 			}
-			st := Step{Kind: KindTool, At: at, Tool: b.Name}
+			st := Step{Kind: KindTool, At: at, Tool: b.Name, Input: host.ToolInputText(b.Name, b.Input)}
 			if b.Name == "Agent" || b.Name == "Task" {
-				st.Kind = KindDelegate
-				st.Task, st.SubagentType, st.Description = b.Input.Prompt, b.Input.SubagentType, b.Input.Description
+				var d delegation
+				_ = json.Unmarshal(b.Input, &d) // 꼴이 다른 입력은 빈 위임 글로 둔다
+				st = Step{Kind: KindDelegate, At: at, Tool: b.Name, Task: d.Prompt, SubagentType: d.SubagentType, Description: d.Description}
 			}
 			s.Steps = append(s.Steps, st)
 		}
@@ -288,18 +563,31 @@ func CountRequests(s Session) int {
 	return n
 }
 
-// Options controls Select. Zero values take the defaults.
+// NoLimit as a maximum of Options lifts that maximum.
+const NoLimit = -1
+
+// Options controls Select. Zero values take the defaults; NoLimit lifts a maximum.
 type Options struct {
 	MinSessions           int // default 10
 	MinRequests           int // default 50
 	MaxSessions           int // default 20
 	MaxRequests           int // default 120
 	MaxRequestsPerSession int // default 12
+	// All takes every session the roots have: no minimum stops the pick, no maximum applies, and a session with
+	// a session start but no person's request is kept too. The other fields are ignored.
+	All bool
 }
 
 func (o Options) withDefaults() Options {
+	if o.All {
+		return Options{MinSessions: math.MaxInt, MinRequests: math.MaxInt, MaxSessions: math.MaxInt, MaxRequests: math.MaxInt,
+			MaxRequestsPerSession: math.MaxInt, All: true}
+	}
 	def := func(v *int, d int) {
-		if *v <= 0 {
+		switch {
+		case *v == NoLimit:
+			*v = math.MaxInt
+		case *v <= 0:
 			*v = d
 		}
 	}
@@ -322,12 +610,20 @@ func inTempDir(cwd string) bool {
 	return false
 }
 
+// capRequests cuts a session at its limit-th person's request: the steps after it go, except the session
+// starts. A replay still has to measure what a later resume or the start after a compaction put in.
 func capRequests(s Session, limit int) Session {
 	n := 0
 	for i, st := range s.Steps {
 		if st.Kind == KindRequest && st.Origin == OriginUser {
 			if n++; n > limit {
-				s.Steps = s.Steps[:i:i]
+				kept := s.Steps[:i:i]
+				for _, later := range s.Steps[i:] {
+					if later.Kind == KindStart {
+						kept = append(kept, later)
+					}
+				}
+				s.Steps = kept
 				break
 			}
 		}
@@ -335,33 +631,89 @@ func capRequests(s Session, limit int) Session {
 	return s
 }
 
-// Select picks sessions from the roots (each a "projects" directory). It takes the
-// newest session of each project in turn, so one project does not dominate, and
-// stops once both minimums are met or a maximum is reached. Same input, same result.
+// hasStart says whether a session has a session start step.
+func hasStart(s Session) bool {
+	return slices.ContainsFunc(s.Steps, func(st Step) bool { return st.Kind == KindStart })
+}
+
+// Report is what Select could not read.
+type Report struct {
+	// LostFiles is the number of log files that belong to a session that could not be made at all (every one of
+	// its files was unreadable). Files left out of a session that was made are in that session's UnreadFiles.
+	LostFiles int
+}
+
+// Select picks sessions from the roots (each a "projects" directory). A session is what one session id
+// recorded, whichever log files hold it: the files of a session id are read together (ReadMerged), and a log
+// file that a later session took over into a new id (it starts with a copy of the earlier session's records)
+// gives the new id its own session. So no id comes out twice, and the case ids built from it do not repeat.
+// It takes the newest session of each project in turn, so one project does not dominate, and stops once both
+// minimums are met or a maximum is reached. Same input, same result, whatever the order or repeats of roots.
+// A session whose files cannot be read at all is left out; SelectReport counts those files.
 func Select(roots []string, opts Options) ([]Session, error) {
+	out, _, err := SelectReport(roots, opts)
+	return out, err
+}
+
+// SelectReport is Select with a report of the log files it could not turn into a session.
+func SelectReport(roots []string, opts Options) ([]Session, Report, error) {
+	var rep Report
 	opts = opts.withDefaults()
 	byProject := map[string][]Session{}
+	var files []string
 	for _, root := range roots {
-		files, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
+		found, err := filepath.Glob(filepath.Join(root, "*", "*.jsonl"))
 		if err != nil {
-			return nil, err
+			return nil, rep, err
 		}
-		sort.Strings(files)
-		for _, p := range files {
-			s, err := ReadSession(p)
-			if err != nil {
-				continue
+		files = append(files, found...)
+	}
+	sort.Strings(files)
+	files = slices.Compact(files)
+	// 세션 id가 같은 파일을 묶는 것은 파일 이름이 아니라 기록 안의 id로 한다. 한 파일이 여러 id를 가질 수 있다.
+	groups := map[string][]string{}
+	idsOf := map[string][]string{}
+	var order []string
+	for _, p := range files {
+		ids := scanSessionIDs(p)
+		idsOf[p] = ids
+		for _, id := range ids {
+			if _, ok := groups[id]; !ok {
+				order = append(order, id)
 			}
-			if inTempDir(s.Cwd) {
-				continue
-			}
-			s = capRequests(s, opts.MaxRequestsPerSession)
-			if CountRequests(s) == 0 {
-				continue
-			}
-			byProject[s.Project] = append(byProject[s.Project], s)
+			groups[id] = append(groups[id], p)
 		}
 	}
+	seenID := map[string]bool{}
+	lost := map[string]bool{}
+	for _, id := range order {
+		var s Session
+		var err error
+		if paths := groups[id]; len(paths) == 1 && len(idsOf[paths[0]]) == 1 {
+			s, err = ReadSession(paths[0])
+		} else {
+			s, err = ReadMerged(paths, id)
+		}
+		if err != nil {
+			for _, p := range groups[id] {
+				lost[p] = true
+			}
+			continue
+		}
+		if seenID[s.ID] {
+			return nil, rep, fmt.Errorf("claudelog: session id %q read twice", s.ID)
+		}
+		seenID[s.ID] = true
+		if inTempDir(s.Cwd) {
+			continue
+		}
+		s = capRequests(s, opts.MaxRequestsPerSession)
+		if CountRequests(s) == 0 && !(opts.All && hasStart(s)) {
+			continue
+		}
+		byProject[s.Project] = append(byProject[s.Project], s)
+	}
+	rep.LostFiles = len(lost)
 	names := make([]string, 0, len(byProject))
 	for name, list := range byProject {
 		sort.SliceStable(list, func(i, j int) bool {
@@ -391,13 +743,13 @@ func Select(roots []string, opts Options) ([]Session, error) {
 			any = true
 			if (len(out) >= opts.MinSessions && reqs >= opts.MinRequests) ||
 				len(out) >= opts.MaxSessions || reqs >= opts.MaxRequests {
-				return out, nil
+				return out, rep, nil
 			}
 			out = append(out, list[round])
 			reqs += CountRequests(list[round])
 		}
 		if !any {
-			return out, nil
+			return out, rep, nil
 		}
 	}
 }

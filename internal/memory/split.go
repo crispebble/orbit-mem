@@ -270,9 +270,9 @@ func (s *Store) splitTx(mem Memory, parts []PlanPart, scope, project string, pi 
 		tagBytes, _ := json.Marshal(nonNil(n.Tags))
 		tags := string(tagBytes)
 		if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,
-			retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			retention,review_days,review_at,expires_at,topic,tools,aliases) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			n.ID, n.Kind, n.Scope, n.Project, n.State, n.Title, TitleKey(n.Title), n.Body, tags, 1, n.CreatedAt, n.UpdatedAt,
-			n.Retention, n.ReviewDays, n.ReviewAt, n.ExpiresAt, n.Topic, toolsJSON(n.Tools)); err != nil {
+			n.Retention, n.ReviewDays, n.ReviewAt, n.ExpiresAt, n.Topic, toolsJSON(n.Tools), aliasesJSON(n.Aliases)); err != nil {
 			return nil, "", err
 		}
 		if err := indexTx(tx, n.ID); err != nil {

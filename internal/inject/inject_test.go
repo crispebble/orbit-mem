@@ -2,6 +2,7 @@ package inject
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -252,20 +253,45 @@ func TestPrompt_분야_기억은_신호로만_넣는다(t *testing.T) {
 	}
 }
 
-// AU-6 AC-6(A2): 후보는 회상에 쓰되 확정보다 뒤에 두고 「후보」로 표시한다.
-func TestPromptInjection_후보는_확정_뒤에_후보로_표시한다(t *testing.T) {
+// AU-6 AC-6(A2): 후보는 회상에 쓰고 「후보」로 표시한다. 순서는 설정이 정한다: 끄면 후보는 확정 뒤이고, 기본(켬, 문턱 0.1)에서는
+// 요청 낱말에 훨씬 잘 맞는 후보(점수 차가 문턱보다 큼)가 일부만 맞은 확정보다 앞선다.
+func TestPromptInjection_후보는_확정과_점수_차에_따라_순서가_정해지고_후보로_표시한다(t *testing.T) {
 	s := store(t)
 	cand := save(t, s, memory.KindLesson, "launchd 예약 회고 다시 걸기 전에 plist 지우기", "후보 본문", memory.ScopeGlobal, false)
 	conf := save(t, s, memory.KindLesson, "launchd 예약 회고", "확정 본문", memory.ScopeGlobal, true)
+	const prompt = "launchd 예약 회고 다시 걸기"
 	// 순서만 본다: 확정은 요청 낱말 일부만 맞아 상대 문턱(1위의 recallMinRelative배)에 걸릴 수 있으니 그 문턱은 끈다.
-	cfg := config.Default()
-	cfg.RecallMinRelative = 0.01
-	inj := PromptInjection(s, cfg, here, "launchd 예약 회고 다시 걸기")
-	if len(inj.MemoryIDs) != 2 || inj.MemoryIDs[0] != conf.ID || inj.MemoryIDs[1] != cand.ID {
-		t.Fatalf("확정이 먼저가 아닙니다: %v (conf=%s cand=%s)\n%s", inj.MemoryIDs, conf.ID, cand.ID, inj.Text)
+	off := rankedOff()
+	off.RecallMinRelative = 0.01
+	def := config.Default()
+	def.RecallMinRelative = 0.01
+	// 기본 순서가 점수 차 때문임을 못 박는다: 후보의 점수가 확정보다 문턱(0.1)보다 크게 높다.
+	found, err := s.RecallHitsIn(prompt, memory.StateConfirmed, memory.StateCandidate)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(inj.Text, cand.ID+" · 교훈 후보") {
-		t.Fatalf("후보 표시가 없습니다:\n%s", inj.Text)
+	score := map[string]float64{}
+	for _, h := range found {
+		score[h.Memory.ID] = h.Score
+	}
+	if gap := score[cand.ID] - score[conf.ID]; gap <= def.RankScoreMargin {
+		t.Fatalf("후보 %.3f, 확정 %.3f: 점수 차 %.3f가 문턱 %.2f보다 커야 이 시험이 뜻이 있다", score[cand.ID], score[conf.ID], gap, def.RankScoreMargin)
+	}
+	for _, c := range []struct {
+		name string
+		cfg  config.Config
+		want []string
+	}{
+		{"끔", off, []string{conf.ID, cand.ID}},
+		{"기본", def, []string{cand.ID, conf.ID}},
+	} {
+		inj := PromptInjection(s, c.cfg, here, prompt)
+		if !slices.Equal(inj.MemoryIDs, c.want) {
+			t.Fatalf("%s: 순서 %v, 기대 %v (conf=%s cand=%s)\n%s", c.name, inj.MemoryIDs, c.want, conf.ID, cand.ID, inj.Text)
+		}
+		if !strings.Contains(inj.Text, cand.ID+" · 교훈 후보") {
+			t.Fatalf("%s: 후보 표시가 없습니다:\n%s", c.name, inj.Text)
+		}
 	}
 }
 
@@ -322,7 +348,7 @@ func TestTool_믿을_수_없는_기억은_도구_직전_줄에_표시가_붙는�
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash").Text
+	got := ToolInjection(s, config.Default(), here, "claude", "A", "Bash", "").Text
 	lineOf := func(id string) string {
 		for _, l := range strings.Split(got, "\n") {
 			if strings.Contains(l, id) {

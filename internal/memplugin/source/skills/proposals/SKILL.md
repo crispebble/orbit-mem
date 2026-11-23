@@ -15,7 +15,7 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 
 | `status` | 보이는 것 |
 | --- | --- |
-| `audit` (기본) | 감사 목록: 최근 자동 확정·자동 정리·고치기와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 사용자 규칙과 어긋나는 후보, 기준을 넘은 반복 교정·하네스 개선 후보 |
+| `audit` (기본) | 감사 목록: 최근 자동 확정·자동 정리·고치기와 그 증거·효과 판정, 해로움으로 자동 되돌린 것, 자동 대체(되돌리기)와 사용자 규칙과 어긋나는 후보, 재검토 후보, 기준을 넘은 반복 교정·하네스 개선 후보 |
 | `auto` | 자동 변경 |
 | `pending` | 대기열을 없애기 전에 남은 옛 제안과 그 대상 기억. 정리는 `orbit-mem proposals drain` |
 | `approved` · `rejected` · `settled` · `dropped` · `all` | 옛 제안을 그 상태별로, `all`은 전부 |
@@ -24,10 +24,11 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 
 ## 사용자에게 보이는 순서
 
-1. 감사 목록을 세 묶음으로 보인다. 묶음마다 머리에 이름과 건수를 쓴다.
-   - 자동 변경(`changes`): 종류(confirm·merge·stale·supersede·link·retag·edit·reclassify·apply_file·revert), 제목, 확정이면 증거(`seen_days` 다른 날 다시 나옴, `followed_verified` 검증된 일에서 따름, `verified_fact` 작업이 검증한 사실), 효과 판정(관찰 중·도움됨·해로움·효과 없음·섞임), 날짜. 해로움으로 판정돼 스스로 되돌린 것(`autoReverted`)은 따로 짚는다.
+1. 감사 목록을 네 묶음으로 보인다. 묶음마다 머리에 이름과 건수를 쓴다.
+   - 자동 변경(`changes`): 종류(confirm·merge·stale·supersede·link·retag·edit·reclassify·apply_file·revert), 제목, 확정이면 증거(`seen_days` 세션도 날도 다른 두 번 나옴, `followed_verified` 검증된 일에서 따름, `verified_fact` 서버가 근거를 다시 확인한 검증 사실), 효과 판정(관찰 중·도움됨·해로움·효과 없음·섞임), 날짜. 해로움으로 판정돼 스스로 되돌린 것(`autoReverted`)은 따로 짚는다.
    - 어긋남(`conflicts`): 후보 제목과 어긋나는 사용자 규칙 제목, 표시한 쪽과 이유.
    - 반복 교정(`corrections`): 대상(기억·스킬·역할), 교정이 나온 세션 수와 기준, 최근 사용자 말. 스킬·역할, 서로 다른 작업 여럿에서 나온 절차(`procedure`)면 「하네스 개선 후보」로 짚는다(고치는 일은 orbit-code 개발 과정이다. 이 PC에서는 교정을 기억으로 바로 따른다).
+   - 재검토 후보(`reviewDue`, 전체 수 `reviewDueCount`): 제목과 재검토일. 아직 맞다고 사용자가 말하면 그 말을 `userQuote`로 `memory_update action=reviewed`, 아니면 `action=stale`(낡음)로 한다.
    - 기준 횟수(`policy`)가 사용자 결정 대기(`policyPending`)면 그 사실을 한 줄로 알린다.
    - 대기열을 없애기 전에 남은 옛 제안 수(`pending`)가 있으면 한 줄로 알리고, 정리는 `orbit-mem proposals drain`(먼저 `orbit-mem backup`, 미리 보기는 `--dry-run`)으로 한다고 안내한다.
 2. 사용자의 답을 받은 뒤에만 `proposal_decide`를 부른다. 답을 받기 전에는 부르지 않는다.
@@ -38,14 +39,14 @@ description: orbit-mem 감사 목록(자동 변경, 어긋남, 반복 교정)을
 | `decision` | 대상 | 하는 일 |
 | --- | --- | --- |
 | `revert` | 자동 변경(`id`에 `proposalId`나 `ledgerId`) | 이전 판으로 되돌린다 |
-| `dismiss` | 어긋남 표시(`f-…`), 반복 교정(`correction:…`) | 확인함으로 닫는다 |
+| `dismiss` | 어긋남 표시(`f-…`), 반복 교정(`correction:…`) | 어긋남은 옛 값 유지로, 반복 교정은 확인함으로 닫는다 |
 | `approve` · `reject` | 남은 옛 대기 제안만 | 승인·거절 |
 
 `note`에 결정 이유를 적는다.
 
-- 자동 변경이 틀렸으면 `decision=revert`, `note`에 사용자가 말한 이유. 이전 판으로 돌아가고(자동 확정은 후보로, 자동 낡음은 다시 살아남), 같은 변경은 자동화가 다시 하지 않는다.
+- 자동 변경이 틀렸으면 `decision=revert`, `note`에 사용자가 말한 이유. 이전 판으로 돌아가고(자동 확정은 후보로, 자동 낡음은 다시 살아남), 같은 변경은 자동화가 다시 하지 않는다. 되돌리는 변경이 사용자 말을 담은 기억(자동 대체의 옛 기억)에 닿으면 사용자가 그렇게 하라고 한 말을 `userQuote`에 그대로 넣어야 한다.
 - 파일 반영(`apply_file`)과 그 되돌리기는 파일만 바꾸고 커밋하지 않는다. 커밋은 사용자가 한다.
-- 어긋남: 후보가 맞으면 `memory_update`(`action=confirm`, 사용자 말을 `userQuote`에), 틀리면 `action=stale`, 문제없다고 하면 `decision=dismiss`(`id`에 `f-…`). 어긋남 표시를 닫을 때는 사용자가 그렇게 하라고 한 말을 `userQuote`에 그대로 넣는다.
+- 어긋남: 새 값으로 바꾸라고 하면 새 후보에 `memory_update`(`action=confirm`, 사용자 말을 `userQuote`에)를 부른다. 그러면 옛 값이 대체된다. 새 후보가 틀렸다고 하면 `action=stale`, 옛 값을 그대로 두라고 하면 `decision=dismiss`(`id`에 `f-…`)다. dismiss는 옛 값 유지라, 같은 주제의 사용자 말 옛 값이 있으면 새 후보는 그 뒤에도 스스로 확정되지 않는다(규칙·결정·교훈은 늘, 사실은 자동 모드 `autoMode`가 꺼져 있을 때). 나중에 새 값으로 바꾸려면 새 후보에 사용자 말을 붙여 확정한다. 어긋남 표시를 닫을 때는 사용자가 그렇게 하라고 한 말을 `userQuote`에 그대로 넣는다.
 - 반복 교정을 봤다고 하면 `decision=dismiss`(`id`에 `correction:…` 키). 그 뒤 교정만 다시 센다.
 - 사용자 말을 담은 기억에 닿는 옛 대기 제안을 승인·거절할 때도 그렇게 하라는 사용자 말을 `userQuote`에 그대로 넣는다.
 - 옛 대기 제안을 고쳐서 승인하려면 `title`·`body`를 준다(파일 반영이면 `body`가 새 파일 내용 전체). 되돌리기·파일 반영·잇기·태그 제안은 고쳐서 승인할 수 없다.

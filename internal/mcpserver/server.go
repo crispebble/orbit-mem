@@ -41,6 +41,10 @@ type Options struct {
 	// (S3-R1·R4). Empty, the folder of a folder scope is used.
 	Dir       string
 	Git, Temp bool
+	// Top is the top folder of the git work tree Dir is in (project.Project.Top): the one folder whose files
+	// memory_save may read to recheck a verification source. Empty outside git or when it is not known: nothing
+	// is read.
+	Top string
 	// Products is the product map (config products): which product this session's folder belongs to,
 	// the default of appliesTo and what memory_find sees here (설계 · orbit-mem 2판 S3).
 	Products place.Map
@@ -58,6 +62,19 @@ type Options struct {
 	// set, reads it on every save instead.
 	SaveNearMin     float64
 	LoadSaveNearMin func() float64
+	// LoadPolicy, when set, reads the confirmation and replacement policy on every save, so the auto mode
+	// (config autoMode, 명세 C-9) applies from the next save of a long-lived server. Unset, the store's
+	// Policy (read when the store was opened) decides.
+	LoadPolicy func() memory.Policy
+	// LoadFindStripParticles, when set, says on every memory_find whether the stems of the query's words are
+	// added (config findStripParticles, 명세 Q-2), so a long-lived server follows config.json. Unset, they are
+	// not (the setting's default).
+	LoadFindStripParticles func() bool
+	// Session is the conversation this connection's saves come from (memory.SaveInput.Session): the assembly
+	// point sets it, never a tool argument. The MCP server takes the host's session id from its process, or its
+	// own run id; Tools.Call takes the request's session. Empty is a session not known (E-1). With the run id,
+	// a server started again in the same conversation counts as another session (only the day condition holds).
+	Session string
 }
 
 // checkMins are the scores of memory_save's judgment now: the threshold of its similar memories and the floor
@@ -87,6 +104,25 @@ func (o Options) here() place.Place {
 	return place.At(o.Project, o.Dir, m)
 }
 
+// recheckRoots are the folders whose files memory_save may read to recheck a verification source
+// (memory.RecheckExcerpt): only the top of the work tree the session folder is in (Options.Top), whether or not the
+// project has a remote and from whatever folder below it the session was opened. A linked worktree is its own
+// top. None when the session folder is not in a work tree (or the work tree is the home folder itself, which
+// project.Resolve leaves out), so a folder a caller picks with --cwd or a host call's cwd (~/.aws, ~/work) reads
+// nothing. The top comes from the folder the assembly point resolved (project.Resolve), not from a tool
+// argument. The product map's folder lines are not roots: they are globs that may cover far more than the work
+// at hand.
+func (o Options) recheckRoots() []string {
+	if !o.Git || o.Top == "" || o.Dir == "" {
+		return nil
+	}
+	top := filepath.FromSlash(o.Top)
+	if rel, err := filepath.Rel(top, filepath.FromSlash(o.Dir)); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil // 세션 폴더가 그 최상위 아래가 아니면 조립이 어긋난 것이다
+	}
+	return []string{top}
+}
+
 // ResolveActor picks the writer of a server or command: the flag, else
 // ORBIT_ACTOR, else def. Unknown values fall back.
 func ResolveActor(flag, env, def string) string {
@@ -106,8 +142,11 @@ func (o Options) who(quote, ref string) memory.Who {
 	return memory.Who{Actor: actor, UserQuote: quote, Ref: ref}
 }
 
+// maxAIReviewDays is the longest review cadence a save that is neither the person's nor the user's words may give.
+const maxAIReviewDays = 365
+
 const instructions = `orbit-mem은 이 PC의 공유 기억이다. 일이 규칙·결정·교훈에 닿을 법하면 memory_find로 먼저 찾는다(결과는 id·제목 색인). 쓸 기억은 memory_get으로 본문을 읽는다(memory_get의 links는 함께 읽을 관련 기억). 부르는 때: 설계·결정·규칙을 확인할 때, 문서 위치·작업 방식이 애매할 때, 사용자가 "전에"를 말할 때.
-사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정, 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
+사용자가 "기억해"라고 하거나 다시 쓸 만한 사실·결정·교훈이 생기면 memory_save로 출처와 함께 남긴다. 사용자 말 그대로의 출처(kind=quote)면 바로 확정(사용자 발언 기록에 없으면 후보로 낮아진다), 아니면 후보이고 증거가 쌓이면 스스로 확정된다. 같은 주제의 사용자 말과 어긋난 후보는 사용자가 고를 때까지 후보다. 함께 읽어야 할 기존 기억은 links로 잇는다. 틀린 기억은 memory_update로 고치고, 사용자 말을 담은 기억은 사용자가 바꾸라고 한 말을 userQuote로 줄 때만 고친다.
 규칙·결정은 topic(주제 키)이 있어야 하고, 규칙은 appliesTo(사람의 일하는 방식은 대개 user)가 있어야 하며, 본문은 한 주장에 1,000자 이하다. 아니면 거절된다. 주제가 다른 옛 판을 바꾸는 결정이면 supersedes에 그 id를 준다. 「이번엔」처럼 임시라는 말은 retention volatile로 남기고, 옛 결정을 바꾸는 말인지 애매하면 저장 전에 사용자에게 묻는다.
 pin은 사용자가 늘 지키라고 한 확정된 user·제품 기억만 상시 핵심에 올린다(한도 user 3,000자·제품마다 2,000자, 넘으면 거절). 도구를 부르기 직전에 떠올릴 규칙은 tools에 도구 이름이나 접두(mcp__atlas__*)를 단다.
 memory_forget은 기억을 DB에서 지우며 되돌릴 수 없다. 사용자가 지우라고 한 말이 있을 때만 그 말을 userQuote로 주어 부른다.
@@ -122,7 +161,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 	// memory for good, and only on the user's words (Store.Forget). proposal_decide
 	// can overwrite or remove a user's file (apply_file, revert); a decided
 	// proposal is not decided again.
-	addPlain(srv, &mcp.Tool{Name: "memory_find", Description: "기억을 찾는다. 설계·결정·규칙 확인, 문서 위치·작업 방식이 애매할 때 먼저 부른다. 결과는 색인이라 쓰기 전에 memory_get으로 읽는다.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "memory_find", Description: "기억을 찾는다. 설계·결정·규칙·문서 위치·작업 방식이 애매할 때 먼저 부른다. 결과는 색인이니 쓰기 전에 memory_get으로 읽는다.", Annotations: readHints()},
 		track(h, "memory_find", h.find, func(in FindIn, out FindOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
 			for _, m := range out.Items {
@@ -130,7 +169,7 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "results": len(out.Items), "scope": in.Scope, "ids": ids, "tags": len(in.Tags)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억을 읽는다(여러 개). 본문·출처·links(함께 읽을 관련 기억).", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "memory_get", Description: "id로 기억 여러 개를 읽는다. 본문·출처·links(함께 읽을 기억).", Annotations: readHints()},
 		track(h, "memory_get", h.get, func(in GetIn, out GetOut) map[string]any {
 			ids := make([]string, 0, len(out.Items))
 			for _, m := range out.Items {
@@ -138,28 +177,28 @@ func New(s *memory.Store, o Options) *mcp.Server {
 			}
 			return map[string]any{"requested": len(in.IDs), "results": len(out.Items), "ids": ids}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 출처가 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic 필수, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절된다. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다. 저장됐는데 near가 있으면 같은 주장인지 보고 하나만 남긴다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_save", Description: "기억을 출처와 함께 남긴다. 사용자 말(quote)이면 확정, 아니면 후보. 규칙·결정은 topic, 규칙은 appliesTo 필수, 본문 1,000자 이하. 비밀값·로그·전사·지시문·진행 상태는 거절. saved:false면 similar를 보고 choices 하나를 resolve로 주어 다시 부른다. 저장됐어도 near가 같은 주장이면 하나만 남긴다.", Annotations: writeHints(false, false)},
 		track(h, "memory_save", h.save, func(in SaveIn, out SaveOut) map[string]any {
 			return saveData(in, out)
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. action: edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 사용자 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_update", Description: "기억을 고친다. 사용자 말을 담은 기억(quote)을 바꾸거나 후보를 확정하면 그 말을 userQuote로 준다.", Annotations: writeHints(false, false)},
 		track(h, "memory_update", h.update, func(in UpdateIn, out MemoryOut) map[string]any {
 			return map[string]any{"action": in.Action, "memoryId": in.ID}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "memory_forget", Description: "기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 memory_update의 stale·supersede로 고친다. 사용자가 지우라고 한 말을 userQuote로 줄 때만 부른다.", Annotations: writeHints(true, false)},
+	addPlain(srv, &mcp.Tool{Name: "memory_forget", Description: "기억을 DB에서 완전히 지운다(되돌릴 수 없다). 틀리거나 낡은 기억은 먼저 memory_update(stale·supersede)로 고친다. 사용자가 지우라고 한 말을 userQuote로 줄 때만 부른다.", Annotations: writeHints(true, false)},
 		track(h, "memory_forget", h.forget, func(in ForgetIn, out ForgetOut) map[string]any {
 			// 개수만 남긴다. userQuote·reason·제목은 지우려던 글이라 사건에도 넣지 않는다.
 			return map[string]any{"count": len(in.IDs)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "proposals", Description: "감사용 목록. 기본(status=audit)은 최근 자동 변경·어긋남·반복 교정. 사용자가 요청할 때만 부른다.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "proposals", Description: "감사용 목록. 기본은 최근 자동 변경·어긋남·반복 교정. 사용자가 요청할 때만 부른다.", Annotations: readHints()},
 		track(h, "proposals", h.proposals, func(in ProposalsIn, out ProposalsOut) map[string]any {
 			return map[string]any{"status": in.Status, "results": len(out.Items)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "proposal_decide", Description: "감사 항목 결정: revert(자동 변경 되돌리기)·dismiss(어긋남·반복 교정 닫기). 사용자 답을 받은 뒤에만 부른다. approve·reject는 남은 옛 대기 제안만.", Annotations: writeHints(true, true)},
+	addPlain(srv, &mcp.Tool{Name: "proposal_decide", Description: "감사 항목 결정: revert(자동 변경 되돌리기)·dismiss(어긋남·반복 교정 닫기). 사용자 답을 받은 뒤에만 부른다. approve·reject는 옛 대기 제안만.", Annotations: writeHints(true, true)},
 		track(h, "proposal_decide", h.decide, func(in DecideIn, out DecideOut) map[string]any {
 			return map[string]any{"decision": in.Decision, "proposalId": in.ID, "ids": len(in.IDs), "failed": len(out.Failed)}
 		}))
-	addPlain(srv, &mcp.Tool{Name: "activity_find", Description: "세션 활동 기록(언제·어느 호스트·프로젝트·요청)을 최신순으로 찾는다. 기본은 이 프로젝트, project=all이면 전부.", Annotations: readHints()},
+	addPlain(srv, &mcp.Tool{Name: "activity_find", Description: "세션 활동 기록(언제·호스트·프로젝트·요청)을 최신순으로 찾는다.", Annotations: readHints()},
 		track(h, "activity_find", h.activity, func(in ActivityIn, out activity.Result) map[string]any {
 			return map[string]any{"query": memory.ClipRunes(memory.MaskSecrets(in.Query), 200), "project": in.Project, "results": len(out.Items)}
 		}))
@@ -234,10 +273,10 @@ type FindIn struct {
 	Query  string   `json:"query,omitempty" jsonschema:"찾을 말. 비우면 최근 것부터"`
 	Kinds  []string `json:"kinds,omitempty" jsonschema:"rule·fact·decision·lesson·journal"`
 	Scope  string   `json:"scope,omitempty" jsonschema:"here(기본, 이 폴더에서 보이는 것)·global(user만)·all"`
-	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)"`
+	States []string `json:"states,omitempty" jsonschema:"candidate·confirmed·stale(기본 앞 둘)·hidden. 만료·옛 버전은 stale을 주면 보임"`
 	Tags   []string `json:"tags,omitempty" jsonschema:"하나라도 가진 기억만"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"기본 8, 최대 30"`
-	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그 포함)"`
+	Detail string   `json:"detail,omitempty" jsonschema:"index(기본)·summary(본문 발췌·태그)"`
 }
 
 // Summary is a short view of a memory in a list.
@@ -278,15 +317,26 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		r, _ := toolError(err)
 		return r, FindOut{}, nil
 	}
-	f := memory.FindInput{Query: in.Query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit)}
+	// 기본 조회는 현재 값만 보인다. states에 stale이나 hidden을 주면 사람이 지난 값을 보려는 것이라 거르지 않고 줄마다 표시한다.
+	// stale을 주면 상태가 후보·확정이어도 만료됐거나 옛 버전인 기억까지 나온다(명세 F-3). 현재 값은 요청한 상태일 때만 나온다.
+	withStale := slices.Contains(in.States, memory.StateStale)
+	marked := withStale || slices.Contains(in.States, memory.StateHidden)
+	query := in.Query
+	if h.o.LoadFindStripParticles != nil && h.o.LoadFindStripParticles() {
+		query = memory.StripParticlesQuery(query)
+	}
+	f := memory.FindInput{Query: query, Kinds: in.Kinds, States: in.States, Tags: in.Tags, Project: h.o.Project, Limit: findLimit(in.Limit), Current: !marked, WithNotCurrent: withStale}
+	// 어긋남 칸의 보임 판정은 찾기 범위와 별개로 지금 자리를 본다: global로 찾아도 다른 프로젝트 기억의 제목은 싣지 않는다.
+	here := h.o.here()
+	seeFrom := &here
 	switch in.Scope {
 	case "", "here":
-		here := h.o.here()
 		f.Place = &here
 	case "global":
 		f.GlobalOnly = true
 	case "all":
 		f.AllProjects = true
+		seeFrom = nil
 	default:
 		r, _ := toolError(fmt.Errorf("scope는 here·global·all입니다"))
 		return r, FindOut{}, nil
@@ -297,8 +347,38 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 		return r, FindOut{}, nil
 	}
 	out := FindOut{Items: []FindItem{}}
+	// 표시는 줄마다 판정만 하고 후계는 읽지 않는다(후계 id는 memory_get과 연결에서 보인다). 판정기는 호출마다 만든다.
+	var v memory.Viewer
+	if marked {
+		v, _ = h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠지고 폐기·만료 표시는 그대로다
+	}
+	// 어긋남은 보인 기억 전부를 질의 하나로 읽는다(C-5). 읽지 못하면 표시만 빠진다.
+	ids := make([]string, len(ms))
+	for i, m := range ms {
+		ids[i] = m.ID
+	}
+	// 새 쪽은 보임 판정을 지나고 지금 자리에서 보이는 범위일 때만 싣는다(memory.Viewer.ShownSides). 어긋남이 없으면 주제 머리는
+	// 읽지 않는다.
+	sides, _ := h.s.OpenConflictSides(ids)
+	var cv memory.Viewer
+	if len(sides) > 0 {
+		cv, _ = h.s.Viewer()
+		cv = cv.WithConflictSides(sides)
+	}
+	now := h.s.Now()
 	for _, m := range ms {
-		out.Items = append(out.Items, findItem(m, detail))
+		note, conflict := "", ""
+		if marked {
+			note = whyNote(v.Why(m))
+		}
+		current := note == ""
+		if current && len(sides) > 0 { // 현재 값에만 붙인다
+			conflict = conflictNote(cv.ShownSides(m.ID, seeFrom))
+		}
+		if current && m.Freshness(now) == memory.FreshReviewDue { // 빼지 않고 표시만 한다(L-2)
+			note = reviewNote
+		}
+		out.Items = append(out.Items, findItemWith(m, detail, note, conflict))
 	}
 	return nil, out, nil
 }
@@ -307,13 +387,16 @@ func (h handlers) find(_ context.Context, _ *mcp.CallToolRequest, in FindIn) (*m
 type GetIn struct {
 	IDs     []string `json:"ids" jsonschema:"읽을 기억 id(1~20개)"`
 	History bool     `json:"history,omitempty" jsonschema:"true면 버전 이력도"`
-	Full    bool     `json:"full,omitempty" jsonschema:"true면 자르지 않고 전부"`
+	Full    bool     `json:"full,omitempty" jsonschema:"true면 자르지 않는다"`
 }
 
 // GetOut is memory_get's result.
 type GetOut struct {
 	Items   []MemoryView                `json:"items"`
 	History map[string][]memory.Version `json:"history,omitempty"`
+	// Aliases are the aliases of the memories that have some, by id, only for a read with full: the default
+	// view is cut to its budget (view.go), which aliases would exceed.
+	Aliases map[string][]string `json:"aliases,omitempty"`
 }
 
 func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp.CallToolResult, GetOut, error) {
@@ -322,13 +405,35 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 		r, _ := toolError(fmt.Errorf("ids는 1~20개입니다"))
 		return r, out, nil
 	}
+	// 판정기는 호출마다 만든다: 만든 시각과 주제 머리가 고정되므로 오래 사는 서버가 쥐지 않는다.
+	v, _ := h.s.Viewer() // 주제 머리를 못 읽으면 옛 버전 표시만 빠진다
+	peers := h.peers(v)
+	cv, _ := v.WithConflicts(in.IDs) // 어긋남은 읽을 기억 전부를 질의 하나로 읽는다(C-5). 연결의 상대에는 붙이지 않는다
 	for _, id := range in.IDs {
 		m, err := h.s.Get(id)
 		if err != nil {
 			r, _ := toolError(err)
 			return r, out, nil
 		}
-		out.Items = append(out.Items, memoryView(m, h.linkTitle, in.Full))
+		vis := v.Of(m)
+		successor := vis.Successor
+		if vis.Why == memory.WhyOlder {
+			successor = v.Superseding(m)
+		}
+		conflict, review := "", ""
+		if vis.Why == memory.WhyCurrent { // 읽는 id마다 범위는 보지 않는다: id로 직접 읽는 도구라 보임 판정만 본다
+			conflict = conflictNote(cv.ShownSides(m.ID, nil))
+			if vis.ReviewDue {
+				review = reviewNote
+			}
+		}
+		out.Items = append(out.Items, memoryViewReview(m, noticeOf(m, vis.Why, successor), conflict, review, peers, in.Full))
+		if in.Full && len(m.Aliases) > 0 {
+			if out.Aliases == nil {
+				out.Aliases = map[string][]string{}
+			}
+			out.Aliases[id] = m.Aliases
+		}
 		if in.History {
 			if out.History == nil {
 				out.History = map[string][]memory.Version{}
@@ -339,20 +444,35 @@ func (h handlers) get(_ context.Context, _ *mcp.CallToolRequest, in GetIn) (*mcp
 	return nil, out, nil
 }
 
-// linkTitle is the title of the memory at the other end of a link, "" when it cannot be read.
-func (h handlers) linkTitle(id string) string {
-	m, err := h.s.Get(id)
-	if err != nil {
-		return ""
+// peers gives the title and the note of the memory at the other end of a link (view.go linkPeers). An id
+// that cannot be read has neither: its line is the bare id, as before. Each peer is read once per call.
+func (h handlers) peers(v memory.Viewer) linkPeers {
+	type peer struct{ title, note string }
+	seen := map[string]peer{}
+	return func(id string) (string, string) {
+		if p, ok := seen[id]; ok {
+			return p.title, p.note
+		}
+		var p peer
+		if m, err := h.s.Get(id); err == nil {
+			p.title = m.Title
+			vis := v.Of(m)
+			succ := vis.Successor
+			if vis.Why == memory.WhyOlder {
+				succ = v.Superseding(m)
+			}
+			p.note = peerNote(vis.Why, succ)
+		}
+		seen[id] = p
+		return p.title, p.note
 	}
-	return m.Title
 }
 
 // SourceIn is where a memory came from.
 type SourceIn struct {
 	Kind    string `json:"kind" jsonschema:"quote(사용자 말)·file·command·session·host_memory·verification·work"`
 	Ref     string `json:"ref,omitempty" jsonschema:"절대경로·명령·세션 id"`
-	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 사용자 말 그대로"`
+	Excerpt string `json:"excerpt,omitempty" jsonschema:"quote면 그 말 그대로"`
 	Trust   string `json:"trust,omitempty" jsonschema:"untrusted(웹·도구 출력)·system으로만 낮춤"`
 }
 
@@ -362,12 +482,14 @@ type SaveIn struct {
 	Title string   `json:"title" jsonschema:"200자 이하"`
 	Body  string   `json:"body,omitempty" jsonschema:"규칙·결정은 1,000자 이하"`
 	Tags  []string `json:"tags,omitempty"`
+	// Aliases are other words that find the memory (memory.Memory.Aliases): they are not counted in the body's size.
+	Aliases []string `json:"aliases,omitempty" jsonschema:"찾기용 다른 말·표기. 10개 이하, 각 50자 이하"`
 	// AppliesTo is 설계 · orbit-mem 2판 4.1 (S3 명세 2.4).
-	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"규칙은 필수(사람의 일하는 방식은 대개 user). user·product[:<이름>|:?]·repo[:<키>]. 비우면 폴더 기준"`
+	AppliesTo string `json:"appliesTo,omitempty" jsonschema:"규칙은 필수(사람의 일하는 방식은 대개 user). user·product[:이름|:?]·repo[:키]. 비우면 폴더 기준"`
 	// Scope and Project are the old names, accepted for one version (0.14.x, S3 명세 2.5).
-	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo). appliesTo를 쓴다"`
-	Project string   `json:"project,omitempty" jsonschema:"옛 이름: scope project의 디렉터리"`
-	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로 올린다. 사용자가 늘 지키라고 한 확정 기억만, 한도(user 3,000자·제품 2,000자) 넘으면 거절"`
+	Scope   string   `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo)"`
+	Project string   `json:"project,omitempty" jsonschema:"옛 이름: 프로젝트 디렉터리"`
+	Pin     bool     `json:"pin,omitempty" jsonschema:"상시 핵심으로. 사용자가 늘 지키라고 한 확정 기억만. 한도는 안내에"`
 	Source  SourceIn `json:"source"`
 	Links   []LinkIn `json:"links,omitempty" jsonschema:"함께 읽을 기억"`
 	// ConflictsWith marks the new candidate as going against these rules of the user (A2).
@@ -379,10 +501,10 @@ type SaveIn struct {
 	Topic           string `json:"topic,omitempty" jsonschema:"주제 키. 규칙·결정은 필수"`
 	// Supersedes and Tools are 설계 · orbit-mem 2판 4.2·6절.
 	Supersedes []string `json:"supersedes,omitempty" jsonschema:"대체하는 옛 기억 id(주제가 달라도)"`
-	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두"`
+	Tools      []string `json:"tools,omitempty" jsonschema:"부르기 직전에 회상할 도구 이름·접두. Bash(git commit)은 입력에 그 낱말이 있을 때만"`
 	// Resolve and IdempotencyKey are the save-time tidy of 설계 6.1 (handlers.tidy).
-	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:<id>·supersede:<id>·skip"`
-	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키로 다시 불러도 한 번만 적용"`
+	Resolve        string `json:"resolve,omitempty" jsonschema:"saved:false 뒤 고른 것: add·update:ID·supersede:ID·skip"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty" jsonschema:"같은 키는 한 번만 적용"`
 }
 
 // LinkIn links to another memory.
@@ -439,7 +561,8 @@ func (h handlers) applyLinks(id string, link []LinkIn, unlink []UnlinkIn) (memor
 // MemoryOut is a single memory result.
 type MemoryOut struct {
 	Memory memory.Memory `json:"memory,omitzero"` // memory_save가 고르기를 돌려줄 때만 없다
-	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24").
+	// Rewrites are the relative times memory_save turned into dates ("3주 뒤 → 2026-11-24") and the ones it
+	// left as they were because they count from an event, not from now ("배포 3일 전 → 바꾸지 않음(사건 기준)").
 	Rewrites []string `json:"rewrites,omitempty"`
 	// Superseded and Conflicts are what memory_save replaced and the user's words it left alone.
 	Superseded []string `json:"superseded,omitempty"`
@@ -574,6 +697,35 @@ func (h handlers) appliesTo(applies, oldScope, dir string, def bool, text string
 	return scope, lb, warns, nil
 }
 
+// checkQuote checks a quote source against what the user said (S-4) and says whether it may count as the
+// user's checked words (memory.SaveInput.QuoteMatched), with what the caller should know. A source that is
+// not a quote is left alone. A save by a person's own channel (TrustLimit owner) is not checked: the person
+// wrote it. An excerpt not found in the user's recorded utterances is not taken as the user's words: src
+// becomes a session source, so the memory is saved as an AI's candidate; a check that fails does the same,
+// with its own notice (closed: a failure never lets a quote through). Only without utterances to compare
+// with (a host that does not record them) does the quote stay as it was, unchecked. The time is when the
+// user said it (memory.SaveInput.QuoteAt): the matched utterance's record time, or now for a person.
+func (h handlers) checkQuote(src *memory.Source) (bool, int64, []string) {
+	if src.Kind != memory.SourceQuote {
+		return false, 0, nil
+	}
+	if h.o.TrustLimit == memory.TrustOwner {
+		return true, h.s.Now().UnixMilli(), nil
+	}
+	m, at, err := h.s.MatchQuote(src.Excerpt)
+	switch {
+	case err != nil:
+		src.Kind = memory.SourceSession
+		return false, 0, []string{i18n.T("memory.save.quote_error")}
+	case m == memory.QuoteMatched:
+		return true, at, nil
+	case m == memory.QuoteNotFound:
+		src.Kind = memory.SourceSession
+		return false, 0, []string{i18n.T("memory.save.quote_not_found", memory.UtteranceDays)}
+	}
+	return false, 0, []string{i18n.T("memory.save.quote_unchecked", memory.UtteranceDays)}
+}
+
 // checkRuleApplies refuses a rule saved without saying whom it applies to (S3-R3): a person's way of
 // working is usually user, and a rule bound to this folder by default would be missing everywhere else.
 // The refusal names the choices and this folder's products.
@@ -620,13 +772,40 @@ func (h handlers) save(_ context.Context, _ *mcp.CallToolRequest, in SaveIn) (*m
 		r, _ := toolError(err)
 		return r, SaveOut{}, nil
 	}
+	if err := checkAliases(in.Aliases); err != nil {
+		r, _ := toolError(err)
+		return r, SaveOut{}, nil
+	}
 	if err := h.checkTopic(in, scope); err != nil {
 		r, _ := toolError(err)
 		return r, SaveOut{}, nil
 	}
 	si := memory.SaveInput{Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Scope: scope, Project: label,
 		Source: memory.Source{Kind: in.Source.Kind, Ref: in.Source.Ref, Excerpt: in.Source.Excerpt, Trust: in.Source.Trust}, TrustLimit: h.o.TrustLimit, ConflictsWith: in.ConflictsWith, Who: h.o.who("", ""),
-		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Pin: in.Pin}
+		Retention: in.Retention, TTLDays: in.TTLDays, ReviewAfterDays: in.ReviewAfterDays, Topic: in.Topic, Supersedes: in.Supersedes, Tools: in.Tools, Aliases: in.Aliases, Pin: in.Pin,
+		Session: h.o.Session}
+	// 사용자 말 대조(S-4)는 Screen보다 먼저 한다: Screen은 사용자 말 출처를 달리 다룬다(진행 상황 거부를 면하고 발췌를
+	// 치환하지 않는다). 기록에 없어 session으로 낮춘 출처는 AI 출처로 걸러야 한다.
+	var quoteWarns []string
+	si.QuoteMatched, si.QuoteAt, quoteWarns = h.checkQuote(&si.Source)
+	warns = append(warns, quoteWarns...)
+	// 재검토 주기는 3,650일까지 받지만, 사람이 아니고 사용자 말 출처도 아닌 저장이 길게 주면 재검토 후보 표시를 10년 미룰 수 있다
+	// (L-1): 365일로 자르고 알린다. 사용자 말 저장과 사람 통로는 상한 그대로다.
+	if si.ReviewAfterDays > maxAIReviewDays && si.Source.Kind != memory.SourceQuote && si.Who.Actor != memory.ActorUser {
+		warns = append(warns, fmt.Sprintf("reviewAfterDays %d은 사용자 말이 아닌 저장에는 너무 길어 %d일로 줄였습니다", si.ReviewAfterDays, maxAIReviewDays))
+		si.ReviewAfterDays = maxAIReviewDays
+	}
+	// 검증 출처의 근거가 이 연결의 작업 폴더 안 파일이면 서버가 지금 직접 읽어 발췌가 있는지 본다(C-1·E-4). 있으면 서버가 다시
+	// 확인한 근거라 어긋남이 없으면 바로 확정된다(대체는 가르지 않는다). Screen이 발췌를 고치기 전에 본다: AI가 준 발췌 그대로가 파일에 있어야 한다. 명령 출력 같은 근거는 읽을 수
+	// 없어 근거 적힘으로 남는다. 재확인이 안 된 까닭은 응답에 내지 않는다(경로마다 다른 답이 파일 유무를 알려 주지 않게).
+	if si.Source.Kind == memory.SourceVerification {
+		si.Source.Rechecked = memory.RecheckExcerpt(h.o.recheckRoots(), si.Source.Ref, si.Source.Excerpt)
+	}
+	// 자동 모드(C-9)는 저장마다 다시 읽는다: 여러 요청이 함께 오므로 저장소의 Policy를 바꾸지 않고 이 저장에만 싣는다.
+	if h.o.LoadPolicy != nil {
+		auto := h.o.LoadPolicy().AutoMode
+		si.AutoMode = &auto
+	}
 	// 파일 출처는 그때의 해시를 남겨 두어, 파일이 바뀌면 회고의 근거 판정이 낡음 후보를 가린다.
 	if si.Source.Kind == memory.SourceFile && filepath.IsAbs(si.Source.Ref) {
 		if h := memory.FileHash(si.Source.Ref); h != "absent" {
@@ -664,7 +843,8 @@ const (
 
 // SaveOut is memory_save's result. Saved is always there: true when the memory was saved, updated or
 // superseded (Memory), false when nothing was written — similar memories to pick from (Similar, Choices),
-// or the caller picked skip (Resolve, Memory the one kept).
+// or the caller picked skip (Resolve, Memory the one kept), or the title is a rejected memory's and the save
+// was not the user's checked words (Memory that rejected one, the reason in Warnings).
 type SaveOut struct {
 	Saved bool `json:"saved"`
 	MemoryOut
@@ -797,6 +977,18 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	if err != nil {
 		return SaveOut{}, err
 	}
+	if rep.Rejected != "" { // 거절된 기억의 제목: 아무것도 쓰지 않았다(S-2). 링크도 걸지 않는다
+		reason := i18n.T("memory.save.rejected", rep.Rejected)
+		switch {
+		case rep.NotRevived == memory.ReviveShortQuote:
+			reason = i18n.T("memory.save.rejected_short_quote", rep.Rejected)
+		case rep.NotRevived == memory.ReviveBeforeRejection:
+			reason = i18n.T("memory.save.rejected_before", rep.Rejected)
+		case si.Source.Kind == memory.SourceQuote: // 기록에 없거나 대조 중 오류인 말은 이미 session으로 낮췄다: 남은 것은 대조 못 한 말이다
+			reason = i18n.T("memory.save.rejected_unchecked", rep.Rejected)
+		}
+		return SaveOut{MemoryOut: MemoryOut{Memory: m, Warnings: []string{reason}}}, nil
+	}
 	if len(links) > 0 || rep.Replayed != nil {
 		if m, err = h.applyLinks(m.ID, links, nil); err != nil {
 			return SaveOut{}, err
@@ -809,10 +1001,21 @@ func (h handlers) saveNow(si memory.SaveInput, links []LinkIn) (SaveOut, error) 
 	if si.Replaces != "" && rep.Replayed == nil && !slices.Contains(rep.Superseded, si.Replaces) {
 		out.Warnings = append(out.Warnings, i18n.T("memory.save.not_replaced", si.Replaces))
 	}
+	switch {
+	case rep.Revived && rep.BodyKept: // 되살린 기억은 거절했던 때의 본문 그대로다
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.revived_body_kept", m.ID))
+	case rep.Revived:
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.revived", m.ID))
+	case rep.BodyKept:
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.body_kept", m.ID))
+	}
+	if len(rep.FieldsKept) > 0 {
+		out.Warnings = append(out.Warnings, i18n.T("memory.save.fields_kept", strings.Join(rep.FieldsKept, "·"), m.ID))
+	}
 	return out, nil
 }
 
-// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic and tools of
+// saveAsUpdate applies resolve update:<id>: the memory id takes the title, body, tags, topic, tools and aliases of
 // the save (what the save leaves empty stays) by the Update path, so the user's words are kept by the same
 // guard; the save's source is added to it, in the same transaction, as one more ground. A source that is the user's own words is
 // the userQuote of the change (D1).
@@ -843,6 +1046,9 @@ func (h handlers) saveAsUpdate(id string, in SaveIn, si memory.SaveInput) (SaveO
 	}
 	if si.Tools != nil {
 		u.Tools = &si.Tools
+	}
+	if len(si.Aliases) > 0 {
+		u.Aliases = &si.Aliases
 	}
 	if si.Topic != "" {
 		u.Topic = &si.Topic
@@ -900,6 +1106,21 @@ func (h handlers) skip(id string, si memory.SaveInput) (SaveOut, error) {
 // maxClaimRunes bounds the body of a rule or decision: one memory holds one claim, so a
 // later value replaces all of it (설계 · orbit-mem 2판 4.3.1, AC-9).
 const maxClaimRunes = 1000
+
+// checkAliases refuses aliases past the limits or with a secret in them, with the reason (the domain would
+// refuse them too, without one): they are never cut silently.
+func checkAliases(aliases []string) error {
+	kept, trimmed := memory.NormalizeAliases(aliases)
+	if trimmed {
+		return fmt.Errorf("%w: aliases는 %d개 이하, 각 %d자 이하, 제어 문자 없이 적습니다", memory.ErrInvalid, memory.MaxAliases, memory.MaxAliasRunes)
+	}
+	for _, a := range kept {
+		if memory.MaskSecrets(a) != a {
+			return fmt.Errorf("%w: aliases에 비밀값이 있습니다", memory.ErrInvalid)
+		}
+	}
+	return nil
+}
 
 func (h handlers) checkClaim(kind, body string) error {
 	if (kind == memory.KindRule || kind == memory.KindDecision) && utf8.RuneCountInString(body) > maxClaimRunes {
@@ -966,26 +1187,27 @@ func (h handlers) checkTopic(in SaveIn, scope string) error {
 // UpdateIn is memory_update's input.
 type UpdateIn struct {
 	ID              string     `json:"id"`
-	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 판본(바뀌었으면 거절)"`
+	ExpectedVersion int        `json:"expectedVersion,omitempty" jsonschema:"읽은 버전(바뀌었으면 거절)"`
 	Action          string     `json:"action,omitempty" jsonschema:"edit(기본)·confirm·stale·supersede·restore·reviewed·pin·unpin"`
 	Kind            *string    `json:"kind,omitempty"`
 	Title           *string    `json:"title,omitempty"`
 	Body            *string    `json:"body,omitempty"`
 	Tags            *[]string  `json:"tags,omitempty"`
-	AppliesTo       string     `json:"appliesTo,omitempty" jsonschema:"옮길 적용 대상"`
+	AppliesTo       string     `json:"appliesTo,omitempty" jsonschema:"옮길 대상"`
 	Scope           string     `json:"scope,omitempty" jsonschema:"옛 이름(global=user, project=repo)"`
 	Project         string     `json:"project,omitempty" jsonschema:"옛 이름: scope project의 디렉터리"`
 	SupersededBy    string     `json:"supersededBy,omitempty" jsonschema:"supersede의 새 기억 id"`
 	Reason          string     `json:"reason,omitempty"`
-	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억을 바꾸거나 후보를 확정할 때 그 사용자 말"`
+	UserQuote       string     `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억 변경·후보 확정 때 그 말"`
 	Tools           *[]string  `json:"tools,omitempty" jsonschema:"도구 트리거(빈 목록이면 없앰)"`
+	Aliases         *[]string  `json:"aliases,omitempty" jsonschema:"별칭을 통째로 바꿈(빈 목록이면 비움). 지금 값은 get full"`
 	Link            []LinkIn   `json:"link,omitempty" jsonschema:"함께 읽을 기억"`
 	Unlink          []UnlinkIn `json:"unlink,omitempty" jsonschema:"연결을 뗀다"`
 }
 
 // edits says whether the update changes the memory itself (not only its links).
 func (in UpdateIn) edits() bool {
-	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Scope != "" || in.AppliesTo != "" || in.SupersededBy != ""
+	return in.Action != "" || in.Kind != nil || in.Title != nil || in.Body != nil || in.Tags != nil || in.Tools != nil || in.Aliases != nil || in.Scope != "" || in.AppliesTo != "" || in.SupersededBy != ""
 }
 
 func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn) (*mcp.CallToolResult, MemoryOut, error) {
@@ -1014,7 +1236,13 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 	}
 	switch in.Action {
 	case "", "edit", "confirm", "restore", "stale":
-		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Tools: in.Tools, Reason: in.Reason, Action: in.Action,
+		if in.Aliases != nil {
+			if err := checkAliases(*in.Aliases); err != nil {
+				r, _ := toolError(err)
+				return r, MemoryOut{}, nil
+			}
+		}
+		u := memory.UpdateInput{ID: in.ID, ExpectedVersion: in.ExpectedVersion, Kind: in.Kind, Title: in.Title, Body: in.Body, Tags: in.Tags, Tools: in.Tools, Aliases: in.Aliases, Reason: in.Reason, Action: in.Action,
 			Who: h.o.who(in.UserQuote, "")}
 		if in.Body != nil || in.Kind != nil { // 고친 뒤의 종류·본문으로 본다
 			if cur, gerr := h.s.Get(in.ID); gerr == nil {
@@ -1100,7 +1328,7 @@ func (h handlers) update(_ context.Context, _ *mcp.CallToolRequest, in UpdateIn)
 // ProposalsIn is proposals' input.
 type ProposalsIn struct {
 	Status string `json:"status,omitempty" jsonschema:"audit(기본)·auto·pending·approved·rejected·settled·dropped·all"`
-	Days   int    `json:"days,omitempty" jsonschema:"audit에서 볼 날 수(기본 14)"`
+	Days   int    `json:"days,omitempty" jsonschema:"audit 조회 일수(기본 14)"`
 }
 
 // ProposalView is a proposal with the memories it concerns.
@@ -1161,7 +1389,7 @@ type DecideIn struct {
 	Body     *string  `json:"body,omitempty" jsonschema:"고쳐서 승인할 본문"`
 	Note     string   `json:"note,omitempty" jsonschema:"결정 이유"`
 	// UserQuote is the user's words behind a decision on something the user said (A2).
-	UserQuote string `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억에 닿는 결정이면 그 사용자 말"`
+	UserQuote string `json:"userQuote,omitempty" jsonschema:"사용자 말을 담은 기억에 닿는 결정이면 그 말"`
 }
 
 // DecideOut is proposal_decide's result: one decision, or with ids what was
@@ -1226,7 +1454,7 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 			}
 			allowed = append(allowed, id)
 		}
-		b := h.s.DecideMany(allowed, in.Decision, in.Note)
+		b := h.s.DecideManyAs(allowed, in.Decision, in.Note, h.o.who(in.UserQuote, ""))
 		b.Failed = append(refused, b.Failed...)
 		msg := fmt.Sprintf("%d건 결정, %d건 실패", len(b.Decided), len(b.Failed))
 		for _, f := range b.Failed {
@@ -1242,7 +1470,7 @@ func (h handlers) decide(_ context.Context, _ *mcp.CallToolRequest, in DecideIn)
 		r, _ := toolError(err)
 		return r, DecideOut{}, nil
 	}
-	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note})
+	res, err := h.s.Decide(memory.DecideInput{ID: in.ID, Decision: in.Decision, Title: in.Title, Body: in.Body, Note: in.Note, Who: h.o.who(in.UserQuote, "")})
 	if err != nil {
 		r, _ := toolError(err)
 		return r, DecideOut{}, nil
@@ -1260,7 +1488,8 @@ func (h handlers) auditDecide(id, decision, note, quote string) (memory.DecideRe
 	case strings.HasPrefix(id, "correction:"):
 		return memory.DecideResult{}, h.s.Acknowledge(id, w)
 	default:
-		// 어긋남을 닫으면 그 후보가 자동 확정될 수 있다: 사람이 아니면 사용자 말이 있어야 한다.
+		// 어긋남을 닫는 것은 옛 값을 유지하기로 한 사용자의 결정이다(새 값으로 바꾸려면 새 쪽에 사용자 말을 붙인다): 사람이
+		// 아니면 사용자 말이 있어야 한다.
 		if w.Actor != memory.ActorUser && strings.TrimSpace(quote) == "" {
 			return memory.DecideResult{}, fmt.Errorf("%w: %s", memory.ErrProtected, id)
 		}

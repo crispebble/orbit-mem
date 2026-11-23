@@ -72,6 +72,39 @@ func TestHostV1_실패_시간_초과_판_불일치_짝이_있다(t *testing.T) {
 	}
 }
 
+// 도구 입력(명세 T-4)은 계약 1의 선택 칸 toolInput이다: 짝 tool-context-input이 입력 조건이 달린 규칙(Bash(git commit))을
+// 그 낱말이 든 입력으로 불러 실제로 넣는 것을 고정하고, README가 칸과 짝을 적는다.
+func TestContract_tool_context_input_짝(t *testing.T) {
+	pairs, err := HostV1()
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(pairs, func(p Pair) bool { return p.Name == "tool-context-input" })
+	if i < 0 {
+		t.Fatal("no pair tool-context-input")
+	}
+	p := pairs[i]
+	req, herr := host.Decode(p.Input)
+	if herr != nil || p.Op != host.OpToolContext || req.Contract != host.Contract || req.Tool != "Bash" || req.ToolInput != "git commit -m x" {
+		t.Fatalf("pair input %s (%v): %+v", p.Input, herr, req)
+	}
+	if len(p.Setup.Calls) != 1 || !strings.Contains(string(p.Setup.Calls[0].Input), `"Bash(git commit)"`) {
+		t.Fatalf("setup does not save a rule with an input condition: %+v", p.Setup.Calls)
+	}
+	if m, _ := p.Output.(map[string]any); p.Setup.DB != "memories" || p.Exit != 0 || m["text"] != "$nonEmptyString" || m["memoryIds"] != "$nonEmptyArray" {
+		t.Fatalf("pair must inject: db %q exit %d output %v", p.Setup.DB, p.Exit, p.Output)
+	}
+	b, err := os.ReadFile("host/v1/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"`toolInput`", "`tool-context-input`", "Bash(git commit)"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("README에 %s가 없다", want)
+		}
+	}
+}
+
 func TestMatch_자리표와_정확한_값(t *testing.T) {
 	parse := func(s string) any {
 		var v any

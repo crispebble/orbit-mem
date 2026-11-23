@@ -86,7 +86,8 @@ func (c *call) fail(op, code string) {
 }
 
 func (c *call) adopt(s *memory.Store) {
-	s.Policy = memory.Policy{SeenDays: c.cfg.ConfirmSeenDays, FollowedVerified: c.cfg.ConfirmFollowedVerified, CorrectionSessions: c.cfg.CorrectionRepeatSessions}
+	s.Policy = memory.Policy{SeenDays: c.cfg.ConfirmSeenDays, FollowedVerified: c.cfg.ConfirmFollowedVerified, CorrectionSessions: c.cfg.CorrectionRepeatSessions,
+		AutoMode: c.cfg.AutoMode}
 	if c.svc.setup.Now != nil {
 		s.Now = c.svc.setup.Now
 	}
@@ -235,7 +236,37 @@ func (c *call) injected(kind string, inj inject.Injection) {
 	if kind == memory.EventInjectSessionStart {
 		data["omitted"] = inj.Omitted
 	}
+	if states := c.statesOf(inj.MemoryIDs); len(states) > 0 {
+		data["states"] = states
+	}
 	_ = c.store.RecordEvent(memory.Event{Kind: kind, Host: c.req.Host, Session: c.req.key(), Scope: c.p.Scope}, data)
+}
+
+// statesOf is the state each memory had when the event was recorded (id to state), kept in the use
+// event so the lateness of a retired memory can be measured later. It runs after the answer is sent
+// (c.after), one read for all the ids. An id the DB does not have is left out. A volatile memory past its
+// days keeps the state it was saved with, so it stays confirmed here. A failed read leaves states out of
+// the event; the event is still kept.
+func (c *call) statesOf(ids []string) map[string]string {
+	states, err := c.store.StatesOf(ids)
+	if err != nil {
+		return nil
+	}
+	return states
+}
+
+// utterance keeps what a person said (words, as inject.PersonWords told them from the host's blocks) for
+// the check of the user's words a memory_save quote gets (S-4): only the hashes of its pieces are kept.
+// It is written at once, before the recall is computed, not in the record stage: the record stage is
+// skipped when the computing runs past the time limit, and a quote of words not kept is not taken as the
+// user's. It runs even when opening the DB ran past the limit (the store is there; a DB this binary does
+// not read has none). A record that cannot be written is dropped; that quote is then saved as a candidate
+// with a notice.
+func (c *call) utterance(words string) {
+	if c.store == nil {
+		return
+	}
+	_ = c.store.RecordUtterance(c.req.Host, words)
 }
 
 // activity keeps the session in the activity log (under the session, not the subagent).
@@ -330,7 +361,9 @@ func (c *call) recall() (any, *Error) {
 	if !trivial { // 요청 회상이 돌지 않으면 요청 회상 사용도 아니다
 		c.request = text
 	}
-	if out, err, done := c.openRecall(limit); done {
+	out, err, done := c.openRecall(limit)
+	c.utterance(words) // 열기가 한도를 넘겼어도(c.store가 있으면) 남긴다
+	if done {
 		return out, err
 	}
 	c.relocate(false)
@@ -348,7 +381,7 @@ func (c *call) toolContext() (any, *Error) {
 	}
 	c.delegate()
 	c.relocate(false)
-	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool)
+	inj := inject.ToolInjection(c.store, c.cfg, c.where, c.req.Host, c.req.key(), c.req.Tool, c.req.ToolInput)
 	c.shown(memory.EventInjectTool, inj)
 	return recallOf(inj, limit), nil
 }
@@ -385,8 +418,15 @@ func (c *call) tool() (any, *Error) {
 	if actor == "" {
 		actor = memory.ActorAI
 	}
-	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp,
-		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin})
+	// 재확인의 루트인 작업 트리 최상위: 방금 git으로 푼 프로젝트가 가지고 있다. 세션의 활동 줄에서 다시 쓴 프로젝트는 최상위를
+	// 담지 않으므로 memory_save만 한 번 묻는다(project.GitTop은 재확인의 1초 안에서 끝낸다).
+	top := c.p.Top
+	if top == "" && c.p.Git && name == "memory_save" {
+		top = project.GitTop(c.p.Dir)
+	}
+	t := mcpserver.NewTools(c.store, mcpserver.Options{Project: c.p.Scope, ProjectLabel: c.p.Label, Dir: c.p.Dir, Git: c.p.Git, Temp: c.p.Temp, Top: top,
+		Actor: actor, TrustLimit: c.opts.TrustLimit, Products: c.cfg.Products, SaveSimilarMin: c.cfg.SaveSimilarMin, SaveNearMin: c.cfg.SaveNearMin,
+		LoadFindStripParticles: func() bool { return c.cfg.FindStripParticles }})
 	if lvl, _ := c.req.trustLevel(); lvl != "" { // check가 이미 걸러 냈다
 		var lerr error
 		if t, lerr = t.Lower(lvl); lerr != nil {

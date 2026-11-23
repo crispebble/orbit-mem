@@ -1,10 +1,11 @@
 package memory
 
 // 보존 등급·재검토일·주제(기획 · Orbit Code K15). 휘발 기억은 정한 날이 지나면 회상에서 빠지고,
-// 재검토일이 지난 기억은 회상에 「재검토일 지남」으로 표시되며, 같은 범위·주제의 여러 판은 최신 하나만 회상한다.
+// 재검토일이 지난 기억(마지막 확인 뒤 90일, 보통 기억도)은 회상에 「재검토 후보」로 표시되며, 같은 범위·주제의 여러 버전은 최신 하나만 회상한다.
 // 오래 쓰지 않은 후보는 낡음이 된다(설계 · orbit-mem 2판 18.4).
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -88,19 +89,67 @@ func (in SaveInput) lifecycle(m *Memory, at int64) {
 	if in.Retention == RetentionVolatile {
 		m.ExpiresAt = at + int64(in.TTLDays)*dayMs
 	}
-	if in.ReviewAfterDays > 0 {
+	switch {
+	case in.ReviewAfterDays > 0:
 		m.ReviewAt = at + int64(in.ReviewAfterDays)*dayMs
+	case in.Retention != RetentionVolatile:
+		// 만든 것이 첫 확인이다: 마지막 확인은 재검토일이 기억하고, 확인일 때만 밀린다(confirm).
+		m.ReviewAt = at + DefaultReviewDays*dayMs
 	}
 }
 
+// confirm records a confirmation of m at now (생성·사용자 말의 수정·다른 세션에서 다시 나옴·유지로 정함): the review
+// date moves to now plus the memory's cadence, 90 days when it has none. The review date is where the last
+// confirmation is kept, so a write that is no confirmation (an alias or tag fix by the AI, a state change, a
+// migration or re-index) leaves it. A volatile memory has its expiry instead and keeps no review date of its own.
+func (m *Memory) confirm(now int64) {
+	if m.Retention == RetentionVolatile && m.ReviewAt == 0 {
+		return
+	}
+	days := m.ReviewDays
+	if days <= 0 {
+		days = DefaultReviewDays
+	}
+	m.ReviewAt = now + int64(days)*dayMs
+}
+
+// holdReview fixes the review date of a live, not volatile memory that has none at its last change plus 90
+// days, before a write that is no confirmation moves the last change: otherwise the fallback of Freshness would
+// follow the change and an alias fix by the AI would rewind the clock. Call it before UpdatedAt is moved.
+func (m *Memory) holdReview() {
+	if m.ReviewAt == 0 && m.Retention != RetentionVolatile && m.UpdatedAt > 0 && (m.State == StateCandidate || m.State == StateConfirmed) {
+		m.ReviewAt = m.UpdatedAt + DefaultReviewDays*dayMs
+	}
+}
+
+// confirmCheckTx says whether memory id coming up again in session is a confirmation: it is when the session
+// is a known one and the memory was not seen in it before (recordSightingTx and the creation of a confirmed
+// memory write the session). A session not known (legacySession of before schema 6, or none) and a subagent
+// of the session (SessionKey) are not another session. Call it before the sighting is written.
+func confirmCheckTx(tx *sql.Tx, id, session string) (bool, error) {
+	key := SessionKey(session)
+	if key == "" || key == legacySession {
+		return false, nil
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sighting_sessions WHERE memory_id=? AND session=?`, id, key).Scan(&n); err != nil {
+		return false, err
+	}
+	return n == 0, nil
+}
+
 // Freshness says whether a memory has run out (volatile past its days) or is
-// due for review at now. Expiry comes first.
+// due for review at now (L-1: 90 days after its last confirmation, a normal memory too). Expiry comes first.
+// The review date holds the last confirmation; without one a non-volatile memory counts from its last change.
 func (m Memory) Freshness(now time.Time) string {
 	t := now.UnixMilli()
 	switch {
 	case m.ExpiresAt > 0 && t >= m.ExpiresAt:
 		return FreshExpired
 	case m.ReviewAt > 0 && t >= m.ReviewAt:
+		return FreshReviewDue
+	case m.ReviewAt == 0 && m.Retention != RetentionVolatile && m.UpdatedAt > 0 && t >= m.UpdatedAt+DefaultReviewDays*dayMs:
+		// 재검토일이 없는 기억(후보·확정이 아니던 때 만들어져 이행이 채우지 못한 것)은 마지막으로 고친 시각이 기준이다.
 		return FreshReviewDue
 	}
 	return FreshOK
@@ -173,7 +222,7 @@ type ReviewResult struct {
 // ReviewDue settles the lifecycle: an expired volatile memory is marked stale
 // as an automatic change (in the ledger). One holding the user's words stays
 // as it is: recall already leaves it out. A memory past its review date gets
-// no proposal; recall marks it 「재검토일 지남」 and the AI checks it with the
+// no proposal; recall marks it 「재검토 후보」 and the AI checks it with the
 // user while working (설계 · orbit-mem 2판 18.3). Old candidates go stale by
 // ExpireCandidates.
 func (s *Store) ReviewDue() (ReviewResult, error) {
@@ -279,8 +328,13 @@ func (s *Store) ExpireCandidates(days int) (int, error) {
 
 // Reviewed records that a memory was looked at and still holds: its review
 // date moves on by its cadence (90 days when it has none) from now. It keeps
-// the memory's content, so it is not a change to what the user said.
+// the memory's content, so it is not a change to what the user said. It is the
+// user's confirmation (L-1): a writer other than the person needs the user's
+// words (ErrConfirmNeedsWords), or the AI could clear the review mark of a memory alone.
 func (s *Store) Reviewed(id string, w Who) (Memory, error) {
+	if !w.human() && w.quote() == "" {
+		return Memory{}, fmt.Errorf("%w: %s", ErrConfirmNeedsWords, id)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Memory{}, err

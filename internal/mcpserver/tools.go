@@ -18,10 +18,10 @@ import (
 // ActivityIn is activity_find's input.
 type ActivityIn struct {
 	Query   string `json:"query,omitempty" jsonschema:"프로젝트·경로·세션 id·요청 글·옛 작업 제목에 든 말"`
-	Host    string `json:"host,omitempty" jsonschema:"claude·codex 중 하나만"`
-	Project string `json:"project,omitempty" jsonschema:"비우면 이 프로젝트, all이면 전부, 아니면 프로젝트 디렉터리 절대경로"`
-	Since   string `json:"since,omitempty" jsonschema:"이때 이후 활동만: YYYY-MM-DD, RFC 3339, 7d·12h(며칠·몇 시간 전)"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"최대 개수(기본 20, 최대 100)"`
+	Host    string `json:"host,omitempty" jsonschema:"claude·codex"`
+	Project string `json:"project,omitempty" jsonschema:"비우면 이 프로젝트, all이면 전부, 또는 디렉터리 절대경로"`
+	Since   string `json:"since,omitempty" jsonschema:"이후 활동만: YYYY-MM-DD·RFC 3339·7d(7일 전)·12h"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"개수(기본 20, 최대 100)"`
 }
 
 // activityQuery turns the tool input into a query of this connection's project.
@@ -134,8 +134,13 @@ var HostTools = []string{"memory_find", "memory_get", "memory_save", "memory_upd
 
 // Call runs one host tool on its MCP input and records the call as the
 // "tool.<name>" event of that host and session (설계 「측정」), which the
-// recall diagnosis reads as use.
+// recall diagnosis reads as use. A memory_save counts its sighting under that
+// session (a subagent's "<session>/<agent>" under its session, memory.SessionKey);
+// an empty session keeps the connection's Options.Session.
 func (t Tools) Call(name string, input []byte, host, session string) (any, error) {
+	if session != "" {
+		t.h.o.Session = session
+	}
 	var out any
 	var data map[string]any
 	var err error

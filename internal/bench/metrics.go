@@ -27,7 +27,8 @@ type Outcome struct {
 	Case    Case
 	Key     string // the session key the case is grouped by
 	Part    string
-	Start   Shown // layer A of the session (the case has none for a duplicate)
+	Start   Shown  // layer A of the session (the case has none for a duplicate)
+	Started *Shown // the session start this case called (the first case of a session, a start case), else nil
 	B1      *Shown
 	B2      *Shown
 	Sub     *Shown
@@ -113,6 +114,77 @@ type Metrics struct {
 	Requests   Requests   `json:"requests"`
 	Subagent   Subagents  `json:"subagent"`
 	Duplicates Duplicates `json:"duplicates"`
+	Paths      Paths      `json:"paths"`
+}
+
+// Paths is what each injection path put in over the run, the measure a replay of real logs compares between two
+// versions (명세 · 기억 정확성 7절): the session start (every start, a resume too), the request hook (news and recall
+// together), the tool call and the delegation (title lines and recall together).
+type Paths struct {
+	Start    PathStat `json:"start"`
+	Request  PathStat `json:"request"`
+	Tool     PathStat `json:"tool"`
+	Subagent PathStat `json:"subagent"`
+}
+
+// PathStat is one injection path. Chars spreads the characters over every call, InjectionChars over the calls that
+// put anything in (an id or a character): a version that puts in less often can lower the first and raise the
+// second, so both are kept. Dead counts the ids put in that were not a current value at the call (Shown.Dead,
+// only those in the call's ids), DeadCalls the calls with one, DeadByWhy those ids by the reason the path gave
+// (Shown.DeadWhy; an id without one is not in it).
+type PathStat struct {
+	Calls          int            `json:"calls"`
+	Injections     int            `json:"injections"`
+	Chars          Dist           `json:"chars"`
+	InjectionChars Dist           `json:"injectionChars"`
+	Dead           int            `json:"dead"`
+	DeadCalls      int            `json:"deadCalls"`
+	DeadByWhy      map[string]int `json:"deadByWhy,omitempty"`
+}
+
+// pathAcc adds up the calls of one path.
+type pathAcc struct {
+	calls, injections, dead, deadCalls int
+	chars, injectionChars              []int
+	byWhy                              map[string]int
+}
+
+func (p *pathAcc) add(s *Shown) {
+	if s == nil {
+		return
+	}
+	p.calls++
+	p.chars = append(p.chars, s.Chars)
+	if len(s.IDs) > 0 || s.Chars > 0 {
+		p.injections++
+		p.injectionChars = append(p.injectionChars, s.Chars)
+	}
+	dead := deadOf(s)
+	if len(dead) > 0 {
+		p.dead += len(dead)
+		p.deadCalls++
+	}
+	for _, id := range dead {
+		if why, ok := s.DeadWhy[id]; ok {
+			if p.byWhy == nil {
+				p.byWhy = map[string]int{}
+			}
+			p.byWhy[why]++
+		}
+	}
+}
+
+func (p *pathAcc) stat() PathStat {
+	return PathStat{Calls: p.calls, Injections: p.injections, Chars: dist(p.chars), InjectionChars: dist(p.injectionChars),
+		Dead: p.dead, DeadCalls: p.deadCalls, DeadByWhy: p.byWhy}
+}
+
+// deadOf is the dead ids of a step that it put in, each once.
+func deadOf(s *Shown) []string {
+	if s == nil || len(s.Dead) == 0 {
+		return nil
+	}
+	return intersect(union(s.IDs), s.Dead)
 }
 
 func round4(v float64) float64 { return math.Round(v*1e4) / 1e4 }
@@ -303,8 +375,13 @@ func Compute(outs []Outcome) Metrics {
 	var news News
 	var newsChars []int
 	var order []string
+	var pStart, pRequest, pTool, pSub pathAcc
 	for _, o := range outs {
 		c := o.Case
+		pStart.add(o.Started)
+		pRequest.add(o.B1)
+		pTool.add(o.B2)
+		pSub.add(o.Sub)
 		switch c.CaseKind() {
 		case KindRequest:
 			told := newsOf(o.B1)
@@ -435,6 +512,7 @@ func Compute(outs []Outcome) Metrics {
 		Subagent: Subagents{Group: sub.group(), HitByLead: hitByLead, LeadChars: dist(subLead)},
 		Duplicates: Duplicates{Cases: dupCases, Hit: rate(dupHitNum, dupHitDen), WrongBlock: rate(dupBlockNum, dupNoneDen),
 			NearOffered: rate(dupNearNum, dupNoneDen), Forbid: dupForbid, NearForbid: dupNearForbid},
+		Paths: Paths{Start: pStart.stat(), Request: pRequest.stat(), Tool: pTool.stat(), Subagent: pSub.stat()},
 	}
 }
 

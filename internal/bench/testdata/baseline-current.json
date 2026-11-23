@@ -2,20 +2,20 @@
   "about": "공개 고정 평가 묶음(모델 호출 없음, 개인 내용 없음). 가짜 기억과 사례만 있다. 정답(expect·allow·forbid)은 지금 회상 코드가 맞히는지가 아니라 참을 기준으로 적었다. 사례 칸과 지표는 README.md에 있다.",
   "now": "2026-11-03T09:00:00+09:00",
   "seed": "orbit-mem-public-1",
-  "cases": 195,
+  "cases": 223,
   "split": {
-    "units": 119,
-    "trainUnits": 83,
-    "testUnits": 36,
+    "units": 133,
+    "trainUnits": 93,
+    "testUnits": 40,
     "test": {
-      "answered": 27,
-      "empty": 14,
+      "answered": 31,
+      "empty": 15,
       "subagent": 11,
       "duplicate": 13
     },
     "pointsPerCase": {
-      "answered": 3.7037,
-      "empty": 7.1429,
+      "answered": 3.2258,
+      "empty": 6.6667,
       "subagent": 9.0909,
       "duplicate": 7.6923
     }
@@ -25,34 +25,34 @@
       "name": "hostpath",
       "train": {
         "requests": {
-          "cases": 96,
+          "cases": 108,
           "hit": {
-            "num": 59,
-            "den": 64,
-            "value": 0.9219
+            "num": 68,
+            "den": 73,
+            "value": 0.9315
           },
-          "injected": 74,
-          "correct": 66,
+          "injected": 82,
+          "correct": 75,
           "neutral": 3,
           "wrong": {
-            "num": 5,
-            "den": 74,
-            "value": 0.0676
+            "num": 4,
+            "den": 82,
+            "value": 0.0488
           },
           "forbid": 1,
           "forbidCases": 1,
           "empty": {
-            "num": 30,
-            "den": 32,
-            "value": 0.9375
+            "num": 33,
+            "den": 35,
+            "value": 0.9429
           },
           "chars": {
-            "n": 82,
-            "mean": 58.2073,
-            "median": 80,
-            "max": 132
+            "n": 90,
+            "mean": 57.3889,
+            "median": 79.5,
+            "max": 141
           },
-          "hitByStart": 3,
+          "hitByStart": 5,
           "hitByEarlier": 0,
           "hitByNews": 0,
           "news": {
@@ -68,8 +68,8 @@
             }
           },
           "recover": {
-            "num": 5,
-            "den": 5,
+            "num": 7,
+            "den": 7,
             "value": 1
           },
           "recoverMissed": {
@@ -78,22 +78,22 @@
             "value": 1
           },
           "b2Chars": {
-            "n": 14,
-            "mean": 120.1429,
-            "median": 157,
-            "max": 190
+            "n": 18,
+            "mean": 124.5556,
+            "median": 160.5,
+            "max": 239
           },
           "sessionChars": {
-            "n": 62,
-            "mean": 654.3226,
-            "median": 645.5,
-            "max": 1017
+            "n": 72,
+            "mean": 704.0833,
+            "median": 695,
+            "max": 1074
           },
           "startChars": {
-            "n": 62,
-            "mean": 550.2097,
-            "median": 568,
-            "max": 568
+            "n": 72,
+            "mean": 601.2083,
+            "median": 616,
+            "max": 626
           }
         },
         "subagent": {
@@ -151,36 +151,110 @@
           },
           "forbid": 0,
           "nearForbid": 1
+        },
+        "paths": {
+          "start": {
+            "calls": 87,
+            "injections": 87,
+            "chars": {
+              "n": 87,
+              "mean": 600.3908,
+              "median": 616,
+              "max": 626
+            },
+            "injectionChars": {
+              "n": 87,
+              "mean": 600.3908,
+              "median": 616,
+              "max": 626
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 90,
+            "injections": 55,
+            "chars": {
+              "n": 90,
+              "mean": 57.3889,
+              "median": 79.5,
+              "max": 141
+            },
+            "injectionChars": {
+              "n": 55,
+              "mean": 93.9091,
+              "median": 86,
+              "max": 141
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 18,
+            "injections": 13,
+            "chars": {
+              "n": 18,
+              "mean": 124.5556,
+              "median": 160.5,
+              "max": 239
+            },
+            "injectionChars": {
+              "n": 13,
+              "mean": 172.4615,
+              "median": 183,
+              "max": 239
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 16,
+            "injections": 16,
+            "chars": {
+              "n": 16,
+              "mean": 307.75,
+              "median": 220,
+              "max": 551
+            },
+            "injectionChars": {
+              "n": 16,
+              "mean": 307.75,
+              "median": 220,
+              "max": 551
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "test": {
         "requests": {
-          "cases": 41,
+          "cases": 46,
           "hit": {
-            "num": 23,
-            "den": 27,
-            "value": 0.8519
+            "num": 27,
+            "den": 31,
+            "value": 0.871
           },
-          "injected": 24,
-          "correct": 22,
+          "injected": 30,
+          "correct": 27,
           "neutral": 1,
           "wrong": {
-            "num": 1,
-            "den": 24,
-            "value": 0.0417
+            "num": 2,
+            "den": 30,
+            "value": 0.0667
           },
           "forbid": 1,
           "forbidCases": 1,
           "empty": {
-            "num": 13,
-            "den": 14,
-            "value": 0.9286
+            "num": 14,
+            "den": 15,
+            "value": 0.9333
           },
           "chars": {
             "n": 39,
-            "mean": 49.7692,
+            "mean": 46.8718,
             "median": 0,
-            "max": 131
+            "max": 139
           },
           "hitByStart": 3,
           "hitByEarlier": 0,
@@ -208,22 +282,22 @@
             "value": 1
           },
           "b2Chars": {
-            "n": 2,
-            "mean": 185,
-            "median": 185,
-            "max": 187
+            "n": 7,
+            "mean": 200.8571,
+            "median": 187,
+            "max": 311
           },
           "sessionChars": {
-            "n": 26,
-            "mean": 647.9231,
-            "median": 650,
-            "max": 820
+            "n": 30,
+            "mean": 716.6,
+            "median": 708,
+            "max": 931
           },
           "startChars": {
-            "n": 26,
-            "mean": 559.0385,
-            "median": 568,
-            "max": 568
+            "n": 30,
+            "mean": 608.8,
+            "median": 616,
+            "max": 620
           }
         },
         "subagent": {
@@ -250,7 +324,7 @@
           },
           "chars": {
             "n": 11,
-            "mean": 109.2727,
+            "mean": 110.0909,
             "median": 137,
             "max": 247
           },
@@ -281,38 +355,112 @@
           },
           "forbid": 0,
           "nearForbid": 2
+        },
+        "paths": {
+          "start": {
+            "calls": 36,
+            "injections": 36,
+            "chars": {
+              "n": 36,
+              "mean": 604,
+              "median": 616,
+              "max": 626
+            },
+            "injectionChars": {
+              "n": 36,
+              "mean": 604,
+              "median": 616,
+              "max": 626
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 39,
+            "injections": 18,
+            "chars": {
+              "n": 39,
+              "mean": 46.8718,
+              "median": 0,
+              "max": 139
+            },
+            "injectionChars": {
+              "n": 18,
+              "mean": 101.5556,
+              "median": 92,
+              "max": 139
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 7,
+            "injections": 7,
+            "chars": {
+              "n": 7,
+              "mean": 200.8571,
+              "median": 187,
+              "max": 311
+            },
+            "injectionChars": {
+              "n": 7,
+              "mean": 200.8571,
+              "median": 187,
+              "max": 311
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 11,
+            "injections": 11,
+            "chars": {
+              "n": 11,
+              "mean": 330.0909,
+              "median": 357,
+              "max": 467
+            },
+            "injectionChars": {
+              "n": 11,
+              "mean": 330.0909,
+              "median": 357,
+              "max": 467
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "all": {
         "requests": {
-          "cases": 137,
+          "cases": 154,
           "hit": {
-            "num": 82,
-            "den": 91,
-            "value": 0.9011
+            "num": 95,
+            "den": 104,
+            "value": 0.9135
           },
-          "injected": 98,
-          "correct": 88,
+          "injected": 112,
+          "correct": 102,
           "neutral": 4,
           "wrong": {
             "num": 6,
-            "den": 98,
-            "value": 0.0612
+            "den": 112,
+            "value": 0.0536
           },
           "forbid": 2,
           "forbidCases": 2,
           "empty": {
-            "num": 43,
-            "den": 46,
-            "value": 0.9348
+            "num": 47,
+            "den": 50,
+            "value": 0.94
           },
           "chars": {
-            "n": 121,
-            "mean": 55.4876,
-            "median": 80,
-            "max": 132
+            "n": 129,
+            "mean": 54.2093,
+            "median": 78,
+            "max": 141
           },
-          "hitByStart": 6,
+          "hitByStart": 8,
           "hitByEarlier": 0,
           "hitByNews": 0,
           "news": {
@@ -328,8 +476,8 @@
             }
           },
           "recover": {
-            "num": 12,
-            "den": 12,
+            "num": 14,
+            "den": 14,
             "value": 1
           },
           "recoverMissed": {
@@ -338,22 +486,22 @@
             "value": 1
           },
           "b2Chars": {
-            "n": 16,
-            "mean": 128.25,
+            "n": 25,
+            "mean": 145.92,
             "median": 183,
-            "max": 190
+            "max": 311
           },
           "sessionChars": {
-            "n": 88,
-            "mean": 652.4318,
-            "median": 648.5,
-            "max": 1017
+            "n": 102,
+            "mean": 707.7647,
+            "median": 698,
+            "max": 1074
           },
           "startChars": {
-            "n": 88,
-            "mean": 552.8182,
-            "median": 568,
-            "max": 568
+            "n": 102,
+            "mean": 603.4412,
+            "median": 616,
+            "max": 626
           }
         },
         "subagent": {
@@ -380,7 +528,7 @@
           },
           "chars": {
             "n": 27,
-            "mean": 96.5185,
+            "mean": 96.8519,
             "median": 0,
             "max": 331
           },
@@ -411,6 +559,80 @@
           },
           "forbid": 0,
           "nearForbid": 3
+        },
+        "paths": {
+          "start": {
+            "calls": 123,
+            "injections": 123,
+            "chars": {
+              "n": 123,
+              "mean": 601.4472,
+              "median": 616,
+              "max": 626
+            },
+            "injectionChars": {
+              "n": 123,
+              "mean": 601.4472,
+              "median": 616,
+              "max": 626
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 129,
+            "injections": 73,
+            "chars": {
+              "n": 129,
+              "mean": 54.2093,
+              "median": 78,
+              "max": 141
+            },
+            "injectionChars": {
+              "n": 73,
+              "mean": 95.7945,
+              "median": 87,
+              "max": 141
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 25,
+            "injections": 20,
+            "chars": {
+              "n": 25,
+              "mean": 145.92,
+              "median": 183,
+              "max": 311
+            },
+            "injectionChars": {
+              "n": 20,
+              "mean": 182.4,
+              "median": 183.5,
+              "max": 311
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 27,
+            "injections": 27,
+            "chars": {
+              "n": 27,
+              "mean": 316.8519,
+              "median": 220,
+              "max": 551
+            },
+            "injectionChars": {
+              "n": 27,
+              "mean": 316.8519,
+              "median": 220,
+              "max": 551
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "sessions": [
@@ -427,7 +649,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-model",
@@ -442,7 +664,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-freeze-live",
@@ -457,7 +679,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-db-review",
@@ -472,7 +694,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-helix-stdin",
@@ -487,7 +709,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-weak-word",
@@ -502,7 +724,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-filler-words",
@@ -517,7 +739,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-pnpm-rule",
@@ -532,7 +754,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "old-pnpm-yarn",
@@ -547,7 +769,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-state-lib",
@@ -562,7 +784,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-test-runner",
@@ -577,7 +799,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-lint-before-commit",
@@ -592,7 +814,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-css-style",
@@ -607,7 +829,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-log-format",
@@ -622,7 +844,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-test",
@@ -637,7 +859,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-hydration",
@@ -652,7 +874,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "app-i18n-order",
@@ -667,7 +889,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-git",
@@ -682,7 +904,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "docker-db-local",
@@ -697,7 +919,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "docker-volume-rm",
@@ -712,7 +934,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "a11y-focus-ring",
@@ -727,7 +949,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "deploy-friday",
@@ -742,7 +964,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "deploy-hotfix-direct",
@@ -757,7 +979,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "deploy-failed",
@@ -772,7 +994,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "backup-restore",
@@ -787,7 +1009,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "release-rc",
@@ -802,7 +1024,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "demo-build-expired",
@@ -817,7 +1039,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "secret-in-log",
@@ -831,7 +1053,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-error-shape",
@@ -845,7 +1067,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-auth-way",
@@ -859,7 +1081,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s-login",
@@ -873,7 +1095,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-paging",
@@ -887,7 +1109,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-test-real-db",
@@ -901,7 +1123,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-incident-first",
@@ -915,7 +1137,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s-pay",
@@ -929,7 +1151,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "api-n1-list",
@@ -943,7 +1165,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s-docs-write",
@@ -956,7 +1178,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "docs-expired-freeze",
@@ -969,7 +1191,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "other-install",
@@ -982,7 +1204,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "other-deploy-where",
@@ -995,7 +1217,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "cross-project-api",
@@ -1010,7 +1232,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "cross-project-jest",
@@ -1025,7 +1247,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "unrelated-python",
@@ -1040,7 +1262,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "unrelated-pizza",
@@ -1055,7 +1277,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "unrelated-weekend",
@@ -1070,7 +1292,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "trivial-hello",
@@ -1085,7 +1307,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "trivial-ok",
@@ -1100,7 +1322,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "trivial-go",
@@ -1115,7 +1337,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "trivial-thanks",
@@ -1130,7 +1352,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "trivial-continue",
@@ -1145,7 +1367,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-clear",
@@ -1160,7 +1382,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-help",
@@ -1175,7 +1397,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-compact",
@@ -1190,7 +1412,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-arg-deploy",
@@ -1205,7 +1427,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-arg-pnpm",
@@ -1220,7 +1442,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "slash-arg-nothing",
@@ -1235,7 +1457,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-subagent-report",
@@ -1250,7 +1472,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-task-done",
@@ -1265,7 +1487,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-task-failed",
@@ -1280,7 +1502,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-system-reminder",
@@ -1295,7 +1517,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-local-stdout",
@@ -1310,7 +1532,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-interrupt",
@@ -1325,7 +1547,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-compact-summary",
@@ -1340,7 +1562,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "nonhuman-report-api",
@@ -1354,7 +1576,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "nonhuman-notice-docs",
@@ -1367,7 +1589,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "paste-report-ask",
@@ -1382,7 +1604,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "paste-notification-ask",
@@ -1397,7 +1619,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "paste-reminder-ask",
@@ -1412,7 +1634,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-app-start",
@@ -1427,7 +1649,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-docs",
@@ -1440,7 +1662,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "s-api",
@@ -1454,7 +1676,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s-other",
@@ -1467,7 +1689,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "s-web",
@@ -1482,7 +1704,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-deploy",
@@ -1497,7 +1719,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-tracker",
@@ -1512,7 +1734,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-mixed",
@@ -1526,7 +1748,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "tool-docs-publish",
@@ -1539,7 +1761,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "tool-tracker-create",
@@ -1554,7 +1776,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "tool-chat-send",
@@ -1569,7 +1791,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "tool-db-app",
@@ -1584,7 +1806,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "tool-edit-plain",
@@ -1599,7 +1821,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "sub-state",
@@ -1614,7 +1836,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "sub-auth-tests",
@@ -1628,7 +1850,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "sub-docs-publish",
@@ -1641,7 +1863,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "sub-deploy-audit",
@@ -1656,7 +1878,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "sub-refund-flow",
@@ -1670,7 +1892,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "sub-unit-tests",
@@ -1685,7 +1907,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "sub-other-survey",
@@ -1698,7 +1920,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "sub-trivial",
@@ -1713,7 +1935,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "sub-unrelated",
@@ -1728,7 +1950,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-ask-ops",
@@ -1743,7 +1965,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-ask-code",
@@ -1757,7 +1979,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s-ask-design",
@@ -1772,7 +1994,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s1-ask-team",
@@ -1787,7 +2009,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s5-chat-food",
@@ -1802,7 +2024,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s1-chat-trip",
@@ -1817,7 +2039,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s1-chat-misc",
@@ -1832,7 +2054,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s1-plan-api",
@@ -1846,7 +2068,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s3-research-api",
@@ -1860,7 +2082,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 520
+          "chars": 568
         },
         {
           "session": "s1-plan-app",
@@ -1875,7 +2097,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-ops-app",
@@ -1890,7 +2112,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 568
+          "chars": 616
         },
         {
           "session": "s-plan-docs",
@@ -1903,7 +2125,7 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
         },
         {
           "session": "s-survey-other",
@@ -1916,7 +2138,217 @@
             "m-000000000115",
             "m-000000000011"
           ],
-          "chars": 479
+          "chars": 527
+        },
+        {
+          "session": "s-ops-resume",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000224",
+            "m-000000000111",
+            "m-000000000223"
+          ],
+          "chars": 613
+        },
+        {
+          "session": "s-ops-reject",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000224",
+            "m-000000000111",
+            "m-000000000241"
+          ],
+          "chars": 626
+        },
+        {
+          "session": "s-ops-twice",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236"
+          ],
+          "chars": 624
+        },
+        {
+          "session": "s-ops-same",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-compact",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-commit",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-ls",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-grep",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-docker",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-edit",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-t-edit2",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-rk1",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-rk2",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
+        },
+        {
+          "session": "s-ops-rk3",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 620
         }
       ],
       "cases": [
@@ -1930,17 +2362,17 @@
               "m-000000000003",
               "m-000000000004"
             ],
-            "chars": 130
+            "chars": 139
           },
           "found": [
             "m-000000000003",
             "m-000000000004",
+            "m-000000000132",
+            "m-000000000141",
             "m-000000000006",
             "m-000000000002",
             "m-000000000125",
-            "m-000000000128",
-            "m-000000000126",
-            "m-000000000132"
+            "m-000000000128"
           ]
         },
         {
@@ -1956,7 +2388,6 @@
           },
           "found": [
             "m-000000000008",
-            "m-000000000007",
             "m-000000000087"
           ]
         },
@@ -1973,20 +2404,20 @@
           },
           "found": [
             "m-000000000010",
-            "m-000000000009",
-            "m-000000000129",
             "m-000000000213",
             "m-000000000004",
             "m-000000000207",
             "m-000000000123",
-            "m-000000000032"
+            "m-000000000032",
+            "m-000000000179",
+            "m-000000000180"
           ]
         },
         {
           "id": "old-db-review",
           "session": "old-db-review",
           "kind": "request",
-          "part": "test",
+          "part": "train",
           "request": {
             "ids": [],
             "chars": 0
@@ -2015,8 +2446,8 @@
             "m-000000000020",
             "m-000000000163",
             "m-000000000203",
-            "m-000000000001",
-            "m-000000000002"
+            "m-000000000187",
+            "m-000000000001"
           ]
         },
         {
@@ -2065,7 +2496,7 @@
           "id": "old-pnpm-yarn",
           "session": "old-pnpm-yarn",
           "kind": "request",
-          "part": "test",
+          "part": "train",
           "request": {
             "ids": [
               "m-000000000001"
@@ -2094,7 +2525,6 @@
           },
           "found": [
             "m-000000000018",
-            "m-000000000017",
             "m-000000000208"
           ]
         },
@@ -2151,7 +2581,7 @@
             "ids": [
               "m-000000000027"
             ],
-            "chars": 89
+            "chars": 88
           },
           "found": [
             "m-000000000027",
@@ -2178,12 +2608,12 @@
           "found": [
             "m-000000000092",
             "m-000000000032",
-            "m-000000000031",
             "m-000000000123",
             "m-000000000010",
-            "m-000000000009",
             "m-000000000179",
-            "m-000000000180"
+            "m-000000000180",
+            "m-000000000004",
+            "m-000000000222"
           ]
         },
         {
@@ -2246,10 +2676,10 @@
             "m-000000000176",
             "m-000000000028",
             "m-000000000100",
-            "m-000000000116",
             "m-000000000066",
             "m-000000000222",
-            "m-000000000024"
+            "m-000000000024",
+            "m-000000000187"
           ]
         },
         {
@@ -2280,10 +2710,9 @@
           "part": "train",
           "request": {
             "ids": [
-              "m-000000000090",
-              "m-000000000126"
+              "m-000000000090"
             ],
-            "chars": 131
+            "chars": 77
           },
           "found": [
             "m-000000000090",
@@ -2301,17 +2730,17 @@
             "ids": [
               "m-000000000087"
             ],
-            "chars": 80
+            "chars": 89
           },
           "found": [
             "m-000000000087",
             "m-000000000091",
             "m-000000000037",
             "m-000000000008",
-            "m-000000000007",
             "m-000000000015",
             "m-000000000088",
-            "m-000000000214"
+            "m-000000000214",
+            "m-000000000160"
           ]
         },
         {
@@ -2345,13 +2774,13 @@
           },
           "found": [
             "m-000000000094",
-            "m-000000000014",
             "m-000000000194",
             "m-000000000113",
+            "m-000000000014",
             "m-000000000018",
             "m-000000000150",
-            "m-000000000084",
-            "m-000000000085"
+            "m-000000000086",
+            "m-000000000022"
           ]
         },
         {
@@ -2373,7 +2802,7 @@
             "m-000000000086",
             "m-000000000099",
             "m-000000000109",
-            "m-000000000133"
+            "m-000000000140"
           ]
         },
         {
@@ -2389,8 +2818,8 @@
           },
           "found": [
             "m-000000000101",
-            "m-000000000103",
             "m-000000000100",
+            "m-000000000103",
             "m-000000000104",
             "m-000000000011",
             "m-000000000119",
@@ -2443,13 +2872,13 @@
           },
           "found": [
             "m-000000000115",
-            "m-000000000114",
             "m-000000000086",
-            "m-000000000116",
             "m-000000000107",
             "m-000000000066",
             "m-000000000133",
-            "m-000000000130"
+            "m-000000000130",
+            "m-000000000135",
+            "m-000000000136"
           ]
         },
         {
@@ -2462,11 +2891,10 @@
               "m-000000000117",
               "m-000000000164"
             ],
-            "chars": 132
+            "chars": 141
           },
           "found": [
             "m-000000000117",
-            "m-000000000116",
             "m-000000000164"
           ]
         },
@@ -2545,7 +2973,7 @@
             "ids": [
               "m-000000000120"
             ],
-            "chars": 82
+            "chars": 91
           },
           "found": [
             "m-000000000120",
@@ -2571,10 +2999,7 @@
           },
           "found": [
             "m-000000000035",
-            "m-000000000092",
-            "m-000000000036",
-            "m-000000000009",
-            "m-000000000138"
+            "m-000000000092"
           ]
         },
         {
@@ -2606,8 +3031,8 @@
             "m-000000000046",
             "m-000000000047",
             "m-000000000010",
-            "m-000000000009",
-            "m-000000000179"
+            "m-000000000179",
+            "m-000000000004"
           ]
         },
         {
@@ -2643,13 +3068,13 @@
           },
           "found": [
             "m-000000000043",
-            "m-000000000042",
             "m-000000000044",
             "m-000000000048",
             "m-000000000051",
             "m-000000000039",
             "m-000000000058",
-            "m-000000000057"
+            "m-000000000052",
+            "m-000000000056"
           ]
         },
         {
@@ -2667,11 +3092,11 @@
             "m-000000000047",
             "m-000000000046",
             "m-000000000010",
-            "m-000000000009",
             "m-000000000213",
             "m-000000000093",
             "m-000000000066",
-            "m-000000000194"
+            "m-000000000194",
+            "m-000000000130"
           ]
         },
         {
@@ -2688,12 +3113,12 @@
           "found": [
             "m-000000000046",
             "m-000000000010",
-            "m-000000000009",
             "m-000000000047",
             "m-000000000213",
             "m-000000000048",
             "m-000000000166",
-            "m-000000000045"
+            "m-000000000045",
+            "m-000000000044"
           ]
         },
         {
@@ -2709,13 +3134,13 @@
           },
           "found": [
             "m-000000000056",
-            "m-000000000055",
             "m-000000000103",
             "m-000000000159",
             "m-000000000170",
             "m-000000000043",
             "m-000000000048",
-            "m-000000000051"
+            "m-000000000051",
+            "m-000000000039"
           ]
         },
         {
@@ -2732,12 +3157,12 @@
           "found": [
             "m-000000000044",
             "m-000000000043",
-            "m-000000000042",
             "m-000000000124",
             "m-000000000054",
             "m-000000000061",
             "m-000000000176",
-            "m-000000000168"
+            "m-000000000168",
+            "m-000000000130"
           ]
         },
         {
@@ -2801,9 +3226,9 @@
             "m-000000000153",
             "m-000000000202",
             "m-000000000049",
-            "m-000000000129",
             "m-000000000151",
-            "m-000000000152"
+            "m-000000000152",
+            "m-000000000150"
           ]
         },
         {
@@ -2825,7 +3250,7 @@
             "m-000000000207",
             "m-000000000113",
             "m-000000000049",
-            "m-000000000129"
+            "m-000000000151"
           ]
         },
         {
@@ -2844,10 +3269,10 @@
             "m-000000000089",
             "m-000000000039",
             "m-000000000097",
-            "m-000000000054",
-            "m-000000000044",
             "m-000000000134",
-            "m-000000000185"
+            "m-000000000185",
+            "m-000000000109",
+            "m-000000000178"
           ]
         },
         {
@@ -2869,7 +3294,7 @@
             "m-000000000065",
             "m-000000000064",
             "m-000000000072",
-            "m-000000000074"
+            "m-000000000075"
           ]
         },
         {
@@ -2891,7 +3316,7 @@
             "m-000000000065",
             "m-000000000064",
             "m-000000000072",
-            "m-000000000074"
+            "m-000000000075"
           ]
         },
         {
@@ -2903,7 +3328,7 @@
             "ids": [
               "m-000000000068"
             ],
-            "chars": 86
+            "chars": 85
           },
           "found": [
             "m-000000000068",
@@ -2913,7 +3338,7 @@
             "m-000000000065",
             "m-000000000064",
             "m-000000000072",
-            "m-000000000074"
+            "m-000000000075"
           ]
         },
         {
@@ -2928,14 +3353,14 @@
             "chars": 73
           },
           "found": [
-            "m-000000000074",
             "m-000000000072",
             "m-000000000071",
             "m-000000000065",
             "m-000000000064",
             "m-000000000075",
             "m-000000000062",
-            "m-000000000063"
+            "m-000000000063",
+            "m-000000000070"
           ]
         },
         {
@@ -3001,7 +3426,7 @@
             "ids": [
               "m-000000000164"
             ],
-            "chars": 86
+            "chars": 95
           }
         },
         {
@@ -3124,7 +3549,7 @@
               "m-000000000003",
               "m-000000000004"
             ],
-            "chars": 130
+            "chars": 139
           },
           "found": [
             "m-000000000003",
@@ -3133,8 +3558,8 @@
             "m-000000000213",
             "m-000000000136",
             "m-000000000103",
-            "m-000000000006",
-            "m-000000000002"
+            "m-000000000141",
+            "m-000000000006"
           ]
         },
         {
@@ -3270,7 +3695,7 @@
             "ids": [
               "m-000000000004"
             ],
-            "chars": 81
+            "chars": 90
           },
           "found": [
             "m-000000000004",
@@ -3279,8 +3704,8 @@
             "m-000000000002",
             "m-000000000208",
             "m-000000000120",
-            "m-000000000006",
-            "m-000000000125"
+            "m-000000000132",
+            "m-000000000141"
           ]
         },
         {
@@ -3295,14 +3720,14 @@
             "chars": 76
           },
           "found": [
-            "m-000000000009",
             "m-000000000010",
-            "m-000000000129",
             "m-000000000213",
             "m-000000000180",
             "m-000000000194",
             "m-000000000023",
-            "m-000000000145"
+            "m-000000000145",
+            "m-000000000004",
+            "m-000000000118"
           ]
         },
         {
@@ -3401,14 +3826,14 @@
             "chars": 0
           },
           "found": [
-            "m-000000000017",
             "m-000000000018",
             "m-000000000222",
             "m-000000000029",
             "m-000000000014",
             "m-000000000020",
             "m-000000000024",
-            "m-000000000016"
+            "m-000000000016",
+            "m-000000000027"
           ]
         },
         {
@@ -3424,13 +3849,13 @@
           },
           "found": [
             "m-000000000071",
-            "m-000000000074",
             "m-000000000179",
             "m-000000000010",
-            "m-000000000009",
-            "m-000000000129",
             "m-000000000207",
-            "m-000000000065"
+            "m-000000000065",
+            "m-000000000064",
+            "m-000000000072",
+            "m-000000000075"
           ]
         },
         {
@@ -3595,12 +4020,12 @@
           "found": [
             "m-000000000024",
             "m-000000000222",
-            "m-000000000221",
-            "m-000000000037",
             "m-000000000018",
             "m-000000000029",
             "m-000000000014",
-            "m-000000000020"
+            "m-000000000020",
+            "m-000000000016",
+            "m-000000000027"
           ]
         },
         {
@@ -3645,17 +4070,17 @@
               "m-000000000003",
               "m-000000000004"
             ],
-            "chars": 130
+            "chars": 139
           },
           "found": [
             "m-000000000003",
             "m-000000000004",
+            "m-000000000132",
+            "m-000000000141",
             "m-000000000006",
             "m-000000000002",
             "m-000000000125",
-            "m-000000000128",
-            "m-000000000126",
-            "m-000000000132"
+            "m-000000000128"
           ]
         },
         {
@@ -3729,13 +4154,13 @@
           },
           "found": [
             "m-000000000135",
-            "m-000000000184",
             "m-000000000136",
+            "m-000000000184",
             "m-000000000203",
             "m-000000000161",
             "m-000000000088",
-            "m-000000000138",
-            "m-000000000214"
+            "m-000000000214",
+            "m-000000000155"
           ]
         },
         {
@@ -3926,7 +4351,7 @@
               "m-000000000085",
               "m-000000000086"
             ],
-            "chars": 421
+            "chars": 430
           }
         },
         {
@@ -3951,8 +4376,8 @@
           "part": "train",
           "subagent": {
             "ids": [
-              "m-000000000001",
               "m-000000000014",
+              "m-000000000001",
               "m-000000000083",
               "m-000000000084",
               "m-000000000085",
@@ -4096,8 +4521,8 @@
           },
           "found": [
             "m-000000000120",
-            "m-000000000132",
             "m-000000000213",
+            "m-000000000132",
             "m-000000000146",
             "m-000000000136",
             "m-000000000003",
@@ -4118,8 +4543,8 @@
           "found": [
             "m-000000000150",
             "m-000000000121",
-            "m-000000000035",
             "m-000000000142",
+            "m-000000000035",
             "m-000000000178",
             "m-000000000112",
             "m-000000000135",
@@ -4173,7 +4598,7 @@
             "ids": [
               "m-000000000182"
             ],
-            "chars": 80
+            "chars": 89
           },
           "found": [
             "m-000000000094",
@@ -4195,16 +4620,16 @@
             "ids": [
               "m-000000000203"
             ],
-            "chars": 83
+            "chars": 92
           },
           "found": [
             "m-000000000203",
             "m-000000000141",
             "m-000000000158",
             "m-000000000049",
+            "m-000000000112",
             "m-000000000175",
             "m-000000000168",
-            "m-000000000112",
             "m-000000000105"
           ]
         },
@@ -4896,6 +5321,462 @@
           "near": [
             "m-000000000044"
           ]
+        },
+        {
+          "id": "ops-res-1",
+          "session": "s-ops-resume",
+          "kind": "start",
+          "part": "test",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000223"
+            ],
+            "chars": 613
+          }
+        },
+        {
+          "id": "ops-res-2",
+          "session": "s-ops-resume",
+          "kind": "request",
+          "part": "test",
+          "request": {
+            "ids": [],
+            "chars": 0
+          },
+          "found": [
+            "m-000000000223",
+            "m-000000000182",
+            "m-000000000226",
+            "m-000000000202",
+            "m-000000000084",
+            "m-000000000093",
+            "m-000000000183"
+          ]
+        },
+        {
+          "id": "ops-res-3",
+          "session": "s-ops-resume",
+          "kind": "start",
+          "part": "test",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000241"
+            ],
+            "chars": 626
+          }
+        },
+        {
+          "id": "ops-res-4",
+          "session": "s-ops-resume",
+          "kind": "request",
+          "part": "test",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-rej-1",
+          "session": "s-ops-reject",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000241"
+            ],
+            "chars": 626
+          }
+        },
+        {
+          "id": "ops-rej-2",
+          "session": "s-ops-reject",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [],
+            "chars": 0
+          },
+          "found": [
+            "m-000000000224",
+            "m-000000000141",
+            "m-000000000227",
+            "m-000000000220",
+            "m-000000000112"
+          ]
+        },
+        {
+          "id": "ops-rej-3",
+          "session": "s-ops-reject",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236"
+            ],
+            "chars": 624
+          }
+        },
+        {
+          "id": "ops-rej-4",
+          "session": "s-ops-reject",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-two-1",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236"
+            ],
+            "chars": 624
+          }
+        },
+        {
+          "id": "ops-two-2",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115"
+            ],
+            "chars": 621
+          }
+        },
+        {
+          "id": "ops-two-3",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 620
+          }
+        },
+        {
+          "id": "ops-two-4",
+          "session": "s-ops-twice",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-same-1",
+          "session": "s-ops-same",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 620
+          }
+        },
+        {
+          "id": "ops-same-2",
+          "session": "s-ops-same",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 620
+          }
+        },
+        {
+          "id": "ops-same-3",
+          "session": "s-ops-same",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000122"
+            ],
+            "chars": 75
+          },
+          "found": [
+            "m-000000000122",
+            "m-000000000130"
+          ]
+        },
+        {
+          "id": "ops-cmp-1",
+          "session": "s-ops-compact",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 620
+          }
+        },
+        {
+          "id": "ops-cmp-2",
+          "session": "s-ops-compact",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000227"
+            ],
+            "chars": 85
+          },
+          "found": [
+            "m-000000000227",
+            "m-000000000119",
+            "m-000000000120",
+            "m-000000000220",
+            "m-000000000111",
+            "m-000000000085",
+            "m-000000000205",
+            "m-000000000100"
+          ]
+        },
+        {
+          "id": "ops-cmp-3",
+          "session": "s-ops-compact",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 620
+          }
+        },
+        {
+          "id": "ops-cmp-4",
+          "session": "s-ops-compact",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000227"
+            ],
+            "chars": 85
+          },
+          "found": [
+            "m-000000000227",
+            "m-000000000119",
+            "m-000000000120",
+            "m-000000000220",
+            "m-000000000111",
+            "m-000000000085",
+            "m-000000000205",
+            "m-000000000100"
+          ]
+        },
+        {
+          "id": "ops-in-commit",
+          "session": "s-ops-t-commit",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000228"
+            ],
+            "chars": 164
+          }
+        },
+        {
+          "id": "ops-in-ls",
+          "session": "s-ops-t-ls",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000229"
+            ],
+            "chars": 117
+          }
+        },
+        {
+          "id": "ops-in-grep",
+          "session": "s-ops-t-grep",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000230"
+            ],
+            "chars": 241
+          }
+        },
+        {
+          "id": "ops-in-docker",
+          "session": "s-ops-t-docker",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000231"
+            ],
+            "chars": 239
+          }
+        },
+        {
+          "id": "ops-in-edit",
+          "session": "s-ops-t-edit",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000232"
+            ],
+            "chars": 157
+          }
+        },
+        {
+          "id": "ops-in-edit-other",
+          "session": "s-ops-t-edit2",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-rk-rollback",
+          "session": "s-ops-rk1",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000233",
+              "m-000000000234"
+            ],
+            "chars": 311
+          }
+        },
+        {
+          "id": "ops-rk-timeout",
+          "session": "s-ops-rk2",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000234"
+            ],
+            "chars": 192
+          }
+        },
+        {
+          "id": "ops-rk-restart",
+          "session": "s-ops-rk3",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000235"
+            ],
+            "chars": 175
+          }
         }
       ]
     }

@@ -78,6 +78,11 @@ type Payload struct {
 	Evidence    string   `json:"evidence,omitempty"`    // 자동 확정의 증거(seen_days·followed_verified·verified_fact)
 	Actor       string   `json:"actor,omitempty"`       // 자동 변경·되돌리기를 한 쪽(user·ai·automation)
 	Activity    string   `json:"activity,omitempty"`    // stale: 일지를 옮긴 활동 기록 줄(host\x00session, S4-8)
+	// NewID is, on a supersede kept by a save's automatic replacement (replace.go), the new memory that replaced
+	// the old one (MemoryIDs[0]). Undoing it puts that memory back to candidate and keeps the pair in
+	// supersede_reverts. It is not in the ledger line's before, whose version check would otherwise stop the
+	// undo once the new memory is confirmed or saved again.
+	NewID string `json:"newId,omitempty"`
 }
 
 // Proposal is a suggestion waiting for the user.
@@ -338,6 +343,9 @@ type DecideInput struct {
 	Title    *string
 	Body     *string
 	Note     string
+	// Who is who decides. The decision itself is the same for anyone; only a person (an empty Who is one) or a
+	// decision carrying the user's words counts as the user keeping a memory (L-1).
+	Who Who
 }
 
 // DecideResult says what changed.
@@ -378,6 +386,13 @@ func (s *Store) Decide(in DecideInput) (DecideResult, error) {
 		}
 		if err := s.finish(&p, StatusRejected, in.Note); err != nil {
 			return res, err
+		}
+		// 낡음 제안을 거절한 것은 그 기억을 유지하기로 한 것이다(L-1). 거절은 누가 하든 같고, 유지로 치는 것은 사람이거나 사용자 말이
+		// 붙었을 때뿐이다(빈 Who는 사람이다).
+		if p.Kind == ProposalStale && (in.Who.human() || in.Who.quote() != "") {
+			for _, id := range p.MemoryIDs {
+				s.confirmKept(id, in.Who)
+			}
 		}
 	case "approve":
 		before, err := s.snapshotFor(p)
@@ -459,9 +474,24 @@ func (s *Store) finish(p *Proposal, status, note string) error {
 func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 	switch p.Kind {
 	case ProposalConfirm:
+		// 사람이 아닌 쪽이 사용자 말 없이 옛 대기 확정 제안을 승인하는 것은 자동 확정과 같다: 같은 자리의 사용자 말 값이 막는
+		// 후보(confirmBlockedUnder의 blockUserValue)는 확정하지 않는다. 하나라도 막히면 아무것도 확정하지 않는다.
+		if p.Status != StatusAuto && !in.Who.human() && in.Who.quote() == "" {
+			for _, id := range p.MemoryIDs {
+				if held, err := userValueHeld(s.db, id, s.nowMs(), s.Policy.AutoMode); err != nil {
+					return err
+				} else if held {
+					return fmt.Errorf("%w: %s", ErrProtected, id)
+				}
+			}
+		}
 		for _, id := range p.MemoryIDs {
 			confirmed := StateConfirmed
 			u := UpdateInput{ID: id, State: &confirmed, Reason: "제안 승인 " + p.ID, Action: "confirm"}
+			if in.Who.quote() != "" {
+				// 사용자 말로 승인했으면 그 말로 확정한다: 어긋남 쌍이 사용자가 고른 쪽으로 한 번에 풀린다(settleConflictsAfterQuote).
+				u.Who = in.Who
+			}
 			if p.Status == StatusAuto {
 				// 자동 확정은 후보일 때만: 다른 프로세스가 먼저 확정했으면 겹쳐 쓰지 않는다.
 				u.ExpectState, u.Reason = StateCandidate, "자동 확정 "+p.ID+": "+p.Payload.Evidence
@@ -519,6 +549,10 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if p.Kind == ProposalMerge && len(tags) == 0 {
 			tags = mergedTags(s, p.MemoryIDs)
 		}
+		var aliases []string // 합치는 기억들의 별칭을 잃지 않는다
+		if p.Kind == ProposalMerge {
+			aliases = mergedAliases(s, p.MemoryIDs)
+		}
 		// 자동화가 합친 기억은 합친 기억이 모두 확정일 때만 확정이다. 후보가 섞이면 후보로 남아 증거를 기다린다.
 		state := StateConfirmed
 		if p.Status == StatusAuto {
@@ -536,7 +570,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 		if Untrusted(trust) {
 			state = StateCandidate
 		}
-		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Scope: scope, State: state,
+		m, err := s.Save(SaveInput{Kind: kind, Title: title, Body: body, Tags: tags, Aliases: aliases, Scope: scope, State: state,
 			Source: Source{Kind: SourceSession, Ref: "proposal:" + p.ID, Excerpt: "제안 승인으로 만듦", Trust: trust}, noEvidence: true})
 		if err != nil {
 			return err
@@ -550,6 +584,7 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			}
 			if p.Kind == ProposalMerge {
 				u.Tags = &tags
+				u.Aliases = &aliases
 			}
 			if m, err = s.Update(u); err != nil {
 				return err
@@ -557,6 +592,24 @@ func (s *Store) apply(p Proposal, in DecideInput, res *DecideResult) error {
 			res.Changed = append(res.Changed, m.ID)
 		} else {
 			res.Created = m.ID
+			// 합친 기억은 새로 만들어져 만든 때가 첫 확인이 되는데, 자동 합치기는 사람이 본 것이 아니라 확인이 아니다: 원본의
+			// 가장 이른 재검토일을 잇는다. 사람이 승인한 합치기는 확인이라 새 90일이다.
+			if p.Kind == ProposalMerge && p.Status == StatusAuto {
+				var earliest int64
+				for _, id := range p.MemoryIDs {
+					if src, err := getTx(s.db, id); err == nil {
+						if d := ReviewDate(src); earliest == 0 || d < earliest {
+							earliest = d
+						}
+					}
+				}
+				if earliest > 0 {
+					if _, err := s.db.Exec(`UPDATE memories SET review_at=? WHERE id=?`, earliest, m.ID); err != nil {
+						return err
+					}
+					m.ReviewAt = earliest
+				}
+			}
 		}
 		if m.State != state && state == StateConfirmed {
 			if m, err = s.SetState(m.ID, StateConfirmed, "제안 승인 "+p.ID); err != nil {

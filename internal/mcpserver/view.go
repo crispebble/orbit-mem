@@ -111,6 +111,11 @@ type FindItem struct {
 	Tags      []string `json:"tags,omitempty"`
 	Pinned    bool     `json:"pinned,omitempty"`
 	Trust     string   `json:"trust,omitempty"` // 믿을 수 없는 기억(untrusted·system)만
+	// Note marks a line that is not a current value ("폐기됨"·"만료됨"·"옛 버전"), or a current one due for review
+	// (reviewNote). A current line otherwise has none.
+	Note string `json:"note,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict string `json:"conflict,omitempty"`
 }
 
 // findDetail checks the detail argument of memory_find.
@@ -135,10 +140,17 @@ func findLimit(n int) int {
 	return n
 }
 
-// findItem shapes one hit. The index line is held to findItemBudget serialized runes,
-// whatever the characters are: the title is cut first, then the applies-to.
-func findItem(m memory.Memory, detail string) FindItem {
-	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State,
+// findItem shapes one hit with note (what whyNote gives, "" for a current value). The index line is
+// held to findItemBudget serialized runes, whatever the characters are, the note included: the title is cut
+// first, then the applies-to.
+func findItem(m memory.Memory, detail, note string) FindItem {
+	return findItemWith(m, detail, note, "")
+}
+
+// findItemWith is findItem with conflict, the note of a memory with an open conflict (conflictNote, "" for none),
+// held to the same budget.
+func findItemWith(m memory.Memory, detail, note, conflict string) FindItem {
+	it := FindItem{ID: m.ID, Kind: m.Kind, State: m.State, Note: note, Conflict: conflict,
 		AppliesTo: clip(oneLine(m.AppliesTo), findAppliesRunes), Title: clip(oneLine(m.Title), findTitleRunes), Trust: untrustedOf(m)}
 	if detail == DetailSummary {
 		it.Summary = clip(oneLine(m.Body), findSummaryRunes)
@@ -149,15 +161,94 @@ func findItem(m memory.Memory, detail string) FindItem {
 	if jsonLen(it) <= findItemBudget {
 		return it
 	}
+	// 어긋남 칸이 먼저 줄어든다(제목은 기억을 가리키는 것이라 나중이다). 칸의 앞 conflictFloor룬은 남긴다.
+	if conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok && utf8Count(c) >= conflictFloor {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = clip(conflict, conflictFloor)
+	}
 	title := it.Title
 	fits, ok := fitClip(title, findTitleRunes, func(c string) bool { it.Title = c; return jsonLen(it) <= findItemBudget })
 	it.Title = fits
 	if ok {
 		return it
 	}
+	// 제목이 한 글자도 못 들면 어긋남 칸을 바닥 아래로 더 줄인다. 그래도 안 들면 칸을 뺀다(색인 줄의 크기가 앞선다).
+	if it.Conflict != "" {
+		c, ok := fitClip(conflict, utf8Count(conflict), func(c string) bool { it.Conflict = c; return jsonLen(it) <= findItemBudget })
+		if ok {
+			it.Conflict = c
+			return it
+		}
+		it.Conflict = ""
+	}
 	applies := it.AppliesTo
 	it.AppliesTo, _ = fitClip(applies, findAppliesRunes, func(c string) bool { it.AppliesTo = c; return jsonLen(it) <= findItemBudget })
 	return it
+}
+
+// whyNote is the short mark of a memory that is not a current value; "" for a current one. A rejected
+// candidate reads as discarded, like a stale one.
+func whyNote(w memory.Why) string {
+	switch w {
+	case memory.WhyStale, memory.WhyRejected:
+		return "폐기됨"
+	case memory.WhyExpired:
+		return "만료됨"
+	case memory.WhyOlder:
+		return "옛 버전"
+	}
+	return ""
+}
+
+const (
+	// conflictTitleRunes is how much of the newer value's title a conflict note shows.
+	conflictTitleRunes = 40
+	// conflictFloor is the least of a conflict note a size cut leaves: the words and the start of the title.
+	conflictFloor = 40
+)
+
+// conflictNote is what memory_find and memory_get say beside a current memory that has open conflicts (명세
+// C-5): the newer value that disagrees with it, by title and id, and how many more there are. sides are the
+// newer values already judged shown (memory.Viewer.ShownSides). "" when there are none.
+func conflictNote(sides []memory.Memory) string {
+	if len(sides) == 0 {
+		return ""
+	}
+	note := fmt.Sprintf("어긋나는 새 사실: 「%s」(%s)", clip(oneLine(sides[0].Title), conflictTitleRunes), sides[0].ID)
+	if n := len(sides) - 1; n > 0 {
+		note += fmt.Sprintf(" 외 %d건", n)
+	}
+	return note
+}
+
+// peerNote is whyNote with the successor, for the other end of a link: "폐기됨, 후계 m-…".
+func peerNote(w memory.Why, successor string) string {
+	n := whyNote(w)
+	if n != "" && successor != "" {
+		n += ", 후계 " + successor
+	}
+	return n
+}
+
+// noticeOf is the warning head memory_get puts before a memory that is not a current value: the state, the
+// reason and the successor ("" for a current one). successor is the live replacement, or for an older value
+// the newer value of its topic.
+func noticeOf(m memory.Memory, w memory.Why, successor string) string {
+	n := whyNote(w)
+	if n == "" {
+		return ""
+	}
+	if r := clip(oneLine(m.StaleReason), getStaleRunes); r != "" && (w == memory.WhyStale || w == memory.WhyRejected) {
+		n += " (사유: " + r + ")"
+	}
+	if successor != "" {
+		n += ", 후계 " + successor
+	}
+	return n + ": 지금 값으로 쓰지 마세요"
 }
 
 // SourceView is a source as memory_get shows it.
@@ -171,6 +262,13 @@ type SourceView struct {
 // serialized runes (a body of 2,000 runes at most); full: true gives the whole body, every
 // source and every link.
 type MemoryView struct {
+	// Notice is the warning head of a memory that is not a current value: its state, the reason and the
+	// successor. It is the first field so it comes before the body. A current memory has none.
+	Notice string `json:"notice,omitempty"`
+	// Conflict is the newer value that disagrees with this current memory (conflictNote), or "".
+	Conflict string `json:"conflict,omitempty"`
+	// Review is reviewNote for a current memory due for review (90 days past its last confirmation), or "".
+	Review       string       `json:"review,omitempty"`
 	ID           string       `json:"id"`
 	Kind         string       `json:"kind"`
 	State        string       `json:"state"`
@@ -204,12 +302,13 @@ func untrustedOf(m memory.Memory) string {
 	return ""
 }
 
-// linkTitles gives the title of the memory at the other end of each link; "" when it is gone.
-type linkTitles func(id string) string
+// linkPeers gives the title of the memory at the other end of a link and, when that memory is not a current
+// value, its note (peerNote). The note is "" for a current one, so its line gets nothing added.
+type linkPeers func(id string) (title, note string)
 
 // linkLines writes the links of m. Cut, it lists the first getLinks with titles of getLinkTitle
-// runes and counts the rest.
-func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string {
+// runes and counts the rest. A peer that is not a current value gets its note in parentheses.
+func linkLines(links []memory.MemoryLink, peer linkPeers, full bool) []string {
 	if len(links) == 0 {
 		return nil
 	}
@@ -219,13 +318,17 @@ func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string 
 	}
 	out := make([]string, 0, len(shown)+1)
 	for _, l := range shown {
-		t := oneLine(title(l.MemoryID))
+		title, note := peer(l.MemoryID)
+		t := oneLine(title)
 		if !full {
 			t = clip(t, getLinkTitle)
 		}
 		line := l.MemoryID
 		if t != "" {
 			line = t + " — " + l.MemoryID
+		}
+		if note != "" {
+			line += " (" + note + ")"
 		}
 		if full && l.Note != "" {
 			line += " · " + oneLine(l.Note)
@@ -243,8 +346,26 @@ func linkLines(links []memory.MemoryLink, title linkTitles, full bool) []string 
 // by cutting the body (at most 2,000 runes) to the room left. Only when that room is under
 // 1,000 runes are other parts left out, in this order: links, sources, tags and tools,
 // stale reason and topic, title (not below 100 runes); the body then takes the room left.
-func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
-	v := MemoryView{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
+// notice is the warning head (noticeOf, "" for a current value) and title gives the peers' titles and notes
+// on the links. The notice counts toward the budget like any other field, so the body gives way to it.
+func memoryView(m memory.Memory, notice string, title linkPeers, full bool) MemoryView {
+	return memoryViewWith(m, notice, "", title, full)
+}
+
+// memoryViewWith is memoryView with conflict, the note of a memory with an open conflict (conflictNote, "" for
+// none). It counts toward the budget like the notice, so the body gives way to it.
+func memoryViewWith(m memory.Memory, notice, conflict string, title linkPeers, full bool) MemoryView {
+	return memoryViewReview(m, notice, conflict, "", title, full)
+}
+
+// reviewNote is the mark of a current memory that is due for review (L-2): the memory is not left out, and its state
+// stays as it is. memory_find puts it in the line's note, memory_get in the review field.
+const reviewNote = "재검토 후보"
+
+// memoryViewReview is memoryViewWith with review, reviewNote for a memory due for review ("" for another). It counts
+// toward the budget like the notice, so the body gives way to it.
+func memoryViewReview(m memory.Memory, notice, conflict, review string, title linkPeers, full bool) MemoryView {
+	v := MemoryView{Notice: notice, Conflict: conflict, Review: review, ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: m.Title, Topic: m.Topic,
 		Body: m.Body, Tags: m.Tags, Version: m.Version, UpdatedAt: m.UpdatedAt, Pinned: m.Pinned, Retention: m.Retention,
 		ReviewAt: m.ReviewAt, ExpiresAt: m.ExpiresAt, Tools: m.Tools, SupersededBy: m.SupersededBy, StaleReason: m.StaleReason, Trust: untrustedOf(m)}
 	if v.Tags == nil {
@@ -306,6 +427,7 @@ func memoryView(m memory.Memory, title linkTitles, full bool) MemoryView {
 		func() { v.Sources, v.SourcesMore = nil, len(m.Sources) },
 		func() { v.Tags, v.Tools = []string{}, nil },
 		func() { v.StaleReason, v.Topic = "", "" },
+		func() { v.Conflict = clip(v.Conflict, conflictFloor) },
 		func() {
 			v.Title, _ = fitClip(oneLine(m.Title), utf8Count(m.Title), func(c string) bool {
 				w := v

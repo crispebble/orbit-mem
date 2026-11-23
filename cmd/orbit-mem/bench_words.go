@@ -74,6 +74,21 @@ func (benchWording) Duplicate(cases int, hit, wrongBlock, nearOffered string, fo
 	return i18n.T("bench.report.duplicate", cases, hit, wrongBlock, nearOffered, forbid, nearForbid)
 }
 
+func (benchWording) Path(path string, calls, injections int, chars, injectionChars string, dead, deadCalls int) string {
+	var name string
+	switch path {
+	case bench.PathStart:
+		name = i18n.T("bench.path.start")
+	case bench.PathRequest:
+		name = i18n.T("bench.path.request")
+	case bench.PathTool:
+		name = i18n.T("bench.path.tool")
+	default:
+		name = i18n.T("bench.path.subagent")
+	}
+	return i18n.T("bench.report.path", name, calls, injections, chars, injectionChars, dead, deadCalls)
+}
+
 func (benchWording) ZeroDen() string { return i18n.T("bench.report.zero_den") }
 
 func (benchWording) Dist(mean, median float64, max, n int) string {

@@ -33,6 +33,14 @@ const (
 	FlagHold     = "hold"     // 사람이 확정을 후보로 내림: 자동화가 다시 확정하지 않는다
 )
 
+// resolutionKeepOld is the resolution of a same-place conflict mark closed by the user's words on its old side:
+// the person kept the old value, so the newer candidate of the pair is not confirmed automatically (blockKeptOld).
+const resolutionKeepOld = "keep_old"
+
+// resolutionDismissed is the resolution of a mark the person closed from the audit list (ResolveFlag). On a
+// conflict it means the same as resolutionKeepOld: the old value stays. The record keeps which control closed it.
+const resolutionDismissed = "dismissed"
+
 // holdConfirm keeps the person's choice to put a memory back to candidate.
 func (s *Store) holdConfirm(memoryID string, w Who) {
 	var n int
@@ -110,7 +118,11 @@ func (s *Store) FlagConflict(memoryID, ruleID, note string, w Who) (Flag, error)
 	return f, err
 }
 
-// ResolveFlag closes a mark with how it was settled (dismissed, confirmed, hidden…).
+// ResolveFlag closes a mark with how it was settled (dismissed, confirmed, hidden…). Closing a conflict as
+// dismissed keeps the old value: nothing is replaced, and with the auto mode off the newer candidate of a
+// same-place pair whose old side is the user's confirmed words never confirms itself afterwards
+// (confirmBlockedUnder, blockUserValue). Only the user's words on the newer side make it the current value then
+// (settleConflictsAfterQuote reads the dismissed pair as a kept one).
 func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	res, err := s.db.Exec(`UPDATE audit_flags SET resolved_at=?, resolution=?, resolved_by=? WHERE id=? AND resolved_at=0`, s.nowMs(), resolution, w.actor(), id)
 	if err != nil {
@@ -119,7 +131,23 @@ func (s *Store) ResolveFlag(id, resolution string, w Who) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return i18n.Errorf("memory.err.no_flag", ErrInvalid, id)
 	}
+	// 사람이(또는 사용자 말을 들고) 어긋남을 dismissed로 닫는 것은 옛 기억을 유지하기로 한 것이다: 어긋나는 새 것이 아닌 옛 기억
+	// 쪽을 확인한 것으로 센다(L-1). revertedOldTx도 이 쌍의 옛 기억을 사람이 고른 값으로 본다.
+	if resolution == resolutionDismissed && (w.Actor == ActorUser || w.quote() != "") {
+		var oldID string
+		if s.db.QueryRow(`SELECT other_id FROM audit_flags WHERE id=? AND kind=?`, id, FlagConflict).Scan(&oldID) == nil && oldID != "" {
+			s.confirmKept(oldID, w)
+		}
+	}
 	return nil
+}
+
+// confirmKept moves the review date of a live memory the user decided to keep (L-1). It is a best effort after
+// the decision is written: a memory that is gone or not live is left, and a failure does not undo the decision.
+func (s *Store) confirmKept(id string, w Who) {
+	if m, err := getTx(s.db, id); err == nil && (m.State == StateCandidate || m.State == StateConfirmed) {
+		_, _ = s.Reviewed(id, w)
+	}
 }
 
 // OpenFlags lists the marks not settled yet, newest first.
@@ -138,6 +166,36 @@ func (s *Store) OpenFlags() ([]Flag, error) {
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// closeOtherPlaceFlagsOf settles, as resolution, the open marks of memory m (its newer side) whose other memory is
+// not a live one of m's own place: the marks settleConflictsAfterQuote only closes. It keeps their resolution what
+// closeFlagsOf gave before the user's words settled the same-place pairs first, so an old memory of another place
+// does not read as one the user picked over m (revertedOldTx counts user_words). Best effort, like closeFlagsOf.
+func (s *Store) closeOtherPlaceFlagsOf(m Memory, resolution string) {
+	rows, err := s.db.Query(`SELECT id, other_id FROM audit_flags WHERE memory_id=? AND resolved_at=0`, m.ID)
+	if err != nil {
+		return
+	}
+	type mark struct{ flag, other string }
+	var open []mark
+	for rows.Next() {
+		var f mark
+		if rows.Scan(&f.flag, &f.other) == nil {
+			open = append(open, f)
+		}
+	}
+	rows.Close() // 다 읽고 닫은 뒤에 다른 기억을 읽는다: 연결 하나를 쥔 채 다시 읽으면 막힌다
+	var away []string
+	for _, f := range open {
+		if o, err := getTx(s.db, f.other); err == nil && (o.State == StateCandidate || o.State == StateConfirmed) && sameSlot(m, o) {
+			continue
+		}
+		away = append(away, f.flag)
+	}
+	for _, flag := range away {
+		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=?, resolution=? WHERE id=? AND resolved_at=0`, s.nowMs(), resolution, flag)
+	}
 }
 
 // closeFlagsOf settles the open marks of a memory that is no longer a candidate.
@@ -497,6 +555,22 @@ type AuditConflict struct {
 	OtherTitle string `json:"otherTitle,omitempty"`
 }
 
+// maxAuditReview is how many memories due for review the audit list names; ReviewDueCount counts them all.
+const maxAuditReview = 30
+
+// auditReviewTitleRunes is how much of a title the audit list's review list shows (a title may be 200 runes).
+const auditReviewTitleRunes = 80
+
+// AuditReview is a memory due for review (L-1) in the audit list, the list the session start's count line points to.
+type AuditReview struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	State     string `json:"state"`
+	AppliesTo string `json:"appliesTo"`
+	Title     string `json:"title"`
+	ReviewAt  int64  `json:"reviewAt"` // 재검토일(Unix ms): 마지막 확인 + 90일
+}
+
 // Audit is the audit list.
 type Audit struct {
 	Changes     []AuditChange        `json:"changes"`
@@ -508,6 +582,10 @@ type Audit struct {
 	PolicyPending []string `json:"policyPending,omitempty"`
 	// TwoTopics are rules and decisions whose 「A — B」 title glues two topics (S4-12): split them.
 	TwoTopics []TwoTopicTitle `json:"twoTopics"`
+	// ReviewDue are the memories due for review, the oldest review date first (at most maxAuditReview), of every
+	// scope: the session start counts only what its place sees, this list is the whole of it (명세 L-3).
+	ReviewDue      []AuditReview `json:"reviewDue"`
+	ReviewDueCount int           `json:"reviewDueCount"`
 }
 
 // PolicyPendingKeys are the configuration keys still waiting for the user (E2).
@@ -584,6 +662,14 @@ func (s *Store) Audit(f AuditFilter) (Audit, error) {
 	if a.TwoTopics, err = s.TwoTopicTitles(f.Products); err != nil {
 		return a, err
 	}
+	due, err := s.ReviewDueMemories(nil)
+	if err != nil {
+		return a, err
+	}
+	a.ReviewDue, a.ReviewDueCount = []AuditReview{}, len(due)
+	for _, m := range due[:min(len(due), maxAuditReview)] {
+		a.ReviewDue = append(a.ReviewDue, AuditReview{ID: m.ID, Kind: m.Kind, State: m.State, AppliesTo: m.AppliesTo, Title: ClipRunes(m.Title, auditReviewTitleRunes), ReviewAt: ReviewDate(m)})
+	}
 	return a, nil
 }
 
@@ -630,4 +716,231 @@ func (s *Store) RecentAutoReverts(sinceMs int64) int {
 		}
 	}
 	return n
+}
+
+// openConflictQuery reads the open conflict marks that have a live value (candidate or confirmed) on both sides,
+// as (old id, new id) pairs. The pair's old side is the mark's other_id: the memory a recall line shows with its
+// newer, disagreeing value beside it. A mark whose old side went stale (the user replaced it) is not open here:
+// there is no current value left to warn about.
+const openConflictQuery = `SELECT f.other_id, f.memory_id FROM audit_flags f JOIN memories n ON n.id=f.memory_id JOIN memories o ON o.id=f.other_id
+	WHERE f.kind=? AND f.resolved_at=0 AND f.other_id<>'' AND n.state IN ('candidate','confirmed') AND o.state IN ('candidate','confirmed')`
+
+// conflictChunk is how many ids one OpenConflictsOf query binds, well under SQLite's variable limit.
+const conflictChunk = 400
+
+// OpenConflictsOf gives, for each of ids that is the old side of an open conflict, the ids of the newer values
+// that disagree with it (oldest mark first): the 「어긋나는 새 사실」 a recall line, memory_find and memory_get
+// show beside it (명세 C-5). A pair whose newer side is no longer a live value (rejected, replaced, forgotten)
+// is not open. An id with no open conflict is absent from the map. It reads once per chunk of ids however many
+// memories the caller shows, and nothing when there are no ids.
+func (s *Store) OpenConflictsOf(ids []string) (map[string][]string, error) {
+	out := map[string][]string{}
+	ids = uniq(ids)
+	for len(ids) > 0 {
+		n := min(len(ids), conflictChunk)
+		args := []any{FlagConflict}
+		marks := make([]string, n)
+		for i, id := range ids[:n] {
+			marks[i] = "?"
+			args = append(args, id)
+		}
+		if err := s.collectConflicts(out, openConflictQuery+` AND f.other_id IN (`+strings.Join(marks, ",")+`) ORDER BY f.at, f.rowid`, args...); err != nil {
+			return nil, err
+		}
+		ids = ids[n:]
+	}
+	return out, nil
+}
+
+// OpenConflicts is OpenConflictsOf for every memory at once: one query however many conflicts are open. A reader
+// that looks at many memories (the session start) takes it instead of binding their ids.
+func (s *Store) OpenConflicts() (map[string][]string, error) {
+	out := map[string][]string{}
+	err := s.collectConflicts(out, openConflictQuery+` ORDER BY f.at, f.rowid`, FlagConflict)
+	return out, err
+}
+
+// OpenConflictSides is OpenConflictsOf with the newer values read as memories (without their sources): their
+// title, scope, state and days, which a caller needs to judge whether a conflict line may show them
+// (Viewer.ShownSides). Two queries however many pairs: the pairs, then the newer values together.
+func (s *Store) OpenConflictSides(ids []string) (map[string][]Memory, error) {
+	pairs, err := s.OpenConflictsOf(ids)
+	if err != nil {
+		return nil, err
+	}
+	return s.sidesOf(pairs)
+}
+
+// OpenConflictSidesAll is OpenConflictSides for every open conflict: the session start reads the whole core
+// layer and the recent decisions, so it takes them all instead of binding their ids.
+func (s *Store) OpenConflictSidesAll() (map[string][]Memory, error) {
+	pairs, err := s.OpenConflicts()
+	if err != nil {
+		return nil, err
+	}
+	return s.sidesOf(pairs)
+}
+
+func (s *Store) sidesOf(pairs map[string][]string) (map[string][]Memory, error) {
+	out := map[string][]Memory{}
+	if len(pairs) == 0 {
+		return out, nil
+	}
+	var all []string
+	for _, news := range pairs {
+		all = append(all, news...)
+	}
+	b, _ := json.Marshal(uniq(all))
+	rows, err := s.db.Query(`SELECT `+memoryCols+` FROM memories WHERE id IN (SELECT value FROM json_each(?))`, string(b))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byID := map[string]Memory{}
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		byID[m.ID] = m
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for oldID, news := range pairs {
+		for _, id := range news {
+			if m, ok := byID[id]; ok {
+				out[oldID] = append(out[oldID], m)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) collectConflicts(out map[string][]string, query string, args ...any) error {
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var oldID, newID string
+		if err := rows.Scan(&oldID, &newID); err != nil {
+			return err
+		}
+		if !slices.Contains(out[oldID], newID) {
+			out[oldID] = append(out[oldID], newID)
+		}
+	}
+	return rows.Err()
+}
+
+// OpenConflictCount is how many open conflict pairs have a live value on both sides: what the session start
+// counts in one line when the auto mode lets conflicts pass without asking (명세 4.3).
+func (s *Store) OpenConflictCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT DISTINCT f.other_id, f.memory_id FROM audit_flags f
+		JOIN memories n ON n.id=f.memory_id JOIN memories o ON o.id=f.other_id
+		WHERE f.kind=? AND f.resolved_at=0 AND n.state IN ('candidate','confirmed') AND o.state IN ('candidate','confirmed'))`, FlagConflict).Scan(&n)
+	return n, err
+}
+
+// settleConflictsAfterQuote settles the open conflict pairs of memory id after the user's own words were added to
+// it (a quote source on a save or an edit), so the value the person chose is the current one (명세 C-6). A pair
+// replaces a memory only in the same place (sameSlot: the same scope and the same, non-empty topic): a mark may
+// also join memories of other places (the AI names them in conflictsWith or supersedes), and those are both
+// current values, so the user's words on one never put the other out of date.
+//
+//   - id is the newer side, still live, same place: the old memory is replaced by it (stale, superseded_by, a
+//     version reason), the newer one is confirmed, and a core place (pin) of the old one passes to it
+//     (inheritPin). When the replacement fails the pair stays open and nothing is closed: the pair must not look
+//     settled when it is not. This holds for an open pair and for one closed as the old value kept
+//     (resolutionKeepOld, or resolutionDismissed from the audit list): the user changed their mind.
+//   - id is the newer side, another place: only the mark is closed; both stay as they are, and the newer one is
+//     left to the rules of its own save or edit (nothing here confirms it).
+//   - id is the old side, same place, the newer one a candidate: the person kept the old value. The mark is
+//     closed as resolutionKeepOld and confirmBlocked keeps the newer candidate from confirming itself later; the
+//     user's words on that candidate afterwards (a changed mind) replace the old one as in the first case.
+//   - id is the newer side and was put out of date or rejected with the user's words: the open mark was closed
+//     by that state (closeFlagsOf) before this runs, and a pair closed as kept is left as it is.
+//   - id is the old side, same place, the newer one confirmed (a confirmed value masking it, the pair an undone
+//     automatic replacement opens): the newer one is replaced by the old one, which becomes the current value.
+//   - id is the old side in another place: only the mark is closed (resolution user_words).
+//
+// A closed mark says who closed it (resolved_by = the user). It reports whether it changed a memory, and the id
+// of a pinned memory that left the core because its heir could not take the place.
+func (s *Store) settleConflictsAfterQuote(id, quote string) (changed bool, unpinned string) {
+	// 옛 값 유지로 닫힌 쌍(사용자 말로 유지, 감사 목록에서 닫음)도 읽는다: 그 새 쪽에 나중에 사용자 말이 붙으면 마음을 바꾼
+	// 것이라 새 쪽이 이긴다.
+	rows, err := s.db.Query(`SELECT id, memory_id, other_id, resolved_at FROM audit_flags WHERE kind=? AND
+		((resolved_at=0 AND (memory_id=? OR other_id=?)) OR (resolved_at>0 AND resolution IN (?,?) AND memory_id=?))`,
+		FlagConflict, id, id, resolutionKeepOld, resolutionDismissed, id)
+	if err != nil {
+		return false, ""
+	}
+	type pair struct {
+		flag, newID, oldID string
+		closed             bool
+	}
+	var pairs []pair
+	for rows.Next() {
+		var p pair
+		var resolvedAt int64
+		if rows.Scan(&p.flag, &p.newID, &p.oldID, &resolvedAt) == nil {
+			p.closed = resolvedAt > 0
+			pairs = append(pairs, p)
+		}
+	}
+	rows.Close()
+	if quote = strings.TrimSpace(quote); quote == "" {
+		quote = "사용자 말"
+	}
+	w := Who{Actor: ActorAI, UserQuote: quote}
+	live := func(m Memory) bool { return m.State == StateCandidate || m.State == StateConfirmed }
+	keepPin := func(heirID, replacedID string) {
+		if heir, err := s.Get(heirID); err == nil {
+			if _, gone := s.inheritPin(heir, []string{replacedID}, w); gone != "" {
+				unpinned = gone
+			}
+		}
+	}
+	for _, p := range pairs {
+		nw, err := getTx(s.db, p.newID)
+		if err != nil {
+			continue
+		}
+		old, err := getTx(s.db, p.oldID)
+		inPlace := err == nil && live(old) && sameSlot(nw, old)
+		resolution := "user_words"
+		switch {
+		case p.newID == id && inPlace && live(nw): // 사용자 말과 함께 낡게·숨긴 새 쪽은 옛 쪽을 대체하지 않는다
+			if _, err := s.SupersedeAs(p.oldID, p.newID, "사용자 말로 대체: "+nw.Title, w); err != nil {
+				continue // 막힌 쌍은 열어 둔다
+			}
+			changed = true
+			if nw.State == StateCandidate {
+				confirmed := StateConfirmed
+				if _, err := s.Update(UpdateInput{ID: nw.ID, State: &confirmed, Who: w, Reason: "사용자 말로 정함"}); err != nil {
+					continue
+				}
+			}
+			keepPin(p.newID, p.oldID)
+		case p.closed:
+			continue // 닫힌 쌍은 마음을 바꾼 위 갈래에서만 다시 다룬다
+		case p.oldID == id && inPlace && nw.State == StateConfirmed:
+			// 되돌린 자동 대체의 옛 기억을 다른 현재 값이 가리고 있었다: 가리던 쪽을 옛 쪽으로 대체해 옛 쪽을 현재 값으로 만든다.
+			if _, err := s.SupersedeAs(p.newID, p.oldID, "사용자 말로 대체: "+old.Title, w); err != nil {
+				continue
+			}
+			changed = true
+			keepPin(p.oldID, p.newID)
+		case p.oldID == id && inPlace && nw.State == StateCandidate:
+			resolution = resolutionKeepOld
+		}
+		// 마음을 바꿔 닫힌 옛 값 유지 쌍은 사유만 사용자 말로 바꾼다(닫은 때는 그대로).
+		_, _ = s.db.Exec(`UPDATE audit_flags SET resolved_at=CASE WHEN resolved_at=0 THEN ? ELSE resolved_at END,
+			resolution=CASE WHEN resolution IN ('',?,?) THEN ? ELSE resolution END, resolved_by=? WHERE id=?`,
+			s.nowMs(), resolutionKeepOld, resolutionDismissed, resolution, ActorUser, p.flag)
+	}
+	return changed, unpinned
 }

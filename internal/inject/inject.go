@@ -6,8 +6,8 @@ package inject
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -75,23 +75,12 @@ type Options struct {
 	NewsOnly bool
 }
 
-// Not eligible for recall (subject): a volatile
-// memory past its days, or an older value of a topic.
+// Not eligible for recall (subject): a volatile memory past its days, or an older value of a topic. The
+// words are the ones memory.Viewer gives (memory.WhyExpired, memory.WhyOlder), which judges them.
 const (
-	ExcludedExpired    = "expired"
-	ExcludedSuperseded = "superseded_by_topic"
+	ExcludedExpired    = string(memory.WhyExpired)
+	ExcludedSuperseded = string(memory.WhyOlder)
 )
-
-// excluded says why a live memory is kept out of recall, or "".
-func excluded(m memory.Memory, now time.Time, heads memory.TopicHeads) string {
-	if m.Freshness(now) == memory.FreshExpired {
-		return ExcludedExpired
-	}
-	if heads.Superseding(m) != "" {
-		return ExcludedSuperseded
-	}
-	return ""
-}
 
 // Injection is what a hook adds and which memories it named, for the metrics.
 type Injection struct {
@@ -134,20 +123,32 @@ func (in Injection) done(b *strings.Builder) Injection {
 // SessionBundle is the fixed session-start bundle (설계 「작업 기준 회상」의
 // 고정 묶음): built once per session and handed back unchanged when the same
 // session resumes, so the host's prompt cache holds. A compaction or /clear calls
-// ResetSession first. Without a session id it is built afresh.
+// ResetSession first. Without a session id it is built afresh. When a memory in the
+// saved bundle no longer shows as a current value (stale, rejected, expired, an older
+// value of its topic, or forgotten), a resume builds the bundle anew in its place and
+// the cache is lost once (명세 F-1).
 func SessionBundle(s *memory.Store, cfg config.Config, scope, host, session string) Injection {
 	return SessionBundleWith(s, cfg, scope, host, session, nil)
 }
 
 // SessionBundleWith is SessionBundle with the note lines of the session (the version, update and
-// overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew; its
-// lines go at the end of the bundle and are saved with it, so a resumed session gets the same bytes.
-// The bundle keeps to MaxSessionStartRunes with them. notes may be nil. With recall off no memory is
-// put in, but the note lines still are (as with the old inject=off). A notes that panics leaves only
-// the note lines out; the bundle is made and saved as usual (원칙 6).
+// overlapping memory notes, 설계 보완 T-20). notes is called only when the bundle is built anew (a new
+// session, or a resume whose bundle holds a memory no longer current); its lines go at the end of the
+// bundle and are saved with it, so a resumed session gets the same bytes. The bundle keeps to
+// MaxSessionStartRunes with them. notes may be nil. With recall off no memory is put in, but the note
+// lines still are (as with the old inject=off). A notes that panics leaves only the note lines out; the
+// bundle is made and saved as usual (원칙 6).
+//
+// A resume reads the saved bundle's memories once (memory.Viewer.NotCurrent). When they cannot be read the
+// saved bundle is handed back as it is. A rebuilt bundle keeps the session's start time and marks, and the
+// memories it took out are marked memory.MarkBundle, so the next request tells the session once that they
+// no longer hold (sessionNews).
 func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) Injection {
 	if session != "" {
 		if text, ids, ok := s.SessionBundle(host, session); ok && runes(text) <= MaxSessionStartRunes {
+			if inj, rebuilt := rebuildBundle(s, cfg, scope, host, session, ids, notes); rebuilt {
+				return inj
+			}
 			var b strings.Builder
 			b.WriteString(text)
 			return Injection{MemoryIDs: ids}.done(&b)
@@ -155,12 +156,59 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 			_ = s.ResetSession(host, session)
 		}
 	}
-	note := noteText(noteLines(notes))
+	inj, told := buildBundle(s, cfg, scope, host, session, notes)
+	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
+		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
+	}
+	told.keep(s, inj.Text) // 묶음이 정해진 뒤에 알린 것으로 센다
+	return inj
+}
+
+// rebuildBundle builds the session's bundle anew and puts it in place of the saved one when a memory of ids, the
+// saved bundle's, no longer shows as a current value. false hands the saved bundle back: every memory of it is
+// current, they cannot be read, or the new bundle takes none of them out (one came back meanwhile).
+func rebuildBundle(s *memory.Store, cfg config.Config, scope, host, session string, ids []string, notes func() []string) (Injection, bool) {
+	if len(ids) == 0 { // 기억 없는 묶음(안내 줄뿐)은 판정할 것이 없다: 주제 머리도 읽지 않는다
+		return Injection{}, false
+	}
+	vw, err := s.Viewer()
+	if err != nil { // 주제 머리를 못 읽으면 옛 버전을 가를 수 없다: 판정하지 않고 저장된 묶음을 준다
+		return Injection{}, false
+	}
+	if changed, err := vw.NotCurrent(ids); err != nil || len(changed) == 0 {
+		return Injection{}, false
+	}
+	inj, told := buildBundle(s, cfg, scope, host, session, notes)
+	var dropped []string
+	for _, id := range ids {
+		if !slices.Contains(inj.MemoryIDs, id) {
+			dropped = append(dropped, id)
+		}
+	}
+	if len(dropped) == 0 { // 만든 글은 버린다: 거기 든 알림은 알린 것이 아니다(표시를 옮기지 않는다)
+		return Injection{}, false
+	}
+	// 다른 훅이 먼저 바꿨거나 쓰기가 실패하면(잠금 대기 초과 등) 저장은 건너뛰고 방금 만든 글을 돌려준다. 그때 저장된 글은
+	// 먼저 들어간 다시 만들기이거나 옛 묶음일 수 있다: 옛 묶음이면 다음 재개가 다시 판정해 다시 만든다.
+	_ = s.ReplaceSessionBundle(host, session, inj.Text, inj.MemoryIDs, dropped)
+	told.keep(s, inj.Text) // 이 글은 세션이 받는다
+	return inj, true
+}
+
+// buildBundle is a new session-start bundle with the note lines at its end, within MaxSessionStartRunes: the
+// notices of the session start itself (autoNoticeLines) and the lines of notes. It is the only place that
+// tells an automatic replacement: a request or a tool call builds no bundle, so the notice is told once, at a
+// session start, and a replay of session starts alone sees the same as a replay of everything. It keeps nothing
+// itself: the caller calls the returned noticeTold's keep once the bundle is settled (kept for the session or
+// handed back), so a bundle that is thrown away does not use up the notice.
+func buildBundle(s *memory.Store, cfg config.Config, scope, host, session string, notes func() []string) (Injection, noticeTold) {
+	own, told := autoNoticeLines(s, cfg, at(cfg, scope))
+	note := noteText(append(own, noteLines(notes)...))
 	limit := MaxSessionStartRunes
 	if note != "" {
 		limit -= runes(note) + 1 // 묶음과 안내 줄 사이 줄바꿈
 	}
-	inj := sessionStart(s, cfg, scope, limit)
+	inj := sessionStartFor(s, cfg, scope, limit, host, session)
 	if note != "" {
 		var b strings.Builder
 		b.WriteString(inj.Text)
@@ -175,10 +223,7 @@ func SessionBundleWith(s *memory.Store, cfg config.Config, scope, host, session 
 		}
 		inj = inj.done(&b)
 	}
-	if session != "" { // 빈 묶음도 남긴다: 세션이 언제 시작했는지가 정정·새 기억 줄의 기준이다
-		_ = s.SaveSessionBundle(host, session, inj.Text, inj.MemoryIDs)
-	}
-	return inj
+	return inj, told
 }
 
 // noteLines calls notes, if any; one that panics gives no lines.
@@ -216,6 +261,12 @@ func SessionStartInjection(s *memory.Store, cfg config.Config, scope string) Inj
 	return sessionStart(s, cfg, scope, MaxSessionStartRunes)
 }
 
+// sessionStart is sessionStartFor for a caller with no session: what a request without a bundle takes the
+// session start to put in. It tells no instruction to ask (the session cannot count it once) and keeps nothing.
+func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) Injection {
+	return sessionStartFor(s, cfg, scope, limit, "", "")
+}
+
 // SessionStartInjectionWith is SessionStartInjection; Options carries no choice any more.
 func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string, _ Options) Injection {
 	return SessionStartInjection(s, cfg, scope)
@@ -225,11 +276,11 @@ func SessionStartInjectionWith(s *memory.Store, cfg config.Config, scope string,
 // (설계 · orbit-mem 지연 회상 7판 4절).
 const findLine = "[" + Label + " 기억 · 먼저 찾는 곳] 규칙·결정이 일에 닿으면 memory_find로 먼저 찾는다.\n"
 
-// sessionStart is the session start within limit runes (S3-R6, 7판 4절 A층): the core layers, the find
+// sessionStartFor is the session start within limit runes (S3-R6, 7판 4절 A층): the core layers, the find
 // line and the automatic-revert line. The other memories come through the request recall, the tool
 // recall and memory_find (S3-R7). Only recall=on_demand, which has no request recall, fills the rest
 // with confirmed rules in full as before. Nothing with recall=off.
-func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) Injection {
+func sessionStartFor(s *memory.Store, cfg config.Config, scope string, limit int, host, session string) Injection {
 	var inj Injection
 	var b strings.Builder
 	mode := cfg.RecallMode()
@@ -241,8 +292,8 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		return inj.done(&b)
 	}
 	pl := at(cfg, scope)
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
+	conflicts := newConflictReaderAll(s, cfg, host, session, pl) // 열린 어긋남이 없으면 한 번 읽고 끝이다
 	// 상시 핵심(S3 명세 2.7): user 핵심, 그리고 한 제품 폴더면 그 제품의 핵심. 여러 제품 폴더는 제품 핵심을 넣지 않는다.
 	var core strings.Builder
 	layer := func(scope, heading string) {
@@ -253,7 +304,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		var body strings.Builder
 		used, limit := 0, memory.CoreLimit(scope)
 		for _, m := range ms {
-			if excluded(m, now, heads) != "" {
+			if !vw.Of(m).Current() {
 				continue
 			}
 			entry := memory.CoreEntry(m)
@@ -262,6 +313,11 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 			}
 			body.WriteString(entry)
 			used += runes(entry)
+			// 어긋남 줄은 핵심 한도에 세지 않는다: 한도는 사용자가 늘 지키라고 한 글의 몫이고, 이 줄은 그 글을 믿어도 되는지 알린다.
+			if note, info := conflicts.note(m.ID); note != "" {
+				body.WriteString(note)
+				inj.markAsked(info)
+			}
 			inj.MemoryIDs = append(inj.MemoryIDs, m.ID)
 		}
 		if used > 0 {
@@ -286,7 +342,7 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 		if !inScope(m, pl) || memory.DomainOf(m) != "" || inCore[m.ID] {
 			continue
 		}
-		if excluded(m, now, heads) != "" || (m.Kind != memory.KindRule && m.Kind != memory.KindDecision) {
+		if !vw.Of(m).Current() || (m.Kind != memory.KindRule && m.Kind != memory.KindDecision) {
 			continue
 		}
 		others = true
@@ -347,11 +403,14 @@ func sessionStart(s *memory.Store, cfg config.Config, scope string, limit int) I
 	} else {
 		room -= runes(reverts) + 1
 	}
-	recent, recentIDs := recentDecisionsLine(decisions, cfg.RecentDecisions, room-1)
+	recent, recentIDs, recentAsked := recentDecisionsLine(decisions, cfg.RecentDecisions, room-1, conflicts)
 	b.WriteString(find)
 	if recent != "" {
 		b.WriteString(recent + "\n")
 		inj.MemoryIDs = append(inj.MemoryIDs, recentIDs...)
+		for _, info := range recentAsked {
+			inj.markAsked(info)
+		}
 	}
 	if reverts != "" {
 		b.WriteString(reverts + "\n")
@@ -366,13 +425,20 @@ func runes(s string) int { return utf8.RuneCountInString(s) }
 
 // recentDecisionsLine is the titles and ids of up to n decisions, in the order given, on one line of at
 // most min(maxDecisionRunes, room) runes, each title cut to decisionTitleRunes. No body: memory_get has it.
-// It is "" when not even the first fits.
-func recentDecisionsLine(decisions []memory.Memory, n, room int) (string, []string) {
+// A decision with an open conflict carries the note of the newer value in brackets after its id. It is ""
+// when not even the first fits. The notes of the decisions it names come back so the caller marks their
+// questions asked once the line is in.
+func recentDecisionsLine(decisions []memory.Memory, n, room int, conflicts conflictReader) (string, []string, []conflictInfo) {
 	limit := min(maxDecisionRunes, room)
 	line := "[" + Label + " 기억 · 최근 결정] 본문은 memory_get — "
 	var ids []string
+	var infos []conflictInfo
 	for i := 0; i < len(decisions) && i < n; i++ {
 		entry := fmt.Sprintf("%s(%s)", clipTitle(decisions[i].Title, decisionTitleRunes), decisions[i].ID)
+		info, has := conflicts.of(decisions[i].ID)
+		if has {
+			entry += " [" + info.text + "]"
+		}
 		if i > 0 {
 			entry = " · " + entry
 		}
@@ -381,11 +447,14 @@ func recentDecisionsLine(decisions []memory.Memory, n, room int) (string, []stri
 		}
 		line += entry
 		ids = append(ids, decisions[i].ID)
+		if has {
+			infos = append(infos, info)
+		}
 	}
 	if len(ids) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
-	return line, ids
+	return line, ids, infos
 }
 
 // revertLine says how many harmful automatic changes the daily tidy undid lately (효과 원장이
@@ -418,8 +487,7 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	if err != nil {
 		return nil, nil, err
 	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
 	inBundle := map[string]bool{}
 	for _, id := range bundle {
 		inBundle[id] = true
@@ -428,13 +496,13 @@ func CandidatesAt(s *memory.Store, pl place.Place, opts Options, bundle []string
 	out := map[string]string{}
 	for _, m := range active {
 		// 일지는 대화 맥락이 아니다.
-		switch why := excluded(m, now, heads); {
+		switch vis := vw.Of(m); {
 		case !inScope(m, pl):
 			out[m.ID] = "scope"
 		case m.Kind == memory.KindJournal:
 			out[m.ID] = "journal"
-		case why != "":
-			out[m.ID] = why
+		case !vis.Current():
+			out[m.ID] = string(vis.Why)
 		case inBundle[m.ID]: // 세션 묶음(A층)에 든 기억은 이 세션에 이미 들어갔다(설계 5.1 3단계)
 			out[m.ID] = "session_rule"
 		default:
@@ -451,7 +519,8 @@ func PromptInjectionWith(s *memory.Store, cfg config.Config, scope, prompt strin
 
 // PromptInjectionFor is the request hook of a host session (설계 · 지연 회상·호스트 계약·어댑터 5.1, 4절 표).
 // It tells the session, once, what changed since its bundle was made (B3, sessionNews): a memory of the
-// session superseded meanwhile (a correction line) and memories confirmed elsewhere after the session
+// session superseded meanwhile (a correction line), one that no longer holds with nothing live in its place
+// (a void line: stale or rejected, expired, forgotten) and memories confirmed elsewhere after the session
 // started (new memory lines), 3 lines and maxNewsRunes at most. Then the work recall (B1, recallEntries):
 // the memories that pass both thresholds, leaving out what the session already has (its bundle and what
 // the work recall or the news told it; not what a tool call brought). The whole stays within
@@ -477,7 +546,7 @@ func PromptInjectionFor(s *memory.Store, cfg config.Config, scope, prompt, host,
 	}
 	b.WriteString(news)
 	if !opts.NewsOnly {
-		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), idSet(bundleIDs), MaxHookRunes-runes(news)))
+		b.WriteString(recallEntries(s, cfg, pl, prompt, byID, &inj, toldInSession(s, host, session), idSet(bundleIDs), host, session, MaxHookRunes-runes(news)))
 	}
 	return inj.done(&b)
 }
@@ -512,15 +581,46 @@ func clipTitle(title string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
-// sessionNews is the correction and new memory lines of a session (B3), heading included, or "".
+// voidPrefix starts a session news line that says a memory the session was given no longer holds and has no
+// live value in its place (명세 F-2). The line names no memory of the injection: NewsShare skips it.
+const voidPrefix = "- 무효("
+
+// Why a void line's memory no longer holds, in the state names a person reads.
+const (
+	voidStale   = "낡음"
+	voidHidden  = "숨김"
+	voidExpired = "만료"
+	voidGone    = "지움"
+)
+
+// voidLine says the memory id (title, cut to oldTitleRunes) no longer holds, for why. A forgotten memory has no
+// title: the line names only its id, so the words that were forgotten do not come back.
+func voidLine(id, title, why string) string {
+	if title == "" {
+		return fmt.Sprintf("%s%s): %s\n", voidPrefix, why, id)
+	}
+	return fmt.Sprintf("%s%s): 「%s」(%s)\n", voidPrefix, why, clipTitle(title, oldTitleRunes), id)
+}
+
+// sessionNews is the correction, void and new memory lines of a session (B3), heading included, or "".
 // Lines that do not fit wait for a later request: only what was told is marked.
+//
+// What the session was given (its bundle, what the work recall, the news and a tool call put in, and what a
+// rebuilt bundle took out) and has changed since is told once a memory (MarkCorrection): a correction line when
+// a live value replaces it, else a void line when it went stale or rejected after the session started, expired
+// after then, or was forgotten.
 func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleIDs []string, byID map[string]memory.Memory) string {
 	at := s.SessionBundleAt(host, session)
+	now := s.Now()
+	// Viewer는 주제 머리를 읽으니, 낡은 기억의 후계를 찾을 때만 만든다(요청 훅마다 질의를 늘리지 않는다).
+	var vw memory.Viewer
+	haveViewer := false
 	told := map[string]bool{}
 	for _, id := range bundleIDs {
 		told[id] = true
 	}
-	for _, kind := range []string{memory.MarkShown, memory.MarkNew, memory.MarkTool} {
+	// 다시 만든 묶음에서 뺀 기억(MarkBundle)은 묶음 id에 없지만 세션은 옛 묶음으로 이미 받았다.
+	for _, kind := range []string{memory.MarkShown, memory.MarkNew, memory.MarkTool, memory.MarkBundle} {
 		for id := range s.SessionMarks(host, session, kind) {
 			told[id] = true
 		}
@@ -544,25 +644,54 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 	}
 	sort.Strings(ids)
 	named := map[string]bool{}
+told:
 	for _, id := range ids {
 		if corrected[id] {
 			continue
 		}
 		old, err := s.Get(id)
-		if err != nil || old.State != memory.StateStale || old.SupersededBy == "" || old.UpdatedAt <= at {
+		var line string
+		switch {
+		case errors.Is(err, memory.ErrNotFound):
+			line = voidLine(id, "", voidGone)
+		case err != nil: // 읽지 못한 것은 지운 것이 아니다: 다음 요청에 다시 본다
 			continue
-		}
-		cur, live := liveSuccessor(s, old)
-		if !live {
+		case old.ExpiresAt > at && old.Freshness(now) == memory.FreshExpired:
+			// 사용자 말의 휘발 기억은 만료돼도 상태·고친 시각이 그대로라 만료 시각으로 가른다
+			line = voidLine(old.ID, old.Title, voidExpired)
+		case old.UpdatedAt <= at || (old.State != memory.StateStale && old.State != memory.StateHidden):
 			continue
+		default:
+			if old.SupersededBy != "" {
+				if !haveViewer {
+					vw, _ = s.Viewer()
+					haveViewer = true
+				}
+				cur, live, err := vw.LiveSuccessor(old)
+				if err != nil { // 후계를 읽지 못한 것은 후계가 없는 것이 아니다: 표시하지 않고 다음 요청에 다시 본다
+					continue
+				}
+				if live {
+					if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
+						break told
+					}
+					inj.mark(memory.MarkCorrection, old.ID)
+					inj.mark(memory.MarkShown, cur.ID) // 바뀐 버전은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
+					inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
+					named[cur.ID] = true
+					continue
+				}
+			}
+			why := voidStale
+			if old.State == memory.StateHidden {
+				why = voidHidden
+			}
+			line = voidLine(old.ID, old.Title, why)
 		}
-		if !add(fmt.Sprintf("- 정정: 「%s」(%s) → %s — %s\n", clipTitle(old.Title, oldTitleRunes), old.ID, clipTitle(cur.Title, newsTitleRunes), cur.ID)) {
+		if !add(line) {
 			break
 		}
-		inj.mark(memory.MarkCorrection, old.ID)
-		inj.mark(memory.MarkShown, cur.ID) // 바뀐 판은 이 세션에 들어갔다: 요청 회상이 다시 내지 않는다
-		inj.MemoryIDs = append(inj.MemoryIDs, cur.ID)
-		named[cur.ID] = true
+		inj.mark(memory.MarkCorrection, id)
 	}
 	since, _ := s.ConfirmedSince(at)
 	var fresh []memory.Memory
@@ -595,8 +724,9 @@ func sessionNews(s *memory.Store, inj *Injection, host, session string, bundleID
 
 // NewsShare is the session news (B3) share of a request hook's text and ids (PromptInjectionFor): the ids its
 // lines name and the characters of the block. The block leads the text and names one memory a line, in the order
-// of the ids; the work recall (B1) follows it. A text with no news gives none. A measure that tells the news
-// apart from the recall uses it (internal/bench, 1-6 b6r 3차).
+// of the ids, but for the void lines, which name a memory the injection does not put in; the work recall (B1)
+// follows it. A text with no news gives none. A measure that tells the news apart from the recall uses it
+// (internal/bench, 1-6 b6r 3차).
 func NewsShare(text string, ids []string) ([]string, int) {
 	if !strings.HasPrefix(text, newsHead) {
 		return nil, 0
@@ -607,31 +737,11 @@ func NewsShare(text string, ids []string) ([]string, int) {
 	}
 	n := 0
 	for _, line := range strings.Split(block, "\n")[1:] {
-		if strings.HasPrefix(line, "- ") {
+		if strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, voidPrefix) {
 			n++
 		}
 	}
 	return slices.Clone(ids[:min(n, len(ids))]), runes(block)
-}
-
-// liveSuccessor follows superseded_by from old to the live (candidate or confirmed)
-// value that replaces it now, a few steps at most.
-func liveSuccessor(s *memory.Store, old memory.Memory) (memory.Memory, bool) {
-	next := old.SupersededBy
-	for range 8 {
-		if next == "" {
-			return memory.Memory{}, false
-		}
-		m, err := s.Get(next)
-		if err != nil {
-			return memory.Memory{}, false
-		}
-		if m.State == memory.StateCandidate || m.State == memory.StateConfirmed {
-			return m, true
-		}
-		next = m.SupersededBy
-	}
-	return memory.Memory{}, false
 }
 
 // thresholds are the gate of a recall (설계 5.1 4단계, 설계 보완 1-6 b6).
@@ -733,7 +843,8 @@ func recallRelative(cfg config.Config) float64 {
 }
 
 // recallHits are the memories of byID, less those the session was told, that pass both thresholds
-// (설계 5.1 3·4단계) and the relative floor (recallFloor), best first: confirmed before candidates (A2),
+// (설계 5.1 3·4단계) and the relative floor (recallFloor), best first by the rank rule (rankPolicy: a find
+// score gap beyond the margin first when rankByScore is on, else confirmed before candidates, A2),
 // then find score, share of the request's words, this place's own before the user's (S3 명세 2.8), age
 // (newer first), net usage (followed − irrelevant) over the ledger window, last edit, id.
 func recallHits(s *memory.Store, cfg config.Config, th thresholds, pl place.Place, prompt string, byID map[string]memory.Memory, told, held map[string]bool) []memory.RecallHit {
@@ -749,7 +860,7 @@ func recallHitsOf(s *memory.Store, cfg config.Config, th thresholds, pl place.Pl
 			kept = append(kept, h)
 		}
 	}
-	return rankHits(s, cfg, pl, prompt, kept)
+	return rankHits(s, cfg, memory.Viewer{}, pl, prompt, kept) // 순위는 Viewer를 읽지 않는다(rankHits): 요청마다 주제 표를 읽지 않는다
 }
 
 // recallFloor is the hits of byID that pass the gate (thresholds.pass), and the relative floor (설계 보완, 1-6 b6):
@@ -794,59 +905,25 @@ func floorOf(th thresholds, found []memory.RecallHit, byID map[string]memory.Mem
 	return hits, th.relative*top - 1e-9 // 같은 값의 부동소수점 오차로 빠지지 않게
 }
 
-// rankHits orders the hits of a recall, best first (see recallHits).
-func rankHits(s *memory.Store, cfg config.Config, pl place.Place, prompt string, hits []memory.RecallHit) []memory.RecallHit {
-	if len(hits) == 0 {
-		return nil
-	}
-	now := s.Now()
-	usage, _ := s.UsageCounts(memory.Day(now.AddDate(0, 0, -max(cfg.LedgerWindowDays, 1))), memory.Day(now))
-	net := func(id string) int { u := usage[id]; return u.Followed - u.Irrelevant }
-	products := pl.Named(prompt)
-	local := func(m memory.Memory) bool { return pl.Local(m.Scope, m.Project, products) }
-	key := func(x float64) float64 { return math.Round(x * 1e9) } // 같은 값의 부동소수점 오차가 순위를 가르지 않게
-	sort.SliceStable(hits, func(i, j int) bool {
-		a, c := hits[i].Memory, hits[j].Memory
-		if ca, cc := a.State == memory.StateConfirmed, c.State == memory.StateConfirmed; ca != cc {
-			return ca
-		}
-		if sa, sc := key(hits[i].Score), key(hits[j].Score); sa != sc {
-			return sa > sc
-		}
-		if va, vc := key(hits[i].Coverage), key(hits[j].Coverage); va != vc {
-			return va > vc
-		}
-		if la, lc := local(a), local(c); la != lc {
-			return la
-		}
-		if wa, wc := memory.AgeWeight(a, now), memory.AgeWeight(c, now); wa != wc {
-			return wa > wc
-		}
-		if na, nc := net(a.ID), net(c.ID); na != nc {
-			return na > nc
-		}
-		if a.UpdatedAt != c.UpdatedAt {
-			return a.UpdatedAt > c.UpdatedAt
-		}
-		return a.ID < c.ID
-	})
-	return hits
-}
+// reviewMark marks a recall line of a memory due for review (L-2): 90 days past its last confirmation. The memory is
+// not left out; only its rank falls (rankHits).
+const reviewMark = "재검토 후보"
 
 // recallLine is a work recall line: title (80 characters at most), id, kind and state, with the marks of
-// a memory past its review day and of one whose sources are all untrusted (D7).
-func recallLine(m memory.Memory, now time.Time) string {
+// a memory due for review and of one whose sources are all untrusted (D7). conflict is the note line of
+// a memory with an open conflict (conflictInfo.line), "" for one without; it goes right under the title line.
+func recallLine(m memory.Memory, now time.Time, conflict string) string {
 	state := "확정"
 	if m.State == memory.StateCandidate {
 		state = "후보"
 	}
 	if m.Freshness(now) == memory.FreshReviewDue {
-		state += " · 재검토일 지남"
+		state += " · " + reviewMark
 	}
 	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
 		state += " · " + note
 	}
-	return fmt.Sprintf("- %s — %s · %s %s\n", clipTitle(m.Title, recallTitleRunes), m.ID, kindName(m.Kind), state)
+	return fmt.Sprintf("- %s — %s · %s %s\n", clipTitle(m.Title, recallTitleRunes), m.ID, kindName(m.Kind), state) + conflict
 }
 
 // recallEntries is the work recall of a request (B1, 설계 5.1 5단계): the heading, then at most
@@ -854,7 +931,7 @@ func recallLine(m memory.Memory, now time.Time) string {
 // how to find them, and under the first memory line one summary line (its body's start). All of it
 // stays within cfg.PromptRecallChars and limit. Memories already named in this injection or told in
 // the session are left out; what it lists is marked shown.
-func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told, held map[string]bool, limit int) string {
+func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt string, byID map[string]memory.Memory, inj *Injection, told, held map[string]bool, host, session string, limit int) string {
 	skip := map[string]bool{}
 	for id := range told {
 		skip[id] = true
@@ -887,6 +964,14 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		domainAt[d] = len(items)
 		items = append(items, item{domain: d, ids: []string{h.Memory.ID}})
 	}
+	// 어긋남은 줄로 실릴 기억(앞 maxRecallLines개)만 한 번에 읽는다: 어긋남이 없으면 질의 하나가 늘 뿐이다.
+	var shownIDs []string
+	for _, it := range items {
+		if it.domain == "" && len(shownIDs) < maxRecallLines {
+			shownIDs = append(shownIDs, it.m.ID)
+		}
+	}
+	conflicts := newConflictReader(s, cfg, host, session, shownIDs, pl)
 	budget := min(cfg.PromptRecallChars(), limit)
 	head := recallHead + "\n"
 	used := runes(head)
@@ -899,6 +984,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 			break
 		}
 		var line string
+		var info conflictInfo // 이 줄이 묻는 쌍: 줄이 실릴 때만 표시한다
 		if it.domain != "" {
 			n := 0
 			for _, m := range byID {
@@ -910,7 +996,9 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 			line = fmt.Sprintf("- 분야 「%s」 신호 %d개 · 가장 맞은 것 「%s」 %s — memory_find tags=%s%s\n",
 				it.domain, n, clipTitle(best.Title, newsTitleRunes), best.ID, memory.DomainPrefix, it.domain)
 		} else {
-			line = recallLine(it.m, now)
+			var note string
+			note, info = conflicts.note(it.m.ID)
+			line = recallLine(it.m, now, note)
 		}
 		if used+runes(line) > budget {
 			break
@@ -924,6 +1012,7 @@ func recallEntries(s *memory.Store, cfg config.Config, pl place.Place, prompt st
 		}
 		inj.MemoryIDs = append(inj.MemoryIDs, it.m.ID)
 		inj.mark(memory.MarkShown, it.m.ID)
+		inj.markAsked(info)
 		if first < 0 {
 			first, top = len(lines)-1, it.m
 		}

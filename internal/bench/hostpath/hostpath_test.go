@@ -97,8 +97,122 @@ func TestStart와_Subagent와_Tool은_오류없이_Shown을_낸다(t *testing.T)
 	if _, err := f.env.Recaller.Subagent("s2", "/bench/app", "pnpm 설치 확인"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.env.Recaller.Tool("s2", "/bench/app", "Bash"); err != nil {
+	if _, err := f.env.Recaller.Tool("s2", "/bench/app", "Bash", "pnpm install"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 같은 세션의 재개 시작은 묶음 안 기억이 그 사이 낡았으면 묶음을 다시 만든다(명세 F-1, inject.SessionBundleWith). 0.19.0은
+// 얼린 묶음을 그대로 다시 줘서 그 기억이 그 호출의 Dead로 나왔다. 이제 재개·새 세션·압축 뒤 시작 모두 Dead가 없다.
+func TestHostpath_재개_시작은_낡은_기억을_뺀_묶음을_내고_Dead가_없다(t *testing.T) {
+	f := open(t)
+	// 세션 묶음(recall auto)에는 상시 핵심만 든다: 사용자 범위의 확정 기억 하나를 올려 둔다.
+	core := f.p.IDOf("deploy")
+	st, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pin(core, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	first, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(first.IDs, core) || len(first.Dead) != 0 {
+		t.Fatalf("first start: ids %v dead %v, want core in and nothing dead", first.IDs, first.Dead)
+	}
+	s, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetState(core, memory.StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	again, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(again.IDs, core) || strings.Contains(again.Text, core) || len(again.Dead) != 0 || len(again.DeadWhy) != 0 {
+		t.Fatalf("resumed start: ids %v dead %v why %v, want the bundle rebuilt without core", again.IDs, again.Dead, again.DeadWhy)
+	}
+	fresh, err := f.env.Recaller.Start("s2", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(fresh.IDs, core) || len(fresh.Dead) != 0 {
+		t.Fatalf("new session: ids %v dead %v", fresh.IDs, fresh.Dead)
+	}
+	// 압축 뒤 시작(Reset 다음 Start)은 묶음을 새로 만든다: 낡은 기억이 빠진다.
+	r, ok := f.env.Recaller.(bench.Resetter)
+	if !ok {
+		t.Fatal("the host path resets a session as the compact and clear starts do")
+	}
+	if err := r.Reset("s1"); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(rebuilt.IDs, core) || len(rebuilt.Dead) != 0 {
+		t.Fatalf("start after reset: ids %v dead %v", rebuilt.IDs, rebuilt.Dead)
+	}
+}
+
+// 묶음에 든 기억을 지우면, 재개 시작은 그 기억을 뺀 묶음을 다시 만든다. 0.19.0은 사본에 없는 그 id를 까닭 gone의 Dead로
+// 냈다. 사본에 없는 id를 gone으로 세는 것은 TestDead_사본에_없는_id는_까닭_gone이다가 지킨다.
+func TestHostpath_지운_기억이_든_묶음은_재개_시작에서_빠지고_Dead가_없다(t *testing.T) {
+	f := open(t)
+	core := f.p.IDOf("deploy")
+	st, err := memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Pin(core, memory.Who{}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if _, err := f.env.Recaller.Start("s1", "/bench/app"); err != nil {
+		t.Fatal(err)
+	}
+	st, err = memory.Open(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Forget(memory.ForgetInput{IDs: []string{core}, Reason: "시험"}); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	again, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(again.IDs, core) || strings.Contains(again.Text, core) || len(again.Dead) != 0 {
+		t.Fatalf("resumed start: ids %v dead %v why %v, want the bundle rebuilt without core", again.IDs, again.Dead, again.DeadWhy)
+	}
+}
+
+// id를 하나도 싣지 않은 주입 글(찾는 곳 줄·알림 줄)도 모델 앞에 놓인 글자다: 건너뛴 호출이 아니면 글자로 센다. 세지 않으면
+// id 없는 줄을 더 내는 버전의 글자가 적게 잡힌다.
+func TestHostpath_id_없는_주입_글도_글자로_센다(t *testing.T) {
+	f := open(t)
+	got, err := f.env.Recaller.Start("s1", "/bench/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.IDs) != 0 || got.Text == "" || got.Chars != utf8.RuneCountInString(got.Text) {
+		t.Fatalf("start without a core: ids %v chars %d text %q, want the text counted", got.IDs, got.Chars, got.Text)
+	}
+	// 사람이 아닌 글처럼 건너뛴 호출은 여전히 0자다.
+	skipped, err := f.env.Recaller.Request("s1", "/bench/app", "<task-notification>끝남</task-notification>")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped.Chars != 0 || skipped.Text != "" || len(skipped.IDs) != 0 {
+		t.Fatalf("skipped request: %+v", skipped)
 	}
 }
 
@@ -326,5 +440,52 @@ func TestRequest는_사람이_아닌_글을_회상하지_않는다(t *testing.T)
 	}
 	if len(got.IDs) != 0 || got.Chars != 0 {
 		t.Fatalf("a task notification was recalled: %+v", got)
+	}
+}
+
+// 재생의 도구 사례는 사례의 input을 계약의 toolInput으로 넘긴다(명세 T-1·T-4). --set으로 켠 도구 입력 문이 그 글로 판정해, 후보
+// 교훈은 관련 없는 명령에서 빠지고 관련 있는 명령에서 든다. 기본은 켠 상태이고, 끄면 지금처럼 도구 이름만으로 든다.
+func TestTool은_사례_입력을_toolInput으로_넘기고_set의_도구_입력_문을_따른다(t *testing.T) {
+	const toolSet = `{"about":"t","now":"2026-11-03T09:00:00+09:00","cwd":"/bench/app","seed":"s",
+"memories":[{"key":"lock","kind":"lesson","scope":"global","title":"pnpm install은 lock 파일을 고친다","body":"설치 뒤 pnpm-lock.yaml 변경을 확인한다","tools":["Bash"],"ageDays":1}],
+"cases":[{"id":"c1","origin":"user","kind":"request","prompt":"설치","expect":[]}]}`
+	set, err := bench.Parse([]byte(toolSet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := bench.Prepare(set, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { p.Close() })
+	lock := p.IDOf("lock")
+	gate := map[string]string{"toolInputGate": "true", "toolInputMinScore": "0.3"}
+	for _, tc := range []struct {
+		set     map[string]string
+		session string
+		input   string
+		want    bool
+	}{
+		{gate, "a", "ls -la", false},
+		{gate, "b", "pnpm install", true},
+		{nil, "c", "ls -la", false},
+		{map[string]string{"toolInputGate": "false"}, "d", "ls -la", true},
+	} {
+		db, err := p.Copy()
+		if err != nil {
+			t.Fatal(err)
+		}
+		env, err := hostpath.FactoryWith(hostpath.Options{Set: tc.set})(db, set)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := env.Recaller.Tool(tc.session, "/bench/app", "Bash", tc.input)
+		env.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(got.IDs, lock) != tc.want {
+			t.Errorf("set %v input %q: ids %v, want the lesson %v", tc.set, tc.input, got.IDs, tc.want)
+		}
 	}
 }

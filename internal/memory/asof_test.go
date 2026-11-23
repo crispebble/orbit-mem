@@ -204,3 +204,183 @@ func TestRewind_앞뒤로_오가도_지금으로_맞추면_원래_사본과_같�
 		t.Fatalf("run's own event: %d %v", n, err)
 	}
 }
+
+// liveLinkIDs is the ids of the links alive in the copy, read straight from the table.
+func liveLinkIDs(t *testing.T, path string) []string {
+	t.Helper()
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Existing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT id FROM memory_links WHERE removed_at=0 ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// 같은 두 기억을 잇고 → 떼고 → 다시 이으면 (a, b, kind)가 같은 연결이 둘이다. 다시 이은 뒤의 사본에서 첫 연결이 살아
+// 있던 시각으로 곧장 되감을 때 두 연결이 한 순간에도 함께 살아 있으면 부분 유일 색인이 깨진다: 살아 있지 않게 되는 쪽을 먼저
+// 쓴다.
+func TestRewind_지웠다_다시_만든_연결도_그_사이_시각으로_되감긴다(t *testing.T) {
+	s, c := newTestStore(t)
+	tick := func() int64 { c.t = c.t.Add(time.Hour); return c.t.UnixMilli() }
+	tick()
+	a := saveDoc(t, s, "배포 창 규칙", "금요일 배포 금지", "배포 창")
+	b := saveDoc(t, s, "롤백 순서 기록", "롤백은 이전 태그로", "롤백")
+	t1 := tick()
+	l1, _, err := s.Link(LinkInput{From: a.ID, To: b.ID, Origin: LinkOriginAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t2 := tick()
+	if ok, err := s.UnlinkID(l1.ID, LinkOriginUser, "뗀다"); err != nil || !ok {
+		t.Fatalf("unlink: %v %v", ok, err)
+	}
+	t3 := tick()
+	l2, _, err := s.Link(LinkInput{From: a.ID, To: b.ID, Origin: LinkOriginAI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l1.ID == l2.ID {
+		t.Fatal("the second link must be a new row")
+	}
+	// 연결·떼기 직전의 시각: 그 시각에 살아 있던 연결만 살아 있어야 한다.
+	before, during, between, now := t1-1, t2-1, t3-1, t3
+
+	_, r := rewound(t, s.Path())
+	want := func(at int64, ids ...string) {
+		t.Helper()
+		if err := r.To(at); err != nil {
+			t.Fatalf("To(%d): %v", at, err)
+		}
+		if got := liveLinkIDs(t, s.Path()); !slices.Equal(got, ids) {
+			t.Fatalf("live links at %d = %v, want %v", at, got, ids)
+		}
+	}
+	// 「지금」(둘째 연결이 산 상태)에서 첫 연결 구간으로 곧장.
+	want(during, l1.ID)
+	want(now, l2.ID)
+	want(before)
+	want(during, l1.ID)
+	want(between)
+	want(now, l2.ID)
+	want(during, l1.ID)
+	want(now, l2.ID)
+}
+
+// To가 중간에 실패해 롤백돼도 메모리 속 상태는 DB와 같아야 한다: 실패한 뒤 다시 To 하면 DB가 목표 상태가 된다.
+// 실패는 사건 표에 거는 시험용 트리거로 넣는다.
+func TestRewind_중간에_실패한_뒤_다시_맞추면_사본이_목표_상태가_된다(t *testing.T) {
+	path, _, _, at := historyFixture(t)
+	want := dump(t, path)
+	_, r := rewound(t, path)
+	if err := r.To(at[0] - 1); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", sqlitedb.FileURI(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TRIGGER fail_event BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
+		t.Fatal(err)
+	}
+	// 기억·연결을 먼저 쓰고 사건에서 실패한다.
+	if err := r.To(at[3] + 1); err == nil {
+		t.Fatal("To must fail on the event insert")
+	}
+	if _, err := db.Exec(`DROP TRIGGER fail_event`); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.To(at[3] + 1); err != nil {
+		t.Fatal(err)
+	}
+	got := dump(t, path)
+	for table := range historyTables {
+		if !slices.Equal(got[table], want[table]) {
+			t.Fatalf("%s differs after a failed To and a retry:\n got %v\nwant %v", table, got[table], want[table])
+		}
+	}
+}
+
+// StateAt은 기록된 주입이 그 시각에 낡은 기억이었는지 가리는 감사(bench.AuditInjections)가 쓴다: 그 시각의 버전과 상태를
+// 돌려주고, 그 시각에 없던 기억은 false다.
+func TestHistory_StateAt은_그_시각의_버전과_상태를_돌려준다(t *testing.T) {
+	path, a, b, at := historyFixture(t)
+	h, err := ReadHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, ok := h.StateAt(a.ID, at[0]); !ok || m.Title != "배포 창 규칙 첫 판" || m.State == StateStale || m.Version != 1 {
+		t.Fatalf("a at t1: %+v %v", m, ok)
+	}
+	if m, ok := h.StateAt(a.ID, at[2]); !ok || m.Title != "배포 창 규칙 고친 판" || m.State == StateStale || m.Topic != "배포 창" {
+		t.Fatalf("a at t3: %+v %v", m, ok)
+	}
+	if m, ok := h.StateAt(a.ID, at[3]); !ok || m.State != StateStale || m.StaleReason != "낡음" || m.ID != a.ID {
+		t.Fatalf("a at t4: %+v %v", m, ok)
+	}
+	if _, ok := h.StateAt(b.ID, at[1]); ok {
+		t.Fatal("b is not there before t3")
+	}
+	if m, ok := h.StateAt(b.ID, at[3]); !ok || m.Title != "롤백 순서 기록" || m.Tags == nil {
+		t.Fatalf("b at t4: %+v %v", m, ok)
+	}
+	if _, ok := h.StateAt("m-none", at[3]); ok {
+		t.Fatal("a memory the DB never had")
+	}
+}
+
+// 재생 사본의 세션 상태(세션 묶음·세션 표시·위임 글)는 실제 세션이 남긴 것이라 재생 세션과 섞이면 안 된다. 비우기는
+// 임시 사본 표지가 있는 DB만 하고, 기억 줄은 건드리지 않는다.
+func TestHistory_ClearSessionState는_임시_사본만_세션_표를_비운다(t *testing.T) {
+	s, _ := newTestStore(t)
+	m := saveDoc(t, s, "배포 창 규칙", "금요일 배포 금지", "")
+	if err := s.SaveSessionBundle("h", "s1", "묶음", []string{m.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkSession("h", "s1", MarkShown, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveDelegation("h", "s1", "worker", "일"); err != nil {
+		t.Fatal(err)
+	}
+	path := s.Path()
+	count := func() (bundles, marks, mems int) {
+		db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Existing: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		db.QueryRow(`SELECT COUNT(*) FROM session_bundles`).Scan(&bundles)
+		db.QueryRow(`SELECT COUNT(*) FROM session_marks`).Scan(&marks)
+		db.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&mems)
+		return
+	}
+	if err := ClearSessionState(path); !errors.Is(err, ErrNotThrowawayCopy) {
+		t.Fatalf("a DB without the mark: %v", err)
+	}
+	if b, k, _ := count(); b != 2 || k != 1 {
+		t.Fatalf("refused clear changed rows: bundles %d marks %d", b, k)
+	}
+	if err := MarkThrowawayCopy(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := ClearSessionState(path); err != nil {
+		t.Fatal(err)
+	}
+	if b, k, n := count(); b != 0 || k != 0 || n != 1 {
+		t.Fatalf("after clear: bundles %d marks %d memories %d", b, k, n)
+	}
+}

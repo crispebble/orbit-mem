@@ -19,9 +19,7 @@ func TestHoldout2SetData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(set.Memories) != len(pub.Memories) {
-		t.Errorf("memories = %d, want the %d of the public set", len(set.Memories), len(pub.Memories))
-	}
+	checkSharedMemories(t, set, pub)
 	ids := map[string]bool{}
 	for _, c := range pub.Cases {
 		ids[c.ID] = true

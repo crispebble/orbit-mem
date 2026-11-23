@@ -67,7 +67,7 @@ func TestLabel_기억_문맥_머리말은_orbit_mem이다(t *testing.T) {
 	checkLabels(t, "rules form", SessionStartInjection(s, rulesCfg, f["무관 저장소"]).Text, "["+memName+" 기억 · 확정 규칙]")
 
 	checkLabels(t, "prompt recall", PromptInjection(s, cfg, f["무관 저장소"], "보고는 표로 쓰나").Text, "["+memName+" 관련 기억]")
-	checkLabels(t, "pre-tool", ToolInjection(s, cfg, f["무관 저장소"], "claude", "A", "mcp__atlas__write_page").Text,
+	checkLabels(t, "pre-tool", ToolInjection(s, cfg, f["무관 저장소"], "claude", "A", "mcp__atlas__write_page", "").Text,
 		"["+memName+" 기억 · mcp__atlas__write_page 호출 직전]", tool.ID)
 	checkLabels(t, "subagent", SubagentStart(s, cfg, f["무관 저장소"], "보고는 표로 쓰나").Text, "["+memName+" 기억 · 상시 핵심]")
 

@@ -22,11 +22,11 @@ import (
 //   - 기억: created_at ≤ at인 기억만 있다. 내용·상태는 at 이전 마지막 판의 스냅숏이다(종류·범위·상태·제목·본문·태그·판·
 //     고친 시각·대체한 판·낡은 까닭·상시 핵심). 판이 at 뒤에만 있으면(옛 판에서 옮긴 기억) 첫 판이다. 스냅숏에 없는 칸
 //     (주제·도구·보존·검토·기한·적용 대상)은 지금 값을 쓴다. 판 이력(memory_versions)은 at 이전 판까지다.
-//   - 출처(sources)는 at 이전 것(하나도 없으면 첫 출처), 다시 나옴(sightings)은 at의 날 이전 것.
+//   - 출처(sources)는 at 이전 것(하나도 없으면 첫 출처), 다시 나옴(sightings·sighting_sessions)은 at의 날 이전 것.
 //   - 연결(memory_links)은 at 이전에 만든 것만, at 뒤에 지운 것은 살아 있다. 두 끝이 모두 있을 때만.
 //   - 사건(events)은 틀에 있던 것 중 at 이전 것만. 실행이 쓴 사건·세션 표시·활동 기록은 건드리지 않는다.
 //
-// 틀에 없는 줄(실행이 쓴 줄)은 기억 표(memories·memory_versions·sources·sightings·memory_links)에 생기지 않는다:
+// 틀에 없는 줄(실행이 쓴 줄)은 기억 표(memories·memory_versions·sources·sightings·sighting_sessions·memory_links)에 생기지 않는다:
 // 회상 경로는 이 표들을 읽기만 한다.
 
 // History is what a memory DB copy held over time, read once.
@@ -44,6 +44,7 @@ type memHistory struct {
 	versions  []versionHistory // by version
 	sources   []timedRow       // by at
 	sightings []sightingRow    // by day
+	sessions  []sightingRow    // sighting_sessions, by day
 }
 
 type versionHistory struct {
@@ -64,6 +65,7 @@ type versionSnapshot struct {
 	SupersededBy string   `json:"supersededBy"`
 	StaleReason  string   `json:"staleReason"`
 	Pinned       bool     `json:"pinned"`
+	Aliases      []string `json:"aliases"`
 }
 
 type timedRow struct {
@@ -90,12 +92,13 @@ type eventHistory struct {
 
 // historyTables are the tables History reads, with the column that orders their rows.
 var historyTables = map[string]string{
-	"memories":        "id",
-	"memory_versions": "memory_id, version",
-	"sources":         "memory_id, at, rowid",
-	"sightings":       "memory_id, day",
-	"memory_links":    "created_at, id",
-	"events":          "id",
+	"memories":          "id",
+	"memory_versions":   "memory_id, version",
+	"sources":           "memory_id, at, rowid",
+	"sightings":         "memory_id, day",
+	"sighting_sessions": "memory_id, day, session",
+	"memory_links":      "created_at, id",
+	"events":            "id",
 }
 
 // ReadHistory reads the history of the memory DB at path (read only). The DB must have this binary's schema.
@@ -142,6 +145,11 @@ func ReadHistory(path string) (*History, error) {
 	for _, r := range rows["sightings"] {
 		if m := h.mems[asString(r[col("sightings", "memory_id")])]; m != nil {
 			m.sightings = append(m.sightings, sightingRow{day: asString(r[col("sightings", "day")]), row: r})
+		}
+	}
+	for _, r := range rows["sighting_sessions"] {
+		if m := h.mems[asString(r[col("sighting_sessions", "memory_id")])]; m != nil {
+			m.sessions = append(m.sessions, sightingRow{day: asString(r[col("sighting_sessions", "day")]), row: r})
 		}
 	}
 	for _, m := range h.mems {
@@ -216,9 +224,66 @@ func (h *History) Existed(id string, at int64) bool {
 	return m != nil && m.created <= at
 }
 
+// StateAt is memory id as it was at at (ms): the content and state of its last version by then, the columns the
+// version snapshot does not keep (topic, tools, retention, review and expiry) as they are now. It is false when
+// the memory was not made by then or the DB the history was read from does not have it (it never had it, or it
+// was forgotten). Sources, sighting days and links are not filled in.
+func (h *History) StateAt(id string, at int64) (Memory, bool) {
+	m := h.mems[id]
+	if m == nil || m.created > at {
+		return Memory{}, false
+	}
+	p := m.phase(at, Day(time.UnixMilli(at)))
+	row := h.rowAt(m, p.version)
+	cols := h.cols["memories"]
+	pos := make(map[string]int, len(cols))
+	for i, c := range cols {
+		pos[c] = i
+	}
+	// scanMemory reads memoryCols in order; the history keeps the row by the table's columns. A column the copy's
+	// table lacks reads as its zero value.
+	names := strings.Split(strings.Replace(memoryCols, "COALESCE(legacy_id,'')", "legacy_id", 1), ",")
+	vals := make([]any, len(names))
+	for i, n := range names {
+		if j, ok := pos[strings.TrimSpace(n)]; ok {
+			vals[i] = row[j]
+		}
+	}
+	out, err := scanMemory(rowValues(vals))
+	if err != nil {
+		return Memory{}, false
+	}
+	return out, true
+}
+
+// rowValues scans a row the history holds as scanMemory scans a query row: a NULL (a legacy id) reads as "" or 0.
+type rowValues []any
+
+func (r rowValues) Scan(dest ...any) error {
+	if len(dest) != len(r) {
+		return fmt.Errorf("history row: %d values for %d columns", len(r), len(dest))
+	}
+	for i, d := range dest {
+		v := r[i]
+		switch p := d.(type) {
+		case *string:
+			*p = asString(v)
+		case *int:
+			*p = int(asInt(v))
+		case *int64:
+			*p = asInt(v)
+		case *bool:
+			*p = asInt(v) != 0
+		default:
+			return fmt.Errorf("history row: column %d: cannot read into %T", i, d)
+		}
+	}
+	return nil
+}
+
 // memPhase is which rows of a memory a time shows: the version index (-1: no memory), how many sources and
 // sightings.
-type memPhase struct{ version, sources, sightings int }
+type memPhase struct{ version, sources, sightings, sessions int }
 
 func (m *memHistory) phase(at int64, day string) memPhase {
 	if m.created > at {
@@ -230,11 +295,12 @@ func (m *memHistory) phase(at int64, day string) memPhase {
 		src = 1
 	}
 	sight := sort.Search(len(m.sightings), func(i int) bool { return m.sightings[i].day > day })
-	return memPhase{version: max(v, 0), sources: src, sightings: sight}
+	sess := sort.Search(len(m.sessions), func(i int) bool { return m.sessions[i].day > day })
+	return memPhase{version: max(v, 0), sources: src, sightings: sight, sessions: sess}
 }
 
 func (m *memHistory) latest() memPhase {
-	return memPhase{version: len(m.versions) - 1, sources: len(m.sources), sightings: len(m.sightings)}
+	return memPhase{version: len(m.versions) - 1, sources: len(m.sources), sightings: len(m.sightings), sessions: len(m.sessions)}
 }
 
 // rowAt is the memories row of version v: the current row with the snapshot's columns.
@@ -249,13 +315,14 @@ func (h *History) rowAt(m *memHistory, v int) []any {
 		tags = []string{}
 	}
 	tagsJSON, _ := json.Marshal(tags)
+	aliases := aliasesJSON(snap.Aliases)
 	pinned := 0
 	if snap.Pinned {
 		pinned = 1
 	}
 	set := map[string]any{"kind": snap.Kind, "scope": snap.Scope, "state": snap.State, "title": snap.Title, "title_key": TitleKey(snap.Title),
 		"body": snap.Body, "tags": string(tagsJSON), "version": int64(snap.Version), "updated_at": snap.UpdatedAt,
-		"superseded_by": snap.SupersededBy, "stale_reason": snap.StaleReason, "pinned": int64(pinned)}
+		"superseded_by": snap.SupersededBy, "stale_reason": snap.StaleReason, "pinned": int64(pinned), "aliases": aliases}
 	for i, c := range h.cols["memories"] {
 		if v, ok := set[c]; ok {
 			row[i] = v
@@ -284,6 +351,37 @@ func MarkThrowawayCopy(path string) error {
 	defer db.Close()
 	_, err = db.Exec(`INSERT INTO meta(key,value) VALUES(?,'1') ON CONFLICT(key) DO UPDATE SET value=excluded.value`, metaThrowawayCopy)
 	return err
+}
+
+// ClearSessionState empties the session state of the DB copy at path: the session bundles with the delegations
+// kept in their table (delegation.go) and the session marks. A replay copy holds what the real sessions left;
+// a replayed session with the same id would get their frozen bundle and marks, and the run would measure what
+// the real session was handed, not what the recall gives. Like Rewind it writes only a DB that carries the
+// throwaway copy mark (ErrNotThrowawayCopy before anything is written); the memory tables are not touched.
+func ClearSessionState(path string) error {
+	db, err := sqlitedb.OpenWith(path, sqlitedb.Options{Busy: writeBusy, Pragmas: storePragmas, Existing: true})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var mark string
+	if err := tx.QueryRow(`SELECT value FROM meta WHERE key=?`, metaThrowawayCopy).Scan(&mark); err != nil || mark != "1" {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %v", ErrNotThrowawayCopy, err)
+		}
+		return ErrNotThrowawayCopy
+	}
+	for _, q := range []string{`DELETE FROM session_bundles`, `DELETE FROM session_marks`} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // Rewinder puts one DB copy at the state of a time.
@@ -332,7 +430,13 @@ func (h *History) Rewind(path string) (*Rewinder, error) {
 func (r *Rewinder) Close() error { return r.db.Close() }
 
 // To puts the copy at the state of at (ms), in one transaction, writing only what differs from the state it
-// was last put at.
+// was last put at. What the Rewinder remembers of the copy changes only after the transaction commits, so a To
+// that fails and rolls back leaves it as the copy is.
+//
+// The target state of every link is worked out first and the writes go in two rounds: the links that stop being
+// alive first, the ones that come alive after. Two links of one (a, b, kind) can exist (one made, removed, and
+// made again), and the table keeps only one live row of each; writing in creation order could bring the older
+// one alive while the newer one still is.
 func (r *Rewinder) To(at int64) error {
 	day := Day(time.UnixMilli(at))
 	tx, err := r.db.Begin()
@@ -341,6 +445,7 @@ func (r *Rewinder) To(at int64) error {
 	}
 	defer tx.Rollback()
 	exists := map[string]bool{}
+	nextMems := map[string]memPhase{}
 	for _, id := range r.h.ids {
 		m := r.h.mems[id]
 		want := m.phase(at, day)
@@ -351,27 +456,34 @@ func (r *Rewinder) To(at int64) error {
 		if err := r.putMemory(tx, id, m, want); err != nil {
 			return fmt.Errorf("rewind %s: %w", id, err)
 		}
-		r.mems[id] = want
+		nextMems[id] = want
 	}
+	nextLinks := make([]int8, len(r.h.links))
 	for i, l := range r.h.links {
-		var want int8
 		switch {
 		case l.created > at || !exists[l.a] || !exists[l.b]:
+			nextLinks[i] = 0
 		case l.removed != 0 && l.removed <= at:
-			want = 2
+			nextLinks[i] = 2
 		default:
-			want = 1
+			nextLinks[i] = 1
 		}
-		if want == r.links[i] {
-			continue
-		}
-		if err := r.putLink(tx, l, want); err != nil {
-			return err
-		}
-		r.links[i] = want
 	}
+	for _, alive := range []bool{false, true} {
+		for i, l := range r.h.links {
+			want := nextLinks[i]
+			if want == r.links[i] || (want == 1) != alive {
+				continue
+			}
+			if err := r.putLink(tx, l, want); err != nil {
+				return err
+			}
+		}
+	}
+	nextEvents := make([]bool, len(r.h.events))
 	for i, e := range r.h.events {
 		want := e.at <= at
+		nextEvents[i] = want
 		if want == r.events[i] {
 			continue
 		}
@@ -383,14 +495,20 @@ func (r *Rewinder) To(at int64) error {
 				return err
 			}
 		}
-		r.events[i] = want
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for id, p := range nextMems {
+		r.mems[id] = p
+	}
+	r.links, r.events = nextLinks, nextEvents
+	return nil
 }
 
 func (r *Rewinder) putMemory(tx *sql.Tx, id string, m *memHistory, p memPhase) error {
 	for _, q := range []string{`DELETE FROM memories WHERE id=?`, `DELETE FROM memory_versions WHERE memory_id=?`,
-		`DELETE FROM sources WHERE memory_id=?`, `DELETE FROM sightings WHERE memory_id=?`} {
+		`DELETE FROM sources WHERE memory_id=?`, `DELETE FROM sightings WHERE memory_id=?`, `DELETE FROM sighting_sessions WHERE memory_id=?`} {
 		if _, err := tx.Exec(q, id); err != nil {
 			return err
 		}
@@ -413,6 +531,11 @@ func (r *Rewinder) putMemory(tx *sql.Tx, id string, m *memHistory, p memPhase) e
 	}
 	for _, s := range m.sightings[:p.sightings] {
 		if err := insertRow(tx, "sightings", r.h.cols["sightings"], s.row); err != nil {
+			return err
+		}
+	}
+	for _, s := range m.sessions[:p.sessions] {
+		if err := insertRow(tx, "sighting_sessions", r.h.cols["sighting_sessions"], s.row); err != nil {
 			return err
 		}
 	}

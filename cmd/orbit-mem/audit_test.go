@@ -17,9 +17,10 @@ func TestAudit_감사_목록과_되돌리기와_확인함(t *testing.T) {
 	s := seed(t)
 	clock := time.Now().Add(-72 * time.Hour) // 확인함은 지금 시각으로 남는다: 사건은 그 전이다
 	s.Now = func() time.Time { return clock }
-	in := memory.SaveInput{Kind: "lesson", Title: "plist는 지우고 다시 건다", Source: memory.Source{Kind: "session"}}
+	in := memory.SaveInput{Kind: "lesson", Title: "plist는 지우고 다시 건다", Source: memory.Source{Kind: "session"}, Session: "s-1"}
 	m, _ := s.Save(in)
 	clock = clock.Add(24 * time.Hour)
+	in.Session = "s-2" // 증거 ①은 다른 세션·다른 날이다
 	if got, _ := s.Save(in); got.State != memory.StateConfirmed {
 		t.Fatalf("state %s", got.State)
 	}
@@ -51,6 +52,30 @@ func TestAudit_감사_목록과_되돌리기와_확인함(t *testing.T) {
 	out, _, _ = run(t, "", "audit", "--json", "--days", "3650")
 	if json.Unmarshal([]byte(out), &a) != nil || len(a.Corrections) != 0 {
 		t.Fatalf("확인함 뒤 audit: %s", out)
+	}
+}
+
+// 감사 목록의 dismiss는 어긋남에서는 옛 값 유지로, 반복 교정에서는 확인함으로 닫는다: 알리는 글도 그 뜻을 따른다.
+func TestAudit_어긋남_dismiss는_옛_값_유지로_알린다(t *testing.T) {
+	home(t)
+	s := seed(t)
+	old, err := s.Save(memory.SaveInput{Kind: "fact", Title: "배포는 금요일에 한다", Topic: "배포 요일", Scope: "project:github.com/o/r",
+		Source: memory.Source{Kind: "quote", Excerpt: "배포는 금요일에 한다"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nw, _, err := s.SaveWith(memory.SaveInput{Kind: "fact", Title: "배포는 화요일에 한다", Topic: "배포 요일", Scope: "project:github.com/o/r",
+		Source: memory.Source{Kind: "session", Ref: "s"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags, _ := s.OpenFlags()
+	if len(flags) != 1 || flags[0].MemoryID != nw.ID || flags[0].OtherID != old.ID {
+		t.Fatalf("어긋남 표시 %+v", flags)
+	}
+	out, errOut, code := run(t, "", "audit", "dismiss", flags[0].ID)
+	if code != 0 || !strings.Contains(out, i18n.T("cli.audit.dismissed_conflict", flags[0].ID)) {
+		t.Fatalf("dismiss (%d): %q %q", code, out, errOut)
 	}
 }
 

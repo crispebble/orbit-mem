@@ -39,6 +39,9 @@ func cmdTidy(a *app, args []string) error {
 		return a.json(r)
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.tidy.done", r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved))
+	if r.DeadLinks > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.tidy.deadlinks", r.DeadLinks))
+	}
 	for _, e := range r.Errors {
 		fmt.Fprintln(a.stdout, i18n.T("cli.tidy.error", e))
 	}
@@ -87,8 +90,8 @@ func tidyAuto(a *app, args []string) error {
 		return nil
 	}
 	r := s.Tidy(tidyOptions(cfg))
-	tidyLog(p, fmt.Sprintf("ran judged %d reverted %d confirmed %d closed %d reviewed %d expired %d moved %d",
-		r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved))
+	tidyLog(p, fmt.Sprintf("ran judged %d reverted %d confirmed %d closed %d reviewed %d expired %d moved %d deadLinks %d",
+		r.Judged, r.Reverted, r.Confirmed, r.Closed, r.Reviewed, r.Expired, r.Moved, r.DeadLinks))
 	if len(r.Errors) > 0 {
 		tidyLog(p, "error: "+strings.Join(r.Errors, "; "))
 	}

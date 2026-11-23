@@ -37,6 +37,13 @@ func s3Store(t *testing.T) *memory.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
+	// 이 묶음의 사용자 말 출처(quote(...))가 사용자 말 대조(S-4)를 통과하게 그 말들을 발언으로 남긴다: 이 묶음은 적용
+	// 대상과 핵심 승격만 본다.
+	for _, said := range []string{"x", "늘 지켜", "존댓말", "한국어", "배움"} {
+		if err := s.RecordUtterance("test", said); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return s
 }
 

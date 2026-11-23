@@ -94,7 +94,7 @@ func TestToolInjection_호출당_2개_기억마다_160자_합_800자_남은_기�
 	s := store(t)
 	all := manyDocs(t, s, 6)
 	slices.Reverse(all) // 최신부터
-	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	if MaxToolMemories != 2 || MaxToolCallRunes != 800 || MaxToolMemoryRunes != 160 || MaxToolRunes != 2500 {
 		t.Fatalf("limits %d %d %d %d", MaxToolMemories, MaxToolCallRunes, MaxToolMemoryRunes, MaxToolRunes)
 	}
@@ -131,7 +131,7 @@ func TestToolInjection_가리키기_줄은_5개_400자까지이고_넘친_것은
 	s := store(t)
 	all := manyDocs(t, s, 10)
 	slices.Reverse(all)
-	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	_, _, more := toolParts(t, got.Text)
 	if more != pointerLine(all[2:2+maxToolPointers], 10-2-maxToolPointers) || maxToolPointers != 5 {
 		t.Fatalf("pointer line %q", more)
@@ -144,7 +144,7 @@ func TestToolInjection_가리키기_줄은_5개_400자까지이고_넘친_것은
 	for i := 0; i < 9; i++ {
 		saveTool(t, s2, fmt.Sprintf("%d %s", i, strings.Repeat("긴 제목 ", 30)), "본문", memory.ScopeGlobal, []string{"mcp__docs__*"}, true)
 	}
-	long := ToolInjection(s2, config.Default(), here, "claude", "S", docsTool)
+	long := ToolInjection(s2, config.Default(), here, "claude", "S", docsTool, "")
 	if _, _, more := toolParts(t, long.Text); runeLen(more) > maxToolPointerRunes || !strings.Contains(more, "외 ") {
 		t.Fatalf("long pointer line %d runes: %q", runeLen(more), more)
 	}
@@ -170,14 +170,14 @@ func TestToolInjection_정확_일치_확정_이_제품_최신_순이고_넣지_�
 	want := [][]string{ids(exact, localNew, localOld, globalConfirmed, candidate), ids(localOld, globalConfirmed), ids(candidate)}
 	wantMore := []string{pointerLine([]memory.Memory{localOld, globalConfirmed, candidate}, 0), "", ""}
 	for i := range want {
-		got := ToolInjection(s, cfg, here, "claude", "S", docsTool)
+		got := ToolInjection(s, cfg, here, "claude", "S", docsTool, "")
 		_, _, more := toolParts(t, got.Text)
 		if !slices.Equal(got.MemoryIDs, want[i]) || more != wantMore[i] {
 			t.Fatalf("call %d ids=%v more=%q:\n%s", i, got.MemoryIDs, more, got.Text)
 		}
 		RecordShown(s, "claude", "S", got)
 	}
-	if last := ToolInjection(s, cfg, here, "claude", "S", docsTool); last.Text != "" {
+	if last := ToolInjection(s, cfg, here, "claude", "S", docsTool, ""); last.Text != "" {
 		t.Fatalf("everything shown, still:\n%s", last.Text)
 	}
 }
@@ -191,13 +191,13 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_같은_기억은_�
 	rev := slices.Clone(all)
 	slices.Reverse(rev) // 최신부터
 	// 자리가 남은 동안: 첫 호출이 가리킨 기억은 다시 가리키지 않고, 수로만 센 기억은 다음 호출이 가리킨다.
-	first := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	first := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	_, _, more := toolParts(t, first.Text)
 	if more != pointerLine(rev[2:2+maxToolPointers], 20-2-maxToolPointers) {
 		t.Fatalf("first pointer line %q", more)
 	}
 	RecordShown(s, "claude", "S", first)
-	second := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	second := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	_, blocks, more := toolParts(t, second.Text)
 	// 가리킨 기억은 후보로 남아 줄로 들어오고, 아직 가리키지 않은 기억을 새로 가리킨다.
 	if len(blocks) != 2 || !slices.Equal(second.MemoryIDs[:2], first.MemoryIDs[2:4]) || !strings.Contains(more, rev[2+maxToolPointers].ID) {
@@ -213,7 +213,7 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_같은_기억은_�
 	// 새로 걸린 기억이 생기면 그것이 가장 새것이라 줄로 먼저 들어온다.
 	later(s, time.Minute)
 	fresh1 := saveTool(t, s, "새로 걸린 문서 규칙", strings.Repeat("길다 ", 300), memory.ScopeGlobal, []string{"mcp__docs__*"}, true)
-	fresh := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	fresh := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	if len(fresh.MemoryIDs) == 0 || fresh.MemoryIDs[0] != fresh1.ID {
 		t.Fatalf("new memory must come first:\n%s", fresh.Text)
 	}
@@ -222,7 +222,7 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_같은_기억은_�
 	total := first.Chars + second.Chars + fresh.Chars
 	stopped := 0
 	for call := 0; call < 14; call++ {
-		got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+		got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 		total += got.Chars
 		if total > MaxToolSessionRunes || got.Chars > MaxToolRunes {
 			t.Fatalf("call %d: session total %d, call %d\n%s", call, total, got.Chars, got.Text)
@@ -237,12 +237,12 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_같은_기억은_�
 	}
 
 	// 서브에이전트 키는 주 세션 합계와 따로 센다.
-	if sub := ToolInjection(s, config.Default(), here, "claude", "S/a1", docsTool); !strings.Contains(sub.Text, "\n  길다") || len(sub.MemoryIDs) != 2+maxToolPointers {
+	if sub := ToolInjection(s, config.Default(), here, "claude", "S/a1", docsTool, ""); !strings.Contains(sub.Text, "\n  길다") || len(sub.MemoryIDs) != 2+maxToolPointers {
 		t.Fatalf("subagent: %v\n%s", sub.MemoryIDs, sub.Text)
 	}
 	// reset이 표시(넣음·가리킴·호출)를 지우면 다시 허용되고 다시 가리킨다.
 	ResetSession(s, "claude", "S")
-	again := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	again := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	if _, blocks, more := toolParts(t, again.Text); len(blocks) != 2 || more == "" {
 		t.Fatalf("after reset: %v more=%q\n%s", again.MemoryIDs, more, again.Text)
 	}
@@ -251,7 +251,7 @@ func TestToolInjection_세션_합계_2000자에서_멈추고_같은_기억은_�
 func TestToolInjection_세션_합계는_지운_기억과_숨긴_기억을_한_줄_최대로_센다(t *testing.T) {
 	s := store(t)
 	shown := saveTool(t, s, "곧 숨길 짧은 후보", "짧다", memory.ScopeGlobal, []string{"mcp__docs__*"}, false)
-	first := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	first := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	if !slices.Equal(first.MemoryIDs, []string{shown.ID}) {
 		t.Fatalf("first: %v", first.MemoryIDs)
 	}
@@ -269,11 +269,11 @@ func TestToolInjection_세션_합계는_지운_기억과_숨긴_기억을_한_�
 		t.Fatal(err)
 	}
 	short := saveTool(t, s, "짧은 확정", "짧다", memory.ScopeGlobal, []string{"mcp__docs__*"}, true)
-	if got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool); got.Text != "" {
+	if got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, ""); got.Text != "" {
 		t.Fatalf("full session, still:\n%s", got.Text)
 	}
 	// 같은 짧은 줄은 표시가 적은 다른 세션에는 들어간다.
-	if other := ToolInjection(s, config.Default(), here, "claude", "T", docsTool); !slices.Equal(other.MemoryIDs, []string{short.ID}) || !strings.Contains(other.Text, "  짧다") {
+	if other := ToolInjection(s, config.Default(), here, "claude", "T", docsTool, ""); !slices.Equal(other.MemoryIDs, []string{short.ID}) || !strings.Contains(other.Text, "  짧다") {
 		t.Fatalf("other session: %v", other.MemoryIDs)
 	}
 }
@@ -284,7 +284,7 @@ func TestToolInjection_아주_긴_도구_이름과_긴_제목도_훅_글_2500자
 		saveTool(t, s, strings.Repeat("제", 190)+fmt.Sprint(i), strings.Repeat("본문 ", 400), memory.ScopeGlobal, []string{"mcp__docs__*"}, true)
 	}
 	tool := "mcp__docs__" + strings.Repeat("x", 10000)
-	got := ToolInjection(s, config.Default(), here, "claude", "S", tool)
+	got := ToolInjection(s, config.Default(), here, "claude", "S", tool, "")
 	_, blocks, more := toolParts(t, got.Text)
 	if len(blocks) != 2 || len(got.MemoryIDs) != 4 || more == "" || got.Chars > MaxToolRunes || runeLen(more) > maxToolPointerRunes {
 		t.Fatalf("blocks=%d ids=%d more=%q chars=%d", len(blocks), len(got.MemoryIDs), more, got.Chars)
@@ -299,7 +299,7 @@ func TestToolInjection_아주_긴_도구_이름과_긴_제목도_훅_글_2500자
 func TestToolInjection_짧은_기억은_자르지_않고_지금_꼴_그대로다(t *testing.T) {
 	s := store(t)
 	m := saveTool(t, s, "문서는 공간에 쓴다", "write_page 전에 위치를 확인한다", memory.ScopeGlobal, []string{docsTool}, true)
-	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool)
+	got := ToolInjection(s, config.Default(), here, "claude", "S", docsTool, "")
 	want := "[" + Label + " 기억 · " + docsTool + " 호출 직전] 걸린 기억을 확인하고 따른다. 본문은 memory_get\n" +
 		"- 문서는 공간에 쓴다 (" + m.ID + " · 규칙 확정)\n  write_page 전에 위치를 확인한다"
 	if got.Text != want {
@@ -318,7 +318,7 @@ func TestToolInjection_세션_합계_2000자는_머리말과_가리키기_줄까
 	tools := []string{docsTool, "mcp__deploy__release_with_a_rather_long_tool_name_" + strings.Repeat("x", 300), docsTool, "mcp__docs__read_page"}
 	total, emitted, pointedOnly := 0, 0, 0
 	for call := 0; call < 40; call++ {
-		got := ToolInjection(s, config.Default(), here, "claude", "S", tools[call%len(tools)])
+		got := ToolInjection(s, config.Default(), here, "claude", "S", tools[call%len(tools)], "")
 		if got.Text == "" {
 			continue
 		}

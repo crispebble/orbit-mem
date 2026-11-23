@@ -31,7 +31,8 @@ const (
 	SourceHostMemory = "host_memory" // 호스트 기억
 	SourceLegacy     = "legacy"      // 옛 Knowledge
 	// SourceVerification is a fact the work's own verification checked (a test
-	// or build run): a project fact with it is confirmed at once (A2 증거 ③).
+	// or build run, or a file): a project fact with it is confirmed at once (A2
+	// 증거 ③) only when the server read the file it names again (Source.Rechecked, E-4).
 	SourceVerification = "verification"
 	// SourceWork is a finished orbit-code work the work retrospective read (ref
 	// is the work id): what came out of which works.
@@ -64,6 +65,12 @@ type Source struct {
 	// Trust is how far the source is believed (owner·agent·untrusted·system, trust.go). Empty on the rows of
 	// older versions and when it is what the kind gives (quote → owner, else agent): SourceTrust reads it.
 	Trust string `json:"trust,omitempty"`
+	// Rechecked says the server itself read the file a verification source names (Ref, an absolute path) and
+	// found Excerpt in it when the source was saved (RecheckExcerpt). Only the assembly point sets it, never a
+	// tool argument; it is stored in sources.rechecked and is what lets a verified fact be confirmed at once
+	// (EvidenceVerifiedFact, E-4). It does not change what the fact replaces (replace.go). It is not read
+	// back into Source nor written out with it: a copied or imported source is not rechecked.
+	Rechecked bool `json:"-"`
 }
 
 // Memory is one remembered thing.
@@ -87,10 +94,16 @@ type Memory struct {
 	Links        []MemoryLink `json:"links,omitempty"`      // 살아 있는 명시 연결(읽을 때 붙는다, 판 스냅샷에는 없다)
 	Retention    string       `json:"retention,omitempty"`  // 보존 등급: volatile·durable, 비면 보통(lifecycle.go)
 	ReviewDays   int          `json:"reviewDays,omitempty"` // 재검토 주기(일)
-	ReviewAt     int64        `json:"reviewAt,omitempty"`   // 재검토일(Unix ms): 지나면 낡음 후보
+	ReviewAt     int64        `json:"reviewAt,omitempty"`   // 재검토일(Unix ms): 마지막 확인 + 90일(휘발 제외). 지나면 재검토 후보
 	ExpiresAt    int64        `json:"expiresAt,omitempty"`  // 휘발 기억이 회상에서 빠지는 때(Unix ms)
 	Topic        string       `json:"topic,omitempty"`      // 주제 키: 같은 범위·주제는 최신 판만 회상
 	Tools        []string     `json:"tools,omitempty"`      // 도구 트리거: 이 도구(이름 또는 접두*)를 부르기 직전에 회상
+	// Aliases are other words for the same thing (a synonym, another spelling, the English name of a Korean
+	// title) that only help it be found: they are indexed with the topic and tags and counted by the recall
+	// score, but they are not part of the body (its size limit does not count them), and no recall line, find
+	// line or session start carries them. At most MaxAliases of at most MaxAliasRunes each (aliases.go).
+	// Version snapshots and the export keep them; the export leaves the key out when there are none.
+	Aliases []string `json:"aliases,omitempty"`
 	// AppliesTo is the scope as the tools show it (user, repo:<키>, product:<이름>, product:?), read from Scope.
 	AppliesTo string `json:"appliesTo"`
 	// Pinned is the always-on core (상시 핵심): put into every session start of its layer (설계 · orbit-mem 2판 4.4).

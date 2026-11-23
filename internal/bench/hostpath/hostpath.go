@@ -10,6 +10,7 @@ package hostpath
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -91,14 +92,34 @@ func FactoryWith(o Options) bench.Factory {
 		if err != nil {
 			return bench.Env{}, err
 		}
+		r := &recaller{svc: svc, at: c, db: db}
 		return bench.Env{
-			Recaller: &recaller{svc: svc, at: c},
+			Recaller: r,
 			Finder:   finder{svc: svc, at: c},
 			Similar:  similar{db: db, at: c, mins: memory.CheckMins{Similar: cfg.SaveSimilarMin, Near: cfg.SaveNearMin}},
 			SetNow:   func(t time.Time) { c.t = t },
-			Close:    func() error { svc.Wait(); return nil },
+			Change:   func(id, state string) error { return change(db, c, id, state) },
+			Close: func() error {
+				svc.Wait()
+				return r.close()
+			},
 		}, nil
 	}
+}
+
+// change moves the memory of the DB copy to a state at the path's time through the store, as the upkeep does;
+// the reason names the bench so the history shows where the move came from.
+func change(db string, c *clock, id, state string) error {
+	s, err := memory.Open(db)
+	if err != nil {
+		return fmt.Errorf("hostpath: change %s: %w", id, err)
+	}
+	defer s.Close()
+	s.Now = c.now
+	if _, err := s.SetState(id, state, "bench change"); err != nil {
+		return fmt.Errorf("hostpath: change %s to %s: %w", id, state, err)
+	}
+	return nil
 }
 
 // NewFinder is the Finder of this path alone, so that another recall path can be paired with the
@@ -120,9 +141,18 @@ type recaller struct {
 	svc    *host.Service
 	at     *clock
 	agents int // subagents started so far: each gets its own id
+	db     string
+	read   *memory.Store // read only, opened at the first call that put an id in
 }
 
 func (*recaller) Name() string { return Name }
+
+func (r *recaller) close() error {
+	if r.read == nil {
+		return nil
+	}
+	return r.read.Close()
+}
 
 func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	req.Host = hostName
@@ -134,18 +164,108 @@ func (r *recaller) do(op string, req host.Request) (bench.Shown, error) {
 	if !ok {
 		return bench.Shown{}, fmt.Errorf("hostpath: %s: result is %T", op, out)
 	}
-	if rec.Skipped != "" || len(rec.MemoryIDs) == 0 {
+	// 건너뛴 호출만 빈 결과다. id 없이 글만 있는 주입(찾는 곳 줄·알림 줄)도 모델 앞에 놓인 글이라 글자로 센다.
+	if rec.Skipped != "" {
 		return bench.Shown{IDs: []string{}}, nil
 	}
-	shown := bench.Shown{IDs: rec.MemoryIDs, Chars: len([]rune(rec.Text)), Text: rec.Text}
+	ids := rec.MemoryIDs
+	if ids == nil {
+		ids = []string{}
+	}
+	shown := bench.Shown{IDs: ids, Chars: len([]rune(rec.Text)), Text: rec.Text}
 	if op == host.OpRecall { // 요청 훅: 앞의 「이 세션 중 바뀐 것」(B3) 몫을 회상(B1)과 나눈다
-		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, rec.MemoryIDs)
+		shown.News, shown.NewsChars = inject.NewsShare(rec.Text, ids)
+	}
+	var err error
+	if shown.Dead, shown.DeadWhy, err = r.dead(ids); err != nil {
+		return bench.Shown{}, fmt.Errorf("hostpath: %s: %w", op, err)
 	}
 	return shown, nil
 }
 
+// dead are the ids that were not a current value at the path's time, with the reason of each (memory.Viewer, in
+// the words of bench.DeadReason),
+// read from the DB copy as it is after the call: a frozen session bundle (0.19.0 hands it back as it was) can hold
+// a memory that went stale since. An id the copy does not have is dead too (bench.DeadGone): it was forgotten
+// before the call, which is how the audit counts gone as well.
+func (r *recaller) dead(ids []string) ([]string, map[string]string, error) {
+	if len(ids) == 0 {
+		return nil, nil, nil
+	}
+	if r.read == nil {
+		s, _, err := memory.OpenReadOnly(r.db)
+		if err != nil {
+			return nil, nil, err
+		}
+		s.Now = r.at.now // 판정 시각은 경로의 시계다(Freshness가 그 시각으로 만료를 가른다)
+		r.read = s
+	}
+	vw, _ := r.read.Viewer()
+	var out []string
+	var why map[string]string
+	for _, id := range ids {
+		m, err := r.read.Get(id)
+		w := ""
+		switch {
+		case errors.Is(err, memory.ErrNotFound):
+			w = bench.DeadGone
+		case err != nil:
+			return nil, nil, err
+		default:
+			w = deadWhy(vw.Of(m).Why)
+		}
+		if w == "" {
+			continue
+		}
+		if why == nil {
+			why = map[string]string{}
+		}
+		out, why[id] = append(out, id), w
+	}
+	return out, why, nil
+}
+
+// deadWhy maps the Viewer's verdict to the reason a baseline names (bench.DeadReason): stale, hidden, expired.
+// An older value of a topic (memory.WhyOlder) is not dead here: the baseline never counted it, and counting it
+// would make the numbers of before and after this judge incomparable.
+func deadWhy(w memory.Why) string {
+	switch w {
+	case memory.WhyStale:
+		return bench.DeadStale
+	case memory.WhyRejected:
+		return bench.DeadHidden
+	case memory.WhyExpired:
+		return bench.DeadExpired
+	case memory.WhyGone:
+		return bench.DeadGone
+	}
+	return ""
+}
+
+// Reset forgets what the session was told (its bundle and marks), as the hook does before the start that follows
+// a compaction or a clear (hook/claudecode: reset, then context).
+func (r *recaller) Reset(session string) error {
+	out, herr := r.svc.Do(host.OpReset, host.Request{Host: hostName, Session: session}, host.Options{At: r.at.ms()})
+	if herr != nil {
+		return fmt.Errorf("hostpath: %s: %w", host.OpReset, herr)
+	}
+	if _, ok := out.(host.OK); !ok {
+		return fmt.Errorf("hostpath: %s: result is %T", host.OpReset, out)
+	}
+	return nil
+}
+
 func (r *recaller) Start(session, cwd string) (bench.Shown, error) {
-	return r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: host.SourceStartup, Audience: host.AudienceMain})
+	return r.StartFrom(session, cwd, "")
+}
+
+// StartFrom is the session start with the source a host gives it (bench.SourcedStarter); "" is a new session
+// (startup). The contract checks the source. The reset a compact or clear start needs first is the run's (Reset).
+func (r *recaller) StartFrom(session, cwd, source string) (bench.Shown, error) {
+	if source == "" {
+		source = host.SourceStartup
+	}
+	return r.do(host.OpContext, host.Request{Session: session, Cwd: cwd, Source: source, Audience: host.AudienceMain})
 }
 
 // Request always hands origin user: the origin of a case is the answer key, and the hook hands
@@ -154,8 +274,10 @@ func (r *recaller) Request(session, cwd, prompt string) (bench.Shown, error) {
 	return r.do(host.OpRecall, host.Request{Session: session, Cwd: cwd, Prompt: prompt, Origin: host.OriginUser})
 }
 
-func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
-	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool})
+// Tool is the recall before a tool call. input (the case's host.ToolInputText) goes in the contract's toolInput as
+// the hooks put it; a case without one is recalled by the tool's name, as from a host that gives no input.
+func (r *recaller) Tool(session, cwd, tool, input string) (bench.Shown, error) {
+	return r.do(host.OpToolContext, host.Request{Session: session, Cwd: cwd, Tool: tool, ToolInput: input})
 }
 
 // Subagent goes the way of a delegation in a host session (설계 · orbit-mem 4.1·11절): the delegation tool's

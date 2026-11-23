@@ -79,13 +79,13 @@ func TestResolve_git이_보는_저장소는_전과_같다(t *testing.T) {
 		cwd  string
 		want Project
 	}{
-		{filepath.Join(dir, "r", "x", "y"), Project{Scope: "project:github.com/a/r", Label: "github.com/a/r", Dir: slash("r", "x", "y"), Git: true, Temp: true}},
-		{filepath.Join(dir, "plain"), Project{Scope: "project:" + slash("plain"), Label: slash("plain"), Dir: slash("plain"), Git: true, Temp: true}},
-		{filepath.Join(dir, "wt", "deep"), Project{Scope: "project:" + slash("plain"), Label: slash("plain"), Dir: slash("wt", "deep"), Git: true, Temp: true}},
+		{filepath.Join(dir, "r", "x", "y"), Project{Scope: "project:github.com/a/r", Label: "github.com/a/r", Dir: slash("r", "x", "y"), Git: true, Temp: true, Top: slash("r")}},
+		{filepath.Join(dir, "plain"), Project{Scope: "project:" + slash("plain"), Label: slash("plain"), Dir: slash("plain"), Git: true, Temp: true, Top: slash("plain")}},
+		{filepath.Join(dir, "wt", "deep"), Project{Scope: "project:" + slash("plain"), Label: slash("plain"), Dir: slash("wt", "deep"), Git: true, Temp: true, Top: slash("wt")}},
 		{filepath.Join(dir, "bare.git"), Project{Scope: "project:github.com/a/bare", Label: "github.com/a/bare", Dir: slash("bare.git"), Git: true, Temp: true}},
 		{filepath.Join(dir, "lone.git"), Project{Scope: "project:" + slash("lone.git"), Label: slash("lone.git"), Dir: slash("lone.git"), Temp: true}},
 		{filepath.Join(dir, "plain", ".git"), Project{Scope: "project:" + slash("plain", ".git"), Label: slash("plain", ".git"), Dir: slash("plain", ".git"), Temp: true}},
-		{filepath.Join(dir, "link"), Project{Scope: "project:github.com/a/r", Label: "github.com/a/r", Dir: slash("r", "x"), Git: true, Temp: true}},
+		{filepath.Join(dir, "link"), Project{Scope: "project:github.com/a/r", Label: "github.com/a/r", Dir: slash("r", "x"), Git: true, Temp: true, Top: slash("r")}},
 	}
 	for _, c := range cases {
 		if p := Resolve(c.cwd); p != c.want {
@@ -105,7 +105,7 @@ func TestResolve_GIT_DIR_환경이면_git에_묻는다(t *testing.T) {
 	runs := countingGit(t, "")
 	t.Setenv("GIT_DIR", filepath.Join(repo, ".git"))
 	p := Resolve(plain)
-	if want := (Project{Scope: "project:github.com/a/env", Label: "github.com/a/env", Dir: filepath.ToSlash(plain), Git: true, Temp: true}); p != want {
+	if want := (Project{Scope: "project:github.com/a/env", Label: "github.com/a/env", Dir: filepath.ToSlash(plain), Git: true, Temp: true, Top: filepath.ToSlash(plain)}); p != want {
 		t.Fatalf("%+v, want %+v", p, want)
 	}
 	if runs() == 0 {
@@ -143,6 +143,7 @@ func TestAgain_같은_폴더는_앞선_판정을_git_없이_다시_쓴다(t *tes
 		gitKnown bool // 앞선 값만으로 Git까지 정해지는가(원격 키·상위 최상위면 저장소다)
 	}{{remote, true}, {filepath.Join(plain, "sub"), true}, {plain, false}} {
 		fresh := Resolve(c.cwd)
+		fresh.Top = "" // 앞선 값은 최상위를 담지 않는다(GitTop이 따로 묻는다)
 		before := runs()
 		asked := 0
 		p, known := Again(c.cwd, func() (Earlier, bool) {
@@ -244,7 +245,7 @@ fi
 	if got := string(b); got != "config\nrev-parse\n" && got != "rev-parse\nconfig\n" {
 		t.Fatalf("두 git이 함께 돌지 않았다: %q", got)
 	}
-	if want := (Project{Scope: "project:" + filepath.ToSlash(dir), Label: filepath.ToSlash(dir), Dir: filepath.ToSlash(dir), Git: true, Temp: true}); p != want {
+	if want := (Project{Scope: "project:" + filepath.ToSlash(dir), Label: filepath.ToSlash(dir), Dir: filepath.ToSlash(dir), Git: true, Temp: true, Top: filepath.ToSlash(dir)}); p != want {
 		t.Fatalf("%+v, want %+v", p, want)
 	}
 }

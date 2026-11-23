@@ -449,3 +449,167 @@ func TestBench_steps는_옛_재생_사례에_단계_시각을_붙이고_맞지_�
 		t.Fatalf("timed run %d: %s", code, errb)
 	}
 }
+
+// 감사는 DB 전체의 주입을 세므로 재생 표본도 넓힐 수 있어야 한다. 상한 깃발은 0이면 상한이 없고, --all은 최소 수에서
+// 멈추지 않고 모든 세션을 뽑는다. 기본값은 예전 그대로(세션당 12요청)다. 음수는 사용법 오류다.
+func TestBench_extract_상한_깃발과_all은_표본을_넓힌다(t *testing.T) {
+	home(t)
+	db, s := openedDB(t)
+	s.Close()
+	projs := t.TempDir()
+	for i := range 3 {
+		var b strings.Builder
+		for j := range 15 {
+			fmt.Fprintf(&b, `{"type":"user","sessionId":"s%d","cwd":"/work/demo","timestamp":"2026-11-0%dT10:%02d:00Z","origin":{"kind":"human"},"message":{"role":"user","content":"요청 %d"}}`+"\n", i, i+1, j, j)
+		}
+		dir := filepath.Join(projs, fmt.Sprintf("p%d", i))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("s%d.jsonl", i)), []byte(b.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	extract := func(extra ...string) (sessions, requests int) {
+		t.Helper()
+		out := filepath.Join(t.TempDir(), "replay")
+		args := append([]string{"bench", "extract", "--projects", projs, "--db", db, "--out", out}, extra...)
+		if _, errb, code := run(t, "", args...); code != 0 {
+			t.Fatalf("%v: exit %d: %s", extra, code, errb)
+		}
+		var cf struct {
+			Cases []struct{ Session, Kind string }
+		}
+		b, _ := os.ReadFile(filepath.Join(out, "cases.json"))
+		if err := json.Unmarshal(b, &cf); err != nil {
+			t.Fatal(err)
+		}
+		seen := map[string]bool{}
+		for _, c := range cf.Cases {
+			seen[c.Session] = true
+			if c.Kind == "request" {
+				requests++
+			}
+		}
+		return len(seen), requests
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000"); n != 3 || r != 36 {
+		t.Errorf("defaults: %d sessions %d requests, want 3 and 36 (12 a session)", n, r)
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000", "--max-requests-per-session", "0"); n != 3 || r != 45 {
+		t.Errorf("no cap a session: %d sessions %d requests, want 3 and 45", n, r)
+	}
+	if n, r := extract("--min-sessions", "100", "--min-requests", "1000", "--max-sessions", "2", "--max-requests-per-session", "0"); n != 2 || r != 30 {
+		t.Errorf("two sessions: %d sessions %d requests", n, r)
+	}
+	if n, r := extract("--all"); n != 3 || r != 45 {
+		t.Errorf("all: %d sessions %d requests, want 3 and 45", n, r)
+	}
+	if _, _, code := run(t, "", "bench", "extract", "--projects", projs, "--db", db, "--out", filepath.Join(t.TempDir(), "x"), "--max-sessions", "-1"); code != 2 {
+		t.Errorf("a negative cap: exit %d, want the usage error", code)
+	}
+}
+
+// bench audit-injections는 --db가 꼭 있어야 하고(기본 DB를 읽지 않는다), 원본을 열지 않고 사본으로 센다.
+func TestBench_audit_injections는_원본을_바꾸지_않고_낡은_주입을_센다(t *testing.T) {
+	home(t)
+	if _, _, code := run(t, "", "bench", "audit-injections"); code != 2 {
+		t.Fatalf("no --db: exit %d, want the usage error", code)
+	}
+	db, s := openedDB(t)
+	list, err := s.List(memory.StateConfirmed)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("fixture: %v %v", list, err)
+	}
+	id := list[0].ID
+	s.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	if _, err := s.SetState(id, memory.StateStale, "낡음"); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	if err := s.RecordEvent(memory.Event{Kind: memory.EventInjectSessionStart, Session: "s1"}, map[string]any{"memoryIds": []string{id}}); err != nil {
+		t.Fatal(err)
+	}
+	before := sums(t, db)
+	stdout, errb, code := run(t, "", "bench", "audit-injections", "--db", db, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	var got struct {
+		Events, Dead, Pairs int
+		ByKind              map[string]int
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil || got.Events != 1 || got.Dead != 1 || got.Pairs != 1 || got.ByKind[memory.EventInjectSessionStart] != 1 {
+		t.Fatalf("audit %+v %v: %s", got, err, stdout)
+	}
+	if text, _, code := run(t, "", "bench", "audit-injections", "--db", db); code != 0 || !strings.Contains(text, memory.EventInjectSessionStart) {
+		t.Fatalf("text %d: %s", code, text)
+	}
+	after := sums(t, db)
+	for k, v := range before {
+		if after[k] != v {
+			t.Errorf("the source %q changed", k)
+		}
+	}
+}
+
+// 재생 사례를 일부만 돈다(--sessions·--kinds). 사례 파일에 제품 지도가 없으면 설정 파일의 지도를 쓴다(--products): 제품
+// 폴더의 세션 시작에 그 제품의 핵심이 든다. 지도가 둘이면 거절한다.
+func TestBench_sessions_kinds_products는_사례를_거르고_제품_지도를_쓴다(t *testing.T) {
+	home(t)
+	dir := t.TempDir()
+	const set = `{"now":"2026-11-01T00:00:00Z","cwd":"/work/demo","seed":"s",%s"memories":[
+	 {"key":"core","kind":"rule","scope":"product:demo","quote":true,"pinned":true,"title":"Deploy on Tuesdays","topic":"deploy"}],
+	 "cases":[
+	 {"id":"s1-001","session":"s1","prompt":"how do we deploy"},
+	 {"id":"s1-002","session":"s1","kind":"start","source":"resume"},
+	 {"id":"s2-001","session":"s2","prompt":"hello"}]}`
+	plain, mapped := filepath.Join(dir, "c.json"), filepath.Join(dir, "m.json")
+	os.WriteFile(plain, []byte(fmt.Sprintf(set, "")), 0o600)
+	os.WriteFile(mapped, []byte(fmt.Sprintf(set, `"products":{"demo":{"match":["/work/demo"]}},`)), 0o600)
+	cfg := filepath.Join(dir, "config.json")
+	os.WriteFile(cfg, []byte(`{"products":{"demo":{"match":["/work/demo"]}}}`), 0o600)
+	type seen struct{ IDs []string }
+	type result struct {
+		Sessions []struct {
+			Session string
+			IDs     []string
+		}
+		Cases []struct {
+			ID    string
+			Start *seen
+		}
+	}
+	report := func(args ...string) result {
+		t.Helper()
+		out, errb, code := run(t, "", append([]string{"bench", "recall", "--recall", "current", "--json"}, args...)...)
+		if code != 0 {
+			t.Fatalf("%v: 종료 %d: %s", args, code, errb)
+		}
+		var v struct{ Runs []result }
+		if err := json.Unmarshal([]byte(out), &v); err != nil || len(v.Runs) != 1 {
+			t.Fatalf("%v: %v", args, err)
+		}
+		return v.Runs[0]
+	}
+	if r := report("--cases", plain); len(r.Sessions) != 2 || len(r.Sessions[0].IDs) != 0 {
+		t.Fatalf("without a product map the product core is not in the start: %+v", r.Sessions)
+	}
+	if r := report("--cases", plain, "--products", cfg); len(r.Sessions) != 2 || len(r.Sessions[0].IDs) != 1 {
+		t.Fatalf("with the settings' product map the product core is in the start: %+v", r.Sessions)
+	}
+	r := report("--cases", plain, "--products", cfg, "--sessions", "s1", "--kinds", "start")
+	if c := r.Cases; len(r.Sessions) != 1 || len(c) != 2 || c[0].ID != "s1-001+start" || c[1].ID != "s1-002" || c[1].Start == nil || len(c[1].Start.IDs) != 1 {
+		t.Fatalf("starts of s1 only: %+v", r)
+	}
+	for _, args := range [][]string{
+		{"--cases", mapped, "--products", cfg},
+		{"--cases", plain, "--products", filepath.Join(dir, "none.json")},
+		{"--cases", plain, "--sessions", "s9"},
+		{"--cases", plain, "--kinds", "later"},
+	} {
+		if _, _, code := run(t, "", append([]string{"bench", "recall", "--recall", "current"}, args...)...); code != 1 {
+			t.Errorf("%v: 종료 %d, 1이어야 한다", args, code)
+		}
+	}
+}

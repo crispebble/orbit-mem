@@ -76,7 +76,7 @@ func TestB1_도구_직전에_넣은_기억도_요청이_물으면_나온다(t *t
 		t.Fatal(err)
 	}
 	SessionBundle(s, cfg, here, "claude", "A")
-	tool := ToolInjection(s, cfg, here, "claude", "A", "mcp__atlas__write_page")
+	tool := ToolInjection(s, cfg, here, "claude", "A", "mcp__atlas__write_page", "")
 	if !strings.Contains(tool.Text, m.ID) {
 		t.Fatalf("도구 직전에 없습니다:\n%s", tool.Text)
 	}

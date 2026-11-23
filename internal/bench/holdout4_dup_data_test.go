@@ -1,7 +1,6 @@
 package bench_test
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/crispebble/orbit-mem/internal/bench"
@@ -20,9 +19,7 @@ func TestHoldout4DupSetData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(set.Memories, pub.Memories) {
-		t.Errorf("memories differ from the public set, want a verbatim copy")
-	}
+	checkSharedMemories(t, set, pub)
 	ids := map[string]bool{}
 	for _, c := range pub.Cases {
 		ids[c.ID] = true

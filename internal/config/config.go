@@ -80,7 +80,7 @@ type Config struct {
 	// 확정 규칙(A2, 계획 · AU-6). 후보가 스스로 확정되는 증거의 횟수와 반복 교정 표시 기준.
 	// confirmFollowedVerified·correctionRepeatSessions는 E2: 이 PC 기억 DB 사본(2026-10-26~11-01)으로 잰
 	// 추천값이며 사용자 결정 대기다. 근거는 Atlas 계획 · AU-6 「E2 측정」.
-	ConfirmSeenDays          int `json:"confirmSeenDays"`          // ① 서로 다른 날 다시 나온 날 수(지금 규칙 2)
+	ConfirmSeenDays          int `json:"confirmSeenDays"`          // ① 세션도 날도 서로 다른 다시 나옴 수(지금 규칙 2)
 	ConfirmFollowedVerified  int `json:"confirmFollowedVerified"`  // ② 회상돼 따랐고 검증 통과·교정 없는 세션 수
 	CorrectionRepeatSessions int `json:"correctionRepeatSessions"` // 같은 대상 교정이 나온 세션 수가 이 이상이면 표시
 
@@ -135,6 +135,32 @@ type Config struct {
 	// 낱말의 드묾(저장소 IDF를 한 기억에만 있는 낱말의 IDF로 나눈 합, 「드문 낱말 몇 개 몫」)을 내용 낱말 수로 나눈 값
 	// (memory.RecallHit.TitleShare)이 taskRecallMinTitleShare 미만이면 넣지 않는다. 0 < x ≤ 1. 이 키가 없는 옛 파일은 기본값이다.
 	TaskRecallMinTitleShare float64 `json:"taskRecallMinTitleShare"`
+	// 도구 입력 문(명세 T-1): 기본은 켬이다. 켜면 도구 직전 회상은 호스트가 도구 입력(명령·경로)을 준 호출에서, 확정된 규칙이 아닌 기억
+	// (교훈·사실·결정, 그리고 모든 후보)을 그 입력과의 회상 점수(요청 회상과 같은 점수 함수)가 toolInputMinScore 이상일 때만
+	// 넣는다. 끄면 그 기억들도 도구 이름만으로 판정한다. 입력 조건(tools 칸의 Bash(git commit), T-2)은 이 스위치와 관계없이
+	// 지킨다. 문턱 기본값은 0.5다. toolInputMinScore는 0 < x ≤ 1이고, 이 키가 없는 옛 파일은 기본값이다.
+	// IDF는 도구 트리거가 달린 기억 집합 기준이라(memory.ToolInputScores) 요청 회상의 점수와 값이 다를 수 있다.
+	ToolInputGate     bool    `json:"toolInputGate"`
+	ToolInputMinScore float64 `json:"toolInputMinScore"`
+	// 순위 스위치(명세 R-1): 스위치는 점수 단계 하나만 켜고 끈다. 켜면 회상 순위(요청·위임·도구 직전)가 점수 차가
+	// rankScoreMargin보다 크면 점수가 큰 쪽을 먼저 두고, 그 안이면 확정된 기억을 먼저 둔다. 끄면 확정이 먼저이고 그다음 점수다.
+	// 점수와 확정이 같을 때 재검토 지남(Memory.ReviewAt이 지난 기억)을 뒤로 보내는 것(R-3)은 스위치와 관계없이 늘 적용된다.
+	// 도구 직전 회상에서는 확정된 규칙이 점수 단계에서 밀리지 않는다(명세 T-2). rankScoreMargin은 0 < x ≤ 1이고, 이 키가 없는
+	// 옛 파일은 기본값이다. 기본은 켬(0.1)이다(R-2): 켜도 공개 평가 묶음의 요청 적중은 내려가지 않고 틀린 회상도 늘지 않으며
+	// 실제 기록 재생의 경로별 글자 수는 그대로다(0.1~0.2는 같은 결과, 0.05는 요청 회상의 몇 호출이 바뀐다). 켜면 점수가 높은
+	// 후보가 약하게 걸린 확정 기억보다 앞선다. 끄려면 설정에서 false로 둔다.
+	RankByScore     bool    `json:"rankByScore"`
+	RankScoreMargin float64 `json:"rankScoreMargin"`
+	// 자동 모드(명세 C-9): 기본은 꺼짐이다. 켜면 근거가 적힌 검증 출처의 사실이 같은 범위·주제의 사용자 말 사실을
+	// 스스로 대체한다(서버가 근거 파일을 다시 확인했든 아니든. 원장에 남아 감사 목록에서 되돌린다). 끄면 어느 쪽이든 어긋남으로
+	// 남기고 사용자가 고른다. 다시 확인했는지는 어긋남이 없을 때의 즉시 확정만 가른다. 규칙·결정은 어느 쪽이든 대체하지 않는다
+	// (memory/replace.go). 끄면 앞으로의 저장만 다시 묻는 쪽으로 돌아가고, 이미 대체된 것은 그대로다. 이 키가 없는 옛 파일은 꺼짐이다.
+	AutoMode bool `json:"autoMode"`
+	// 찾기 질의의 조사 떼기(명세 Q-2): 켜면 memory_find가 질의의 어절마다 원래 낱말 뒤에 닫힌 조사·어미 목록(요청 회상과
+	// 같은 규칙, memory.StripParticlesQuery)을 뗀 어간을 더해 찾는다: 「배포를」은 「배포를 배포」로 찾는다. 끄면 질의를 쓴
+	// 그대로 찾는다. 기본은 꺼짐이고 이 키가 없는 옛 파일도 꺼짐이다. 공개 평가 묶음에서 켜면 지표는 같고 정답의 평균 순위가
+	// 조금 나빠져(0.19 → 0.20, 원래 낱말을 남긴 꼴) 평가가 낫다고 보일 때까지 끈다.
+	FindStripParticles bool `json:"findStripParticles"`
 }
 
 // 회상 문턱의 기본값(계획 1-6 b6 2차). 공개 평가 묶음 전체(internal/bench/testdata/public_set.json, 학습용과 옛 판정용 모두
@@ -162,6 +188,13 @@ const (
 	DefaultTaskRecallMinWords       = 3
 	DefaultTaskRecallMinRelative    = 0.3
 	DefaultTaskRecallMinTitleShare  = 0.05
+	// DefaultToolInputMinScore는 도구 입력 문(toolInputGate)의 점수 문턱이다. 스위치는 기본으로 켜져 있다. 점수가 낱말이
+	// 겹치는지에 따라 거의 이진이라 0.5는 입력과 낱말이 겹치지 않는 기억을 막고, 겹치는 기억은 지난다. 값을 올릴수록 무관
+	// 반복은 줄지만 입력과 관련 있는 기억도 함께 막힌다. 요청 회상의 문턱(DefaultRecallMinScore)과는 따로 둔다.
+	DefaultToolInputMinScore = 0.5
+	// DefaultRankScoreMargin은 순위 스위치(rankByScore)의 점수 차 문턱이다. 스위치는 기본으로 켜져 있고, 평가 묶음과 실제
+	// 기록 재생에서 0.1~0.2가 같은 결과여서 그 가운데 가장 작은 값을 쓴다(명세 R-2).
+	DefaultRankScoreMargin = 0.1
 )
 
 // MinTaskRecallMinWords and MaxTaskRecallMinWords bound taskRecallMinWords. The least is 2: a task, like a
@@ -248,7 +281,8 @@ func Default() Config {
 		SaveSimilarMin: memory.DefaultSimilarMin, SaveNearMin: memory.DefaultNearMin, RecallMinScore: DefaultRecallMinScore, RecallMinCoverage: DefaultRecallMinCoverage,
 		RecallMinCoverageOneWord: DefaultRecallMinCoverageOneWord, RecallMinRelative: DefaultRecallMinRelative,
 		TaskRecallMinScore: DefaultTaskRecallMinScore, TaskRecallMinWords: DefaultTaskRecallMinWords, TaskRecallMinRelative: DefaultTaskRecallMinRelative,
-		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare}
+		TaskRecallMinTitleShare: DefaultTaskRecallMinTitleShare, ToolInputGate: true, ToolInputMinScore: DefaultToolInputMinScore, RankByScore: true, RankScoreMargin: DefaultRankScoreMargin,
+		FindStripParticles: false}
 }
 
 // Validate checks values a person may have typed by hand.
@@ -310,6 +344,12 @@ func (c Config) Validate() error {
 	}
 	if !(c.TaskRecallMinTitleShare > 0 && c.TaskRecallMinTitleShare <= 1) {
 		return i18n.Errorf("config.err.task_recall_min_title_share", c.TaskRecallMinTitleShare)
+	}
+	if !(c.ToolInputMinScore > 0 && c.ToolInputMinScore <= 1) {
+		return i18n.Errorf("config.err.tool_input_min_score", c.ToolInputMinScore)
+	}
+	if !(c.RankScoreMargin > 0 && c.RankScoreMargin <= 1) {
+		return i18n.Errorf("config.err.rank_score_margin", c.RankScoreMargin)
 	}
 	for op, v := range c.HostTimeouts {
 		if _, ok := defaultHostTimeouts[op]; !ok {

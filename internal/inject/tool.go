@@ -2,6 +2,7 @@ package inject
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,7 +64,14 @@ const markToolCall = "tool.call"
 // and the pointer line names what still fits. Memories it could not bring or name stay candidates for a
 // later call. MemoryIDs are the memories brought, then the ones named. With nothing to bring and nothing
 // new to name within the session sum it adds nothing.
-func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool string) Injection {
+//
+// input is the text of the call's input (host.ToolInputText; "" when the host gives none). A trigger with an input
+// condition, Bash(git commit), matches only when its words are in input, whatever the settings; with no input it
+// matches by the tool's name (memory.Memory.TriggeredByInput, 명세 T-2·T-4). With toolInputGate on (the default) and an input,
+// a memory that is not a confirmed rule (a lesson, fact or decision, or any candidate) comes only when its recall
+// score against input (memory.ToolInputScores) is at least toolInputMinScore (명세 T-1); confirmed rules come by
+// the tool's name. The input is read for this judgment only: it is not in the text, the marks or the result.
+func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, tool, input string) Injection {
 	var inj Injection
 	var b strings.Builder
 	if cfg.RecallMode() == config.RecallOff || strings.TrimSpace(tool) == "" {
@@ -73,34 +81,71 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	if err != nil || len(active) == 0 {
 		return inj.done(&b)
 	}
-	heads, _ := s.TopicHeads()
-	now := s.Now()
+	vw, _ := s.Viewer()
 	given := s.SessionMarks(host, session, memory.MarkTool)
 	told := s.SessionMarks(host, session, markToolMore)
 	pl := at(cfg, scope)
 	type hit struct {
 		m     memory.Memory
 		exact bool
+		due   bool
 	}
 	var hits []hit
+	// 도구 입력 문(명세 T-1)은 스위치가 켜지고 호스트가 입력을 준 호출에만 연다(T-4). 점수는 이미 읽은 기억과 입력으로만
+	// 매기고, 문을 지날 기억이 있을 때 한 번만 센다.
+	hasInput := strings.TrimSpace(input) != ""
+	gate := cfg.ToolInputGate && hasInput
+	var scores map[string]float64
+	scored := false
+	inputScores := func() map[string]float64 {
+		if !scored {
+			scores, scored = memory.ToolInputScores(active, input), true
+		}
+		return scores
+	}
 	for _, m := range active {
-		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || excluded(m, now, heads) != "" {
+		if len(m.Tools) == 0 || given[m.ID] || !inScope(m, pl) || m.Kind == memory.KindJournal || !vw.Of(m).Current() {
 			continue
 		}
-		if exact, ok := m.TriggeredBy(tool); ok {
-			hits = append(hits, hit{m, exact})
+		exact, ok := m.TriggeredByInput(tool, input)
+		if !ok {
+			continue
 		}
+		if gate && !confirmedRule(m) {
+			// 막힌 기억은 넣은 것도 가리킨 것도 아니다: 표시를 남기지 않아 관련 있는 입력의 호출에서 다시 후보가 된다.
+			if inputScores()[m.ID] < cfg.ToolInputMinScore {
+				continue
+			}
+		}
+		hits = append(hits, hit{m, exact, vw.Of(m).ReviewDue})
 	}
 	if len(hits) == 0 {
 		return inj.done(&b)
+	}
+	// 순서는 이름이 정확히 맞은 것이 먼저이고, 그 안에서 순위 규칙(rankPolicy.beforeTool: 요청 회상과 같되 확정 규칙은 점수 단계에서
+	// 밀리지 않는다, 명세 T-2), 그다음 이 장소, 최근 고침, id다.
+	// 순위의 점수는 도구 입력과의 점수(memory.ToolInputScores)다. 입력이 없으면 점수가 없어(0) 점수 단계는 아무것도 가르지 않고,
+	// rankByScore를 끄면 점수는 쓰이지 않는다: 둘 다 확정이 먼저인 지금 순서다.
+	policy := rankPolicyOf(cfg)
+	var rankScores map[string]float64
+	if policy.byScore && hasInput && len(hits) > 1 { // 하나면 가를 것이 없다: 점수를 세지 않는다(입력 문이 이미 센 것은 그대로 쓴다)
+		rankScores = inputScores()
+	}
+	key := func(h hit) rankKey {
+		return rankKey{score: rankScores[h.m.ID], confirmed: h.m.State == memory.StateConfirmed, reviewDue: h.due, rule: confirmedRule(h.m)}
 	}
 	sort.SliceStable(hits, func(i, j int) bool {
 		a, c := hits[i], hits[j]
 		if a.exact != c.exact {
 			return a.exact
 		}
-		if ca, cc := a.m.State == memory.StateConfirmed, c.m.State == memory.StateConfirmed; ca != cc {
-			return ca
+		ka, kc := key(a), key(c)
+		if first, decided := policy.beforeTool(ka, kc); decided {
+			return first
+		}
+		// 문턱 안의 점수 차는 위에서 가려지지 않는다: 점수를 꼬리 앞에 두어야 비교가 전순서다(rankHits의 꼬리도 점수부터다).
+		if sa, sc := math.Round(ka.score*1e9), math.Round(kc.score*1e9); sa != sc {
+			return sa > sc
 		}
 		if la, lc := pl.Local(a.m.Scope, a.m.Project, nil), pl.Local(c.m.Scope, c.m.Project, nil); la != lc {
 			return la
@@ -119,11 +164,19 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	}
 	callUsed, brought := 0, 0
 	var entries strings.Builder
+	// 어긋남은 줄로 실릴 수 있는 앞쪽 기억만 한 번에 읽는다(호출마다 기억 수만큼 읽지 않는다).
+	var maybe []string
+	for _, h := range hits[:min(len(hits), MaxToolMemories)] {
+		maybe = append(maybe, h.m.ID)
+	}
+	// 서브에이전트의 키(session)로 부른 호출은 그 서브에이전트가 처음 보는 것이라 지시를 한 번 더 받는다. 의도한 동작이다.
+	conflicts := newConflictReader(s, cfg, host, session, maybe, pl)
 	for _, h := range hits {
 		if brought == MaxToolMemories {
 			break
 		}
-		line := toolLine(h.m)
+		note, info := conflicts.note(h.m.ID)
+		line := toolLine(h.m, note, h.due)
 		n := runes(line)
 		// 세션 합계에서 멈춘다(설계 5.2절): 순서를 건너뛰어 더 짧은 기억을 넣지 않는다.
 		if callUsed+n > MaxToolCallRunes || used+n > room {
@@ -135,6 +188,7 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 		brought++
 		inj.MemoryIDs = append(inj.MemoryIDs, h.m.ID)
 		inj.mark(memory.MarkTool, h.m.ID)
+		inj.markAsked(info)
 	}
 	var rest []memory.Memory
 	for _, h := range hits[brought:] { // 넣은 것은 hits 앞에서부터다
@@ -165,6 +219,12 @@ func ToolInjection(s *memory.Store, cfg config.Config, scope, host, session, too
 	}
 	inj.mark(markToolCall, fmt.Sprintf("%d:%s", inj.Chars, first))
 	return inj
+}
+
+// confirmedRule says whether m comes by the tool's name alone under the tool input gate (명세 T-1·T-2): a rule the
+// user confirmed is a standing instruction for the tool, the rest are recalled only when they bear on the input.
+func confirmedRule(m memory.Memory) bool {
+	return m.Kind == memory.KindRule && m.State == memory.StateConfirmed
 }
 
 // toolHead is the head line of a tool recall, the tool name cut to maxToolNameRunes.
@@ -204,9 +264,13 @@ func toolPointerLine(rest []memory.Memory, limit int) (string, []string) {
 }
 
 // toolLine is how a tool call shows one memory: its title line and, under it, as much of the body as
-// fits in MaxToolMemoryRunes. The session sum redraws the memories it was given with it.
-func toolLine(m memory.Memory) string {
-	tail := fmt.Sprintf(" (%s · %s %s)\n", m.ID, kindName(m.Kind), toolState(m))
+// fits in MaxToolMemoryRunes, then conflict, the note line of a memory with an open conflict ("" for one
+// without). The note is outside the 160 runes: it says whether the memory can be relied on, and the call's own
+// limits (MaxToolCallRunes, the session sum) still bound it. The session sum redraws the memories it was given
+// with it and without the note, which is not known then. due puts the review mark (L-2) in the state word; inside
+// the 160 runes it takes room from the body, so the line is no longer.
+func toolLine(m memory.Memory, conflict string, due bool) string {
+	tail := fmt.Sprintf(" (%s · %s %s)\n", m.ID, kindName(m.Kind), toolState(m, due))
 	title := m.Title
 	if room := MaxToolMemoryRunes - runes(tail) - 2; runes(title) > room {
 		title = memory.ClipRunes(title, room-1) // ClipRunes adds "…"
@@ -220,15 +284,18 @@ func toolLine(m memory.Memory) string {
 			line += "  " + memory.ClipRunes(text, room) + "\n"
 		}
 	}
-	return line
+	return line + conflict
 }
 
 // toolState is the state word of a tool memory line, with the untrusted note (D7) when the memory's
 // sources are all untrusted.
-func toolState(m memory.Memory) string {
+func toolState(m memory.Memory, due bool) string {
 	s := "확정"
 	if m.State == memory.StateCandidate {
 		s = "후보"
+	}
+	if due {
+		s += " · " + reviewMark
 	}
 	if note := memory.TrustNoteIn(i18n.KO, m); note != "" {
 		s += " · " + note
@@ -268,7 +335,7 @@ func toolSessionUsed(s *memory.Store, host, session string, active []memory.Memo
 			}
 			m = got
 		}
-		lines += runes(toolLine(m))
+		lines += runes(toolLine(m, "", false))
 	}
 	return max(calls, lines)
 }

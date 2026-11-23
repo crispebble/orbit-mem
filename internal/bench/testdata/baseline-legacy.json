@@ -2,20 +2,20 @@
   "about": "공개 고정 평가 묶음(모델 호출 없음, 개인 내용 없음). 가짜 기억과 사례만 있다. 정답(expect·allow·forbid)은 지금 회상 코드가 맞히는지가 아니라 참을 기준으로 적었다. 사례 칸과 지표는 README.md에 있다.",
   "now": "2026-11-03T09:00:00+09:00",
   "seed": "orbit-mem-public-1",
-  "cases": 195,
+  "cases": 223,
   "split": {
-    "units": 119,
-    "trainUnits": 83,
-    "testUnits": 36,
+    "units": 133,
+    "trainUnits": 93,
+    "testUnits": 40,
     "test": {
-      "answered": 27,
-      "empty": 14,
+      "answered": 31,
+      "empty": 15,
       "subagent": 11,
       "duplicate": 13
     },
     "pointsPerCase": {
-      "answered": 3.7037,
-      "empty": 7.1429,
+      "answered": 3.2258,
+      "empty": 6.6667,
       "subagent": 9.0909,
       "duplicate": 7.6923
     }
@@ -25,30 +25,30 @@
       "name": "legacy-87ab0fb",
       "train": {
         "requests": {
-          "cases": 96,
+          "cases": 108,
           "hit": {
-            "num": 50,
-            "den": 64,
-            "value": 0.7813
+            "num": 58,
+            "den": 73,
+            "value": 0.7945
           },
-          "injected": 164,
-          "correct": 64,
+          "injected": 180,
+          "correct": 74,
           "neutral": 22,
           "wrong": {
-            "num": 78,
-            "den": 164,
-            "value": 0.4756
+            "num": 84,
+            "den": 180,
+            "value": 0.4667
           },
-          "forbid": 16,
-          "forbidCases": 10,
+          "forbid": 20,
+          "forbidCases": 13,
           "empty": {
-            "num": 23,
-            "den": 32,
-            "value": 0.7188
+            "num": 25,
+            "den": 35,
+            "value": 0.7143
           },
           "chars": {
-            "n": 82,
-            "mean": 131.6951,
+            "n": 90,
+            "mean": 128.1,
             "median": 94,
             "max": 800
           },
@@ -78,22 +78,22 @@
             "value": 0.9286
           },
           "b2Chars": {
-            "n": 14,
-            "mean": 120.1429,
-            "median": 157,
-            "max": 190
+            "n": 18,
+            "mean": 151.2222,
+            "median": 170,
+            "max": 363
           },
           "sessionChars": {
-            "n": 62,
-            "mean": 831.5161,
-            "median": 758,
+            "n": 72,
+            "mean": 831.1944,
+            "median": 770,
             "max": 1462
           },
           "startChars": {
-            "n": 62,
-            "mean": 630.2097,
+            "n": 72,
+            "mean": 633.2639,
             "median": 648,
-            "max": 648
+            "max": 658
           }
         },
         "subagent": {
@@ -152,35 +152,109 @@
           },
           "forbid": 0,
           "nearForbid": 10
+        },
+        "paths": {
+          "start": {
+            "calls": 87,
+            "injections": 87,
+            "chars": {
+              "n": 87,
+              "mean": 632.4943,
+              "median": 648,
+              "max": 658
+            },
+            "injectionChars": {
+              "n": 87,
+              "mean": 632.4943,
+              "median": 648,
+              "max": 658
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 90,
+            "injections": 60,
+            "chars": {
+              "n": 90,
+              "mean": 128.1,
+              "median": 94,
+              "max": 800
+            },
+            "injectionChars": {
+              "n": 60,
+              "mean": 192.15,
+              "median": 101.5,
+              "max": 800
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 18,
+            "injections": 14,
+            "chars": {
+              "n": 18,
+              "mean": 151.2222,
+              "median": 170,
+              "max": 363
+            },
+            "injectionChars": {
+              "n": 14,
+              "mean": 194.4286,
+              "median": 183.5,
+              "max": 363
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 16,
+            "injections": 16,
+            "chars": {
+              "n": 16,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 16,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "test": {
         "requests": {
-          "cases": 41,
+          "cases": 46,
           "hit": {
-            "num": 20,
-            "den": 27,
-            "value": 0.7407
+            "num": 21,
+            "den": 31,
+            "value": 0.6774
           },
-          "injected": 68,
-          "correct": 23,
-          "neutral": 14,
+          "injected": 82,
+          "correct": 25,
+          "neutral": 23,
           "wrong": {
-            "num": 31,
-            "den": 68,
-            "value": 0.4559
+            "num": 34,
+            "den": 82,
+            "value": 0.4146
           },
-          "forbid": 9,
-          "forbidCases": 4,
+          "forbid": 12,
+          "forbidCases": 6,
           "empty": {
-            "num": 11,
-            "den": 14,
-            "value": 0.7857
+            "num": 12,
+            "den": 15,
+            "value": 0.8
           },
           "chars": {
             "n": 39,
-            "mean": 125.2821,
-            "median": 94,
+            "mean": 120.8974,
+            "median": 92,
             "max": 978
           },
           "hitByStart": 1,
@@ -209,22 +283,22 @@
             "value": 0.8571
           },
           "b2Chars": {
-            "n": 2,
-            "mean": 185,
-            "median": 185,
-            "max": 187
+            "n": 7,
+            "mean": 263.2857,
+            "median": 249,
+            "max": 363
           },
           "sessionChars": {
-            "n": 26,
-            "mean": 841.1923,
-            "median": 761.5,
+            "n": 30,
+            "mean": 859.4,
+            "median": 786,
             "max": 1626
           },
           "startChars": {
-            "n": 26,
-            "mean": 639.0385,
+            "n": 30,
+            "mean": 640.8,
             "median": 648,
-            "max": 648
+            "max": 652
           }
         },
         "subagent": {
@@ -283,34 +357,108 @@
           },
           "forbid": 0,
           "nearForbid": 6
+        },
+        "paths": {
+          "start": {
+            "calls": 36,
+            "injections": 36,
+            "chars": {
+              "n": 36,
+              "mean": 635.6389,
+              "median": 648,
+              "max": 652
+            },
+            "injectionChars": {
+              "n": 36,
+              "mean": 635.6389,
+              "median": 648,
+              "max": 652
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 39,
+            "injections": 21,
+            "chars": {
+              "n": 39,
+              "mean": 120.8974,
+              "median": 92,
+              "max": 978
+            },
+            "injectionChars": {
+              "n": 21,
+              "mean": 224.5238,
+              "median": 139,
+              "max": 978
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 7,
+            "injections": 7,
+            "chars": {
+              "n": 7,
+              "mean": 263.2857,
+              "median": 249,
+              "max": 363
+            },
+            "injectionChars": {
+              "n": 7,
+              "mean": 263.2857,
+              "median": 249,
+              "max": 363
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 11,
+            "injections": 11,
+            "chars": {
+              "n": 11,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 11,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "all": {
         "requests": {
-          "cases": 137,
+          "cases": 154,
           "hit": {
-            "num": 70,
-            "den": 91,
-            "value": 0.7692
+            "num": 79,
+            "den": 104,
+            "value": 0.7596
           },
-          "injected": 232,
-          "correct": 87,
-          "neutral": 36,
+          "injected": 262,
+          "correct": 99,
+          "neutral": 45,
           "wrong": {
-            "num": 109,
-            "den": 232,
-            "value": 0.4698
+            "num": 118,
+            "den": 262,
+            "value": 0.4504
           },
-          "forbid": 25,
-          "forbidCases": 14,
+          "forbid": 32,
+          "forbidCases": 19,
           "empty": {
-            "num": 34,
-            "den": 46,
-            "value": 0.7391
+            "num": 37,
+            "den": 50,
+            "value": 0.74
           },
           "chars": {
-            "n": 121,
-            "mean": 129.6281,
+            "n": 129,
+            "mean": 125.9225,
             "median": 94,
             "max": 978
           },
@@ -340,22 +488,22 @@
             "value": 0.9048
           },
           "b2Chars": {
-            "n": 16,
-            "mean": 128.25,
-            "median": 183,
-            "max": 190
+            "n": 25,
+            "mean": 182.6,
+            "median": 184,
+            "max": 363
           },
           "sessionChars": {
-            "n": 88,
-            "mean": 834.375,
-            "median": 761.5,
+            "n": 102,
+            "mean": 839.4902,
+            "median": 776.5,
             "max": 1626
           },
           "startChars": {
-            "n": 88,
-            "mean": 632.8182,
+            "n": 102,
+            "mean": 635.4804,
             "median": 648,
-            "max": 648
+            "max": 658
           }
         },
         "subagent": {
@@ -414,6 +562,80 @@
           },
           "forbid": 0,
           "nearForbid": 16
+        },
+        "paths": {
+          "start": {
+            "calls": 123,
+            "injections": 123,
+            "chars": {
+              "n": 123,
+              "mean": 633.4146,
+              "median": 648,
+              "max": 658
+            },
+            "injectionChars": {
+              "n": 123,
+              "mean": 633.4146,
+              "median": 648,
+              "max": 658
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "request": {
+            "calls": 129,
+            "injections": 81,
+            "chars": {
+              "n": 129,
+              "mean": 125.9225,
+              "median": 94,
+              "max": 978
+            },
+            "injectionChars": {
+              "n": 81,
+              "mean": 200.5432,
+              "median": 118,
+              "max": 978
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "tool": {
+            "calls": 25,
+            "injections": 21,
+            "chars": {
+              "n": 25,
+              "mean": 182.6,
+              "median": 184,
+              "max": 363
+            },
+            "injectionChars": {
+              "n": 21,
+              "mean": 217.381,
+              "median": 187,
+              "max": 363
+            },
+            "dead": 0,
+            "deadCalls": 0
+          },
+          "subagent": {
+            "calls": 27,
+            "injections": 27,
+            "chars": {
+              "n": 27,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "injectionChars": {
+              "n": 27,
+              "mean": 230,
+              "median": 230,
+              "max": 230
+            },
+            "dead": 0,
+            "deadCalls": 0
+          }
         }
       },
       "sessions": [
@@ -1920,6 +2142,216 @@
             "m-000000000011"
           ],
           "chars": 559
+        },
+        {
+          "session": "s-ops-resume",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000224",
+            "m-000000000111",
+            "m-000000000223"
+          ],
+          "chars": 645
+        },
+        {
+          "session": "s-ops-reject",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000224",
+            "m-000000000111",
+            "m-000000000241"
+          ],
+          "chars": 658
+        },
+        {
+          "session": "s-ops-twice",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000226",
+            "m-000000000225",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236"
+          ],
+          "chars": 656
+        },
+        {
+          "session": "s-ops-same",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-compact",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-commit",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-ls",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-grep",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-docker",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-edit",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-t-edit2",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-rk1",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-rk2",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
+        },
+        {
+          "session": "s-ops-rk3",
+          "ids": [
+            "m-000000000083",
+            "m-000000000084",
+            "m-000000000085",
+            "m-000000000086",
+            "m-000000000111",
+            "m-000000000241",
+            "m-000000000236",
+            "m-000000000115",
+            "m-000000000011"
+          ],
+          "chars": 652
         }
       ],
       "cases": [
@@ -1996,7 +2428,7 @@
           "id": "old-db-review",
           "session": "old-db-review",
           "kind": "request",
-          "part": "test",
+          "part": "train",
           "request": {
             "ids": [
               "m-000000000011"
@@ -2071,7 +2503,7 @@
           "id": "old-pnpm-yarn",
           "session": "old-pnpm-yarn",
           "kind": "request",
-          "part": "test",
+          "part": "train",
           "request": {
             "ids": [
               "m-000000000001"
@@ -5070,6 +5502,480 @@
             "m-000000000054",
             "m-000000000176"
           ]
+        },
+        {
+          "id": "ops-res-1",
+          "session": "s-ops-resume",
+          "kind": "start",
+          "part": "test",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000223"
+            ],
+            "chars": 645
+          }
+        },
+        {
+          "id": "ops-res-2",
+          "session": "s-ops-resume",
+          "kind": "request",
+          "part": "test",
+          "request": {
+            "ids": [
+              "m-000000000223"
+            ],
+            "chars": 90
+          },
+          "found": [
+            "m-000000000223",
+            "m-000000000182",
+            "m-000000000226",
+            "m-000000000084",
+            "m-000000000093",
+            "m-000000000183",
+            "m-000000000202"
+          ]
+        },
+        {
+          "id": "ops-res-3",
+          "session": "s-ops-resume",
+          "kind": "start",
+          "part": "test",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000223"
+            ],
+            "chars": 645
+          }
+        },
+        {
+          "id": "ops-res-4",
+          "session": "s-ops-resume",
+          "kind": "request",
+          "part": "test",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-rej-1",
+          "session": "s-ops-reject",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000241"
+            ],
+            "chars": 658
+          }
+        },
+        {
+          "id": "ops-rej-2",
+          "session": "s-ops-reject",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000224"
+            ],
+            "chars": 98
+          },
+          "found": [
+            "m-000000000224",
+            "m-000000000141",
+            "m-000000000227",
+            "m-000000000220",
+            "m-000000000112"
+          ]
+        },
+        {
+          "id": "ops-rej-3",
+          "session": "s-ops-reject",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000224",
+              "m-000000000111",
+              "m-000000000241"
+            ],
+            "chars": 658
+          }
+        },
+        {
+          "id": "ops-rej-4",
+          "session": "s-ops-reject",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-two-1",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236"
+            ],
+            "chars": 656
+          }
+        },
+        {
+          "id": "ops-two-2",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236"
+            ],
+            "chars": 656
+          }
+        },
+        {
+          "id": "ops-two-3",
+          "session": "s-ops-twice",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000226",
+              "m-000000000225",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236"
+            ],
+            "chars": 656
+          }
+        },
+        {
+          "id": "ops-two-4",
+          "session": "s-ops-twice",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [],
+            "chars": 0
+          }
+        },
+        {
+          "id": "ops-same-1",
+          "session": "s-ops-same",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 652
+          }
+        },
+        {
+          "id": "ops-same-2",
+          "session": "s-ops-same",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 652
+          }
+        },
+        {
+          "id": "ops-same-3",
+          "session": "s-ops-same",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000122"
+            ],
+            "chars": 87
+          },
+          "found": [
+            "m-000000000122",
+            "m-000000000130"
+          ]
+        },
+        {
+          "id": "ops-cmp-1",
+          "session": "s-ops-compact",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 652
+          }
+        },
+        {
+          "id": "ops-cmp-2",
+          "session": "s-ops-compact",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000227",
+              "m-000000000119"
+            ],
+            "chars": 142
+          },
+          "found": [
+            "m-000000000227",
+            "m-000000000119",
+            "m-000000000220",
+            "m-000000000120",
+            "m-000000000132",
+            "m-000000000234",
+            "m-000000000003",
+            "m-000000000231"
+          ]
+        },
+        {
+          "id": "ops-cmp-3",
+          "session": "s-ops-compact",
+          "kind": "start",
+          "part": "train",
+          "start": {
+            "ids": [
+              "m-000000000083",
+              "m-000000000084",
+              "m-000000000085",
+              "m-000000000086",
+              "m-000000000111",
+              "m-000000000241",
+              "m-000000000236",
+              "m-000000000115",
+              "m-000000000011"
+            ],
+            "chars": 652
+          }
+        },
+        {
+          "id": "ops-cmp-4",
+          "session": "s-ops-compact",
+          "kind": "request",
+          "part": "train",
+          "request": {
+            "ids": [
+              "m-000000000227",
+              "m-000000000119"
+            ],
+            "chars": 142
+          },
+          "found": [
+            "m-000000000227",
+            "m-000000000119",
+            "m-000000000220",
+            "m-000000000120",
+            "m-000000000132",
+            "m-000000000234",
+            "m-000000000003",
+            "m-000000000231"
+          ]
+        },
+        {
+          "id": "ops-in-commit",
+          "session": "s-ops-t-commit",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000230",
+              "m-000000000231"
+            ],
+            "chars": 363
+          }
+        },
+        {
+          "id": "ops-in-ls",
+          "session": "s-ops-t-ls",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000230",
+              "m-000000000231"
+            ],
+            "chars": 363
+          }
+        },
+        {
+          "id": "ops-in-grep",
+          "session": "s-ops-t-grep",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000230",
+              "m-000000000231"
+            ],
+            "chars": 363
+          }
+        },
+        {
+          "id": "ops-in-docker",
+          "session": "s-ops-t-docker",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000229",
+              "m-000000000230",
+              "m-000000000231"
+            ],
+            "chars": 363
+          }
+        },
+        {
+          "id": "ops-in-edit",
+          "session": "s-ops-t-edit",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000232"
+            ],
+            "chars": 157
+          }
+        },
+        {
+          "id": "ops-in-edit-other",
+          "session": "s-ops-t-edit2",
+          "kind": "request",
+          "part": "train",
+          "tool": {
+            "ids": [
+              "m-000000000232"
+            ],
+            "chars": 157
+          }
+        },
+        {
+          "id": "ops-rk-rollback",
+          "session": "s-ops-rk1",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000241",
+              "m-000000000240",
+              "m-000000000239"
+            ],
+            "chars": 249
+          }
+        },
+        {
+          "id": "ops-rk-timeout",
+          "session": "s-ops-rk2",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000241",
+              "m-000000000240",
+              "m-000000000239"
+            ],
+            "chars": 249
+          }
+        },
+        {
+          "id": "ops-rk-restart",
+          "session": "s-ops-rk3",
+          "kind": "request",
+          "part": "test",
+          "tool": {
+            "ids": [
+              "m-000000000241",
+              "m-000000000240",
+              "m-000000000239"
+            ],
+            "chars": 249
+          }
         }
       ]
     }

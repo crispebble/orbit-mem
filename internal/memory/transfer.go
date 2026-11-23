@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -110,14 +111,17 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 	}
 	m.Tags = cleanTags(m.Tags)
 	tags, _ := json.Marshal(m.Tags)
+	// 다른 곳에서 쓴 파일: 한도에 들어가는 것만 들이고, 비밀값으로 보이는 별칭은 저장과 같이 들이지 않는다.
+	aliases, _ := NormalizeAliases(m.Aliases)
+	aliases = slices.DeleteFunc(aliases, func(a string) bool { return MaskSecrets(a) != a })
 	tools, err := cleanTools(m.Tools)
 	if err != nil {
 		tools = nil // 옛 판이 내보낸 줄에는 없고, 틀린 이름은 트리거 없이 들여온다
 	}
 	if _, err := tx.Exec(`INSERT INTO memories(id,kind,scope,project,state,title,title_key,body,tags,version,created_at,updated_at,superseded_by,stale_reason,legacy_id,
-		retention,review_days,review_at,expires_at,topic,tools) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		retention,review_days,review_at,expires_at,topic,tools,aliases) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.Kind, m.Scope, m.Project, m.State, m.Title, TitleKey(m.Title), m.Body, string(tags), m.Version, m.CreatedAt, m.UpdatedAt, m.SupersededBy, m.StaleReason, nullIfEmpty(m.LegacyID),
-		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, TopicKey(m.Topic), toolsJSON(tools)); err != nil {
+		m.Retention, m.ReviewDays, m.ReviewAt, m.ExpiresAt, TopicKey(m.Topic), toolsJSON(tools), aliasesJSON(aliases)); err != nil {
 		return "", err
 	}
 	if err := indexTx(tx, m.ID); err != nil {
@@ -131,8 +135,9 @@ func (s *Store) Import(m Memory, reason string, dry bool) (string, error) {
 			return "", err
 		}
 	}
+	// 내보낸 줄은 다시 나온 날만 알고 세션은 모른다: 스키마 6 이행처럼 세션 하나(legacySession)로 들인다.
 	for _, day := range m.Days {
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO sightings(memory_id, day) VALUES(?,?)`, m.ID, day); err != nil {
+		if err := recordSightingTx(tx, m.ID, "", day, now); err != nil {
 			return "", err
 		}
 	}

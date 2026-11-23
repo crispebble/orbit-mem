@@ -393,7 +393,7 @@ func TestSurface_글자가_모두_이스케이프돼도_상한을_지킨다(t *t
 		Sources: []memory.Source{{Kind: "file", Ref: esc, Excerpt: esc}, {Kind: "file", Ref: esc, Excerpt: esc}, {Kind: "file", Ref: esc, Excerpt: esc}},
 		Links:   []memory.MemoryLink{{MemoryID: "m-aaaaaaaaaaaa"}, {MemoryID: "m-bbbbbbbbbbbb"}}}
 	for _, d := range []string{DetailIndex} {
-		it := findItem(m, d)
+		it := findItem(m, d, "폐기됨")
 		if n := jsonLen(it); n > findItemBudget {
 			t.Errorf("색인 한 줄 %d룬 > %d: %+v", n, findItemBudget, it)
 		}
@@ -401,7 +401,9 @@ func TestSurface_글자가_모두_이스케이프돼도_상한을_지킨다(t *t
 			t.Errorf("id와 제목은 남아야 합니다: %+v", it)
 		}
 	}
-	v := memoryView(m, func(string) string { return esc }, false)
+	// 폐기된 기억의 경고 머리와 연결 표시가 붙어도 상한을 지킨다.
+	notice := noticeOf(m, memory.WhyStale, "m-"+strings.Repeat("<", 12))
+	v := memoryView(m, notice, func(string) (string, string) { return esc, peerNote(memory.WhyStale, "m-aaaaaaaaaaaa") }, false)
 	if n := jsonLen(GetOut{Items: []MemoryView{v}}); n > getBudget {
 		t.Errorf("get 한 건 %d룬 > %d", n, getBudget)
 	}
@@ -413,7 +415,7 @@ func TestSurface_글자가_모두_이스케이프돼도_상한을_지킨다(t *t
 	}
 	// 짧은 기억은 아무것도 줄이지 않는다.
 	short := memory.Memory{ID: "m-0123456789ab", Kind: "fact", State: "candidate", AppliesTo: "user", Title: "짧은 제목", Body: "짧은 본문", Tags: []string{"a"}, Version: 1}
-	sv := memoryView(short, func(string) string { return "" }, false)
+	sv := memoryView(short, "", func(string) (string, string) { return "", "" }, false)
 	if sv.Body != "짧은 본문" || sv.Title != "짧은 제목" || len(sv.Tags) != 1 {
 		t.Errorf("짧은 기억이 줄었습니다: %+v", sv)
 	}

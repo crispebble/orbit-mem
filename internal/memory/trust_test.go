@@ -121,10 +121,10 @@ func TestTrust_믿을_수_없는_기억은_증거가_쌓여도_자동_확정되�
 	s := supStore(t)
 	for _, day := range []string{"2026-11-05", "2026-11-06", "2026-11-07"} {
 		in := untrustedLearns(KindFact, "웹 글이 말한 사실", "")
-		in.Day = day
+		in.Day, in.Session = day, "s-"+day // 날마다 다른 세션: 믿을 수 있으면 확정될 증거다
 		mustSave(t, s, in)
 		ctl := aiLearns(KindFact, "AI가 두 날 본 사실", "")
-		ctl.Day = day
+		ctl.Day, ctl.Session = day, "s-"+day
 		mustSave(t, s, ctl)
 	}
 	all, _ := s.List()
@@ -423,7 +423,8 @@ func TestTrust_두_연결이_동시에_증거를_쌓고_확정을_시도해도_�
 			<-start
 			for i := range 20 {
 				in := untrustedLearns(KindFact, "여러 날 나온 웹 글", "")
-				in.Day = fmt.Sprintf("2026-12-%02d", 1+(i+w*7)%28) // 다른 날: 증거(SeenDays)가 쌓인다
+				in.Day = fmt.Sprintf("2026-12-%02d", 1+(i+w*7)%28) // 다른 세션·다른 날: 증거(SeenDays)가 쌓인다
+				in.Session = fmt.Sprintf("s-%d-%d", w, i)
 				if _, err := s.Save(in); err != nil {
 					errs <- err
 				}

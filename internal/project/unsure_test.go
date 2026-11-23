@@ -29,13 +29,13 @@ func TestResolve_git이_답하지_못하면_모름이다(t *testing.T) {
 		want                    Project // 다음 판정(git이 답한 값)
 	}{
 		{"원격 조회가 128로 끝남(저장소인데)", poison, "config", "echo 'fatal: unable to read config' >&2; exit 128",
-			Project{Scope: "project:github.com/a/poison", Label: "github.com/a/poison", Dir: filepath.ToSlash(poison), Git: true, Temp: true}},
+			Project{Scope: "project:github.com/a/poison", Label: "github.com/a/poison", Dir: filepath.ToSlash(poison), Git: true, Temp: true, Top: filepath.ToSlash(poison)}},
 		{"원격 조회가 신호로 끝남", poison, "config", "kill -9 $$",
-			Project{Scope: "project:github.com/a/poison", Label: "github.com/a/poison", Dir: filepath.ToSlash(poison), Git: true, Temp: true}},
+			Project{Scope: "project:github.com/a/poison", Label: "github.com/a/poison", Dir: filepath.ToSlash(poison), Git: true, Temp: true, Top: filepath.ToSlash(poison)}},
 		{"rev-parse가 신호로 끝남", sub, "rev-parse", "kill -9 $$",
-			Project{Scope: "project:" + filepath.ToSlash(plain), Label: filepath.ToSlash(plain), Dir: filepath.ToSlash(sub), Git: true, Temp: true}},
+			Project{Scope: "project:" + filepath.ToSlash(plain), Label: filepath.ToSlash(plain), Dir: filepath.ToSlash(sub), Git: true, Temp: true, Top: filepath.ToSlash(plain)}},
 		{"rev-parse가 뜻밖의 코드로 끝남", sub, "rev-parse", "exit 3",
-			Project{Scope: "project:" + filepath.ToSlash(plain), Label: filepath.ToSlash(plain), Dir: filepath.ToSlash(sub), Git: true, Temp: true}},
+			Project{Scope: "project:" + filepath.ToSlash(plain), Label: filepath.ToSlash(plain), Dir: filepath.ToSlash(sub), Git: true, Temp: true, Top: filepath.ToSlash(plain)}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

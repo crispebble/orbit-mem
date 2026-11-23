@@ -91,8 +91,8 @@ func candidateMatch(qs []queryToken) string {
 type fieldTokens [3][]string
 
 // tokensOf는 기억 글을 색인과 같은 가공으로 칸별 토큰으로 만든다.
-func tokensOf(title, topic, tags, body string) fieldTokens {
-	ti, ke, bo := indexFields(title, topic, tags, body)
+func tokensOf(title, topic, tags, aliases, body string) fieldTokens {
+	ti, ke, bo := indexFields(title, topic, tags, aliases, body)
 	return fieldTokens{strings.Fields(ti), strings.Fields(ke), strings.Fields(bo)}
 }
 
@@ -195,12 +195,12 @@ const ftsCandidatesSQL = `SELECT i.memory_id, f.title, f.keys, f.body FROM memor
 	AND NOT EXISTS (SELECT 1 FROM memory_index_late l WHERE l.memory_id = i.memory_id)`
 
 // lateScanSQL은 늦은 표시가 있는 기억의 지금 글이다(CROSS JOIN: 표시가 바깥 고리라 늦은 줄 수에 비례한다).
-const lateScanSQL = `SELECT m.id, m.title, m.topic, m.tags, m.body FROM memory_index_late l CROSS JOIN memories m ON m.id = l.memory_id`
+const lateScanSQL = `SELECT m.id, m.title, m.topic, m.tags, m.aliases, m.body FROM memory_index_late l CROSS JOIN memories m ON m.id = l.memory_id`
 
 // staleScanSQL은 전체 검사(staleSQL)가 늦다고 본 기억의 지금 글이다: 색인 줄 수가 어긋날 때(index.go 개수 비교 보호
 // 장치)만 쓴다. 표시가 있는 기억을 포함하고, ftsCandidatesSQL의 후보(색인 줄·FTS 줄이 있고 글이 맞고 표시가 없음)와
 // 겹치지 않는다. 기억 전부를 읽는다.
-const staleScanSQL = `SELECT id, title, topic, tags, body FROM memories WHERE id IN (` + staleSQL + `)`
+const staleScanSQL = `SELECT id, title, topic, tags, aliases, body FROM memories WHERE id IN (` + staleSQL + `)`
 
 // queryScores는 질의 토큰이 닿는 모든 기억(상태·범위와 무관)의 점수다. 후보는 FTS 색인과, 늦은 표시가 있는 기억을
 // 지금 글로 훑은 것을 합친다. 색인 줄 수가 어긋나면(표시 없이 깨진 색인) 늦은 표시 대신 전체 검사의 늦은 줄을 훑는다.
@@ -215,7 +215,7 @@ func queryScores(q querier, qs []queryToken, skipUnknown bool, step func()) (map
 	total, agree, err := indexCounts(q)
 	switch {
 	case noIndexTable(err):
-		scan = `SELECT id, title, topic, tags, body FROM memories`
+		scan = `SELECT id, title, topic, tags, aliases, body FROM memories`
 		if err := q.QueryRow(`SELECT COUNT(*) FROM memories`).Scan(&total); err != nil {
 			return nil, err
 		}
@@ -253,11 +253,11 @@ func queryScores(q querier, qs []queryToken, skipUnknown bool, step func()) (map
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, title, topic, tags, body string
-		if err := rows.Scan(&id, &title, &topic, &tags, &body); err != nil {
+		var id, title, topic, tags, aliases, body string
+		if err := rows.Scan(&id, &title, &topic, &tags, &aliases, &body); err != nil {
 			return nil, err
 		}
-		r.add(id, tokensOf(title, topic, tags, body))
+		r.add(id, tokensOf(title, topic, tags, aliases, body))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

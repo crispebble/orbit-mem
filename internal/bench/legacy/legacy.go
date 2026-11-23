@@ -106,8 +106,13 @@ func (r *recaller) Request(session, cwd, prompt string) (bench.Shown, error) {
 	return r.shown(session, promptInjectionFor(r.s, r.products, where, prompt, Host, session)), nil
 }
 
-// Tool is the recall right before a tool call (internal/host/ops.go:281-290 at 87ab0fb).
-func (r *recaller) Tool(session, cwd, tool string) (bench.Shown, error) {
+// Reset forgets the session's bundle and marks before a start after a compaction or a clear, as the reset of the
+// host contract does (memory.Store.ResetSession).
+func (r *recaller) Reset(session string) error { return r.s.ResetSession(Host, session) }
+
+// Tool is the recall right before a tool call (internal/host/ops.go:281-290 at 87ab0fb). That version did not
+// read the tool's input, so input is ignored.
+func (r *recaller) Tool(session, cwd, tool, input string) (bench.Shown, error) {
 	where := r.where(cwd)
 	return r.shown(session, toolInjection(r.s, r.products, where, Host, session, tool)), nil
 }

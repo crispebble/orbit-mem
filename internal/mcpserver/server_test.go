@@ -375,7 +375,11 @@ func TestSave_거부_목록과_상대_시간과_보존_등급(t *testing.T) {
 	// 재검토함: 내용은 그대로 두고 재검토일만 민다.
 	before, _ := s.Get(out.Memory.ID)
 	var upd MemoryOut
-	res = call(t, cs, "memory_update", map[string]any{"id": out.Memory.ID, "action": "reviewed"}, &upd)
+	// 재검토함은 사용자 확인이다(L-1): 사용자 말 없이 AI가 보내면 거절한다.
+	if res = call(t, cs, "memory_update", map[string]any{"id": out.Memory.ID, "action": "reviewed"}, nil); !res.IsError {
+		t.Fatalf("사용자 말 없는 reviewed가 통과했습니다: %s", text(res))
+	}
+	res = call(t, cs, "memory_update", map[string]any{"id": out.Memory.ID, "action": "reviewed", "userQuote": "아직 맞다"}, &upd)
 	if res.IsError || upd.Memory.Version != before.Version+1 || upd.Memory.Title != before.Title {
 		t.Fatalf("reviewed = %s %+v", text(res), upd)
 	}

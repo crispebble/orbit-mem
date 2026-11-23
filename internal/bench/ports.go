@@ -19,6 +19,11 @@ import "time"
 // replaced memory, one confirmed elsewhere) and the work recall (B1). The path says which ids are the news with
 // News (a subset of IDs) and how many characters they take with NewsChars. The news is not a recall of the
 // request: the measure counts its ids as shown but not as put in (설계 5.1 B3, 1-6 b6r 3차).
+//
+// Dead names the ids of IDs that were not a current value at the time of the call (DeadReason: stale, rejected,
+// expired, or no longer in the DB): a dead injection (명세 · 기억 정확성 7절, F-6). A path that cannot tell leaves
+// it empty; the measure counts only ids that are in IDs too. DeadWhy gives the reason of each dead id (a
+// DeadReason value or DeadGone), so a later change of the judgement can be told apart from a change of the recall.
 type Shown struct {
 	IDs       []string
 	Chars     int
@@ -27,6 +32,8 @@ type Shown struct {
 	LeadChars int
 	News      []string
 	NewsChars int
+	Dead      []string
+	DeadWhy   map[string]string
 }
 
 // Recaller is the recall path under test. The origin of a case is the answer key and is
@@ -37,10 +44,24 @@ type Recaller interface {
 	Start(session, cwd string) (Shown, error)
 	// Request is the recall for a request (B1, B3).
 	Request(session, cwd, prompt string) (Shown, error)
-	// Tool is the recall just before a tool call (B2).
-	Tool(session, cwd, tool string) (Shown, error)
+	// Tool is the recall just before a tool call (B2). input is the text of the call's input as
+	// host.ToolInputText gives it ("" when the case has none); a path that does not read it ignores it.
+	Tool(session, cwd, tool, input string) (Shown, error)
 	// Subagent is the recall for a task handed to a sub agent.
 	Subagent(session, cwd, task string) (Shown, error)
+}
+
+// Resetter is a recall path that can forget what it told a session (its bundle and marks), as a host does before
+// the session start that follows a compaction or a clear. A start case with such a source (Case.Resets) needs it.
+type Resetter interface {
+	Reset(session string) error
+}
+
+// SourcedStarter is a recall path that takes how a session started, as a host hands it to its session start: the
+// Source of a start case (StartSources), or "" for the start the run makes before the first case of a session whose
+// log recorded no start. The run calls it in place of Recaller.Start when the path has it.
+type SourcedStarter interface {
+	StartFrom(session, cwd, source string) (Shown, error)
 }
 
 // Finder is the search a missed recall falls back to: the ids of the top limit hits.
@@ -79,6 +100,10 @@ type Env struct {
 	// SetNow moves the clock of the path (recall, search, similar) to t. A set whose cases carry their times
 	// (Set.Timed) needs it: the run calls it before a case whose time differs from the last one.
 	SetNow func(t time.Time)
+	// Change moves a memory of the path's DB copy to a state (memory.StateStale or memory.StateHidden), as a person
+	// or the upkeep would between two session starts. A case's Changes need it; a run refuses a case with
+	// Changes on a path without it.
+	Change func(id, state string) error
 	Close  func() error
 }
 

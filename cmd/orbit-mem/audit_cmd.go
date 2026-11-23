@@ -68,15 +68,17 @@ func cmdAudit(a *app, args []string) error {
 		if len(pos) != 1 {
 			return errUsage
 		}
+		// 반복 교정은 확인함으로, 어긋남은 옛 값 유지로 닫는다(memory.Store.ResolveFlag).
+		var msg string
 		if strings.HasPrefix(pos[0], "correction:") {
-			err = s.Acknowledge(pos[0], who)
+			err, msg = s.Acknowledge(pos[0], who), i18n.T("cli.audit.dismissed", pos[0])
 		} else {
-			err = s.ResolveFlag(pos[0], "dismissed", who)
+			err, msg = s.ResolveFlag(pos[0], "dismissed", who), i18n.T("cli.audit.dismissed_conflict", pos[0])
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(a.stdout, i18n.T("cli.audit.dismissed", pos[0]))
+		fmt.Fprintln(a.stdout, msg)
 		return nil
 	}
 	return errUsage
@@ -124,6 +126,16 @@ func (a *app) printAudit(au memory.Audit, days int) {
 		for _, t := range au.TwoTopics {
 			fmt.Fprintf(a.stdout, "  %s %-8s %s · %s\n", t.ID, t.Kind, oneLine(t.Title, 80), t.Why)
 		}
+	}
+	if au.ReviewDueCount > 0 {
+		fmt.Fprintln(a.stdout, i18n.T("cli.audit.review_due", au.ReviewDueCount))
+		for _, r := range au.ReviewDue {
+			fmt.Fprintf(a.stdout, "  %s %-8s %s · %s\n", r.ID, r.Kind, oneLine(r.Title, 80), memory.Day(time.UnixMilli(r.ReviewAt)))
+		}
+		if n := au.ReviewDueCount - len(au.ReviewDue); n > 0 {
+			fmt.Fprintln(a.stdout, "  "+i18n.T("cli.audit.review_due_more", n))
+		}
+		fmt.Fprintln(a.stdout, "  "+i18n.T("cli.audit.review_due_hint"))
 	}
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.pending", au.Pending))
 	fmt.Fprintln(a.stdout, i18n.T("cli.audit.policy", au.Policy.SeenDays, au.Policy.FollowedVerified, au.Policy.CorrectionSessions))

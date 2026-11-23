@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema version this binary migrates to: migrate writes it to
 // meta schema.version (and the schema still sets user_version to it for older binaries).
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // Why a daily backup made no copy.
 const (

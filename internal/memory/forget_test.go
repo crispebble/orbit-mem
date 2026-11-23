@@ -96,6 +96,14 @@ func TestForget_사용자_말과_함께_지우면_기억과_딸린_행이_모두
 	if err := s.RecordUsage(UsageInput{MemoryID: other.ID, Verdict: UsageFollowed}); err != nil {
 		t.Fatal(err)
 	}
+	// 세션을 가른 다시 나온 기록(스키마 6). 이 표에 쓰는 저장 경로가 생기기 전이라 줄을 직접 넣는다.
+	if _, err := s.DB().Exec(`INSERT INTO sighting_sessions(memory_id, session, day, at) VALUES(?, 'S1', '2026-10-27', 1)`, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 되돌린 자동 대체 쌍의 새 쪽(스키마 6). 쌍을 만드는 길(자동 대체 → 되돌림)은 replace_test.go가 본다.
+	if _, err := s.DB().Exec(`INSERT INTO supersede_reverts(old_id, new_id, ledger_id, at) VALUES(?, ?, 'l-x', 1)`, other.ID, m.ID); err != nil {
+		t.Fatal(err)
+	}
 	var rowid int64
 	if err := s.DB().QueryRow(`SELECT rowid FROM memory_index WHERE memory_id=?`, m.ID).Scan(&rowid); err != nil {
 		t.Fatal(err)
@@ -146,6 +154,10 @@ func TestForget_사용자_말과_함께_지우면_기억과_딸린_행이_모두
 	// 다른 기억의 행은 남는다.
 	if eventsOf(t, s, other.ID) != 1 || countOf(t, s, `SELECT COUNT(*) FROM session_marks WHERE memory_id=?`, other.ID) != 1 {
 		t.Error("the other memory's rows went too")
+	}
+	// 세션 표시는 남김 목록(keepTables)이다: 지운 기억의 표시도 남는다(TestForget_세션_표시는_남기고_기억의_글은_담지_않는다).
+	if n := countOf(t, s, `SELECT COUNT(*) FROM session_marks WHERE memory_id=?`, m.ID); n != 1 {
+		t.Errorf("session marks of the forgotten memory %d, want kept", n)
 	}
 	got, err := s.Get(other.ID)
 	if err != nil || len(got.Links) != 0 {

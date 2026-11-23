@@ -175,7 +175,7 @@ type RecallHit struct {
 	TitleShare float64
 }
 
-// Coverage is the share of words that appear in m (title, topic, tags or body), and those words in order.
+// Coverage is the share of words that appear in m (title, topic, tags, aliases or body), and those words in order.
 // No words give 0.
 func Coverage(m Memory, words []string) (float64, []string) {
 	if len(words) == 0 {
@@ -208,11 +208,14 @@ func Coverage(m Memory, words []string) (float64, []string) {
 	return float64(len(matched)) / float64(len(words)), matched
 }
 
-// matchText is m's title, topic, body and tags, normalized, one per line: the text Coverage matches.
+// matchText is m's title, topic, body, tags and aliases, normalized, one per line: the text Coverage matches.
 func matchText(m Memory) string {
 	parts := []string{Normalize(m.Title), Normalize(m.Topic), Normalize(m.Body)}
 	for _, t := range m.Tags {
 		parts = append(parts, Normalize(t))
+	}
+	for _, a := range m.Aliases {
+		parts = append(parts, Normalize(a))
 	}
 	return strings.Join(parts, "\n")
 }

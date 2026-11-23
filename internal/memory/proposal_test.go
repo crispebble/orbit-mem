@@ -165,10 +165,11 @@ func TestProposal_방향_제안을_승인하면_결정으로_남는다(t *testin
 
 func TestProposal_후보가_스스로_확정되면_제안은_자동으로_닫힌다(t *testing.T) {
 	s, c := newTestStore(t)
-	in := SaveInput{Kind: KindLesson, Title: "반복 교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}}
+	in := SaveInput{Kind: KindLesson, Title: "반복 교훈", Scope: ScopeGlobal, Source: Source{Kind: SourceSession}, Session: "s-1"}
 	m, _ := s.Save(in)
 	s.Propose(ProposalInput{Kind: ProposalConfirm, Title: "확정?", MemoryIDs: []string{m.ID}})
 	c.t = c.t.AddDate(0, 0, 1)
+	in.Session = "s-2" // 다른 세션·다른 날이라 스스로 확정된다
 	s.Save(in)
 	if n, _ := s.CloseSettled(); n != 1 {
 		t.Fatalf("closed = %d", n)

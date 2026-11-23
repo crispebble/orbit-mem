@@ -83,6 +83,7 @@ func CountBundles(cases []Case, parts []string, part string) Bundles {
 			continue
 		}
 		switch {
+		case c.CaseKind() == KindStart: // 세션 시작은 판정할 정답이 없다: 경로 측정(Paths)에만 든다
 		case c.CaseKind() == KindSubagent:
 			b.Subagent++
 		case c.CaseKind() == KindDuplicate:

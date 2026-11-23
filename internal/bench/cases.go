@@ -13,11 +13,14 @@ import (
 	"github.com/crispebble/orbit-mem/internal/memory"
 )
 
-// Case kinds and origins.
+// Case kinds and origins. A start case is a session start the log recorded (a new session, a resume, a fork, the
+// start after a compaction or a clear): the run calls the session start recall for it again, so a replay sees
+// what every start of a session put in, not only the first.
 const (
 	KindRequest   = "request"
 	KindSubagent  = "subagent"
 	KindDuplicate = "duplicate"
+	KindStart     = "start"
 
 	OriginUser   = "user"
 	OriginAgent  = "agent"
@@ -26,6 +29,13 @@ const (
 
 // ScopeHere in a memory means the project of the set's cwd.
 const ScopeHere = "here"
+
+// StartSources are the sources a start case may give (the SessionStart sources of a host, empty for none).
+var StartSources = []string{"startup", "resume", "fork", "compact", "clear"}
+
+// resetSources are the start sources after which the context holds nothing the session was told: the host
+// forgets the session's bundle and marks before the start (the host contract's reset, then its context).
+var resetSources = []string{"compact", "clear"}
 
 // Seed fixes the split. A file may give it as a string or a number.
 type Seed string
@@ -68,13 +78,21 @@ type MemorySpec struct {
 // Case is one case. Expect, Allow and Forbid name memories by key (with memories in the
 // file) or by id (with a DB given).
 type Case struct {
-	ID      string   `json:"id"`
-	Session string   `json:"session,omitempty"`
-	CWD     string   `json:"cwd,omitempty"`
-	Origin  string   `json:"origin,omitempty"` // the answer: who wrote the prompt
-	Kind    string   `json:"kind,omitempty"`
-	Prompt  string   `json:"prompt,omitempty"`
-	Tool    string   `json:"tool,omitempty"`
+	ID      string `json:"id"`
+	Session string `json:"session,omitempty"`
+	CWD     string `json:"cwd,omitempty"`
+	Origin  string `json:"origin,omitempty"` // the answer: who wrote the prompt
+	Kind    string `json:"kind,omitempty"`
+	Prompt  string `json:"prompt,omitempty"`
+	Tool    string `json:"tool,omitempty"`
+	// Input is the text of the tool call's input (host.ToolInputText), on a case with a tool only.
+	Input string `json:"input,omitempty"`
+	// Source is how the session started, on a start case only (StartSources).
+	Source string `json:"source,omitempty"`
+	// Changes are what happens to memories before the case runs, on a start case only: a memory that goes stale
+	// or is rejected between two starts of one session. The run applies them to the path's DB copy, then calls the
+	// start. A path that cannot change a memory (Env.Change empty) runs the case without them.
+	Changes []Change `json:"changes,omitempty"`
 	Task    string   `json:"task,omitempty"`
 	Save    *Draft   `json:"save,omitempty"`
 	Expect  []string `json:"expect,omitempty"`
@@ -84,6 +102,12 @@ type Case struct {
 	// At is when the case happened (RFC3339), for cases taken from logs: the run puts the DB at its state of
 	// that time and moves the recall path's clock there. A file gives it on every case or on none.
 	At string `json:"at,omitempty"`
+}
+
+// Change is the move of one memory to a state (memory.StateStale or memory.StateHidden) before a case.
+type Change struct {
+	Memory string `json:"memory"` // key (a set with memories) or id (a DB given)
+	State  string `json:"state"`
 }
 
 // Time is the time of the case (false without one).
@@ -125,6 +149,11 @@ func (c Case) CaseOrigin() string {
 		return OriginUser
 	}
 	return c.Origin
+}
+
+// Resets reports whether the case is a start after which the host forgets what it told the session first.
+func (c Case) Resets() bool {
+	return c.CaseKind() == KindStart && slices.Contains(resetSources, c.Source)
 }
 
 // hasPrompt reports whether the case has a request text, the only case where the origin
@@ -247,8 +276,32 @@ func (s *Set) checkCase(c Case, keys map[string]bool) error {
 		if c.Save == nil || c.Save.Title == "" || c.Save.Kind == "" {
 			return errors.New("a duplicate case needs save with a kind and a title")
 		}
+	case KindStart:
+		if c.Prompt != "" || c.Tool != "" || c.Task != "" || c.Save != nil || len(c.Expect)+len(c.Allow)+len(c.Forbid) > 0 {
+			return errors.New("a start case has only a session, a cwd, a source and a time")
+		}
+		if c.Source != "" && !slices.Contains(StartSources, c.Source) {
+			return fmt.Errorf("source %q", c.Source)
+		}
 	default:
 		return fmt.Errorf("kind %q", c.Kind)
+	}
+	if c.Source != "" && c.CaseKind() != KindStart {
+		return errors.New("source is for a start case only")
+	}
+	if len(c.Changes) > 0 && c.CaseKind() != KindStart {
+		return errors.New("changes are for a start case only")
+	}
+	for _, ch := range c.Changes {
+		if ch.State != memory.StateStale && ch.State != memory.StateHidden {
+			return fmt.Errorf("change of %q to %q: the state is stale or hidden", ch.Memory, ch.State)
+		}
+		if len(s.Memories) > 0 && !keys[ch.Memory] {
+			return fmt.Errorf("no memory with key %q", ch.Memory)
+		}
+	}
+	if c.Input != "" && c.Tool == "" {
+		return errors.New("input is for a case with a tool only")
 	}
 	if s.CWDOf(c) == "" {
 		return errors.New("no cwd (neither the case nor the set has one)")
